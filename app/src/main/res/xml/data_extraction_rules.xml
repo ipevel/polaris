@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!-- 会话与凭证均为设备级加密（AndroidKeyStore 密钥不迁移/不备份），
+         备份或换机迁移会导致新设备解密失败，且避免任何会话数据离开本机 -->
+    <cloud-backup>
+        <exclude domain="sharedpref" path="device.xml" />
+        <exclude domain="sharedpref" path="slte_session.xml" />
+        <exclude domain="sharedpref" path="slte_credential_store.xml" />
+        <!-- 节点凭据 YAML / 订阅配置文件 / 内核数据不随云端备份（D2D/云备份均排除） -->
+        <exclude domain="file" path="imported" />
+        <exclude domain="file" path="pending" />
+        <exclude domain="file" path="clash" />
+        <exclude domain="database" path="profiles.db" />
+        <exclude domain="database" path="profiles.db-wal" />
+        <exclude domain="database" path="profiles.db-shm" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="device.xml" />
+        <exclude domain="sharedpref" path="slte_session.xml" />
+        <exclude domain="sharedpref" path="slte_credential_store.xml" />
+        <exclude domain="file" path="imported" />
+        <exclude domain="file" path="pending" />
+        <exclude domain="file" path="clash" />
+        <exclude domain="database" path="profiles.db" />
+        <exclude domain="database" path="profiles.db-wal" />
+        <exclude domain="database" path="profiles.db-shm" />
+    </device-transfer>
+</data-extraction-rules>

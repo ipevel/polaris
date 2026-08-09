@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与 ui/theme/Color.kt 的 md_light_background / md_dark_background / md_light_primary 保持一致，
+         两侧修改时需同步，否则启动闪色 / Launcher 图标色漂移 -->
+    <color name="light_background">#FFF1F1F3</color>
+    <color name="dark_background">#FF0E1621</color>
+    <color name="ic_launcher_background">#FF229AF0</color>
+</resources>

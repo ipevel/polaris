@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- 会话与凭证为设备级加密，密钥不随备份恢复，排除以避免解密失败与数据离开本机 -->
+    <exclude domain="sharedpref" path="device.xml" />
+    <exclude domain="sharedpref" path="slte_session.xml" />
+    <exclude domain="sharedpref" path="slte_credential_store.xml" />
+    <!-- 节点凭据 YAML / 订阅配置 / 内核数据不备份 -->
+    <exclude domain="file" path="imported" />
+    <exclude domain="file" path="pending" />
+    <exclude domain="file" path="clash" />
+    <exclude domain="database" path="profiles.db" />
+    <exclude domain="database" path="profiles.db-wal" />
+    <exclude domain="database" path="profiles.db-shm" />
+</full-backup-content>
