@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.slte.app.ui.component.SlteSwitch
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
@@ -63,6 +64,8 @@ internal fun SettingsRowCard(
             Spacer(modifier = Modifier.width(Dimens.spacingMd))
             Text(
                 text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 fontSize = TextSizes.actionTitle,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -120,6 +123,8 @@ internal fun SettingsSwitchCard(
             Spacer(modifier = Modifier.width(Dimens.spacingMd))
             Text(
                 text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 fontSize = TextSizes.actionTitle,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,

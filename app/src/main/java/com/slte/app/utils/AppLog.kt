@@ -25,8 +25,10 @@ object AppLog {
     fun e(tag: String, msg: String) = log(Log.ERROR, tag, msg)
 
     private fun log(level: Int, tag: String, msg: String) {
-        Log.println(level, tag, msg)
-        val line = "${timeFormat.get().format(Date())} ${levelChar(level)} $tag: $msg"
+        // 统一出口脱敏：logcat 与内存缓冲都不落明文 token/密码/真实域名
+        val safe = sanitize(msg)
+        Log.println(level, tag, safe)
+        val line = "${timeFormat.get().format(Date())} ${levelChar(level)} $tag: $safe"
         synchronized(buffer) {
             buffer.addLast(line)
             while (buffer.size > MAX_ENTRIES) buffer.removeFirst()
@@ -88,8 +90,36 @@ object AppLog {
             val at = value.indexOf('@')
             value.take(1) + "***" + value.substring(at)
         }
+        // 构建期注入的真实 API/OSS 域名：无论是否带 scheme 一律打码（白名单域同时是日志敏感域）
+        .let { out ->
+            SENSITIVE_HOST_PATTERNS.fold(out) { acc, pattern -> acc.replace(pattern, "***") }
+        }
+        // URL 主机打码：https?://host[:port] → https?://***
+        .replace(URL_HOST_PATTERN, "$1***")
 
     private val EMAIL_PATTERN = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+
+    /** URL 主机（含端口）打码 */
+    private val URL_HOST_PATTERN = Regex("(?i)(https?://)([^/\\s\"'<>]+)")
+
+    /** 构建期注入的真实域名列表（API 主域 + OSS 配置源域 + 白名单后缀），日志打码用；测试/占位构建为空或仅占位域 */
+    private val SENSITIVE_HOST_PATTERNS: List<Regex> = buildList {
+        fun hostOf(url: String): String? =
+            url.trim().substringAfter("://", "").substringBefore("/").takeIf { it.isNotBlank() }
+
+        val hosts = mutableListOf<String>()
+        runCatching {
+            hostOf(com.slte.app.BuildConfig.API_BASE_URL)?.let { hosts.add(it.lowercase()) }
+            com.slte.app.BuildConfig.REMOTE_CONFIG_URLS.split(',')
+                .mapNotNull { hostOf(it) }
+                .forEach { if (it.lowercase() !in hosts) hosts.add(it.lowercase()) }
+            com.slte.app.BuildConfig.ALLOWED_DOMAINS.split(',')
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .forEach { if (it !in hosts) hosts.add(it) }
+        }
+        hosts.forEach { add(Regex("(?i)" + Regex.escape(it))) }
+    }
 
     private fun levelChar(level: Int): String = when (level) {
         Log.DEBUG -> "D"

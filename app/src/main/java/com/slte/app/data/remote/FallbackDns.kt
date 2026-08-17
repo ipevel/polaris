@@ -37,7 +37,8 @@ class FallbackDns @Inject constructor() : Dns {
             cache[hostname] = CachedEntry(result, now)
             return result
         } catch (_: UnknownHostException) {
-            AppLog.w("SLTE-Dns", "FallbackDns: 系统 DNS 解析失败，尝试备用 DNS: $hostname")
+            // 不输出解析的域名：业务 API 域属敏感信息
+            AppLog.w("SLTE-Dns", "FallbackDns: 系统 DNS 解析失败，尝试备用 DNS")
         }
 
         // 备用 DNS：整体超时兜底
@@ -56,7 +57,7 @@ class FallbackDns @Inject constructor() : Dns {
             }
         }
 
-        throw UnknownHostException("FallbackDns: 所有 DNS 均无法解析 $hostname")
+        throw UnknownHostException("FallbackDns: 所有 DNS 均无法解析")
     }
 
     /**
@@ -76,6 +77,12 @@ class FallbackDns @Inject constructor() : Dns {
             const val FALLBACK_TIMEOUT_MS = 8_000L
 
             const val QUERY_TIMEOUT_MS = 5_000L
+
+            /** DNS 名称指针压缩最大跳转次数（防环） */
+            const val MAX_POINTER_JUMPS = 16
+
+            /** DNS 名称最大长度（RFC 1035 上限） */
+            const val MAX_NAME_LENGTH = 253
     }
 
     /** UDP 查询 A 记录；remainingMs 为整体超时的剩余时间，socket 超时取单次上限与剩余时间的较小值 */
@@ -197,6 +204,8 @@ class FallbackDns @Inject constructor() : Dns {
         var jumped = false
         var end = start
         val labels = mutableListOf<String>()
+        var jumps = 0
+        var totalLen = 0
         while (true) {
             if (pos >= buf.size) throw UnknownHostException("DNS name overflow")
             val len = buf[pos].toInt() and 0xFF
@@ -209,9 +218,13 @@ class FallbackDns @Inject constructor() : Dns {
                 val ptr = ((len and 0x3F) shl 8) or (buf[pos + 1].toInt() and 0xFF)
                 if (!jumped) end = pos + 2
                 jumped = true
+                // 指针环/深度防护：跳转次数与总标签长度设上限，防伪造响应死循环
+                if (++jumps > MAX_POINTER_JUMPS) throw UnknownHostException("DNS pointer loop")
                 pos = ptr
             } else {
                 if (pos + 1 + len > buf.size) throw UnknownHostException("DNS name overflow")
+                totalLen += len
+                if (totalLen > MAX_NAME_LENGTH) throw UnknownHostException("DNS name too long")
                 labels.add(String(buf, pos + 1, len, Charsets.US_ASCII))
                 pos += len + 1
             }
@@ -221,12 +234,17 @@ class FallbackDns @Inject constructor() : Dns {
 
     private fun skipName(buf: ByteArray, start: Int): Int {
         var pos = start
+        var jumps = 0
         while (pos < buf.size) {
             val len = buf[pos].toInt() and 0xFF
             if (len == 0) return pos + 1
-            if ((len and 0xC0) == 0xC0) return pos + 2
+            if ((len and 0xC0) == 0xC0) {
+                if (++jumps > MAX_POINTER_JUMPS) return pos + 2
+                return pos + 2
+            }
             pos += len + 1
         }
         return pos
     }
+
 }

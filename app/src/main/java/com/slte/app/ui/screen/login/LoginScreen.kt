@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
@@ -78,14 +79,12 @@ fun LoginScreen(
     val isCheckingRegisterConfig = state is LoginUiState.CheckingRegisterConfig
     val errorMessageRes = (state as? LoginUiState.Error)?.messageRes
 
-    // 登录成功 → 导航
     LaunchedEffect(state is LoginUiState.LoginSuccess) {
         if (state is LoginUiState.LoginSuccess) {
             viewModel.onNavigatedToLoginSuccess()
         }
     }
 
-    // 配置加载完成 → 跳转注册页
     LaunchedEffect(state is LoginUiState.RegisterConfigReady) {
         val s = state
         if (s is LoginUiState.RegisterConfigReady) {
@@ -206,6 +205,8 @@ fun LoginScreen(
                     )
                     Text(
                         text = stringResource(R.string.login_remember_me),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

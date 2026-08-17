@@ -64,17 +64,17 @@ object XiaoV2b {
             .readTimeout(Constants.API_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(Constants.API_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .dns(dns)  // 系统 DNS 失败时走备用 DNS（单例，可随 VPN 状态清缓存）
-            .addInterceptor(ApiFailoverInterceptor(remoteConfig))
+            .addInterceptor(ApiFailoverInterceptor(remoteConfig, remoteConfig.endpointSelector))
             .addInterceptor(authInterceptor)
             .apply {
                 if (isDebug) {
-                    // 自定义调试日志：请求行去除 query——订阅下载 URL 携带 token，绝不能进日志
+                    // 自定义调试日志：只输出方法 + 路径——域名与 query 不进日志（订阅 URL 携带 token）
                     addInterceptor { chain ->
                         val request = chain.request()
-                        val safeUrl = request.url.newBuilder().query(null).build()
-                        AppLog.d("SLTE-Api", "${request.method} $safeUrl")
+                        val safePath = request.url.encodedPath
+                        AppLog.d("SLTE-Api", "${request.method} $safePath")
                         val response = chain.proceed(request)
-                        AppLog.d("SLTE-Api", "${request.method} ${response.code} $safeUrl")
+                        AppLog.d("SLTE-Api", "${request.method} ${response.code} $safePath")
                         response
                     }
                 }

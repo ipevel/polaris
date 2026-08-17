@@ -25,6 +25,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteShapes
@@ -105,6 +106,9 @@ private fun ActionButton(
             Spacer(modifier = Modifier.width(Dimens.dashboardActionIconGap))
             Text(
                 text = text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = TextSizes.dashboardActionBtn,
                 color = tint

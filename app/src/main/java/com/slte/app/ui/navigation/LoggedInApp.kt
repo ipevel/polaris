@@ -39,6 +39,7 @@ import com.slte.app.ui.screen.about.AboutScreen
 import com.slte.app.ui.screen.about.UpdateSheet
 import com.slte.app.ui.screen.about.UpdateUiState
 import com.slte.app.ui.screen.about.UpdateViewModel
+import com.slte.app.utils.findActivity
 
 /** 主界面页面枚举，驱动 AnimatedContent 过渡动画 */
 enum class Page { Dashboard, Invite, Server, Notice, Orders, Plans, Profile, Settings, About }
@@ -79,7 +80,6 @@ fun LoggedInApp(
         }
     }
 
-    // 栈式导航
     val pageStack = remember { mutableStateListOf(Page.Dashboard) }
     var pendingInvite by remember { mutableStateOf(false) }
     var pendingNotice by remember { mutableStateOf(false) }
@@ -125,7 +125,8 @@ fun LoggedInApp(
         } else {
             val now = System.currentTimeMillis()
             if (now - lastBackPress < 2000L) {
-                (context as? android.app.Activity)?.finish()
+                // LocalContext 已被语言包装，需解包出宿主 Activity
+                context.findActivity()?.finish()
             } else {
                 lastBackPress = now
             }
@@ -170,7 +171,6 @@ fun LoggedInApp(
         }
     }
 
-    // 页面渲染（AnimatedContent + 栈顶页面）
     val transitionSpec = remember {
         {
             (slideInHorizontally(tween(280)) { it / 3 } + fadeIn(tween(280)))

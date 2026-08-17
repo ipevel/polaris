@@ -8,7 +8,7 @@ import com.slte.app.ui.theme.SlteColors
 
 /**
  * 统一的输入框配色：白色背景，无边缘描边（聚焦/未聚焦均无），错误时显示错误色指示。
- * 颜色全部走主题扩展色，方便统一修改与亮暗主题切换。
+ * 颜色统一走主题扩展色，亮暗主题自动适配。
  */
 @Composable
 fun InputFieldColors() = TextFieldDefaults.colors(

@@ -7,30 +7,33 @@ import com.slte.app.kernel.AppRemoteConfig
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.slte.app.utils.AppLog
+import com.slte.app.utils.sanitizeLog
 
 /** OSS 远程下发的运行时可调配置 */
 @Serializable
@@ -66,6 +69,8 @@ private data class RemoteConfigDto(
     @SerialName("api_type") val apiType: String? = null,
     @SerialName("crisp_website_id") val crispWebsiteId: String? = null,
     @SerialName("crisp_enabled") val crispEnabled: Boolean? = null,
+    /** 配置版本号：多镜像源同时可用时选版本最高者 */
+    @SerialName("config_version") val configVersion: String? = null,
     @SerialName("update_version") val updateVersion: String? = null,
     @SerialName("update_changelog_title") val updateChangelogTitle: String? = null,
     @SerialName("update_changelog") val updateChangelog: String? = null,
@@ -73,22 +78,45 @@ private data class RemoteConfigDto(
     @SerialName("update_apk_url") val updateApkUrl: String? = null
 )
 
+/** 配置缓存条目：配置本体 + meta（版本/时间戳/来源/ETag），整体原子写入 */
+@Serializable
+internal data class CachedConfig(
+    val config: RemoteConfigData,
+    /** 配置版本号（多源择优依据） */
+    val version: String = "",
+    /** 拉取成功时间戳（毫秒），用于短缓存与过期判定 */
+    val fetchedAt: Long = 0L,
+    /** 上次成功配置源地址 */
+    val sourceUrl: String = "",
+    /** 上次成功响应的 ETag（下次请求带 If-None-Match 避免重复下载） */
+    val etag: String = ""
+)
+
 /**
- * 远程配置：启动时从多个 OSS URL（REMOTE_CONFIG_URLS）随机轮询拉取 JSON。
+ * 远程配置：多 OSS 源并发竞速拉取，按版本择优；API 地址经 EndpointSelector 粘滞选主。
  *
  * 容错层级：
- * 1. 配置 URL 随机轮询，逐个尝试，首个成功即用；
- * 2. 配置中的多个 API 地址并发竞速（延迟最小者为主地址），运行期连接失败自动 failover 到下一个；
- * 3. 全部失败回退本地 BuildConfig 硬编码默认值。
+ * 1. 多配置源并发竞速（上次成功源优先），首个合法结果用于择优，全部失败回退缓存/BuildConfig；
+ * 2. 配置中的多个 API 地址并发探测，主地址粘滞（新地址明显更快或当前不健康才切换），
+ *    运行期连接失败由 ApiFailoverInterceptor 自动 failover；
+ * 3. 短时间缓存（5 分钟）内不重复请求；ETag/304 命中复用缓存；失败保留最后一次成功缓存
+ *    （stale-while-revalidate），无缓存时回退 BuildConfig 默认值。
  */
 @Singleton
 class RemoteConfig @Inject constructor(
     @ApplicationContext private val context: Context
-) : AppRemoteConfig {
+) : AppRemoteConfig, FailoverConfig {
 
     override val apiBaseUrl: String get() = data.apiBaseUrl
 
     override val directDomains: List<String> get() = data.directDomains
+
+    /** 端点选择器：候选健康状态、熔断与主地址粘滞（与 failover 拦截器共享） */
+    private val selector = EndpointSelector()
+
+    /** 对外暴露的选择器（failover 拦截器等共享健康状态） */
+    val endpointSelector: EndpointSelector get() = selector
+
     private val masterKey: MasterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
@@ -103,10 +131,14 @@ class RemoteConfig @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** 配置源拉取客户端（复用连接池） */
+    /** 各配置源的 ETag（进程内；丢失后回退完整下载，由短缓存兜底） */
+    private val etagByUrl = ConcurrentHashMap<String, String>()
+
+    /** 配置源拉取客户端（复用连接池；含整体超时防止慢源拖死竞速） */
     private val configClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(3, TimeUnit.SECONDS)
+        .connectTimeout(CONFIG_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(CONFIG_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(CONFIG_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     /** API 竞速探测客户端（复用连接池） */
@@ -116,37 +148,104 @@ class RemoteConfig @Inject constructor(
         .build()
 
     /** 配置流：启动即发射缓存值，远程拉取完成后发射新值（更新检查/UI 响应式跟随） */
-    private val _dataFlow = MutableStateFlow(loadCached())
+    private val _dataFlow = MutableStateFlow(loadCached()?.config ?: RemoteConfigData())
     val dataFlow: StateFlow<RemoteConfigData> = _dataFlow.asStateFlow()
     val data: RemoteConfigData get() = _dataFlow.value
 
-    /** 运行期 failover 候选列表：主地址在前，其余按序轮转 */
-    fun apiCandidates(primary: String): List<String> = buildList {
+    /** 运行期 failover 候选列表：主地址在前，其余按健康度排列（熔断的排后） */
+    override fun apiCandidates(primary: String): List<String> = buildList {
         add(primary)
-        addAll(dataFlow.value.apiBaseUrls.filter { it != primary })
+        addAll(selector.candidateOrder(primary, dataFlow.value.apiBaseUrls.filter { it != primary }))
     }
 
+    /** 启动自动拉取：由主进程 Application 调用（后台进程不重复拉取，避免双写） */
     fun startFetch() {
         scope.launch { refresh() }
     }
 
     /**
-     * 拉取并应用远程配置：成功返回 true；全部配置源失败返回 false（保留现有缓存）。
-     * 手动"检测更新"与启动自动拉取共用此入口。
+     * 启动半开恢复探测循环：定期对退避期已过的熔断地址探活，
+     * 成功即恢复、失败重新熔断，使故障地址恢复不依赖下一次配置刷新。
+     * 与配置拉取共用同一协程作用域，随进程退出自动取消。
      */
-    suspend fun refresh(): Boolean {
-        // 1. 配置 URL 顺序轮询，首个可用的配置为准
-        val raw = fetchConfig() ?: return false
+    fun startProbeLoop() {
+        scope.launch {
+            while (true) {
+                probeHalfOpen()
+                delay(PROBE_LOOP_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** 对半开候选逐个探活：成功 recordProbe（恢复健康），失败 recordFailure（重新熔断） */
+    private suspend fun probeHalfOpen() {
+        val candidates = selector.halfOpenCandidates()
+        if (candidates.isEmpty()) return
+        candidates.forEach { url ->
+            val latency = probeOne(url)
+            if (latency != null) {
+                selector.recordProbe(url, latency)
+                AppLog.i("SLTE-Config", "RemoteConfig: 半开探测恢复 latency=$latency")
+            } else {
+                selector.recordFailure(url)
+                AppLog.w("SLTE-Config", "RemoteConfig: 半开探测仍失败")
+            }
+        }
+    }
+
+    /**
+     * 拉取并应用远程配置：成功返回 true；全部配置源失败返回 false（保留现有缓存）。
+     * 手动"检测更新"应传 force=true 绕过短时间缓存。
+     */
+    suspend fun refresh(force: Boolean = false): Boolean {
+        // 短时间缓存：非强制且缓存新鲜（5 分钟内）时直接复用，避免启动重复下载
+        val now = System.currentTimeMillis()
+        val cached = loadCached()
+        if (!force && cached != null && ConfigValidation.isCacheFresh(cached.fetchedAt, now, CONFIG_CACHE_TTL_MS)) {
+            _dataFlow.value = cached.config
+            return true
+        }
+
+        // 多源并发竞速：上次成功源优先，全部源在整体超时内完成，择优后统一生效
+        val urls = orderedConfigUrls()
+        if (urls.isEmpty()) return false
+        val result = try {
+            withTimeout(CONFIG_FETCH_TIMEOUT_MS) {
+                ConfigRace.race(urls) { url -> fetchOne(url, cached) }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.w("SLTE-Config", "RemoteConfig: 配置竞速失败: ${sanitize(e.message)}")
+            return false
+        }
+        val chosen = result.chosen ?: return false
+
+        // 304 命中：内容未变，仅刷新缓存时间戳与来源，沿用既有配置
+        if (chosen.notModified && cached != null) {
+            writeCache(cached.copy(fetchedAt = now, sourceUrl = chosen.url))
+            _dataFlow.value = cached.config
+            AppLog.i("SLTE-Config", "RemoteConfig: 304 命中，复用缓存")
+            return true
+        }
+
         val dto = try {
-            json.decodeFromString<RemoteConfigDto>(raw)
+            json.decodeFromString<RemoteConfigDto>(chosen.raw)
         } catch (e: Exception) {
             AppLog.w("SLTE-Config", "RemoteConfig: 配置解析失败: ${e.message}")
             return false
         }
 
         val candidates = resolveApiCandidates(dto)
-        // 2. 多 API 并发竞速选主；全部不可达时用本地硬编码默认
-        val primary = pickFastest(candidates) ?: BuildConfig.API_BASE_URL
+        // 多 API 并发探测 + 粘滞选主：当前主地址健康则保持，新地址明显更快才切换
+        val probes = probeAll(candidates)
+        probes.forEach { (url, latency) -> selector.recordProbe(url, latency) }
+        val primary = selector.pickPrimary(
+            candidates = candidates,
+            probes = probes,
+            currentPrimary = data.apiBaseUrl.takeIf { it in candidates }
+        ) ?: BuildConfig.API_BASE_URL
+        selector.updatePrimary(primary)
 
         val merged = RemoteConfigData(
             apiBaseUrl = primary,
@@ -163,10 +262,80 @@ class RemoteConfig @Inject constructor(
             updateForce = dto.updateForce ?: false,
             updateApkUrl = dto.updateApkUrl?.trim()?.let { takeIfAllowed(it) } ?: ""
         )
-        prefs.edit().putString(KEY_CACHED, json.encodeToString(merged)).apply()
+        writeCache(
+            CachedConfig(
+                config = merged,
+                version = chosen.version,
+                fetchedAt = now,
+                sourceUrl = chosen.url,
+                etag = etagByUrl[chosen.url] ?: ""
+            )
+        )
         _dataFlow.value = merged
-        AppLog.i("SLTE-Config", "RemoteConfig: 已更新 api=$primary candidates=${candidates.size} crisp=${merged.crispEnabled}")
+        AppLog.i(
+            "SLTE-Config",
+            "RemoteConfig: 已更新 version=${chosen.version} candidates=${candidates.size} crisp=${merged.crispEnabled}"
+        )
         return true
+    }
+
+    /** 单源拉取：带 If-None-Match（ETag），304 视为未变更成功；200 校验结构与版本 */
+    private suspend fun fetchOne(url: String, cached: CachedConfig?): FetchedConfig? {
+        val start = System.currentTimeMillis()
+        return try {
+            val builder = Request.Builder().url(url)
+            etagByUrl[url]?.takeIf { it.isNotBlank() }?.let { builder.header("If-None-Match", it) }
+            configClient.newCall(builder.build()).execute().use { resp ->
+                val elapsed = System.currentTimeMillis() - start
+                when {
+                    resp.code == 304 -> {
+                        // 仅当本地缓存与 304 同源同 ETag 时视为成功（复用缓存内容）
+                        if (cached != null && cached.sourceUrl == url && cached.etag == etagByUrl[url]) {
+                            FetchedConfig(url, "", cached.version, elapsed, notModified = true)
+                        } else {
+                            null
+                        }
+                    }
+                    resp.isSuccessful -> {
+                        val body = resp.body?.byteStream()?.use { readLimited(it, MAX_CONFIG_BYTES) }
+                            ?: return@use null
+                        val raw = body.toString(Charsets.UTF_8)
+                        val dto = try {
+                            json.decodeFromString<RemoteConfigDto>(raw)
+                        } catch (_: Exception) {
+                            null
+                        } ?: return@use null
+                        if (!validateDto(dto)) return@use null
+                        etagByUrl[url] = resp.header("ETag") ?: ""
+                        FetchedConfig(url, raw, dto.configVersion ?: "", elapsed)
+                    }
+                    else -> null
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.w("SLTE-Config", "RemoteConfig: 配置源不可用: ${sanitize(e.message)}")
+            null
+        }
+    }
+
+    /** 配置字段范围校验：版本号字符集限制，其余字段在合并阶段做白名单过滤 */
+    private fun validateDto(dto: RemoteConfigDto): Boolean {
+        val version = dto.configVersion ?: return true
+        // 版本仅允许数字/字母/点/横线，防止异常字符进入版本比较与日志
+        return version.matches(Regex("[0-9a-zA-Z.\\-]+"))
+    }
+
+    /** 配置源排序：上次成功地址优先（避免重复拉取后可用源顺序漂移） */
+    private fun orderedConfigUrls(): List<String> {
+        val urls = BuildConfig.REMOTE_CONFIG_URLS.split(',').map { it.trim() }
+            .filter { it.startsWith("https://") }
+        val last = prefs.getString(KEY_LAST_URL, null)
+        if (last != null && last in urls) {
+            return listOf(last) + urls.filter { it != last }
+        }
+        return urls
     }
 
     /** 从 DTO 合并出 API 候选列表（单值/数组/默认值，去重） */
@@ -174,7 +343,8 @@ class RemoteConfig @Inject constructor(
         val fromArray = dto.apiBaseUrls?.let { el ->
             when (el) {
                 is JsonPrimitive -> listOf(el.content)
-                else -> el.jsonArray.mapNotNull { (it as? JsonPrimitive)?.content }
+                is JsonArray -> el.mapNotNull { (it as? JsonPrimitive)?.content }
+                else -> emptyList()
             }
         } ?: emptyList()
         val list = buildList {
@@ -186,54 +356,27 @@ class RemoteConfig @Inject constructor(
     }
 
     /** 仅接受 https 且主机在自有域名白名单内的 API 地址（凭据只发往受信域） */
-    private fun takeIfAllowed(value: String): String? {
-        val url = value.trim().toHttpUrlOrNull() ?: return null
-        if (url.scheme != "https") return null
-        val host = url.host.lowercase()
-        return if (ALLOWED_HOST_SUFFIXES.any { host == it || host.endsWith(".$it") }) {
-            url.toString()
-        } else {
-            null
-        }
-    }
+    private fun takeIfAllowed(value: String): String? =
+        if (ConfigValidation.isValidApiUrl(value, ALLOWED_HOST_SUFFIXES)) value.trim() else null
 
     /** 直连域名：单值或数组均可，白名单校验后去重 */
     private fun resolveDirectDomains(element: JsonElement?): List<String> = buildList {
         val values = when (element) {
             null -> emptyList()
             is JsonPrimitive -> listOf(element.content)
-            else -> element.jsonArray.mapNotNull { (it as? JsonPrimitive)?.content }
+            is JsonArray -> element.mapNotNull { (it as? JsonPrimitive)?.content }
+            else -> emptyList()
         }
         values.mapNotNull { takeDomain(it) }.forEach { if (it !in this) add(it) }
     }
 
     /** 直连域名校验：注册域名格式（两段以上 label），且在自有域名白名单内 */
-    private fun takeDomain(value: String): String? {
-        val host = value.trim().lowercase().trimEnd('.')
-        if (host.isEmpty() || host.length > 253) return null
-        val labels = host.split(".")
-        if (labels.size < 2 || labels.any { it.isEmpty() || it.length > 63 }) return null
-        return if (ALLOWED_HOST_SUFFIXES.any { host == it || host.endsWith(".$it") }) host else null
-    }
-
-    /** 配置 URL 顺序轮询：固定顺序逐个尝试（多进程行为一致，避免双进程命中不同源），返回首个成功响应体 */
-    private suspend fun fetchConfig(): String? {
-        val urls = BuildConfig.REMOTE_CONFIG_URLS.split(',').map { it.trim() }
-            .filter { it.startsWith("https://") }
-        for (url in urls) {
-            try {
-                val body = configClient.newCall(Request.Builder().url(url).build())
-                    .execute().use { resp ->
-                        if (!resp.isSuccessful) null
-                        else resp.body?.byteStream()?.use { readLimited(it, MAX_CONFIG_BYTES) }
-                    }
-                if (body != null) return body.toString(Charsets.UTF_8)
-            } catch (e: Exception) {
-                AppLog.w("SLTE-Config", "RemoteConfig: 配置源不可用 $url: ${e.message}")
-            }
+    private fun takeDomain(value: String): String? =
+        if (ConfigValidation.isValidDomain(value, ALLOWED_HOST_SUFFIXES)) {
+            value.trim().lowercase().trimEnd('.')
+        } else {
+            null
         }
-        return null
-    }
 
     /** 限流读取响应体：超过上限返回 null（防御恶意/异常配置源 OOM） */
     private fun readLimited(input: java.io.InputStream, max: Int): ByteArray? {
@@ -250,50 +393,76 @@ class RemoteConfig @Inject constructor(
         return buffer.toByteArray()
     }
 
-    /** 多 API 并发竞速：延迟最小且可达者为主地址；全部不可达返回 null */
-    private suspend fun pickFastest(urls: List<String>): String? {
-        if (urls.size == 1) {
-            return if (reachable(urls.first())) urls.first() else null
-        }
+    /** 多 API 并发探测可达性与延迟（延迟最小者参与粘滞选主；退避期内的地址不探测） */
+    private suspend fun probeAll(candidates: List<String>): Map<String, Long> {
+        if (candidates.isEmpty()) return emptyMap()
         return coroutineScope {
-            urls.map { url ->
+            candidates.map { url ->
                 async(Dispatchers.IO) {
-                    val start = System.currentTimeMillis()
-                    try {
-                        speedClient.newCall(Request.Builder().url(url.trimEnd('/') + "/api/v1/guest/comm/config").build())
-                            .execute().use { resp ->
-                                if (resp.code in 200..499) url to (System.currentTimeMillis() - start) else null
-                            }
-                    } catch (e: Exception) {
-                        null
-                    }
+                    // 退避期内不探测：退避期结束后自然进入半开，由探活循环或下次刷新恢复
+                    if (selector.isOpen(url)) return@async null
+                    val latency = probeOne(url)
+                    if (latency != null) url to latency else null
                 }
-            }.awaitAll().filterNotNull().minByOrNull { it.second }?.first
+            }.awaitAll().filterNotNull().toMap()
         }
     }
 
-    private suspend fun reachable(url: String): Boolean {
+    /** 单地址探活：探活接口可达返回延迟（毫秒），否则返回 null */
+    private suspend fun probeOne(url: String): Long? {
+        val start = System.currentTimeMillis()
         return try {
-            speedClient.newCall(Request.Builder().url(url.trimEnd('/') + "/api/v1/guest/comm/config").build())
-                .execute().use { it.code in 200..499 }
+            speedClient.newCall(
+                Request.Builder().url(url.trimEnd('/') + PROBE_PATH).build()
+            ).execute().use { resp ->
+                if (resp.code in 200..499) {
+                    System.currentTimeMillis() - start
+                } else {
+                    null
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            false
+            null
         }
     }
 
-    private fun loadCached(): RemoteConfigData {
-        val raw = prefs.getString(KEY_CACHED, null) ?: return RemoteConfigData()
+    /** 读取加密缓存；损坏/缺失返回 null（回退 BuildConfig 默认） */
+    private fun loadCached(): CachedConfig? {
+        val raw = prefs.getString(KEY_CACHE, null) ?: return null
         return try {
-            json.decodeFromString<RemoteConfigData>(raw)
+            json.decodeFromString<CachedConfig>(raw)
         } catch (e: Exception) {
-            RemoteConfigData()
+            AppLog.w("SLTE-Config", "RemoteConfig: 缓存解析失败，回退默认配置")
+            null
         }
     }
+
+    /** 配置与来源地址同一次 edit 原子写入，避免写一半 */
+    private fun writeCache(cached: CachedConfig) {
+        prefs.edit()
+            .putString(KEY_CACHE, json.encodeToString(cached))
+            .putString(KEY_LAST_URL, cached.sourceUrl)
+            .apply()
+    }
+
+    private fun sanitize(message: String?): String =
+        message?.let { sanitizeLog(it) } ?: "Unknown"
 
     private companion object {
         const val PREFS_NAME = "slte_remote_config"
-        const val KEY_CACHED = "cached"
+        const val KEY_CACHE = "cached_config"
+        const val KEY_LAST_URL = "last_url"
         const val MAX_CONFIG_BYTES = 256 * 1024
+        const val CONFIG_TIMEOUT_SECONDS = 3L
+        const val CONFIG_FETCH_TIMEOUT_MS = 5_000L
+        /** 短时间缓存：该窗口内非强制刷新直接复用缓存 */
+        const val CONFIG_CACHE_TTL_MS = 5 * 60_000L
+        /** 半开恢复探测间隔：退避期最小 5s，探测周期取 15s 平衡及时性与开销 */
+        const val PROBE_LOOP_INTERVAL_MS = 15_000L
+        /** API 探活路径（与 XiaoV2b 面板 guest 接口契约一致） */
+        const val PROBE_PATH = "/api/v1/guest/comm/config"
         /** API 域名白名单：内置自有域 + 构建期 SLTE_ALLOWED_DOMAINS 追加；配置只能在这些域内切换 */
         val ALLOWED_HOST_SUFFIXES: List<String> = buildList {
             // 占位域：部署者替换为自有 API 域名后缀（与 kernel-core process.go directDomains 保持同步）

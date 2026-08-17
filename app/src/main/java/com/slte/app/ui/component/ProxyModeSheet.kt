@@ -36,79 +36,78 @@ fun ProxyModeSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val options = listOf(
-        stringResource(R.string.dashboard_proxy_rule) to stringResource(R.string.proxy_rule_desc),
-        stringResource(R.string.dashboard_proxy_global) to stringResource(R.string.proxy_global_desc)
-    )
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
-            Text(
-                text = stringResource(R.string.action_proxy_mode),
-                fontSize = TextSizes.sheetTitle,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(Dimens.spacingLg))
-
-            options.forEach { (mode, desc) ->
-                val selected = currentMode == mode
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = selected,
-                            onClick = {
-                                onSelect(mode)
-                                onDismiss()
-                            }
-                        )
-                        .padding(vertical = Dimens.spacingSm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = selected,
-                        onClick = null,
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = MaterialTheme.colorScheme.primary
-                        )
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
                     )
-                    Column(
+            ) {
+                Text(
+                    text = stringResource(R.string.action_proxy_mode),
+                    fontSize = TextSizes.sheetTitle,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(Dimens.spacingLg))
+
+                PROXY_MODE_OPTIONS.forEach { option ->
+                    // 勾选与选择都用内核稳定的模式标识，避免显示文案随语言变化导致状态失效
+                    val selected = currentMode == option.mode
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .padding(start = Dimens.spacingSm)
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = selected,
+                                onClick = {
+                                    onSelect(option.mode)
+                                    onDismiss()
+                                }
+                            )
+                            .padding(vertical = Dimens.spacingSm),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = mode,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            fontSize = TextSizes.actionTitle,
-                            color = MaterialTheme.colorScheme.onSurface
+                        RadioButton(
+                            selected = selected,
+                            onClick = null,
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary
+                            )
                         )
-                        Text(
-                            text = desc,
-                            fontSize = TextSizes.inviteSheetDesc,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = Dimens.spacingSm)
+                        ) {
+                            Text(
+                                text = stringResource(option.labelRes),
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                fontSize = TextSizes.actionTitle,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(option.descRes),
+                                fontSize = TextSizes.inviteSheetDesc,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(Dimens.spacingXl))
+                Spacer(modifier = Modifier.height(Dimens.spacingXl))
+            }
         }
     }
 }

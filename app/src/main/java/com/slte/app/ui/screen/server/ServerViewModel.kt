@@ -11,7 +11,7 @@ import com.slte.app.kernel.groupByTypeDelay
 import com.slte.app.kernel.selectAuto
 import com.slte.app.kernel.selectFallback
 import com.slte.app.kernel.selectNode
-import com.slte.app.kernel.speedTestAndCache
+import com.slte.app.kernel.speedTestProgressiveAndCache
 import com.slte.app.R
 import com.slte.app.utils.ErrorMessages
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -150,10 +150,22 @@ class ServerViewModel @Inject constructor(
     fun startSpeedTest() {
         if (_data.value.isTesting) return
         if (!hasPlan()) return
-        _data.update { it.copy(isTesting = true) }
+        _data.update { it.copy(isTesting = true, testedNodes = emptySet()) }
         _errorMessageRes.value = null
         viewModelScope.launch {
-            val delays = kernelProxy.speedTestAndCache()
+            // 渐进式：先测完的节点先回填，未出结果的保持原值；结束后统一补齐
+            val delays = kernelProxy.speedTestProgressiveAndCache { partial ->
+                _data.update { state ->
+                    if (partial.isEmpty()) return@update state
+                    val nodes = state.nodes.map { node ->
+                        val d = partial[node.name]
+                        if (d != null && d != 999) node.copy(delay = d) else node
+                    }
+                    // 已出真实结果的节点立即去转圈显示延迟；未出的继续转
+                    val tested = partial.filterValues { it != 999 }.keys
+                    state.copy(nodes = nodes, testedNodes = state.testedNodes + tested)
+                }
+            }
             val cached = kernelProxy.cachedSpeedResults()
             val fallbackDelay = kernelProxy.groupByTypeDelay("Fallback")
             _data.update { state ->
@@ -166,12 +178,13 @@ class ServerViewModel @Inject constructor(
                     }
                     node.copy(delay = delay)
                 }
-                state.copy(
-                    nodes = nodes,
-                    isTesting = false,
-                    kernelFallbackDelay = fallbackDelay
-                )
-            }
+            state.copy(
+                nodes = nodes,
+                isTesting = false,
+                testedNodes = emptySet(),
+                kernelFallbackDelay = fallbackDelay
+            )
+        }
             refreshSpecialNodes()
         }
     }
@@ -215,6 +228,8 @@ data class ServerData(
     val selectedNodeId: Int = 0,
     val isLoading: Boolean = false,
     val isTesting: Boolean = false,
+    /** 本轮测速已出真实结果的节点名（用于行级"测试中"状态展示） */
+    val testedNodes: Set<String> = emptySet(),
     /** 内核“故障转移”分组当前生效节点的延迟（测速后写入） */
     val kernelFallbackDelay: Int? = null,
     /** 内核“自动选择”（URLTest）分组当前生效节点 */

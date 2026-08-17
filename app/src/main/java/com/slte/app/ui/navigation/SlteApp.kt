@@ -17,47 +17,54 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.domain.model.SessionState
 import com.slte.app.ui.component.AnimatedSticker
+import com.slte.app.ui.component.AppLocaleContent
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.Stickers
 
-/** 应用根组件：按会话状态切换登录流与主界面 */
+/** 应用根组件：按会话状态切换登录流与主界面；语言切换时全树原地重组 */
 @Composable
 fun SlteApp(
     viewModel: AppViewModel = hiltViewModel()
 ) {
     val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val locale by viewModel.locale.collectAsStateWithLifecycle()
 
-    when (sessionState) {
-        is SessionState.LoggedIn -> {
-            val loggedIn = sessionState as SessionState.LoggedIn
-            LoggedInApp(
-                accountKey = loggedIn.user.subscribeToken,
-                onSupport = { viewModel.crispManager.openChat(context, loggedIn.user.email) }
-            )
-        }
-        is SessionState.LoggedOut -> AuthNavGraph()
-        is SessionState.Loading -> {
-            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-        }
-    }
-
-    // 启动遮罩：会话恢复后自动消失
-    AnimatedVisibility(
-        visible = sessionState is SessionState.Loading,
-        enter = fadeIn(),
-        exit = fadeOut()
+    AppLocaleContent(
+        locale = locale,
+        localeStore = viewModel.localeStore
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
+        when (sessionState) {
+            is SessionState.LoggedIn -> {
+                val loggedIn = sessionState as SessionState.LoggedIn
+                LoggedInApp(
+                    accountKey = loggedIn.user.subscribeToken,
+                    onSupport = { viewModel.crispManager.openChat(context, loggedIn.user.email) }
+                )
+            }
+            is SessionState.LoggedOut -> AuthNavGraph()
+            is SessionState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+            }
+        }
+
+        // 启动遮罩：会话恢复后自动消失
+        AnimatedVisibility(
+            visible = sessionState is SessionState.Loading,
+            enter = fadeIn(),
+            exit = fadeOut()
         ) {
-            AnimatedSticker(
-                assetPath = Stickers.LOGIN,
-                modifier = Modifier.size(Dimens.logoSize)
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                AnimatedSticker(
+                    assetPath = Stickers.LOGIN,
+                    modifier = Modifier.size(Dimens.logoSize)
+                )
+            }
         }
     }
 }

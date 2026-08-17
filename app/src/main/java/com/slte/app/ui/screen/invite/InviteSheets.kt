@@ -40,7 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import com.slte.app.R
+import com.slte.app.ui.component.AppLocaleContent
 import com.slte.app.ui.component.InputFieldColors
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
 import com.slte.app.utils.Dimens
@@ -63,16 +65,18 @@ fun TransferSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
-            SheetFormTitle(text = stringResource(R.string.invite_transfer_title))
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
+                SheetFormTitle(text = stringResource(R.string.invite_transfer_title))
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
@@ -126,6 +130,7 @@ fun TransferSheet(
             }
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
+            }
         }
     }
 }
@@ -141,7 +146,6 @@ fun WithdrawSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedMethod by remember { mutableStateOf("") }
     var account by remember { mutableStateOf("") }
-    val methods = stringArrayResource(R.array.invite_withdraw_methods).toList()
     val haptic = LocalHapticFeedback.current
 
     ModalBottomSheet(
@@ -149,16 +153,20 @@ fun WithdrawSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
-            SheetFormTitle(text = stringResource(R.string.invite_withdraw_title))
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            val methods = stringArrayResource(R.array.invite_withdraw_methods).toList()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
+                SheetFormTitle(text = stringResource(R.string.invite_withdraw_title))
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
@@ -242,11 +250,10 @@ fun WithdrawSheet(
             }
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
+            }
         }
     }
 }
-
-// 公共组件
 
 /** 弹窗标题：居中，与全局底部弹窗标题风格一致 */
 @Composable

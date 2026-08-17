@@ -28,6 +28,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.slte.app.R
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
 import com.slte.app.utils.Dimens
@@ -37,7 +39,7 @@ import com.slte.app.utils.Dimens
  *
  * 强制更新：无"稍后提醒"按钮，禁止下滑/点遮罩关闭，只能立即更新；
  * 非强制更新：可关闭，立即更新（上）/ 稍后提醒（下）二选一。
- * 版本号以"当前 → 新版"展示；更新日志标题与内容均来自远程下发。
+ * 版本号以"当前 → 新版"展示；更新日志标题与内容优先远程下发，为空时回退本地文案。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,14 +63,16 @@ fun UpdateSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
             Icon(
                 imageVector = Icons.Outlined.SystemUpdate,
                 contentDescription = null,
@@ -93,7 +97,6 @@ fun UpdateSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingSm))
 
-            // 版本号：当前版本 → 新版本（无多余文字）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -123,9 +126,8 @@ fun UpdateSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-            // 更新日志（标题与内容均来自远程下发）
             Text(
-                text = state.changelogTitle,
+                text = state.changelogTitle ?: stringResource(R.string.update_changelog_title_default),
                 fontSize = TextSizes.actionTitle,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -134,14 +136,13 @@ fun UpdateSheet(
             Spacer(modifier = Modifier.height(Dimens.spacingSm))
 
             Text(
-                text = state.changelog,
+                text = state.changelog ?: stringResource(R.string.update_changelog_default),
                 fontSize = TextSizes.inviteSheetDesc,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-            // 立即更新（上，主操作；跳转浏览器下载）
             Button(
                 onClick = onUpdateNow,
                 enabled = true,
@@ -154,7 +155,6 @@ fun UpdateSheet(
                 Text(stringResource(R.string.update_now))
             }
 
-            // 稍后提醒（下，仅非强制更新）
             if (!state.force) {
                 Spacer(modifier = Modifier.height(Dimens.spacingSm))
                 OutlinedButton(
@@ -170,6 +170,7 @@ fun UpdateSheet(
             }
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
+            }
         }
     }
 }

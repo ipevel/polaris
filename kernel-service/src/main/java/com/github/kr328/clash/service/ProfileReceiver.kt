@@ -22,7 +22,7 @@ class ProfileReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_TIME_CHANGED -> {
                 Global.launch {
-                    // 清理排定的内核抓取闹钟
+                    // 系统事件（重启/应用更新/时间变更）后已排定的抓取闹钟可能失效，统一取消
                     ImportedDao().queryAllUUIDs().forEach {
                         cancelNext(context, it)
                     }

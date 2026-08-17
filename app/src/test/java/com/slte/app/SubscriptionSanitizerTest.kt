@@ -9,9 +9,11 @@ import org.yaml.snakeyaml.Yaml
 
 /**
  * 订阅清洗器测试：验证端口清零、pattern 清空、
- * 缩进感知注入在多种模板风格下产出结构合法且语义正确的 YAML。
+ * 缩进感知注入（直连规则/测速配置）在多种模板风格下产出结构合法且语义正确的 YAML。
  */
 class SubscriptionSanitizerTest {
+
+    private val healthCheckUrl = "http://cp.cloudflare.com/generate_204"
 
     /** 2 空格缩进模板（含已有 fake-ip-filter） */
     private val template2Space = """
@@ -57,6 +59,45 @@ class SubscriptionSanitizerTest {
         |      password: "x"
         |rules:
         |    - MATCH,节点选择
+    """.trimMargin()
+
+    /** 含 proxy-groups（url-test 缺测速配置）的模板 */
+    private val templateWithGroups = """
+        |mixed-port: 7890
+        |proxies:
+        |  - name: "jp-01"
+        |    type: ss
+        |    server: 1.2.3.4
+        |    port: 8388
+        |proxy-groups:
+        |  - name: "自动选择"
+        |    type: url-test
+        |    interval: 300
+        |    proxies:
+        |      - jp-01
+        |rules:
+        |  - MATCH,自动选择
+    """.trimMargin()
+
+    /** 含 proxy-providers（缺 health-check）的模板 */
+    private val templateWithProviders = """
+        |proxies:
+        |  - name: "jp-01"
+        |    type: ss
+        |    server: 1.2.3.4
+        |    port: 8388
+        |proxy-providers:
+        |  airport:
+        |    type: http
+        |    url: "https://sub.example.com"
+        |    interval: 86400
+        |proxy-groups:
+        |  - name: "自动选择"
+        |    type: url-test
+        |    proxies:
+        |      - jp-01
+        |rules:
+        |  - MATCH,自动选择
     """.trimMargin()
 
     private fun parseOk(text: String): Map<String, Any?> {
@@ -108,6 +149,176 @@ class SubscriptionSanitizerTest {
         assertEquals(listOf("+.example.com"), dns["fake-ip-filter"])
         assertEquals(0, doc["mixed-port"])
         assertEquals(false, doc["allow-lan"])
+    }
+
+    @Test
+    fun `组 - url-test缺测速配置时注入url与timeout`() {
+        val out = SubscriptionSanitizer.sanitize(templateWithGroups, listOf("example.com"))
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals(healthCheckUrl, group["url"])
+        assertEquals(10_000, group["timeout"])
+        assertEquals("url-test", group["type"])
+    }
+
+    @Test
+    fun `组 - select组不注入测速配置`() {
+        val selectGroup = """
+            |proxy-groups:
+            |  - name: "节点选择"
+            |    type: select
+            |    proxies:
+            |      - jp-01
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(selectGroup, listOf("example.com"))
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertFalse(group.containsKey("url"))
+        assertFalse(group.containsKey("timeout"))
+    }
+
+    @Test
+    fun `组 - 已有测速配置保持原值不重复注入`() {
+        val configured = """
+            |proxy-groups:
+            |  - name: "自动选择"
+            |    type: url-test
+            |    url: "https://www.gstatic.com/generate_204"
+            |    timeout: 3000
+            |    proxies:
+            |      - jp-01
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(configured, listOf("example.com"))
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals("https://www.gstatic.com/generate_204", group["url"])
+        assertEquals(3000, group["timeout"])
+    }
+
+    @Test
+    fun `组 - 空url补齐且不产生重复键`() {
+        val emptyUrl = """
+            |proxy-groups:
+            |  - name: "自动选择"
+            |    type: url-test
+            |    url: ""
+            |    proxies:
+            |      - jp-01
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(emptyUrl, listOf("example.com"))
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals(healthCheckUrl, group["url"])
+        // 空值行被替换而非追加：url 键全文档唯一
+        val urlLines = out.lineSequence().filter { it.trimStart().startsWith("url:") }.count()
+        assertEquals(1, urlLines)
+    }
+
+    @Test
+    fun `组 - flow风格项跳过注入`() {
+        val flowGroup = """
+            |proxy-groups:
+            |  - {name: "自动选择", type: url-test, proxies: [jp-01]}
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(flowGroup, listOf("example.com"))
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals("url-test", group["type"])
+        assertFalse(group.containsKey("url"))
+    }
+
+    @Test
+    fun `provider - 缺health-check时注入完整配置块`() {
+        val out = SubscriptionSanitizer.sanitize(templateWithProviders, listOf("example.com"))
+        val doc = parseOk(out)
+        val provider = (doc["proxy-providers"] as Map<String, Any?>)["airport"] as Map<String, Any?>
+        val healthCheck = provider["health-check"] as Map<String, Any?>
+        assertEquals(true, healthCheck["enable"])
+        assertEquals(healthCheckUrl, healthCheck["url"])
+        assertEquals(10_000, healthCheck["timeout"])
+        assertEquals(300, healthCheck["interval"])
+        assertEquals(true, healthCheck["lazy"])
+    }
+
+    @Test
+    fun `provider - 已有health-check不重复注入`() {
+        val configured = """
+            |proxy-providers:
+            |  airport:
+            |    type: http
+            |    url: "https://sub.example.com"
+            |    health-check:
+            |      enable: true
+            |      url: "https://www.gstatic.com/generate_204"
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(configured, listOf("example.com"))
+        val doc = parseOk(out)
+        val provider = (doc["proxy-providers"] as Map<String, Any?>)["airport"] as Map<String, Any?>
+        val healthCheck = provider["health-check"] as Map<String, Any?>
+        assertEquals("https://www.gstatic.com/generate_204", healthCheck["url"])
+        val hcLines = out.lineSequence().filter { it.trimStart().startsWith("health-check:") }.count()
+        assertEquals(1, hcLines)
+    }
+
+    @Test
+    fun `provider - flow风格health-check不重复注入`() {
+        val flow = """
+            |proxy-providers:
+            |  airport:
+            |    type: http
+            |    url: "https://sub.example.com"
+            |    health-check: {enable: true, url: "https://www.gstatic.com/generate_204"}
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(flow, listOf("example.com"))
+        val hcLines = out.lineSequence().filter { it.contains("health-check:") }.count()
+        assertEquals(1, hcLines)
+    }
+
+    @Test
+    fun `4空格模板 - 组注入后结构合法`() {
+        val groups4Space = """
+            |proxies:
+            |    - name: "jp-01"
+            |      type: ss
+            |      server: 1.2.3.4
+            |      port: 8388
+            |proxy-groups:
+            |    - name: "自动选择"
+            |      type: url-test
+            |      proxies:
+            |        - jp-01
+            |rules:
+            |    - MATCH,自动选择
+        """.trimMargin()
+        val out = SubscriptionSanitizer.sanitize(groups4Space, listOf("example.com"))
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals(healthCheckUrl, group["url"])
+        assertEquals(10_000, group["timeout"])
+    }
+
+    @Test
+    fun `空域名列表 - 仍注入测速配置`() {
+        val out = SubscriptionSanitizer.sanitize(templateWithGroups, emptyList())
+        val doc = parseOk(out)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals(healthCheckUrl, group["url"])
+    }
+
+    @Test
+    fun `重复清洗幂等 - 测速配置不重复注入`() {
+        val once = SubscriptionSanitizer.sanitize(templateWithProviders, listOf("example.com"))
+        val twice = SubscriptionSanitizer.sanitize(once, listOf("example.com"))
+        val doc = parseOk(twice)
+        val group = (doc["proxy-groups"] as List<Map<String, Any?>>)[0]
+        assertEquals(healthCheckUrl, group["url"])
+        val provider = (doc["proxy-providers"] as Map<String, Any?>)["airport"] as Map<String, Any?>
+        assertEquals(healthCheckUrl, (provider["health-check"] as Map<String, Any?>)["url"])
+        // 注入的测速 url 恰好两条（组 url + health-check url），provider 自身 fetch url 不计入
+        val injectedUrlLines = twice.lineSequence()
+            .filter { it.trim() == "url: $healthCheckUrl" }
+            .count()
+        assertEquals(2, injectedUrlLines)
     }
 
     @Test

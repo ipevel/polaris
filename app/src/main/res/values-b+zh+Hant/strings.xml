@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SLTE</string>
+
+    <!-- Login -->
+    <string name="login_welcome">歡迎登入</string>
+    <string name="login_account_hint">輸入信箱</string>
+    <string name="login_password_hint">輸入密碼</string>
+    <string name="login_toggle_password">顯示/隱藏密碼</string>
+    <string name="login_button">登入</string>
+    <string name="login_remember_me">記住密碼</string>
+    <string name="login_forgot_password">忘記密碼？</string>
+
+    <!-- Register -->
+    <string name="register_title">建立帳號</string>
+    <string name="register_send_code">傳送</string>
+    <string name="register_invite_hint">邀請碼（必填）</string>
+    <string name="register_invite_optional">邀請碼（選填）</string>
+    <string name="register_button">註冊</string>
+    <string name="register_back_to_login">返回登入</string>
+
+    <!-- Forgot Password -->
+    <string name="forgot_title">重設密碼</string>
+    <string name="forgot_reset_button">重設密碼</string>
+
+    <!-- Error messages (client-side mapped, see ErrorMessages.kt) -->
+    <string name="error_login_invalid">信箱或密碼錯誤</string>
+    <string name="error_login_not_found">信箱未註冊</string>
+    <string name="error_login_failed">登入失敗</string>
+    <string name="error_register_failed">註冊失敗，請重試</string>
+    <string name="error_forgot_failed">重設失敗，請重試</string>
+    <string name="error_network">請求失敗</string>
+    <string name="error_email_send_failed">驗證碼傳送失敗</string>
+    <string name="error_email_required">輸入信箱</string>
+    <string name="error_code_required">輸入驗證碼</string>
+    <string name="error_password_required">輸入密碼</string>
+    <string name="error_new_password_required">輸入新密碼</string>
+    <string name="error_invite_required">邀請碼必填</string>
+
+    <!-- Top bar actions -->
+    <string name="topbar_support">客服</string>
+    <string name="topbar_notice">公告</string>
+    <string name="topbar_profile">我的</string>
+
+    <!-- Plan card -->
+    <string name="plan_status_expired">已過期</string>
+    <string name="plan_expire_days_label">%d 天後到期</string>
+    <string name="plan_expire_date_label">%1$s 到期</string>
+    <string name="plan_expired_today">今天到期</string>
+    <string name="plan_no_expiry">不限時</string>
+    <string name="plan_reset_label">%d 天後重置</string>
+    <string name="plan_percent">%d%%</string>
+    <string name="plan_separator">·</string>
+    <string name="plan_empty">尚無方案</string>
+    <string name="plan_renew_button">續費</string>
+    <string name="plan_buy_button">購買</string>
+    <string name="dashboard_subscribe_buy">購買訂閱</string>
+
+    <!-- Quick actions -->
+    <string name="action_server">伺服器</string>
+    <string name="action_proxy_mode">代理模式</string>
+
+    <!-- Status -->
+    <string name="status_disconnected">未連線</string>
+    <string name="status_connected">已連線</string>
+    <string name="status_connecting">連線中…</string>
+
+    <!-- Common -->
+    <string name="back">返回</string>
+    <string name="loading">載入中…</string>
+    <string name="switch_state_on">開啟</string>
+    <string name="switch_state_off">關閉</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_usage_title">流量用量</string>
+    <string name="dashboard_usage_valid">有效</string>
+    <string name="dashboard_expiry">有效期</string>
+    <string name="dashboard_days">%d 天</string>
+    <string name="dashboard_proxy_rule">規則</string>
+    <string name="dashboard_proxy_global">全域</string>
+    <string name="proxy_rule_desc">依規則轉發流量</string>
+    <string name="proxy_global_desc">所有流量走代理</string>
+    <string name="dashboard_current_ip">目前 IP</string>
+    <string name="dashboard_ip_copied">已複製 IP</string>
+    <string name="dashboard_update_subscription">更新訂閱</string>
+    <string name="dashboard_no_plan_badge">無方案</string>
+    <string name="dashboard_no_plan_tip">請先購買方案</string>
+    <string name="dashboard_refresh_done">訂閱已更新</string>
+
+    <!-- Server -->
+    <string name="server_title">節點選擇</string>
+    <string name="server_auto_now">URLTest（%1$s）</string>
+    <string name="server_speed_test">測速</string>
+    <string name="server_nodes_empty">暫無節點</string>
+    <string name="server_auto">自動選擇</string>
+    <string name="server_fallback">故障轉移</string>
+    <string name="server_fallback_now">Fallback（%1$s）</string>
+    <string name="server_timeout">逾時</string>
+
+    <!-- Invite -->
+    <string name="invite_title">邀請返利</string>
+    <string name="invite_stat_registered">已註冊用戶</string>
+    <string name="invite_stat_commission_rate">佣金比例</string>
+    <string name="invite_stat_total">累計佣金</string>
+    <string name="invite_stat_pending">確認中</string>
+    <string name="invite_stat_available">可提現</string>
+    <string name="invite_code_title">邀請碼</string>
+    <string name="invite_code_generate">產生邀請碼</string>
+    <string name="invite_code_copy">複製</string>
+    <string name="invite_code_copied">已複製</string>
+    <string name="invite_code_empty">暫無邀請碼</string>
+    <string name="invite_transfer">劃轉</string>
+    <string name="invite_withdraw">提現</string>
+    <string name="invite_transfer_title">佣金轉餘額</string>
+    <string name="invite_transfer_amount_hint">轉帳金額（元）</string>
+    <string name="invite_transfer_confirm">確認轉帳</string>
+    <string name="invite_transfer_available">可轉餘額</string>
+    <string name="invite_transfer_all">全部</string>
+    <string name="invite_withdraw_title">提現</string>
+    <string name="invite_withdraw_method">提現方式</string>
+    <string name="invite_withdraw_account_hint">提現帳號</string>
+    <string name="invite_withdraw_confirm">確認提現</string>
+    <string name="invite_withdraw_available">可提現</string>
+    <string-array name="invite_withdraw_methods">
+        <item>支付寶</item>
+        <item>USDT</item>
+    </string-array>
+    <string name="invite_records_title">佣金記錄</string>
+    <string name="invite_records_empty">暫無記錄</string>
+    <string name="invite_record_amount">+¥%s</string>
+    <string name="invite_record_amount_label">訂單金額 ¥%s</string>
+    <string name="invite_record_order">訂單 %s</string>
+    <string name="invite_code_pv">PV %d</string>
+    <string name="invite_users">%d 人</string>
+    <string name="invite_rate">%d%%</string>
+    <string name="invite_success_transfer">轉帳成功</string>
+    <string name="invite_success_withdraw">提現已提交</string>
+    <string name="invite_success_generate">邀請碼已產生</string>
+    <string name="invite_error_generate">產生失敗</string>
+    <string name="invite_error_transfer">轉帳失敗</string>
+    <string name="invite_error_withdraw">提現失敗</string>
+    <!-- Notice -->
+    <string name="notice_title">公告通知</string>
+    <string name="notice_empty">暫無公告</string>
+    <string name="notice_error">載入失敗</string>
+    <string name="notice_retry">重試</string>
+
+    <!-- Profile -->
+    <string name="profile_title">個人中心</string>
+    <string name="profile_not_logged_in">未登入</string>
+    <string name="profile_orders">我的訂單</string>
+    <string name="profile_contact">聯絡我們</string>
+    <string name="profile_about">關於軟體</string>
+
+    <!-- About (关于软件) -->
+    <string name="about_title">關於軟體</string>
+    <string name="about_app_desc">SLTE 是基於 mihomo 核心的輕量代理用戶端</string>
+    <string name="about_app_version">應用版本</string>
+    <string name="about_kernel_version">核心版本</string>
+    <!-- 内核编译标记（随包编译，非在线下载）；与 kernel-core/src/main/cpp/version.h 保持一致，升级内核时同步 -->
+    <string name="about_kernel_version_value">mihomo_custom_20260731</string>
+    <string name="about_check_update">檢查更新</string>
+    <string name="about_latest">已是最新</string>
+    <string name="about_update_failed">檢查更新失敗</string>
+    <string name="about_log_export">匯出日誌</string>
+    <string name="about_log_exported">日誌已匯出</string>
+    <string name="about_log_export_failed">匯出失敗</string>
+    <string name="about_log_export_share">分享日誌</string>
+
+    <!-- Update (检查更新) -->
+    <string name="update_title">發現新版本</string>
+    <string name="update_force_title">需更新才能繼續使用</string>
+    <string name="update_now">立即更新</string>
+    <string name="update_later">稍後</string>
+    <string name="update_changelog_title_default">更新日誌</string>
+    <string name="update_changelog_default">更新內容見遠端設定</string>
+    <string name="update_apk_missing">更新位址缺失</string>
+    <string name="update_download_failed">開啟下載頁失敗</string>
+
+    <string name="profile_logout">登出</string>
+    <string name="logout_confirm_message">確定登出目前帳號？</string>
+
+    <!-- Settings (其他设置) -->
+    <string name="settings_title">其他設定</string>
+    <string name="settings_tun_stack">TUN 堆疊模式</string>
+    <string name="settings_tun_stack_system">System</string>
+    <string name="settings_tun_stack_system_desc">系統網路堆疊，效能最佳</string>
+    <string name="settings_tun_stack_gvisor">Gvisor</string>
+    <string name="settings_tun_stack_gvisor_desc">使用者態堆疊，相容性佳</string>
+    <string name="settings_tun_stack_mixed">Mixed</string>
+    <string name="settings_tun_stack_mixed_desc">混合模式，效能相容兼顧</string>
+    <string name="settings_tun_stack_switched">TUN 堆疊已切換</string>
+    <string name="settings_change_password">修改密碼</string>
+    <string name="settings_dark_mode">深色模式</string>
+    <string name="settings_change_pwd_old_hint">目前密碼</string>
+    <string name="settings_change_pwd_new_hint">新密碼（至少 8 位）</string>
+    <string name="settings_change_pwd_confirm_hint">確認密碼</string>
+    <string name="settings_change_pwd_submit">確認修改</string>
+    <string name="settings_change_pwd_old_required">輸入目前密碼</string>
+    <string name="settings_change_pwd_too_short">新密碼至少 8 位</string>
+    <string name="settings_change_pwd_mismatch">新密碼不一致</string>
+    <string name="settings_change_pwd_failed">修改失敗</string>
+    <string name="settings_change_pwd_success">密碼已修改</string>
+    <string name="settings_toggle_password_visible">顯示密碼</string>
+    <string name="settings_expire_remind">到期提醒</string>
+    <string name="settings_traffic_remind">流量提醒</string>
+    <string name="settings_remind_save_failed">提醒設定儲存失敗</string>
+
+    <!-- Orders -->
+    <string name="order_empty">暫無訂單</string>
+    <string name="order_unknown_plan">未知方案</string>
+    <string name="order_price">價格</string>
+    <string name="order_created">建立於</string>
+    <string name="order_id">訂單號</string>
+    <string name="order_cancel">取消</string>
+    <string name="order_pay">支付</string>
+    <string name="order_status_pending">待支付</string>
+    <string name="order_status_completed">已完成</string>
+    <string name="order_status_cancelled">已取消</string>
+    <string name="order_status_abnormal">異常</string>
+    <string name="order_cancel_success">訂單已取消</string>
+    <string name="order_cancel_failed">取消失敗</string>
+
+    <!-- Plans -->
+    <string name="plans_title">訂閱</string>
+    <string name="plans_traffic_unit">GB</string>
+    <string name="plans_traffic_label">流量</string>
+    <string name="plans_subscribe">訂閱</string>
+
+    <!-- Purchase Flow -->
+    <string name="purchase_coupon_hint">輸入優惠券碼</string>
+    <string name="purchase_verify">驗證</string>
+    <string name="purchase_coupon_applied">優惠券已生效</string>
+    <string name="purchase_coupon_discount">優惠券</string>
+    <string name="purchase_coupon_verify_first">請先驗證優惠券</string>
+    <string name="error_coupon_invalid">優惠券無效或已過期</string>
+    <string name="dialog_confirm">確定</string>
+    <string name="purchase_confirm_order">確認訂單</string>
+    <string name="purchase_warning_title">警告</string>
+    <string name="purchase_warning_message">更換方案將覆蓋目前訂閱。</string>
+    <string name="purchase_cancel">取消</string>
+    <string name="purchase_confirm">確認</string>
+    <string name="purchase_order_info">訂單資訊</string>
+    <string name="purchase_product">產品</string>
+    <string name="purchase_balance">餘額</string>
+    <string name="purchase_handling">手續費</string>
+    <string name="purchase_payment_method">支付方式</string>
+    <string name="purchase_payment_method_empty">暫無支付方式</string>
+    <string name="purchase_pay_amount">支付 ¥%s</string>
+    <string name="purchase_existing_order_title">有待支付訂單</string>
+    <string name="purchase_existing_order_message">您有未完成的訂單</string>
+    <string name="purchase_error_title">建立失敗</string>
+    <string name="order_pay_failed">支付失敗</string>
+    <string name="order_pay_success">支付成功</string>
+    <string name="purchase_activation_timeout">已支付，開通確認逾時，請稍後重新整理</string>
+    <string name="profile_email_label">信箱</string>
+
+    <!-- Unit formats -->
+    <string name="format_delay_ms">%dms</string>
+    <string name="format_countdown_s">%ds</string>
+
+    <!-- Period labels -->
+    <string name="period_month">月付</string>
+    <string name="period_quarter">季付</string>
+    <string name="period_half_year">半年</string>
+    <string name="period_year">年付</string>
+    <string name="period_two_year">兩年</string>
+    <string name="period_three_year">三年</string>
+    <string name="period_onetime">一次性</string>
+    <string name="period_reset">流量重置</string>
+
+    <!-- API error messages -->
+    <string name="api_error_empty_data">伺服器回傳資料為空</string>
+    <string name="api_error_register_config">取得註冊設定失敗</string>
+    <string name="api_error_user_info">取得用戶資訊失敗</string>
+    <string name="api_error_subscribe_info">取得訂閱資訊失敗</string>
+    <string name="api_error_invite_info">取得邀請資訊失敗</string>
+    <string name="api_error_create_order">建立訂單失敗</string>
+    <string name="api_error_order_detail">取得訂單詳情失敗</string>
+    <string name="api_error_checkout">結算失敗</string>
+    <string name="error_vpn_kernel_unavailable">連線失敗，請稍後重試</string>
+    <string name="error_vpn_permission_denied">需 VPN 授權，請在系統彈窗中允許</string>
+    <string name="api_error_unsupported_backend">不支援的後端類型: %s</string>
+    <!-- Additional error messages -->
+    <string name="error_order_failed">訂單操作失敗</string>
+    <string name="error_server_load">載入伺服器清單失敗</string>
+
+    <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->
+    <string name="settings_language">語言</string>
+    <string name="language_follow_system">跟隨系統</string>
+    <string name="language_follow_system_desc">根據系統語言自動切換</string>
+    <string name="language_simplified">简体中文</string>
+    <string name="language_traditional">繁體中文</string>
+    <string name="language_english">English</string>
+</resources>

@@ -62,14 +62,14 @@ sealed interface UpdateUiState {
     /**
      * 发现新版本。
      * @param versionName 新版本号
-     * @param changelogTitle 更新日志标题（远程下发）
-     * @param changelog 更新日志内容（远程下发）
+     * @param changelogTitle 更新日志标题（远程下发；空则渲染时回退本地文案）
+     * @param changelog 更新日志内容（远程下发；空则渲染时回退本地文案）
      * @param force 强制更新：true 时无"稍后提醒"且弹窗不可关闭
      */
     data class Available(
         val versionName: String,
-        val changelogTitle: String,
-        val changelog: String,
+        val changelogTitle: String?,
+        val changelog: String?,
         val force: Boolean
     ) : UpdateUiState
 
@@ -119,10 +119,10 @@ class UpdateViewModel @Inject constructor(
         if (_state.value is UpdateUiState.Checking || _state.value is UpdateUiState.Available) return
         _state.value = UpdateUiState.Checking
         viewModelScope.launch {
-            // 手动检测：真实拉取远程配置（超时/失败回退缓存）
+            // 手动检测：真实拉取远程配置（绕过短时间缓存，超时/失败回退缓存）
             if (manual) {
                 withTimeoutOrNull(REFRESH_TIMEOUT_MS) {
-                    withContext(Dispatchers.IO) { remoteConfig.refresh() }
+                    withContext(Dispatchers.IO) { remoteConfig.refresh(force = true) }
                 }
             }
             val cfg = remoteConfig.data
@@ -145,12 +145,8 @@ class UpdateViewModel @Inject constructor(
             AppLog.i("SLTE-Update", "发现新版 ${cfg.updateVersion} force=${cfg.updateForce} manual=$manual")
             _state.value = UpdateUiState.Available(
                 versionName = cfg.updateVersion,
-                changelogTitle = cfg.updateChangelogTitle.ifBlank {
-                    context.getString(R.string.update_changelog_title_default)
-                },
-                changelog = cfg.updateChangelog.ifBlank {
-                    context.getString(R.string.update_changelog_default)
-                },
+                changelogTitle = cfg.updateChangelogTitle.ifBlank { null },
+                changelog = cfg.updateChangelog.ifBlank { null },
                 force = cfg.updateForce
             )
         }

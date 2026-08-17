@@ -1,6 +1,5 @@
 package com.slte.app.ui.screen.plans
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
@@ -12,7 +11,6 @@ import com.slte.app.utils.ErrorMessages
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -31,8 +29,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class PurchaseViewModel @Inject constructor(
-    private val orderRepository: OrderRepository,
-    @ApplicationContext private val context: Context
+    private val orderRepository: OrderRepository
 ) : ViewModel() {
 
     private val _step = MutableStateFlow<PurchaseStep>(PurchaseStep.Idle)
@@ -67,7 +64,7 @@ class PurchaseViewModel @Inject constructor(
             _step.value = current.copy(
                 couponCode = code,
                 couponVerified = false,
-                couponError = null,
+                couponErrorRes = null,
                 couponDiscount = 0
             )
         }
@@ -82,7 +79,7 @@ class PurchaseViewModel @Inject constructor(
 
         _step.value = current.copy(
             isVerifying = true,
-            couponError = null
+            couponErrorRes = null
         )
         viewModelScope.launch {
             orderRepository.checkCoupon(
@@ -98,7 +95,7 @@ class PurchaseViewModel @Inject constructor(
                         isVerifying = false,
                         couponVerified = true,
                         couponDiscount = discount,
-                        couponError = null
+                        couponErrorRes = null
                     )
                     _toastRes.value = R.string.purchase_coupon_applied
                 },
@@ -110,7 +107,7 @@ class PurchaseViewModel @Inject constructor(
                         isVerifying = false,
                         couponVerified = false,
                         couponDiscount = 0,
-                        couponError = context.getString(ErrorMessages.mapOrderError(e.message))
+                        couponErrorRes = ErrorMessages.mapOrderError(e.message)
                     )
                 }
             )
@@ -121,7 +118,7 @@ class PurchaseViewModel @Inject constructor(
     fun dismissCouponError() {
         val current = _step.value
         if (current is PurchaseStep.SelectPeriod) {
-            _step.value = current.copy(couponError = null)
+            _step.value = current.copy(couponErrorRes = null)
         }
     }
 
@@ -131,7 +128,7 @@ class PurchaseViewModel @Inject constructor(
         if (current !is PurchaseStep.SelectPeriod) return
         // 填了优惠券但未验证：不允许进入下一步
         if (current.couponCode.isNotBlank() && !current.couponVerified) {
-            _step.value = current.copy(couponError = context.getString(R.string.purchase_coupon_verify_first))
+            _step.value = current.copy(couponErrorRes = R.string.purchase_coupon_verify_first)
             return
         }
         _step.value = current.copy(showWarning = true)
@@ -155,7 +152,7 @@ class PurchaseViewModel @Inject constructor(
 
         val coupon = current.couponCode.takeIf { it.isNotBlank() && current.couponVerified }
         if (current.couponCode.isNotBlank() && !current.couponVerified) {
-            _step.value = current.copy(couponError = context.getString(R.string.purchase_coupon_verify_first))
+            _step.value = current.copy(couponErrorRes = R.string.purchase_coupon_verify_first)
             return
         }
         viewModelScope.launch {

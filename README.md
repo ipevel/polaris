@@ -16,20 +16,6 @@
 
 基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核构建的 Android 代理客户端，支持 XiaoV2b / Xboard 面板。
 
-## 截图
-
-| 首页 | 节点选择 |
-| --- | --- |
-| ![首页](screenshots/首页.png) | ![节点选择](screenshots/节点选择.png) |
-
-| 邀请返利 | 个人中心 |
-| --- | --- |
-| ![邀请返利](screenshots/邀请返利.png) | ![个人中心](screenshots/个人中心.png) |
-
-| 其他设置 | |
-| --- | --- |
-| ![其他设置](screenshots/其他设置.png) | |
-
 ## 开发环境
 
 | 依赖 | 版本 |

@@ -28,4 +28,16 @@ class AppLogSanitizeTest {
         assertEquals("已连接 5 个节点", AppLog.sanitize("已连接 5 个节点"))
         assertEquals("tokenless", AppLog.sanitize("tokenless"))
     }
+
+    @Test
+    fun masksUrlHostRegardlessOfConfiguredDomains() {
+        assertEquals("https://***/api/v1/user/info", AppLog.sanitize("https://api.example.com/api/v1/user/info"))
+        assertEquals("http://***/x", AppLog.sanitize("http://127.0.0.1:8080/x"))
+        assertEquals("fetch https://***/generate_204 failed", AppLog.sanitize("fetch https://www.gstatic.com/generate_204 failed"))
+    }
+
+    @Test
+    fun masksTokenInUrlTogetherWithHost() {
+        assertEquals("https://***/sub?token=***", AppLog.sanitize("https://sub.example.com/sub?token=abc123"))
+    }
 }

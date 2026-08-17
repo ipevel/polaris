@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SLTE</string>
+
+    <!-- Login -->
+    <string name="login_welcome">Welcome</string>
+    <string name="login_account_hint">Email</string>
+    <string name="login_password_hint">Password</string>
+    <string name="login_toggle_password">Show/Hide password</string>
+    <string name="login_button">Log in</string>
+    <string name="login_remember_me">Remember me</string>
+    <string name="login_forgot_password">Forgot password?</string>
+
+    <!-- Register -->
+    <string name="register_title">Create account</string>
+    <string name="register_send_code">Send</string>
+    <string name="register_invite_hint">Invite code (required)</string>
+    <string name="register_invite_optional">Invite code (optional)</string>
+    <string name="register_button">Sign up</string>
+    <string name="register_back_to_login">Back to login</string>
+
+    <!-- Forgot Password -->
+    <string name="forgot_title">Reset password</string>
+    <string name="forgot_reset_button">Reset password</string>
+
+    <!-- Error messages (client-side mapped, see ErrorMessages.kt) -->
+    <string name="error_login_invalid">Wrong email or password</string>
+    <string name="error_login_not_found">Email not registered</string>
+    <string name="error_login_failed">Login failed</string>
+    <string name="error_register_failed">Sign-up failed</string>
+    <string name="error_forgot_failed">Reset failed</string>
+    <string name="error_network">Request failed</string>
+    <string name="error_email_send_failed">Failed to send code</string>
+    <string name="error_email_required">Enter email</string>
+    <string name="error_code_required">Enter code</string>
+    <string name="error_password_required">Enter password</string>
+    <string name="error_new_password_required">Enter new password</string>
+    <string name="error_invite_required">Invite code required</string>
+
+    <!-- Top bar actions -->
+    <string name="topbar_support">Support</string>
+    <string name="topbar_notice">Notice</string>
+    <string name="topbar_profile">Me</string>
+
+    <!-- Plan card -->
+    <string name="plan_status_expired">Expired</string>
+    <string name="plan_expire_days_label">%d days left</string>
+    <string name="plan_expire_date_label">Expires %1$s</string>
+    <string name="plan_expired_today">Expires today</string>
+    <string name="plan_no_expiry">No expiry</string>
+    <string name="plan_reset_label">Reset in %d days</string>
+    <string name="plan_percent">%d%%</string>
+    <string name="plan_separator">·</string>
+    <string name="plan_empty">No plans yet</string>
+    <string name="plan_renew_button">Renew</string>
+    <string name="plan_buy_button">Buy</string>
+    <string name="dashboard_subscribe_buy">Buy plan</string>
+
+    <!-- Quick actions -->
+    <string name="action_server">Servers</string>
+    <string name="action_proxy_mode">Proxy mode</string>
+
+    <!-- Status -->
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_connecting">Connecting…</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="loading">Loading…</string>
+    <string name="switch_state_on">On</string>
+    <string name="switch_state_off">Off</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_usage_title">Usage</string>
+    <string name="dashboard_usage_valid">Valid</string>
+    <string name="dashboard_expiry">Expiry</string>
+    <string name="dashboard_days">%d days</string>
+    <string name="dashboard_proxy_rule">Rule</string>
+    <string name="dashboard_proxy_global">Global</string>
+    <string name="proxy_rule_desc">Route by rules</string>
+    <string name="proxy_global_desc">Route all via proxy</string>
+    <string name="dashboard_current_ip">Current IP</string>
+    <string name="dashboard_ip_copied">IP copied</string>
+    <string name="dashboard_update_subscription">Update</string>
+    <string name="dashboard_no_plan_badge">No plan</string>
+    <string name="dashboard_no_plan_tip">Buy a plan first</string>
+    <string name="dashboard_refresh_done">Subscription updated</string>
+
+    <!-- Server -->
+    <string name="server_title">Servers</string>
+    <string name="server_auto_now">URLTest (%1$s)</string>
+    <string name="server_speed_test">Speed test</string>
+    <string name="server_nodes_empty">No servers</string>
+    <string name="server_auto">Auto select</string>
+    <string name="server_fallback">Fallback</string>
+    <string name="server_fallback_now">Fallback (%1$s)</string>
+    <string name="server_timeout">Timeout</string>
+
+    <!-- Invite -->
+    <string name="invite_title">Invite</string>
+    <string name="invite_stat_registered">Registered users</string>
+    <string name="invite_stat_commission_rate">Commission rate</string>
+    <string name="invite_stat_total">Total commission</string>
+    <string name="invite_stat_pending">Pending</string>
+    <string name="invite_stat_available">Withdrawable</string>
+    <string name="invite_code_title">Invite code</string>
+    <string name="invite_code_generate">Generate code</string>
+    <string name="invite_code_copy">Copy</string>
+    <string name="invite_code_copied">Copied</string>
+    <string name="invite_code_empty">No invite code</string>
+    <string name="invite_transfer">Transfer</string>
+    <string name="invite_withdraw">Withdraw</string>
+    <string name="invite_transfer_title">Transfer to balance</string>
+    <string name="invite_transfer_amount_hint">Amount (CNY)</string>
+    <string name="invite_transfer_confirm">Confirm transfer</string>
+    <string name="invite_transfer_available">Transferable</string>
+    <string name="invite_transfer_all">All</string>
+    <string name="invite_withdraw_title">Withdraw</string>
+    <string name="invite_withdraw_method">Method</string>
+    <string name="invite_withdraw_account_hint">Account</string>
+    <string name="invite_withdraw_confirm">Confirm</string>
+    <string name="invite_withdraw_available">Withdrawable</string>
+    <string-array name="invite_withdraw_methods">
+        <item>Alipay</item>
+        <item>USDT</item>
+    </string-array>
+    <string name="invite_records_title">Commission records</string>
+    <string name="invite_records_empty">No records</string>
+    <string name="invite_record_amount">+¥%s</string>
+    <string name="invite_record_amount_label">Order amount ¥%s</string>
+    <string name="invite_record_order">Order %s</string>
+    <string name="invite_code_pv">PV %d</string>
+    <string name="invite_users">%d users</string>
+    <string name="invite_rate">%d%%</string>
+    <string name="invite_success_transfer">Transfer successful</string>
+    <string name="invite_success_withdraw">Withdrawal submitted</string>
+    <string name="invite_success_generate">Code generated</string>
+    <string name="invite_error_generate">Generation failed</string>
+    <string name="invite_error_transfer">Transfer failed</string>
+    <string name="invite_error_withdraw">Withdrawal failed</string>
+    <!-- Notice -->
+    <string name="notice_title">Notices</string>
+    <string name="notice_empty">No notices</string>
+    <string name="notice_error">Failed to load</string>
+    <string name="notice_retry">Retry</string>
+
+    <!-- Profile -->
+    <string name="profile_title">Profile</string>
+    <string name="profile_not_logged_in">Not logged in</string>
+    <string name="profile_orders">My orders</string>
+    <string name="profile_contact">Contact us</string>
+    <string name="profile_about">About</string>
+
+    <!-- About (关于软件) -->
+    <string name="about_title">About</string>
+    <string name="about_app_desc">Lightweight mihomo-based proxy client</string>
+    <string name="about_app_version">App version</string>
+    <string name="about_kernel_version">Core version</string>
+    <!-- 内核编译标记（随包编译，非在线下载）；与 kernel-core/src/main/cpp/version.h 保持一致，升级内核时同步 -->
+    <string name="about_kernel_version_value">mihomo_custom_20260731</string>
+    <string name="about_check_update">Check updates</string>
+    <string name="about_latest">Up to date</string>
+    <string name="about_update_failed">Update check failed</string>
+    <string name="about_log_export">Export logs</string>
+    <string name="about_log_exported">Logs exported</string>
+    <string name="about_log_export_failed">Export failed</string>
+    <string name="about_log_export_share">Share logs</string>
+
+    <!-- Update (检查更新) -->
+    <string name="update_title">New version</string>
+    <string name="update_force_title">Update required</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Later</string>
+    <string name="update_changelog_title_default">Changelog</string>
+    <string name="update_changelog_default">No changelog available</string>
+    <string name="update_apk_missing">Update link missing</string>
+    <string name="update_download_failed">Can\'t open download page</string>
+
+    <string name="profile_logout">Log out</string>
+    <string name="logout_confirm_message">Log out of this account?</string>
+
+    <!-- Settings (其他设置) -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_tun_stack">TUN stack mode</string>
+    <string name="settings_tun_stack_system">System</string>
+    <string name="settings_tun_stack_system_desc">Best performance</string>
+    <string name="settings_tun_stack_gvisor">Gvisor</string>
+    <string name="settings_tun_stack_gvisor_desc">Better compatibility</string>
+    <string name="settings_tun_stack_mixed">Mixed</string>
+    <string name="settings_tun_stack_mixed_desc">Balanced</string>
+    <string name="settings_tun_stack_switched">TUN stack switched</string>
+    <string name="settings_change_password">Change password</string>
+    <string name="settings_dark_mode">Dark mode</string>
+    <string name="settings_change_pwd_old_hint">Current password</string>
+    <string name="settings_change_pwd_new_hint">New password (8+ chars)</string>
+    <string name="settings_change_pwd_confirm_hint">Confirm password</string>
+    <string name="settings_change_pwd_submit">Confirm</string>
+    <string name="settings_change_pwd_old_required">Enter current password</string>
+    <string name="settings_change_pwd_too_short">At least 8 characters</string>
+    <string name="settings_change_pwd_mismatch">Password mismatch</string>
+    <string name="settings_change_pwd_failed">Change failed</string>
+    <string name="settings_change_pwd_success">Password changed</string>
+    <string name="settings_toggle_password_visible">Show password</string>
+    <string name="settings_expire_remind">Expiry alert</string>
+    <string name="settings_traffic_remind">Traffic alert</string>
+    <string name="settings_remind_save_failed">Failed to save alerts</string>
+
+    <!-- Orders -->
+    <string name="order_empty">No orders</string>
+    <string name="order_unknown_plan">Unknown plan</string>
+    <string name="order_price">Price</string>
+    <string name="order_created">Created</string>
+    <string name="order_id">Order ID</string>
+    <string name="order_cancel">Cancel</string>
+    <string name="order_pay">Pay</string>
+    <string name="order_status_pending">Pending</string>
+    <string name="order_status_completed">Completed</string>
+    <string name="order_status_cancelled">Cancelled</string>
+    <string name="order_status_abnormal">Abnormal</string>
+    <string name="order_cancel_success">Order cancelled</string>
+    <string name="order_cancel_failed">Cancel failed</string>
+
+    <!-- Plans -->
+    <string name="plans_title">Plans</string>
+    <string name="plans_traffic_unit">GB</string>
+    <string name="plans_traffic_label">Traffic</string>
+    <string name="plans_subscribe">Subscribe</string>
+
+    <!-- Purchase Flow -->
+    <string name="purchase_coupon_hint">Coupon code</string>
+    <string name="purchase_verify">Verify</string>
+    <string name="purchase_coupon_applied">Coupon applied</string>
+    <string name="purchase_coupon_discount">Coupon</string>
+    <string name="purchase_coupon_verify_first">Verify coupon first</string>
+    <string name="error_coupon_invalid">Invalid or expired coupon</string>
+    <string name="dialog_confirm">OK</string>
+    <string name="purchase_confirm_order">Confirm order</string>
+    <string name="purchase_warning_title">Warning</string>
+    <string name="purchase_warning_message">New plan replaces current subscription.</string>
+    <string name="purchase_cancel">Cancel</string>
+    <string name="purchase_confirm">Confirm</string>
+    <string name="purchase_order_info">Order details</string>
+    <string name="purchase_product">Product</string>
+    <string name="purchase_balance">Balance</string>
+    <string name="purchase_handling">Fee</string>
+    <string name="purchase_payment_method">Payment method</string>
+    <string name="purchase_payment_method_empty">No payment methods</string>
+    <string name="purchase_pay_amount">Pay ¥%s</string>
+    <string name="purchase_existing_order_title">Pending order</string>
+    <string name="purchase_existing_order_message">You have a pending order</string>
+    <string name="purchase_error_title">Create failed</string>
+    <string name="order_pay_failed">Payment failed</string>
+    <string name="order_pay_success">Payment successful</string>
+    <string name="purchase_activation_timeout">Paid, activation pending</string>
+    <string name="profile_email_label">Email</string>
+
+    <!-- Unit formats -->
+    <string name="format_delay_ms">%dms</string>
+    <string name="format_countdown_s">%ds</string>
+
+    <!-- Period labels -->
+    <string name="period_month">Monthly</string>
+    <string name="period_quarter">Quarterly</string>
+    <string name="period_half_year">Half-year</string>
+    <string name="period_year">Yearly</string>
+    <string name="period_two_year">Two years</string>
+    <string name="period_three_year">Three years</string>
+    <string name="period_onetime">One-time</string>
+    <string name="period_reset">Traffic reset</string>
+
+    <!-- API error messages -->
+    <string name="api_error_empty_data">Empty server response</string>
+    <string name="api_error_register_config">Failed to get sign-up config</string>
+    <string name="api_error_user_info">Failed to get user info</string>
+    <string name="api_error_subscribe_info">Failed to get subscription</string>
+    <string name="api_error_invite_info">Failed to get invite info</string>
+    <string name="api_error_create_order">Failed to create order</string>
+    <string name="api_error_order_detail">Failed to get order</string>
+    <string name="api_error_checkout">Checkout failed</string>
+    <string name="error_vpn_kernel_unavailable">Connection failed, try again later</string>
+    <string name="error_vpn_permission_denied">VPN permission required</string>
+    <string name="api_error_unsupported_backend">Unsupported backend type: %s</string>
+    <!-- Additional error messages -->
+    <string name="error_order_failed">Order failed</string>
+    <string name="error_server_load">Failed to load servers</string>
+
+    <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->
+    <string name="settings_language">Language</string>
+    <string name="language_follow_system">Follow system</string>
+    <string name="language_follow_system_desc">Use system language</string>
+    <string name="language_simplified">简体中文</string>
+    <string name="language_traditional">繁體中文</string>
+    <string name="language_english">English</string>
+</resources>

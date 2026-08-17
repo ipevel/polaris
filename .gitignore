@@ -8,3 +8,8 @@ local.properties
 .signing-env
 *.apk
 *.aab
+.cxx/
+.env
+.env.*
+*.log
+.DS_Store

@@ -133,7 +133,6 @@ fun PlansScreen(
         }
     }
 
-    // 购买流程弹窗
     PurchaseFlow(
         step = purchaseStep,
         onSelectPeriod = purchaseViewModel::selectPeriod,

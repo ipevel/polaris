@@ -1,7 +1,10 @@
 package com.slte.app.kernel
 
 import com.github.kr328.clash.core.model.ProxySort
+import com.github.kr328.clash.service.remote.IClashManager
 import com.slte.app.utils.Constants
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import com.slte.app.utils.AppLog
 
@@ -28,7 +31,57 @@ suspend fun KernelProxy.speedTest(): Map<String, Int> = safe(emptyMap()) {
 
     clash.healthCheck(group)
 
-    val result = clash.queryProxyGroup(group, ProxySort.Delay)
+    val result = queryGroupDelays(clash, group)
+    AppLog.d("SLTE-Kernel", "speedTest: group=$group result=$result")
+    result
+}
+
+/**
+ * 渐进式测速：触发健康检查后轮询读取已完成节点，每轮经 [onProgress] 回传部分结果；
+ * 全部完成后返回最终延迟表。先测完的节点先展示，最终统一补齐全部节点。
+ */
+suspend fun KernelProxy.speedTestProgressive(
+    onProgress: (Map<String, Int>) -> Unit
+): Map<String, Int> = safe(emptyMap()) {
+    val clash = manager.clash()
+    if (clash == null) {
+        AppLog.d("SLTE-Kernel", "speedTestProgressive: clash=null")
+        return@safe emptyMap()
+    }
+    var group = selectorGroup()
+    if (group == null) {
+        config.ensureProfile()
+        clash.loadActiveProfile()
+        group = waitForGroups()
+    }
+    if (group == null) return@safe emptyMap()
+
+    coroutineScope {
+        // 健康检查在子协程中运行，主协程轮询读取已完成的节点结果
+        val check = async { clash.healthCheck(group) }
+        while (check.isActive) {
+            val partial = queryGroupDelays(clash, group)
+            if (partial.isNotEmpty()) onProgress(partial)
+            delay(PROGRESS_POLL_INTERVAL_MS)
+        }
+        queryGroupDelays(clash, group).also(onProgress)
+    }
+}
+
+/** 渐进式测速并缓存结果：全 999（未完成）时不覆盖已有缓存，与 [speedTestAndCache] 策略一致 */
+suspend fun KernelProxy.speedTestProgressiveAndCache(
+    onProgress: (Map<String, Int>) -> Unit
+): Map<String, Int> {
+    val delays = speedTestProgressive(onProgress)
+    if (delays.isNotEmpty() && delays.values.any { it != 999 }) {
+        speedResultStore.saveSpeedResults(delays)
+    }
+    return delays
+}
+
+/** 查询分组当前延迟快照（不触发测速），供渐进式轮询与最终结果读取复用 */
+private fun KernelProxy.queryGroupDelays(clash: IClashManager, group: String): Map<String, Int> =
+    clash.queryProxyGroup(group, ProxySort.Delay)
         .proxies
         .asSequence()
         .filter { !it.isGroup && it.name != "DIRECT" && it.name != "REJECT" }
@@ -36,9 +89,9 @@ suspend fun KernelProxy.speedTest(): Map<String, Int> = safe(emptyMap()) {
             proxy.name to normalizeDelay(proxy.delay)
         }
         .toMap()
-    AppLog.d("SLTE-Kernel", "speedTest: group=$group result=$result")
-    result
-}
+
+/** 渐进式轮询间隔：测速期间按此频率读取已完成节点 */
+private const val PROGRESS_POLL_INTERVAL_MS = 500L
 
 /** 测速并把结果写入本地缓存（行业惯例：结果持久化，重启后仍可排序展示） */
 suspend fun KernelProxy.speedTestAndCache(): Map<String, Int> = safe(emptyMap()) {
@@ -58,8 +111,11 @@ suspend fun KernelProxy.warmUp(): Boolean = safe(false) {
     true
 }
 
-/** 测速并等待真实延迟（非 999）：支付/更新后的内核热身，最多等待约 [maxDurationMs] */
-suspend fun KernelProxy.speedTestUntilReady(maxDurationMs: Long = 30_000L): Map<String, Int> =
+/**
+ * 测速并等待真实延迟（非 999）：支付/更新后的内核热身，最多等待约 [maxDurationMs]。
+ * 默认 60s 与 10s 测速超时对齐：大批量节点（provider 串行）时确保能等到真实结果。
+ */
+suspend fun KernelProxy.speedTestUntilReady(maxDurationMs: Long = 60_000L): Map<String, Int> =
     safe(emptyMap()) {
         val deadline = System.currentTimeMillis() + maxDurationMs
         var delays = speedTestAndCache()

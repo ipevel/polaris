@@ -21,6 +21,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.slte.app.R
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
 import com.slte.app.utils.Dimens
@@ -42,14 +44,16 @@ internal fun LogoutConfirmSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
             Text(
                 text = stringResource(R.string.profile_logout),
                 fontSize = TextSizes.sheetTitle,
@@ -103,6 +107,7 @@ internal fun LogoutConfirmSheet(
             }
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
+            }
         }
     }
 }

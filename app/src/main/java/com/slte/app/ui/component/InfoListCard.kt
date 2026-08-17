@@ -93,7 +93,8 @@ fun InfoListCard(
                 iconTint = SlteColors.current.iconBlue,
                 iconBg = SlteColors.current.iconBlueBg,
                 label = stringResource(R.string.action_proxy_mode),
-                value = proxyMode,
+                // 模式标识是内核稳定值，展示时映射为当前语言文案
+                value = proxyModeLabelRes(proxyMode)?.let { stringResource(it) } ?: proxyMode,
                 onClick = onProxyClick
             )
             InfoRow(

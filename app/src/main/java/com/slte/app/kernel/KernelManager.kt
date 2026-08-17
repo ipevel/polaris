@@ -86,7 +86,7 @@ class KernelManager @Inject constructor(
                         Context.BIND_AUTO_CREATE
                     )
                 } catch (e: Exception) {
-                    AppLog.w("SLTE-Kernel", "rebind failed: ${e.message}")
+                    AppLog.w("SLTE-Kernel", "rebind failed: ${sanitizeLog(e.message ?: "")}")
                 }
             }
         }

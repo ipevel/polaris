@@ -1,6 +1,5 @@
 package com.slte.app.ui.screen.plans
 
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -9,15 +8,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
+import com.slte.app.ui.component.LocaleAwareAlertDialog
 
 
 /** 优惠券错误提示弹窗 */
 @Composable
 internal fun CouponErrorDialog(
-    message: String,
+    errorMessageRes: Int,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    LocaleAwareAlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = onDismiss) {
@@ -25,7 +25,7 @@ internal fun CouponErrorDialog(
             }
         },
         title = { Text(stringResource(R.string.purchase_coupon_hint)) },
-        text = { Text(message) }
+        text = { Text(stringResource(errorMessageRes)) }
     )
 }
 
@@ -36,7 +36,7 @@ internal fun ConfirmWarningDialog(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    AlertDialog(
+    LocaleAwareAlertDialog(
         onDismissRequest = onCancel,
         containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = MaterialTheme.colorScheme.onSurface,
@@ -71,7 +71,7 @@ internal fun ExistingOrderErrorDialog(
     onGoToOrders: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    LocaleAwareAlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = MaterialTheme.colorScheme.onSurface,
@@ -104,7 +104,7 @@ internal fun OrderCreateErrorDialog(
     errorMessageRes: Int,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    LocaleAwareAlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = MaterialTheme.colorScheme.onSurface,

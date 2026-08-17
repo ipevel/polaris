@@ -46,9 +46,10 @@ fun PurchaseFlow(
                 onConfirmOrder = onConfirmOrder,
                 onDismiss = onDismiss
             )
-            if (step.couponError != null) {
+            val couponErrorRes = step.couponErrorRes
+            if (couponErrorRes != null) {
                 CouponErrorDialog(
-                    message = step.couponError,
+                    errorMessageRes = couponErrorRes,
                     onDismiss = onDismissCouponError
                 )
             }

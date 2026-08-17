@@ -95,7 +95,6 @@ fun NoticeScreen(
         }
     }
 
-    // 公告详情底部弹窗
     selectedNotice?.let { notice ->
         NoticeDetailSheet(
             notice = notice,
@@ -285,7 +284,6 @@ private fun NoticeDetailSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingMd))
 
-            // HTML/Markdown 正文（自动识别格式渲染）
             RichText(
                 text = notice.body,
                 modifier = Modifier.fillMaxWidth()
@@ -295,8 +293,6 @@ private fun NoticeDetailSheet(
         }
     }
 }
-
-// 状态占位
 
 @Composable
 private fun LoadingContent(modifier: Modifier = Modifier) {

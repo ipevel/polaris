@@ -33,6 +33,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.component.SlteTextField
 import com.slte.app.ui.component.LottieLoadingIcon
 import com.slte.app.ui.theme.SlteShapes
@@ -62,15 +64,17 @@ fun ChangePasswordSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
             Text(
                 text = stringResource(R.string.settings_change_password),
                 fontSize = TextSizes.sheetTitle,
@@ -179,6 +183,7 @@ fun ChangePasswordSheet(
             }
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
+            }
         }
     }
 }

@@ -76,7 +76,6 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = Dimens.dashboardScreenPaddingV)
         ) {
-            // 软件介绍
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -114,7 +113,6 @@ fun AboutScreen(
                 }
             }
 
-            // 版本信息 + 检查更新（同一卡片，检查更新行文字居中）
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -145,7 +143,6 @@ fun AboutScreen(
                             thickness = Dimens.dividerThickness,
                             color = MaterialTheme.colorScheme.surfaceVariant
                         )
-                        // 检查更新：整行居中，检查中显示 Loading 动画
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

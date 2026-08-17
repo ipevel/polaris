@@ -21,6 +21,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.slte.app.R
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.TextSizes
 import com.slte.app.utils.Dimens
 
@@ -54,65 +56,68 @@ internal fun TunStackModeSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
-            Text(
-                text = stringResource(R.string.settings_tun_stack),
-                fontSize = TextSizes.sheetTitle,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(Dimens.spacingLg))
-
-            TunStackMode.entries.forEach { mode ->
-                val selected = currentMode == mode
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = selected,
-                            onClick = { onSelect(mode) }
-                        )
-                        .padding(vertical = Dimens.spacingSm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = selected,
-                        onClick = null,
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = MaterialTheme.colorScheme.primary
-                        )
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
                     )
-                    Column(
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_tun_stack),
+                    fontSize = TextSizes.sheetTitle,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(Dimens.spacingLg))
+
+                TunStackMode.entries.forEach { mode ->
+                    val selected = currentMode == mode
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .padding(start = Dimens.spacingSm)
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = selected,
+                                onClick = { onSelect(mode) }
+                            )
+                            .padding(vertical = Dimens.spacingSm),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(mode.labelRes),
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            fontSize = TextSizes.actionTitle,
-                            color = MaterialTheme.colorScheme.onSurface
+                        RadioButton(
+                            selected = selected,
+                            onClick = null,
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary
+                            )
                         )
-                        Text(
-                            text = stringResource(mode.descRes),
-                            fontSize = TextSizes.inviteSheetDesc,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = Dimens.spacingSm)
+                        ) {
+                            Text(
+                                text = stringResource(mode.labelRes),
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                fontSize = TextSizes.actionTitle,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(mode.descRes),
+                                fontSize = TextSizes.inviteSheetDesc,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(Dimens.spacingLg))
+                Spacer(modifier = Modifier.height(Dimens.spacingLg))
+            }
         }
     }
 }

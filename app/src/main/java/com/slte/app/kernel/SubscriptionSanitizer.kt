@@ -4,9 +4,19 @@ import com.slte.app.utils.AppLog
 
 /**
  * 订阅 YAML 清洗器：落盘前清零入站端口、清空 ui-subtitle-pattern、注入直连规则与 fake-ip 豁免。
+ * 同时补全测速配置（组 url/timeout、provider health-check），保证缺省订阅也走统一测速 URL 与超时。
  * 行级编辑不改变 YAML 结构；结构异常时安全跳过，绝不抛异常。
  */
 object SubscriptionSanitizer {
+
+    /** 测速 URL：Cloudflare 204 探活路径全球普遍可达，替代 mihomo 默认 gstatic（部分区域高延迟/超时） */
+    private const val HEALTH_CHECK_URL = "http://cp.cloudflare.com/generate_204"
+
+    /** 测速超时（毫秒）：与主流客户端一致，避免弱网误判超时 */
+    private const val HEALTH_CHECK_TIMEOUT_MS = 10_000
+
+    /** 需要测速配置的组类型：仅这些类型消费 url/timeout */
+    private val HEALTH_CHECK_GROUP_TYPES = setOf("url-test", "fallback", "load-balance")
 
     /** 需清零的顶层端口键（0 = 不监听） */
     private val ZEROED_PORT_KEYS = setOf("port", "socks-port", "mixed-port", "redir-port", "tproxy-port")
@@ -17,6 +27,11 @@ object SubscriptionSanitizer {
     /** 匹配任意缩进的 ui-subtitle-pattern 行 */
     private val SUBTITLE_PATTERN_LINE = Regex("^(\\s*ui-subtitle-pattern\\s*:\\s*).*$")
 
+    private val PROXY_GROUPS_KEY = Regex("^proxy-groups\\s*:\\s*$")
+    private val PROXY_PROVIDERS_KEY = Regex("^proxy-providers\\s*:\\s*$")
+    private val GROUP_ITEM_START = Regex("^\\s*-\\s*name\\s*:")
+    private val PROVIDER_KEY = Regex("^[A-Za-z0-9_-]+\\s*:\\s*$")
+    private val BLOCK_KEY = Regex("^(\\s*)([A-Za-z0-9_-]+)\\s*:")
     private val RULES_KEY = Regex("^rules\\s*:\\s*$")
     private val DNS_KEY = Regex("^dns\\s*:\\s*$")
     private val FAKE_IP_FILTER_KEY = Regex("^fake-ip-filter\\s*:\\s*$")
@@ -41,12 +56,12 @@ object SubscriptionSanitizer {
      */
     fun sanitize(text: String, domains: List<String>): String {
         if (text.isBlank()) return text
-        val validDomains = domains.filter { it.isNotBlank() }
-        if (validDomains.isEmpty()) return text
         return try {
             val lines = text.lines().toMutableList()
             zeroTopLevelPorts(lines)
             clearSubtitlePattern(lines)
+            injectHealthCheckConfig(lines)
+            val validDomains = domains.filter { it.isNotBlank() }
             validDomains.forEach { injectDirectRule(lines, it) }
             validDomains.forEach { injectFakeIpFilter(lines, it) }
             lines.joinToString("\n")
@@ -55,6 +70,214 @@ object SubscriptionSanitizer {
             AppLog.w("SLTE-Sanitizer", "sanitize 异常回退原文，内核补丁链兜底")
             text
         }
+    }
+
+    /** 补全测速配置：组缺 url/timeout 时注入，provider 缺 health-check 时注入（均幂等） */
+    private fun injectHealthCheckConfig(lines: MutableList<String>) {
+        injectGroupHealthCheck(lines)
+        injectProviderHealthCheck(lines)
+    }
+
+    /** 组测速配置：仅 url-test/fallback/load-balance 组，缺 url/timeout 或值为空时补齐 */
+    private fun injectGroupHealthCheck(lines: MutableList<String>) {
+        val groupsIndex = lines.indexOfFirst { it.trim() == it && PROXY_GROUPS_KEY.matches(it.trim()) }
+        if (groupsIndex < 0) return
+        if (lines[groupsIndex].contains('[') || lines[groupsIndex].contains('{')) return
+        val itemIndent = blockItemIndent(lines, groupsIndex) ?: return
+        val keyIndent = itemIndent + "  "
+        // 从后往前插入，避免先插入使后续行号失效
+        val pending = mutableListOf<Pair<Int, List<String>>>()
+        var i = groupsIndex + 1
+        while (i < lines.size) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) {
+                i++
+                continue
+            }
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length < itemIndent.length) break
+            if (indent != itemIndent || !GROUP_ITEM_START.containsMatchIn(line)) {
+                i++
+                continue
+            }
+            // flow 风格项（- {name: ...} / 行内列表）无法安全行级编辑，跳过
+            if (line.contains('{') || line.contains('[')) {
+                i++
+                continue
+            }
+            val blockEnd = blockEndIndex(lines, i, itemIndent)
+            if (groupType(lines, i, blockEnd, keyIndent) !in HEALTH_CHECK_GROUP_TYPES) {
+                i = blockEnd
+                continue
+            }
+            val additions = mutableListOf<String>()
+            val replacements = mutableListOf<Pair<Int, String>>()
+            for ((key, value) in listOf("url" to HEALTH_CHECK_URL, "timeout" to HEALTH_CHECK_TIMEOUT_MS.toString())) {
+                when (blockKeyValue(lines, i, blockEnd, keyIndent, key)) {
+                    KeyState.MISSING -> additions.add(keyIndent + "$key: $value")
+                    KeyState.EMPTY -> blockKeyLineIndex(lines, i, blockEnd, keyIndent, key)
+                        ?.let { replacements.add(it to keyIndent + "$key: $value") }
+                    KeyState.PRESENT -> Unit
+                }
+            }
+            if (additions.isNotEmpty()) pending.add(i + 1 to additions)
+            // 空值行替换与插入位置（i+1）不重叠：先替换后插入，行号均保持有效
+            for ((at, text) in replacements.asReversed()) {
+                lines[at] = text
+            }
+            i = blockEnd
+        }
+        for ((at, additions) in pending.asReversed()) {
+            lines.addAll(at, additions)
+        }
+    }
+
+    /** provider 测速配置：缺 health-check 块时注入（含 URL/超时），已配置或 flow 风格跳过 */
+    private fun injectProviderHealthCheck(lines: MutableList<String>) {
+        val providersIndex = lines.indexOfFirst { it.trim() == it && PROXY_PROVIDERS_KEY.matches(it.trim()) }
+        if (providersIndex < 0) return
+        if (lines[providersIndex].contains('[') || lines[providersIndex].contains('{')) return
+        val providerIndent = blockKeyIndent(lines, providersIndex) ?: return
+        val pending = mutableListOf<Pair<Int, List<String>>>()
+        var i = providersIndex + 1
+        while (i < lines.size) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) {
+                i++
+                continue
+            }
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length < providerIndent.length) break
+            if (indent != providerIndent || !PROVIDER_KEY.matches(line.trim())) {
+                i++
+                continue
+            }
+            // flow 风格 provider（含 { 或 [）无法安全行级编辑，跳过
+            if (line.contains('{') || line.contains('[')) {
+                i++
+                continue
+            }
+            val blockEnd = blockEndIndex(lines, i, providerIndent)
+            val childKeyIndent = childKeyIndent(lines, i, blockEnd, providerIndent)
+            if (childKeyIndent == null) {
+                i = blockEnd
+                continue
+            }
+            if (hasBlockKey(lines, i, blockEnd, childKeyIndent, "health-check")) {
+                i = blockEnd
+                continue
+            }
+            // 内联 health-check（行内非纯键，如 flow 风格）视为已配置，避免重复键
+            if (lines.subList(i, blockEnd).any {
+                    it.contains("health-check:") && it.trim() != "health-check:"
+                }) {
+                i = blockEnd
+                continue
+            }
+            pending.add(
+                i + 1 to listOf(
+                    childKeyIndent + "health-check:",
+                    childKeyIndent + "  enable: true",
+                    childKeyIndent + "  url: $HEALTH_CHECK_URL",
+                    childKeyIndent + "  interval: 300",
+                    childKeyIndent + "  timeout: $HEALTH_CHECK_TIMEOUT_MS",
+                    childKeyIndent + "  lazy: true"
+                )
+            )
+            i = blockEnd
+        }
+        for ((at, additions) in pending.asReversed()) {
+            lines.addAll(at, additions)
+        }
+    }
+
+    /** 块结束索引：下一个同层或更浅缩进的非空行；找不到返回行尾 */
+    private fun blockEndIndex(lines: List<String>, start: Int, itemIndent: String): Int {
+        for (i in start + 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length <= itemIndent.length) return i
+        }
+        return lines.size
+    }
+
+    /** 块内是否已存在指定键（仅匹配 keyIndent 层级的块键） */
+    private fun hasBlockKey(
+        lines: List<String>,
+        start: Int,
+        end: Int,
+        keyIndent: String,
+        key: String
+    ): Boolean = blockKeyValue(lines, start, end, keyIndent, key) != KeyState.MISSING
+
+    /** 块键存在状态：缺失 / 存在但值为空 / 存在且有值 */
+    private fun blockKeyValue(
+        lines: List<String>,
+        start: Int,
+        end: Int,
+        keyIndent: String,
+        key: String
+    ): KeyState {
+        for (i in start + 1 until end) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length < keyIndent.length) return KeyState.MISSING
+            if (indent != keyIndent) continue
+            val m = BLOCK_KEY.find(line) ?: continue
+            if (m.groupValues[2] != key) continue
+            val value = line.substringAfter(':').trim()
+            return if (value.isEmpty() || value == "\"\"" || value == "''") KeyState.EMPTY else KeyState.PRESENT
+        }
+        return KeyState.MISSING
+    }
+
+    /** 块键所在行号：未找到返回 null */
+    private fun blockKeyLineIndex(
+        lines: List<String>,
+        start: Int,
+        end: Int,
+        keyIndent: String,
+        key: String
+    ): Int? {
+        for (i in start + 1 until end) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length < keyIndent.length) return null
+            if (indent != keyIndent) continue
+            val m = BLOCK_KEY.find(line) ?: continue
+            if (m.groupValues[2] == key) return i
+        }
+        return null
+    }
+
+    /** 组类型：块内 type 键的值（去引号小写）；未找到返回空串 */
+    private fun groupType(lines: List<String>, start: Int, end: Int, keyIndent: String): String {
+        for (i in start + 1 until end) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length < keyIndent.length) return ""
+            if (indent != keyIndent) continue
+            val m = BLOCK_KEY.find(line) ?: continue
+            if (m.groupValues[2] != "type") continue
+            return line.substringAfter(':').trim().trim('\'').trim('"').lowercase()
+        }
+        return ""
+    }
+
+    /** 块内子键缩进：首个非空子键行的前导空白；空块返回 null */
+    private fun childKeyIndent(lines: List<String>, start: Int, end: Int, parentIndent: String): String? {
+        for (i in start + 1 until end) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            val indent = line.substringBefore(line.trimStart())
+            if (indent.length <= parentIndent.length) return null
+            return indent
+        }
+        return null
     }
 
     /** 清零顶层端口/allow-lan/bind-address（仅顶层行） */
@@ -140,5 +363,12 @@ object SubscriptionSanitizer {
             return indent
         }
         return null
+    }
+
+    /** 块键状态 */
+    private enum class KeyState {
+        MISSING,
+        EMPTY,
+        PRESENT
     }
 }

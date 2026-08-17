@@ -110,6 +110,14 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions {
+        unitTests {
+            // JVM 单测中未 mock 的 android.* 调用返回默认值而非抛异常
+            // （拦截器等网络层在测试里会触发 android.util.Log）
+            isReturnDefaultValues = true
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -165,7 +173,9 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     testImplementation(libs.junit)
-    testImplementation("org.yaml:snakeyaml:2.2")
+    testImplementation(libs.snakeyaml)
+    // 拦截器/配置竞速集成测试的本地假服务器
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

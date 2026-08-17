@@ -3,7 +3,7 @@ package com.github.kr328.clash.common.constants
 import com.github.kr328.clash.common.util.packageName
 
 object Intents {
-    // Public
+    // 对外广播动作（供其他应用触发）
     val ACTION_PROVIDE_URL = "$packageName.action.PROVIDE_URL"
     val ACTION_START_CLASH = "$packageName.action.START_CLASH"
     val ACTION_STOP_CLASH = "$packageName.action.STOP_CLASH"
@@ -11,7 +11,7 @@ object Intents {
 
     const val EXTRA_NAME = "name"
 
-    // Self
+    // 应用内部广播动作（内核服务与应用间通信）
     val ACTION_SERVICE_RECREATED = "$packageName.intent.action.CLASH_RECREATED"
     val ACTION_CLASH_STARTED = "$packageName.intent.action.CLASH_STARTED"
     val ACTION_CLASH_STOPPED = "$packageName.intent.action.CLASH_STOPPED"

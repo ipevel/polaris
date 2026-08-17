@@ -60,7 +60,6 @@ fun ServerScreen(
     val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // 测速失败等错误提示
     LaunchedEffect(errorMessageRes) {
         errorMessageRes?.let {
             android.widget.Toast.makeText(context, context.getString(it), android.widget.Toast.LENGTH_SHORT).show()
@@ -169,7 +168,8 @@ fun ServerScreen(
                         icon = { FlagPlaceholder(countryCode = node.countryCode, circular = true) },
                         delay = node.delay,
                         selected = data.selectedNodeId == node.id,
-                        isTesting = data.isTesting,
+                        // 已出结果的节点显示延迟，未出的继续转圈（先测完先出）
+                        isTesting = data.isTesting && node.name !in data.testedNodes,
                         onClick = { viewModel.selectNode(node.id) }
                     )
                 }

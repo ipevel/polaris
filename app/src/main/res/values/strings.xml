@@ -212,8 +212,8 @@
     <string name="order_price">价格</string>
     <string name="order_created">创建于</string>
     <string name="order_id">订单号</string>
-    <string name="order_cancel">取消订单</string>
-    <string name="order_pay">去支付</string>
+    <string name="order_cancel">取消</string>
+    <string name="order_pay">支付</string>
     <string name="order_status_pending">待支付</string>
     <string name="order_status_completed">已完成</string>
     <string name="order_status_cancelled">已取消</string>
@@ -284,4 +284,12 @@
     <!-- Additional error messages -->
     <string name="error_order_failed">订单操作失败</string>
     <string name="error_server_load">加载服务器列表失败</string>
+
+    <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->
+    <string name="settings_language">语言</string>
+    <string name="language_follow_system">跟随系统</string>
+    <string name="language_follow_system_desc">根据系统语言自动切换</string>
+    <string name="language_simplified">简体中文</string>
+    <string name="language_traditional">繁體中文</string>
+    <string name="language_english">English</string>
 </resources>

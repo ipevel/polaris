@@ -27,6 +27,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
 import com.slte.app.domain.model.PaymentMethod
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
 import com.slte.app.utils.Dimens
@@ -53,15 +55,17 @@ internal fun OrderPaymentSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         shape = SlteShapes.large
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
             Text(
                 text = stringResource(R.string.purchase_order_info),
                 fontSize = TextSizes.sheetTitle,
@@ -77,7 +81,6 @@ internal fun OrderPaymentSheet(
                 )
                 Spacer(modifier = Modifier.height(Dimens.spacingXl))
             } else {
-                // 订单信息卡片
                 androidx.compose.material3.Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = SlteShapes.medium,
@@ -122,7 +125,6 @@ internal fun OrderPaymentSheet(
 
                 Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-                // 支付方式
                 Text(
                     text = stringResource(R.string.purchase_payment_method),
                     fontSize = TextSizes.actionSubtitle,
@@ -145,7 +147,6 @@ internal fun OrderPaymentSheet(
 
                 Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
-                // 底部按钮
                 val payAmount = step.payAmount
 
                 Row(
@@ -201,6 +202,7 @@ internal fun OrderPaymentSheet(
                 }
 
                 Spacer(modifier = Modifier.height(Dimens.spacingXl))
+                }
             }
         }
     }

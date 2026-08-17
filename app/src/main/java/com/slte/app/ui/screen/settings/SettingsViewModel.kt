@@ -3,6 +3,7 @@ package com.slte.app.ui.screen.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.local.LocaleStore
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelProxy
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 /**
@@ -30,7 +32,9 @@ data class SettingsData(
     /** 每次切换 TUN 堆栈成功后 +1，驱动页面 Toast 提示 */
     val tunStackSwitchCount: Int = 0,
     /** 深色模式（本地偏好，默认关 = 浅色） */
-    val darkModeEnabled: Boolean = false
+    val darkModeEnabled: Boolean = false,
+    /** 当前界面语言（null = 跟随系统） */
+    val locale: Locale? = null
 )
 
 data class ChangePasswordState(
@@ -53,11 +57,15 @@ class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val subscribeRepository: SubscribeRepository,
     private val kernelProxy: KernelProxy,
-    private val themePreference: ThemePreference
+    private val themePreference: ThemePreference,
+    private val localeStore: LocaleStore
 ) : ViewModel() {
 
     private val _data = MutableStateFlow(
-        SettingsData(darkModeEnabled = themePreference.dark.value)
+        SettingsData(
+            darkModeEnabled = themePreference.dark.value,
+            locale = localeStore.locale.value
+        )
     )
     val data: StateFlow<SettingsData> = _data.asStateFlow()
 
@@ -73,6 +81,12 @@ class SettingsViewModel @Inject constructor(
     fun setDarkMode(enabled: Boolean) {
         themePreference.setDark(enabled)
         _data.value = _data.value.copy(darkModeEnabled = enabled)
+    }
+
+    /** 切换界面语言并持久化；null = 跟随系统，根组件监听后全树热切换 */
+    fun setLocale(locale: Locale?) {
+        localeStore.setLocale(locale)
+        _data.value = _data.value.copy(locale = locale)
     }
 
     /** 进入页面时读取内核当前 TUN 堆栈模式（后台进程 ServiceStore 为权威值） */
@@ -157,8 +171,6 @@ class SettingsViewModel @Inject constructor(
                 }
         }
     }
-
-    // 修改密码
 
     fun showChangePassword() {
         _changePassword.value = ChangePasswordState(showChangePasswordSheet = true)

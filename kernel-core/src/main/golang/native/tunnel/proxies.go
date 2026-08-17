@@ -3,6 +3,7 @@ package tunnel
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dlclark/regexp2"
 
@@ -34,6 +35,25 @@ type ProxyGroup struct {
 	Type    string   `json:"type"`
 	Now     string   `json:"now"`
 	Proxies []*Proxy `json:"proxies"`
+}
+
+// latestDelayTestURL 取最近一次被测过的 URL：节点历史中可能并存多个测速 URL
+// （provider health-check 与组 url 各记一条），固定取历史最新者，
+// 避免随机迭代读到过期 URL 的延迟（0xffff 会被 UI 归一为超时）
+func latestDelayTestURL(p C.Proxy) string {
+	testURL := C.DefaultTestURL
+	var latest time.Time
+	for url, state := range p.ExtraDelayHistories() {
+		if len(url) == 0 || len(state.History) == 0 {
+			continue
+		}
+		last := state.History[len(state.History)-1]
+		if last.Time.After(latest) {
+			latest = last.Time
+			testURL = url
+		}
+	}
+	return testURL
 }
 
 type sortableProxyList struct {
@@ -182,13 +202,7 @@ func convertProxies(proxies []C.Proxy, uiSubtitlePattern *regexp2.Regexp) []*Pro
 				}
 			}
 		}
-		testURL := "https://www.gstatic.com/generate_204"
-		for k := range p.ExtraDelayHistories() {
-			if len(k) > 0 {
-				testURL = k
-				break
-			}
-		}
+		testURL := latestDelayTestURL(p)
 		_, isGroup := p.Adapter().(outboundgroup.ProxyGroup)
 
 		result = append(result, &Proxy{
@@ -223,13 +237,7 @@ func collectProviders(providers []provider.ProxyProvider, uiSubtitlePattern *reg
 				}
 			}
 
-			testURL := "https://www.gstatic.com/generate_204"
-			for k := range px.ExtraDelayHistories() {
-				if len(k) > 0 {
-					testURL = k
-					break
-				}
-			}
+			testURL := latestDelayTestURL(px)
 			_, isGroup := px.Adapter().(outboundgroup.ProxyGroup)
 
 			result = append(result, &Proxy{

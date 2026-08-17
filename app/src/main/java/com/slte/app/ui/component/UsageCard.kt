@@ -60,7 +60,7 @@ fun UsageCard(
     hasPlan: Boolean,
     daysUntilExpired: Int?,
     daysUntilReset: Int,
-    /** 到期日期文本（如 2026-08-31）；null 时回退"X天后到期" */
+    /** 到期日期文本（如 YYYY-MM-DD）；null 时回退"X天后到期" */
     expiredAtDate: String? = null,
     modifier: Modifier = Modifier,
     actionText: String = stringResource(R.string.plan_renew_button),
@@ -96,7 +96,6 @@ fun UsageCard(
                 .fillMaxWidth()
                 .padding(horizontal = Dimens.cardContentPadding, vertical = Dimens.spacingMd)
         ) {
-            // 标题行：套餐名（左）—— 状态胶囊（右）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -114,7 +113,6 @@ fun UsageCard(
 
             Spacer(modifier = Modifier.height(Dimens.spacingMd))
 
-            // 流量数字（左）—— 百分比（右）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -140,7 +138,6 @@ fun UsageCard(
 
             Spacer(modifier = Modifier.height(Dimens.spacingMd))
 
-            // 进度条（充能动画，过期变红）
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier
@@ -157,7 +154,6 @@ fun UsageCard(
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-            // meta 行：重置·到期（左）—— CTA 按钮（右，始终渲染）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

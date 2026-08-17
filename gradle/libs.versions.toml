@@ -16,6 +16,7 @@ lottie = "6.6.2"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
 junit = "4.13.2"
+snakeyaml = "2.2"
 androidxJunit = "1.2.1"
 espresso = "3.6.1"
 securityCrypto = "1.1.0"
@@ -52,7 +53,9 @@ lottie-compose = { group = "com.airbnb.android", name = "lottie-compose", versio
 maxminddb = { group = "com.maxmind.db", name = "maxmind-db", version.ref = "maxminddb" }
 retrofit-core = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-kotlinx-serialization = { group = "com.squareup.retrofit2", name = "converter-kotlinx-serialization", version.ref = "retrofit" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+snakeyaml = { group = "org.yaml", name = "snakeyaml", version.ref = "snakeyaml" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }

@@ -29,6 +29,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
 import com.slte.app.domain.model.PlanInfo
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
 import com.slte.app.utils.Dimens
@@ -56,16 +58,18 @@ internal fun SelectPeriodSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         shape = SlteShapes.large
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    horizontal = Dimens.inviteSheetPaddingH,
-                    vertical = Dimens.inviteSheetPaddingV
-                )
-        ) {
+        // 弹窗是独立窗口组合，LocalContext 不随根组件更新，需在此按语言重建
+        AppLocaleContent(locale = LocalAppLocale.current) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(
+                        horizontal = Dimens.inviteSheetPaddingH,
+                        vertical = Dimens.inviteSheetPaddingV
+                    )
+            ) {
             Text(
                 text = "${stringResource(R.string.plans_subscribe)} - ${step.plan.name}",
                 fontSize = TextSizes.sheetTitle,
@@ -75,7 +79,6 @@ internal fun SelectPeriodSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
-            // 周期选择（2x2 网格）
             PeriodGrid(
                 periods = step.plan.periodPrices,
                 selectedPeriod = step.selectedPeriod,
@@ -84,7 +87,6 @@ internal fun SelectPeriodSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-            // 优惠券
             CouponInput(
                 code = step.couponCode,
                 onCodeChange = onUpdateCoupon,
@@ -94,7 +96,6 @@ internal fun SelectPeriodSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-            // 价格明细
             PriceRow(
                 label = stringResource(R.string.order_price),
                 value = FormatUtils.currency(step.priceCents)
@@ -107,7 +108,6 @@ internal fun SelectPeriodSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-            // 确认订单按钮（主操作色圆角；优惠券未验证时半透明且不可下单）
             val canConfirm = step.couponCode.isBlank() || step.couponVerified
             androidx.compose.material3.Surface(
                 onClick = { if (canConfirm) onConfirmOrder() },
@@ -132,6 +132,7 @@ internal fun SelectPeriodSheet(
             }
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
+            }
         }
     }
 }

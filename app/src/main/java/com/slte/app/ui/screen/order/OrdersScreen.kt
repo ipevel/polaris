@@ -171,7 +171,6 @@ private fun OrderCard(
                 .fillMaxWidth()
                 .padding(Dimens.cardContentPadding)
         ) {
-            // Row1: 套餐名（左）—— 状态标签（右）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -195,7 +194,6 @@ private fun OrderCard(
 
             Spacer(modifier = Modifier.height(Dimens.spacingMd))
 
-            // 详情行
             OrderDetailRow(
                 label = stringResource(R.string.order_price),
                 value = FormatUtils.currency(order.totalAmount)
@@ -211,7 +209,6 @@ private fun OrderCard(
                 value = order.tradeNo
             )
 
-            // 待支付：显示操作按钮
             if (isPending) {
                 Spacer(modifier = Modifier.height(Dimens.spacingLg))
                 Row(

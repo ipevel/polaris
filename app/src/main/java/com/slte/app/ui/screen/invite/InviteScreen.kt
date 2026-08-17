@@ -58,10 +58,8 @@ fun InviteScreen(
                 vertical = Dimens.dashboardScreenPaddingV
             )
         ) {
-            // 佣金概览：大余额 + 统计网格
             item { InviteStatCard(stat = data.stat) }
 
-            // 操作按钮行
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -84,7 +82,6 @@ fun InviteScreen(
                 }
             }
 
-            // 邀请码管理卡片
             item {
                 InviteCodeCard(
                     codes = data.codes,
@@ -94,7 +91,6 @@ fun InviteScreen(
                 )
             }
 
-            // 佣金记录卡片
             item {
                 CommissionRecordsCard(records = data.records)
             }

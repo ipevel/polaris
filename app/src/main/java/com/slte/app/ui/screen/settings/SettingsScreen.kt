@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SwitchAccount
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     var showTunStackSheet by rememberSaveable { mutableStateOf(false) }
+    var showLanguageSheet by rememberSaveable { mutableStateOf(false) }
     val data by viewModel.data.collectAsStateWithLifecycle()
 
     SlteScaffold(
@@ -62,6 +64,15 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_tun_stack),
                     value = stringResource(data.tunStackMode.labelRes),
                     onClick = { showTunStackSheet = true }
+                )
+            }
+
+            item {
+                SettingsRowCard(
+                    icon = Icons.Outlined.Translate,
+                    title = stringResource(R.string.settings_language),
+                    value = stringResource(LanguageMode.fromLocale(data.locale).labelRes),
+                    onClick = { showLanguageSheet = true }
                 )
             }
 
@@ -126,7 +137,17 @@ fun SettingsScreen(
         )
     }
 
-    // 修改密码底部弹窗
+    if (showLanguageSheet) {
+        LanguageModeSheet(
+            currentMode = LanguageMode.fromLocale(data.locale),
+            onDismiss = { showLanguageSheet = false },
+            onSelect = { mode ->
+                viewModel.setLocale(mode.locale)
+                showLanguageSheet = false
+            }
+        )
+    }
+
     val changePasswordState = viewModel.changePasswordState.collectAsStateWithLifecycle().value
     if (changePasswordState.showChangePasswordSheet) {
         ChangePasswordSheet(
