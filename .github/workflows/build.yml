@@ -65,6 +65,10 @@ on:
           - debug
           - release
         default: debug
+      iconB64:
+        description: 自定义启动图标（PNG 的 base64，≤48KB；留空使用仓库默认图标）
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -102,12 +106,18 @@ jobs:
           echo "$STORE_B64" | base64 -d > release.keystore
 
       - name: 应用自定义图标
-        # 检测到仓库 app/icon-source.png（网页上传或手动放置）时，用 ImageMagick 生成
-        # 五个密度 × 方形/圆形启动图标，覆盖 checkout 出来的 res/mipmap-*/ic_launcher*.png。
-        # 同名覆盖即可换图标，不改源码与 Manifest；未放置该文件时保持仓库默认图标。
-        if: hashFiles('app/icon-source.png') != ''
+        # 图标经构建输入（iconB64）传入，不写入仓库；兼容仓库内 app/icon-source.png（旧机制）。
+        # 用 ImageMagick 生成五个密度 × 方形/圆形启动图标，覆盖 checkout 出来的
+        # res/mipmap-*/ic_launcher*.png；同名覆盖即可换图标，不改源码与 Manifest。
+        if: inputs.iconB64 != '' || hashFiles('app/icon-source.png') != ''
+        env:
+          ICON_B64: ${{ inputs.iconB64 }}
         run: |
           set -e
+          if [ -n "$ICON_B64" ]; then
+            echo "$ICON_B64" | base64 -d > app/icon-source.png
+          fi
+          test -f app/icon-source.png || { echo "无图标源，跳过"; exit 0; }
           if ! command -v convert >/dev/null 2>&1; then
             sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
           fi
