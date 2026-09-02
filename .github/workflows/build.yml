@@ -66,7 +66,7 @@ on:
           - release
         default: debug
       iconB64:
-        description: 自定义启动图标（PNG 的 base64，≤48KB；留空使用仓库默认图标）
+        description: 自定义启动图标（PNG 的 base64，≤36KB；留空使用仓库默认图标）
         required: false
         default: ''
 
