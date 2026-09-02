@@ -65,9 +65,8 @@ SLTE_RELEASE_KEY_PASSWORD=<密码> \
 
 ## 联系与交流
 
-- Telegram 频道：[https://t.me/Ciallo_RT](https://t.me/Ciallo_RT)
+- Telegram 频道：[https://t.me/slteapp](https://t.me/slteapp)
 - Telegram 作者：[https://t.me/dc_slte](https://t.me/dc_slte)
-- 个人邮箱：x@example.com
 
 ## 许可证
 
