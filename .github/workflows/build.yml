@@ -85,7 +85,13 @@ jobs:
 
       - name: 安装 Android SDK / NDK
         # kernel-core 的 C 桥（libbridge）需要 NDK 交叉编译；libclash.so 为预编译产物，无需 Go 工具链
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+        # 注意：ubuntu runner 的 PATH 不含 sdkmanager，需用 $ANDROID_SDK_ROOT 完整路径调用
+        run: |
+          set -e
+          SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT）"; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
 
       - name: 还原发布签名
         if: inputs.buildType == 'release'
