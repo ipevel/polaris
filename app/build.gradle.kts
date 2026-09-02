@@ -108,7 +108,7 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(slteReleaseStoreFile ?: "release.keystore")
+            storeFile = rootProject.file(slteReleaseStoreFile ?: "release.keystore")
             storePassword = slteValue("SLTE_RELEASE_STORE_PASSWORD").orEmpty()
             keyAlias = slteValue("SLTE_RELEASE_KEY_ALIAS") ?: "slte"
             keyPassword = slteValue("SLTE_RELEASE_KEY_PASSWORD").orEmpty()
