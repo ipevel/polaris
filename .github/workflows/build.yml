@@ -137,6 +137,8 @@ jobs:
           SLTE_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
           SLTE_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
           SLTE_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
+          # 海外 runner 直连官方仓库（aliyun 镜像对海外不稳定会导致依赖解析失败）
+          SLTE_USE_MIRROR: 'false'
           # release 签名（debug 构建不设，构建脚本自动跳过）
           SLTE_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
           SLTE_RELEASE_STORE_PASSWORD: ${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}
