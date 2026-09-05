@@ -234,14 +234,10 @@ class FallbackDns @Inject constructor() : Dns {
 
     private fun skipName(buf: ByteArray, start: Int): Int {
         var pos = start
-        var jumps = 0
         while (pos < buf.size) {
             val len = buf[pos].toInt() and 0xFF
             if (len == 0) return pos + 1
-            if ((len and 0xC0) == 0xC0) {
-                if (++jumps > MAX_POINTER_JUMPS) return pos + 2
-                return pos + 2
-            }
+            if ((len and 0xC0) == 0xC0) return pos + 2
             pos += len + 1
         }
         return pos

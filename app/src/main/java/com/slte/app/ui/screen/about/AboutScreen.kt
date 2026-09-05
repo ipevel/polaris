@@ -215,6 +215,11 @@ fun AboutScreen(
                                 Intent.createChooser(send, context.getString(R.string.about_log_export_share))
                             )
                         } catch (e: Exception) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.about_log_share_failed),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 )

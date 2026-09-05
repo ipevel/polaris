@@ -36,16 +36,29 @@ class ProfileWorker : BaseService() {
         launch {
             delay(TimeUnit.SECONDS.toMillis(10))
 
-            while (true) {
-                jobs.poll()?.join() ?: break
-            }
+            drain()
+
+            delay(IDLE_GRACE_MS)
+
+            drain()
 
             stopSelf()
         }
     }
 
+    private suspend fun drain() {
+        while (true) {
+            jobs.poll()?.join() ?: break
+        }
+    }
+
     override fun onDestroy() {
         stopForeground(true)
+
+        while (true) {
+            val job = jobs.poll() ?: break
+            runBlocking { withTimeoutOrNull(DRAIN_TIMEOUT_MS) { job.join() } }
+        }
 
         super.onDestroy()
     }
@@ -80,7 +93,9 @@ class ProfileWorker : BaseService() {
     }
 
     private fun sanitize(message: String): String =
-        message.replace(Regex("token=[^&\\s\"']+"), "token=***")
+        message
+            .replace(Regex("token=[^&\\s\"']+", RegexOption.IGNORE_CASE), "token=***")
+            .replace(Regex("token%3D[^&\\s\"']+", RegexOption.IGNORE_CASE), "token%3D***")
 
     private fun createChannels() {
         NotificationManagerCompat.from(this).createNotificationChannelsCompat(
@@ -191,6 +206,8 @@ class ProfileWorker : BaseService() {
         private const val SERVICE_CHANNEL = "profile_service_channel"
         private const val STATUS_CHANNEL = "profile_status_channel"
         private const val RESULT_CHANNEL = "profile_result_channel"
+        private const val IDLE_GRACE_MS = 2_000L
+        private const val DRAIN_TIMEOUT_MS = 15_000L
     }
 
     override fun onBind(intent: Intent?): IBinder {
