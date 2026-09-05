@@ -156,9 +156,6 @@ class SubscriptionUpdater @Inject constructor(
         }
     }
 
-    /** 支付/续费成功后的全屏刷新：订阅信息、用户信息、内核订阅、首页信息；
-     * 完成后由调用方调用 [finishPurchaseRefresh] 关闭 Loading（配合服务器节点刷新）。已有更新先等待其结束；以订单开通（status=1/3）为准轮询；超时未开通明确提示；测速与内核热身后台执行。
-     */
     fun refreshAfterPurchase(
         data: MutableStateFlow<DashboardData>,
         tradeNo: String? = null,
@@ -174,7 +171,7 @@ class SubscriptionUpdater @Inject constructor(
         if (tradeNo != null) {
             activated = false
             while (System.currentTimeMillis() < deadline && !activated) {
-                activated = orderRepository.getOrderDetail(tradeNo).getOrNull()?.status in ACTIVATED_ORDER_STATUSES
+                activated = orderRepository.getOrderDetail(tradeNo).getOrNull()?.status in ORDER_COMPLETED_STATUSES
                 if (!activated) {
                     delay(3000)
                     info = subscribeRepository.fetchSubscribeInfo(force = true).getOrNull()
@@ -187,6 +184,9 @@ class SubscriptionUpdater @Inject constructor(
             }
         }
         subscribeRepository.fetchUserInfo()
+        if (activated) {
+            info = subscribeRepository.fetchSubscribeInfo(force = true).getOrNull()
+        }
         val hasPlan = info?.hasPlan == true
         val kernelOk = if (hasPlan) kernelConfig.updateProfile() else false
         serverRepository.invalidateCache()
@@ -296,7 +296,6 @@ class SubscriptionUpdater @Inject constructor(
         /** 支付后等待订单开通的最长时间（毫秒） */
         private const val PURCHASE_REFRESH_TIMEOUT_MS = 60_000L
 
-        /** 订单已开通状态：1=已支付，3=已开通（与订单页状态展示一致） */
-        private val ACTIVATED_ORDER_STATUSES = setOf(1, 3)
+        private val ORDER_COMPLETED_STATUSES = setOf(3)
     }
 }

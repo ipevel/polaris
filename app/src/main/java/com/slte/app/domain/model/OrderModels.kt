@@ -5,10 +5,10 @@ enum class OrderStatus {
     PENDING, COMPLETED, CANCELLED, ABNORMAL;
 
     companion object {
-        /** 后端状态码 → 分类：0=待支付 1=已支付 2=已取消 3=已开通 */
+        /** 后端状态码 → 分类：0=待支付 1=开通中 2=已取消 3=已完成 4=已折抵 */
         fun from(code: Int): OrderStatus = when (code) {
             0 -> PENDING
-            1, 3 -> COMPLETED
+            1, 3, 4 -> COMPLETED
             2 -> CANCELLED
             else -> ABNORMAL
         }
@@ -25,11 +25,15 @@ data class OrderInfo(
     val totalAmount: Int,
     /** 余额抵扣（分） */
     val balanceAmount: Int = 0,
-    /** 优惠券抵扣（分） */
+    /** 优惠券抵扣（分，含会员折扣） */
     val discountAmount: Int = 0,
+    /** 旧套餐折抵（分，换购单） */
+    val surplusAmount: Int = 0,
+    /** 换购多退金额（分，开通后退回余额） */
+    val refundAmount: Int = 0,
     /** 手续费（分），无手续费为 null */
     val handlingAmount: Int? = null,
-    /** 订单状态：0=待支付 1=已支付 2=已取消 3=已开通 */
+    /** 订单状态：0=待支付 1=开通中 2=已取消 3=已完成 4=已折抵 */
     val status: Int,
     /** 周期标识：month_price / quarter_price / year_price 等 */
     val period: String = "",
@@ -54,10 +58,11 @@ data class CreateOrderResult(
 )
 
 data class CheckoutResult(
-    /** -1=免费/余额支付成功 0=跳转支付链接 1=表单提交 */
+    /** -1=后端免费流程直接成功 0=扫码类（暂不支持） 1=跳转链接 2=直付结果（data=true 即成功） */
     val type: Int,
     val redirectUrl: String? = null,
-    val message: String? = null
+    val message: String? = null,
+    val paid: Boolean = false
 )
 
 data class CouponCheckResult(

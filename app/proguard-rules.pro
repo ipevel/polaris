@@ -10,6 +10,14 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# kotlinx.serialization: JsonElement 树解析（会话列表等动态结构）在 R8 下解析会失败，保留完整实现
+-keep class kotlinx.serialization.json.JsonElement { *; }
+-keep class kotlinx.serialization.json.JsonPrimitive { *; }
+-keep class kotlinx.serialization.json.JsonNull { *; }
+-keep class kotlinx.serialization.json.JsonArray { *; }
+-keep class kotlinx.serialization.json.JsonObject { *; }
+-keep class kotlinx.serialization.json.internal.** { *; }
+
 # 保留所有 @Serializable 标记的 DTO（含字段名，反序列化需要），
 # 范围限定在 data/remote 下，避免全量 keep 导致 R8 无法混淆业务代码。
 -keep,allowobfuscation,allowshrinking class com.slte.app.data.remote.** { *; }

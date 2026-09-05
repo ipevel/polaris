@@ -63,7 +63,7 @@ interface XiaoV2bUserRetrofit {
     @POST("user/order/checkout")
     suspend fun checkoutOrder(
         @Body request: XiaoV2bCheckoutRequest
-    ): XiaoV2bResponse<XiaoV2bCheckoutData>
+    ): okhttp3.ResponseBody
 
     @GET("user/order/getPaymentMethod")
     suspend fun getPaymentMethods(): XiaoV2bResponse<List<XiaoV2bPaymentMethodData>>
@@ -107,7 +107,6 @@ interface XiaoV2bUserRetrofit {
     @GET("user/server/fetch")
     suspend fun fetchServers(): XiaoV2bResponse<List<XiaoV2bServerData>>
 
-    // 会话管理（登出吊销）
     // 吊销请求显式携带 Authorization 头：登出流程会先清空本地会话，
     // 若依赖 AuthInterceptor 从 SessionStore 取 token，吊销将因无认证头而静默失败。
 

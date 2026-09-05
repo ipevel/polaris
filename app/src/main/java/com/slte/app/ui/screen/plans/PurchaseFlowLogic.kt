@@ -26,7 +26,8 @@ fun pollOutcome(status: Int?): PollOutcome? = when {
 /** 根据结算结果决定下一步（纯函数，供 ViewModel 与单测复用） */
 fun decideCheckoutStep(result: CheckoutResult): CheckoutDecision = when (result.type) {
     -1 -> CheckoutDecision.SUCCESS
-    0, 1 -> if (result.redirectUrl != null) CheckoutDecision.REDIRECT else CheckoutDecision.RETRY
+    1 -> if (result.redirectUrl != null) CheckoutDecision.REDIRECT else CheckoutDecision.RETRY
+    2 -> if (result.paid) CheckoutDecision.SUCCESS else CheckoutDecision.RETRY
     else -> CheckoutDecision.RETRY
 }
 
@@ -39,11 +40,3 @@ internal fun computeCouponDiscount(type: Int, value: Int, priceCents: Int): Int 
 /** 优惠后应付（分）：原价减优惠券，最低 0 */
 internal fun finalPriceCents(priceCents: Int, couponDiscount: Int): Int =
     (priceCents - couponDiscount).coerceAtLeast(0)
-
-/** 实际应付（分）：总额+手续费-优惠券-余额抵扣，最低 0 */
-internal fun payAmountCents(
-    totalAmount: Int,
-    handlingAmount: Int,
-    couponDiscount: Int,
-    balanceAmount: Int
-): Int = (totalAmount + handlingAmount - couponDiscount - balanceAmount).coerceAtLeast(0)

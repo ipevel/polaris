@@ -31,18 +31,27 @@ sealed interface PurchaseStep {
         val totalAmount: Int,
         val balanceAmount: Int,
         val couponDiscount: Int,
+        val surplusAmount: Int = 0,
+        val refundAmount: Int = 0,
         val handlingAmount: Int,
         val paymentMethods: List<PaymentMethod> = emptyList(),
         val selectedMethod: Int? = null,
         val isLoading: Boolean = true,
         val isPaying: Boolean = false
     ) : PurchaseStep {
-        /** 实际应付金额（分） */
+        /** 产品原价（分）：后端 total_amount 为扣减后净值，按各抵扣字段还原 */
+        val productPrice: Int
+            get() = (totalAmount + couponDiscount + surplusAmount + balanceAmount - refundAmount).coerceAtLeast(0)
+
+        /** 实际应付金额（分）：后端 total_amount 已是券/余额抵扣后的净值，仅叠加手续费 */
         val payAmount: Int
-            get() = payAmountCents(totalAmount, handlingAmount, couponDiscount, balanceAmount)
+            get() = (totalAmount + handlingAmount).coerceAtLeast(0)
+
+        /** 应付为 0：后端在下单时已全额抵扣，结算走免费流程 */
+        val zeroPayable: Boolean
+            get() = payAmount <= 0
     }
 
-    /** 支付完成，跳转浏览器 */
     data class Paying(val redirectUrl: String) : PurchaseStep
 
     /** 创建订单失败，有未支付订单 */

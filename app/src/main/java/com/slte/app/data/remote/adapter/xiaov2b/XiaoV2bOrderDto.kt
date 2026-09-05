@@ -49,6 +49,10 @@ data class XiaoV2bOrderData(
     val balanceAmount: JsonElement? = null,
     @SerialName("discount_amount")
     val discountAmount: JsonElement? = null,
+    @SerialName("surplus_amount")
+    val surplusAmount: JsonElement? = null,
+    @SerialName("refund_amount")
+    val refundAmount: JsonElement? = null,
     @SerialName("handling_amount")
     val handlingAmount: JsonElement? = null,
     val status: Int = 0,
@@ -66,6 +70,8 @@ data class XiaoV2bOrderData(
         totalAmount = totalAmount,
         balanceAmount = balanceAmount.jsonIntOrNull() ?: 0,
         discountAmount = discountAmount.jsonIntOrNull() ?: 0,
+        surplusAmount = surplusAmount.jsonIntOrNull() ?: 0,
+        refundAmount = refundAmount.jsonIntOrNull() ?: 0,
         handlingAmount = handlingAmount.jsonIntOrNull(),
         status = status,
         period = period,
@@ -160,6 +166,10 @@ data class XiaoV2bOrderDetailData(
     val balanceAmount: JsonElement? = null,
     @SerialName("discount_amount")
     val discountAmount: JsonElement? = null,
+    @SerialName("surplus_amount")
+    val surplusAmount: JsonElement? = null,
+    @SerialName("refund_amount")
+    val refundAmount: JsonElement? = null,
     @SerialName("handling_amount")
     val handlingAmount: JsonElement? = null,
     val status: Int = 0,
@@ -177,6 +187,8 @@ data class XiaoV2bOrderDetailData(
         totalAmount = totalAmount,
         balanceAmount = balanceAmount.jsonIntOrNull() ?: 0,
         discountAmount = discountAmount.jsonIntOrNull() ?: 0,
+        surplusAmount = surplusAmount.jsonIntOrNull() ?: 0,
+        refundAmount = refundAmount.jsonIntOrNull() ?: 0,
         handlingAmount = handlingAmount.jsonIntOrNull(),
         status = status,
         period = period,
@@ -190,13 +202,6 @@ private fun JsonElement?.jsonIntOrNull(): Int? = when (this) {
     is kotlinx.serialization.json.JsonPrimitive -> content.toIntOrNull()
     else -> null
 }
-
-@Serializable
-data class XiaoV2bCheckoutData(
-    val type: Int = 0,
-    val data: JsonElement? = null,
-    val message: String? = null
-)
 
 @Serializable
 data class XiaoV2bPaymentMethodData(

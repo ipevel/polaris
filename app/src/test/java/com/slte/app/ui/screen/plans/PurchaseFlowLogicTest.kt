@@ -19,11 +19,7 @@ class PurchaseFlowLogicTest {
     }
 
     @Test
-    fun `结算类型零或一且带跳转地址判定跳转`() {
-        assertEquals(
-            CheckoutDecision.REDIRECT,
-            decideCheckoutStep(CheckoutResult(type = 0, redirectUrl = "https://pay.example"))
-        )
+    fun `结算类型一且带跳转地址判定跳转`() {
         assertEquals(
             CheckoutDecision.REDIRECT,
             decideCheckoutStep(CheckoutResult(type = 1, redirectUrl = "https://pay.example"))
@@ -31,11 +27,27 @@ class PurchaseFlowLogicTest {
     }
 
     @Test
-    fun `结算类型零或一但缺跳转地址判定重试`() {
+    fun `结算类型零扫码类判定重试`() {
         assertEquals(
             CheckoutDecision.RETRY,
-            decideCheckoutStep(CheckoutResult(type = 0, redirectUrl = null))
+            decideCheckoutStep(CheckoutResult(type = 0, redirectUrl = "https://pay.example"))
         )
+    }
+
+    @Test
+    fun `结算类型二按直付结果判定`() {
+        assertEquals(
+            CheckoutDecision.SUCCESS,
+            decideCheckoutStep(CheckoutResult(type = 2, paid = true))
+        )
+        assertEquals(
+            CheckoutDecision.RETRY,
+            decideCheckoutStep(CheckoutResult(type = 2, paid = false))
+        )
+    }
+
+    @Test
+    fun `结算类型一缺跳转地址判定重试`() {
         assertEquals(
             CheckoutDecision.RETRY,
             decideCheckoutStep(CheckoutResult(type = 1, redirectUrl = null))
@@ -56,21 +68,37 @@ class PurchaseFlowLogicTest {
         assertEquals(OrderStatus.COMPLETED, OrderStatus.from(1))
         assertEquals(OrderStatus.CANCELLED, OrderStatus.from(2))
         assertEquals(OrderStatus.COMPLETED, OrderStatus.from(3))
+        assertEquals(OrderStatus.COMPLETED, OrderStatus.from(4))
         assertEquals(OrderStatus.ABNORMAL, OrderStatus.from(-1))
         assertEquals(OrderStatus.ABNORMAL, OrderStatus.from(9))
     }
 
     @Test
-    fun `应付金额钳制为非负`() {
+    fun `应付金额为净值加手续费`() {
         val step = PurchaseStep.OrderPayment(
             tradeNo = "T",
             planName = "P",
             totalAmount = 100,
             balanceAmount = 200,
+            couponDiscount = 30,
+            handlingAmount = 20
+        )
+        assertEquals(120, step.payAmount)
+        assertEquals(false, step.zeroPayable)
+    }
+
+    @Test
+    fun `应付金额为零时判定免费开通`() {
+        val step = PurchaseStep.OrderPayment(
+            tradeNo = "T",
+            planName = "P",
+            totalAmount = 0,
+            balanceAmount = 200,
             couponDiscount = 0,
             handlingAmount = 0
         )
         assertEquals(0, step.payAmount)
+        assertEquals(true, step.zeroPayable)
     }
 
     @Test
@@ -97,6 +125,7 @@ class PurchaseFlowLogicTest {
     fun `轮询状态支付完成判定完成`() {
         assertEquals(PollOutcome.COMPLETED, pollOutcome(1))
         assertEquals(PollOutcome.COMPLETED, pollOutcome(3))
+        assertEquals(PollOutcome.COMPLETED, pollOutcome(4))
     }
 
     @Test

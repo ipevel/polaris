@@ -109,6 +109,10 @@ data class XboardOrderData(
     val balanceAmount: JsonElement? = null,
     @SerialName("discount_amount")
     val discountAmount: JsonElement? = null,
+    @SerialName("surplus_amount")
+    val surplusAmount: JsonElement? = null,
+    @SerialName("surplus_credit")
+    val surplusCredit: JsonElement? = null,
     @SerialName("handling_amount")
     val handlingAmount: JsonElement? = null,
     val status: Int = 0,
@@ -127,6 +131,8 @@ fun XboardOrderData.toDomainOrder() = OrderInfoDto(
     totalAmount = totalAmount,
     balanceAmount = balanceAmount.jsonIntOrNull() ?: 0,
     discountAmount = discountAmount.jsonIntOrNull() ?: 0,
+    surplusAmount = surplusAmount.jsonIntOrNull() ?: 0,
+    refundAmount = surplusCredit.jsonIntOrNull() ?: 0,
     handlingAmount = handlingAmount.jsonIntOrNull(),
     status = status,
     period = period,
@@ -145,6 +151,10 @@ data class XboardOrderDetailData(
     val balanceAmount: JsonElement? = null,
     @SerialName("discount_amount")
     val discountAmount: JsonElement? = null,
+    @SerialName("surplus_amount")
+    val surplusAmount: JsonElement? = null,
+    @SerialName("surplus_credit")
+    val surplusCredit: JsonElement? = null,
     @SerialName("handling_amount")
     val handlingAmount: JsonElement? = null,
     val status: Int = 0,
@@ -163,6 +173,8 @@ fun XboardOrderDetailData.toDomainOrder() = OrderInfoDto(
     totalAmount = totalAmount,
     balanceAmount = balanceAmount.jsonIntOrNull() ?: 0,
     discountAmount = discountAmount.jsonIntOrNull() ?: 0,
+    surplusAmount = surplusAmount.jsonIntOrNull() ?: 0,
+    refundAmount = surplusCredit.jsonIntOrNull() ?: 0,
     handlingAmount = handlingAmount.jsonIntOrNull(),
     status = status,
     period = period,
@@ -192,13 +204,6 @@ private fun JsonElement?.jsonIntOrNull(): Int? = when (this) {
     is JsonPrimitive -> content.toIntOrNull()
     else -> null
 }
-
-@Serializable
-data class XboardCheckoutData(
-    val type: Int = 0,
-    val data: JsonElement? = null,
-    val message: String? = null
-)
 
 @Serializable
 data class XboardPaymentMethodData(

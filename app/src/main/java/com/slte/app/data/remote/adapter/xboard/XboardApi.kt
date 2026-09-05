@@ -66,7 +66,7 @@ interface XboardUserRetrofit {
     @POST("user/order/checkout")
     suspend fun checkoutOrder(
         @Body request: XboardCheckoutRequest
-    ): XboardResponse<XboardCheckoutData>
+    ): okhttp3.ResponseBody
 
     @GET("user/order/getPaymentMethod")
     suspend fun getPaymentMethods(): XboardResponse<List<XboardPaymentMethodData>>

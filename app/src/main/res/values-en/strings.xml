@@ -165,6 +165,7 @@
     <string name="about_log_exported">Logs exported</string>
     <string name="about_log_export_failed">Export failed</string>
     <string name="about_log_export_share">Share logs</string>
+    <string name="about_log_share_failed">Couldn\'t share the log</string>
 
     <!-- Update (检查更新) -->
     <string name="update_title">New version</string>
@@ -230,7 +231,7 @@
     <string name="purchase_coupon_hint">Have a coupon?</string>
     <string name="purchase_verify">Verify</string>
     <string name="purchase_coupon_applied">Coupon applied</string>
-    <string name="purchase_coupon_discount">Coupon</string>
+    <string name="purchase_coupon_discount">Coupon discount</string>
     <string name="purchase_coupon_verify_first">Verify coupon first</string>
     <string name="error_coupon_invalid">Invalid or expired coupon</string>
     <string name="dialog_confirm">OK</string>
@@ -241,8 +242,12 @@
     <string name="purchase_confirm">Confirm</string>
     <string name="purchase_order_info">Order details</string>
     <string name="purchase_product">Product</string>
-    <string name="purchase_balance">Balance</string>
+    <string name="purchase_product_price">Plan price</string>
+    <string name="purchase_balance">Balance used</string>
+    <string name="purchase_surplus">Trade-in credit</string>
+    <string name="purchase_refund">Refunded to balance</string>
     <string name="purchase_handling">Fee</string>
+    <string name="purchase_payable">Amount payable</string>
     <string name="purchase_payment_method">Payment method</string>
     <string name="purchase_payment_method_empty">No payment methods</string>
     <string name="purchase_pay_amount">Pay ¥%s</string>
@@ -251,6 +256,8 @@
     <string name="purchase_error_title">Create failed</string>
     <string name="order_pay_failed">Payment failed</string>
     <string name="order_pay_success">Payment successful</string>
+    <string name="order_activate_now">Activate now</string>
+    <string name="order_already_paid">Order already paid</string>
     <string name="purchase_activation_timeout">Paid, activation pending</string>
     <string name="profile_email_label">Email</string>
 

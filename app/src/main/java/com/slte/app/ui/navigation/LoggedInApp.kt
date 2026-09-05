@@ -113,6 +113,7 @@ fun LoggedInApp(
     // 支付完成（余额支付成功或轮询确认）：回首页并立即刷新订阅/用户/订单/个人中心信息
     LaunchedEffect(Unit) {
         purchaseViewModel.paymentCompleted.collect { tradeNo ->
+            purchaseViewModel.goBack()
             ordersViewModel.refresh()
             profileViewModel.refresh()
             pageStack.clear()

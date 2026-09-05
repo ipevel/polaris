@@ -5,13 +5,13 @@ import com.slte.app.data.remote.ApiException
 import com.slte.app.data.remote.api.AuthApi
 import com.slte.app.data.remote.api.dto.CheckoutResultDto
 import com.slte.app.data.remote.api.dto.CouponCheckResultDto
+import com.slte.app.data.remote.api.dto.CreateOrderResultDto
 import com.slte.app.data.remote.api.dto.LoginResponseDto
 import com.slte.app.domain.model.CommissionRecord
-import com.slte.app.data.remote.api.dto.CreateOrderResultDto
+import com.slte.app.data.remote.api.dto.OrderInfoDto
 import com.slte.app.domain.model.EmailCodePurpose
 import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
-import com.slte.app.data.remote.api.dto.OrderInfoDto
 import com.slte.app.data.remote.api.dto.PaymentMethodDto
 import com.slte.app.data.remote.api.dto.PlanInfoDto
 import com.slte.app.domain.model.RegisterConfig
@@ -210,22 +210,11 @@ class XiaoV2bAuthApi(
         tradeNo: String,
         paymentMethod: Int
     ): CheckoutResultDto {
-        val response = execute {
+        val body = executeRaw {
             userApi.checkoutOrder(XiaoV2bCheckoutRequest(tradeNo, paymentMethod))
         }
-        val data = response.data ?: throw ApiException("结算失败", ApiErrors.CHECKOUT)
-        if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "checkoutOrder: type=${data.type}")
-        }
-        val redirectUrl = when (val d = data.data) {
-            is JsonPrimitive -> d.content
-            else -> null
-        }
-        return CheckoutResultDto(
-            type = data.type,
-            redirectUrl = redirectUrl,
-            message = data.message
-        )
+        return body.use { CheckoutResultDto.fromRawJson(it.string()) }
+            ?: throw ApiException("服务器响应异常", ApiErrors.NETWORK)
     }
 
     override suspend fun getPaymentMethods(): List<PaymentMethodDto> {
@@ -299,23 +288,15 @@ class XiaoV2bAuthApi(
     override suspend fun fetchSubscribeYaml(token: String): okhttp3.ResponseBody? =
         userApi.fetchSubscribeYaml(token)
 
-    private suspend fun <T> execute(block: suspend () -> XiaoV2bResponse<T>): XiaoV2bResponse<T> {
+    private suspend fun <R> executeRaw(block: suspend () -> R): R {
         return try {
-            val response = block()
-            if (response.data == null && response.message != null) {
-                if (BuildConfig.DEBUG) {
-                    AppLog.w("SLTE-Api", "execute: data=null, message=${sanitizeLog(response.message)}")
-                }
-                throw ApiException(response.message)
-            }
-            response
+            block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: ApiException) {
             throw e
         } catch (e: HttpException) {
             val errorBody = e.response()?.errorBody()?.string()
-            // 网络/服务端错误无条件留痕（脱敏），release 也需可排查；DEBUG 时附带截断脱敏后的响应体
             if (BuildConfig.DEBUG) {
                 AppLog.e("SLTE-Api", "execute HttpException: code=${e.code()}, body=${AppLog.sanitize(errorBody?.take(500) ?: "")}")
             } else {
@@ -329,12 +310,22 @@ class XiaoV2bAuthApi(
             } catch (_: Exception) { null }
             throw ApiException(errorMessage ?: "请求失败，请检查网络连接", ApiErrors.NETWORK)
         } catch (e: IOException) {
-            // 网络异常无条件留痕（脱敏）：IOException 消息含完整请求 URL，需 sanitize
             AppLog.w("SLTE-Api", "execute IOException: ${sanitizeLog(e.message ?: "Unknown")}")
             throw ApiException("请求失败，请检查网络连接", ApiErrors.NETWORK)
         } catch (e: Exception) {
             AppLog.w("SLTE-Api", "execute unexpected ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
             throw ApiException("服务器响应异常", ApiErrors.NETWORK)
         }
+    }
+
+    private suspend fun <T> execute(block: suspend () -> XiaoV2bResponse<T>): XiaoV2bResponse<T> {
+        val response = executeRaw { block() }
+        if (response.data == null && response.message != null) {
+            if (BuildConfig.DEBUG) {
+                AppLog.w("SLTE-Api", "execute: data=null, message=${sanitizeLog(response.message)}")
+            }
+            throw ApiException(response.message)
+        }
+        return response
     }
 }

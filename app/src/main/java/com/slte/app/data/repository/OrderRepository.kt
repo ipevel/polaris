@@ -51,7 +51,12 @@ class OrderRepository @Inject constructor(
         paymentMethod: Int,
     ): Result<CheckoutResult> = runApi {
         authApi.checkoutOrder(tradeNo, paymentMethod).let {
-            CheckoutResult(type = it.type, redirectUrl = it.redirectUrl, message = it.message)
+            CheckoutResult(
+                type = it.type,
+                redirectUrl = it.redirectUrl,
+                message = it.message,
+                paid = it.paid
+            )
         }
     }
 
@@ -78,6 +83,8 @@ class OrderRepository @Inject constructor(
         totalAmount = totalAmount,
         balanceAmount = balanceAmount,
         discountAmount = discountAmount,
+        surplusAmount = surplusAmount,
+        refundAmount = refundAmount,
         handlingAmount = handlingAmount,
         status = status,
         period = period,

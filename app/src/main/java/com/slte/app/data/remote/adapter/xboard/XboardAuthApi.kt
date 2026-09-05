@@ -219,22 +219,11 @@ class XboardAuthApi(
         tradeNo: String,
         paymentMethod: Int
     ): CheckoutResultDto {
-        val response = executeXboard {
+        val body = executeXboardRaw {
             userApi.checkoutOrder(XboardCheckoutRequest(tradeNo, paymentMethod))
         }
-        val data = response.data ?: throw ApiException("结算失败", ApiErrors.CHECKOUT)
-        if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "checkoutOrder: type=${data.type}")
-        }
-        val redirectUrl = when (val d = data.data) {
-            is JsonPrimitive -> d.content
-            else -> null
-        }
-        return CheckoutResultDto(
-            type = data.type,
-            redirectUrl = redirectUrl,
-            message = data.message
-        )
+        return body.use { CheckoutResultDto.fromRawJson(it.string()) }
+            ?: throw ApiException("服务器响应异常", ApiErrors.NETWORK)
     }
 
     override suspend fun getPaymentMethods(): List<PaymentMethodDto> {

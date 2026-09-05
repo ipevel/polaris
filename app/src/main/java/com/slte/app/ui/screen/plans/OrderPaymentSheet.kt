@@ -28,8 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
 import com.slte.app.domain.model.PaymentMethod
 import com.slte.app.ui.component.AppLocaleContent
-import com.slte.app.ui.component.formatNegCurrency
 import com.slte.app.ui.component.formatCurrency
+import com.slte.app.ui.component.formatNegCurrency
+import com.slte.app.ui.component.formatPlusCurrency
 import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.TextSizes
@@ -76,6 +77,8 @@ internal fun OrderPaymentSheet(
 
             Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
+            val payAmount = step.payAmount
+
             if (step.isLoading) {
                 LottieLoadingIcon(
                     modifier = Modifier.align(Alignment.CenterHorizontally).size(Dimens.loadingIndicatorSize)
@@ -103,52 +106,80 @@ internal fun OrderPaymentSheet(
                         )
                         OrderInfoDivider()
                         OrderInfoRow(
-                            label = stringResource(R.string.order_price),
-                            value = formatCurrency(step.totalAmount)
+                            label = stringResource(R.string.purchase_product_price),
+                            value = formatCurrency(step.productPrice)
                         )
+                        if (step.couponDiscount > 0) {
+                            OrderInfoDivider()
+                            OrderInfoRow(
+                                label = stringResource(R.string.purchase_coupon_discount),
+                                value = formatNegCurrency(step.couponDiscount)
+                            )
+                        }
+                        if (step.surplusAmount > 0) {
+                            OrderInfoDivider()
+                            OrderInfoRow(
+                                label = stringResource(R.string.purchase_surplus),
+                                value = formatNegCurrency(step.surplusAmount)
+                            )
+                        }
+                        if (step.balanceAmount > 0) {
+                            OrderInfoDivider()
+                            OrderInfoRow(
+                                label = stringResource(R.string.purchase_balance),
+                                value = formatNegCurrency(step.balanceAmount)
+                            )
+                        }
+                        if (step.refundAmount > 0) {
+                            OrderInfoDivider()
+                            OrderInfoRow(
+                                label = stringResource(R.string.purchase_refund),
+                                value = formatPlusCurrency(step.refundAmount)
+                            )
+                        }
+                        if (step.handlingAmount > 0) {
+                            OrderInfoDivider()
+                            OrderInfoRow(
+                                label = stringResource(R.string.purchase_handling),
+                                value = formatCurrency(step.handlingAmount)
+                            )
+                        }
                         OrderInfoDivider()
                         OrderInfoRow(
-                            label = stringResource(R.string.purchase_balance),
-                            value = formatNegCurrency(step.balanceAmount)
-                        )
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_coupon_discount),
-                            value = formatNegCurrency(step.couponDiscount)
-                        )
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_handling),
-                            value = formatCurrency(step.handlingAmount)
+                            label = stringResource(R.string.purchase_payable),
+                            value = formatCurrency(payAmount),
+                            isValueEmphasize = true
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-                Text(
-                    text = stringResource(R.string.purchase_payment_method),
-                    fontSize = TextSizes.actionSubtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(Dimens.spacingSm))
-                if (step.paymentMethods.isEmpty()) {
+                if (!step.zeroPayable) {
                     Text(
-                        text = stringResource(R.string.purchase_payment_method_empty),
+                        text = stringResource(R.string.purchase_payment_method),
                         fontSize = TextSizes.actionSubtitle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                } else {
-                    PaymentMethodList(
-                        methods = step.paymentMethods,
-                        selectedId = step.selectedMethod,
-                        onSelect = onSelectPayment
-                    )
+                    Spacer(modifier = Modifier.height(Dimens.spacingSm))
+                    if (step.paymentMethods.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.purchase_payment_method_empty),
+                            fontSize = TextSizes.actionSubtitle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        PaymentMethodList(
+                            methods = step.paymentMethods,
+                            selectedId = step.selectedMethod,
+                            onSelect = onSelectPayment
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
-                val payAmount = step.payAmount
+                val payEnabled = !step.isPaying && (step.zeroPayable || step.selectedMethod != null)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -172,7 +203,7 @@ internal fun OrderPaymentSheet(
                     }
                     androidx.compose.material3.Surface(
                         onClick = {
-                            if (step.selectedMethod != null && !step.isPaying) {
+                            if (payEnabled) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onConfirmPayment()
                             }
@@ -182,7 +213,7 @@ internal fun OrderPaymentSheet(
                             .height(Dimens.buttonHeight),
                         shape = SlteShapes.extraLarge,
                         color = MaterialTheme.colorScheme.primary.copy(
-                            alpha = if (step.selectedMethod != null) 1f else Dimens.disabledAlpha
+                            alpha = if (payEnabled) 1f else Dimens.disabledAlpha
                         ),
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ) {
@@ -193,10 +224,14 @@ internal fun OrderPaymentSheet(
                                 LottieLoadingIcon(modifier = Modifier.size(Dimens.topBarActionIconSize))
                             } else {
                                 Text(
-                                    text = stringResource(
-                                        R.string.purchase_pay_amount,
-                                        FormatUtils.balance(payAmount)
-                                    ),
+                                    text = if (step.zeroPayable) {
+                                        stringResource(R.string.order_activate_now)
+                                    } else {
+                                        stringResource(
+                                            R.string.purchase_pay_amount,
+                                            FormatUtils.balance(payAmount)
+                                        )
+                                    },
                                     fontSize = TextSizes.actionTitle,
                                     fontWeight = FontWeight.SemiBold
                                 )

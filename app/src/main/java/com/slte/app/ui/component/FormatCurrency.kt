@@ -14,3 +14,8 @@ fun formatCurrency(cents: Int): String =
 @Composable
 fun formatNegCurrency(cents: Int): String =
     "-" + stringResource(R.string.currency_symbol) + FormatUtils.balance(cents)
+
+/** 返还金额文本："+¥5.00" */
+@Composable
+fun formatPlusCurrency(cents: Int): String =
+    "+" + stringResource(R.string.currency_symbol) + FormatUtils.balance(cents)

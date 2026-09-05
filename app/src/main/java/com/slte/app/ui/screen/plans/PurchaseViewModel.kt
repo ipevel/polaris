@@ -3,9 +3,11 @@ package com.slte.app.ui.screen.plans
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.remote.ApiException
 import com.slte.app.domain.model.CheckoutResult
 import com.slte.app.domain.model.CreateOrderResult
 import com.slte.app.data.repository.OrderRepository
+import com.slte.app.domain.model.OrderStatus
 import com.slte.app.domain.model.PlanInfo
 import com.slte.app.utils.ErrorMessages
 import com.slte.app.utils.AppLog
@@ -113,7 +115,6 @@ class PurchaseViewModel @Inject constructor(
     fun showConfirmWarning() {
         val current = _step.value
         if (current !is PurchaseStep.SelectPeriod) return
-        // 填了优惠券但未验证：不允许进入下一步
         if (current.couponCode.isNotBlank() && !current.couponVerified) {
             _toastRes.value = R.string.purchase_coupon_verify_first
             return
@@ -213,14 +214,31 @@ class PurchaseViewModel @Inject constructor(
 
             val methods = methodsResult.getOrNull() ?: emptyList()
             val detail = detailResult.getOrNull()
+            if (detail == null) {
+                _toastRes.value = ErrorMessages.mapOrderError(detailResult.exceptionOrNull()?.message)
+                return@launch
+            }
+            when (OrderStatus.from(detail.status)) {
+                OrderStatus.COMPLETED -> {
+                    _toastRes.value = R.string.order_already_paid
+                    return@launch
+                }
+                OrderStatus.CANCELLED -> {
+                    _toastRes.value = R.string.order_status_cancelled
+                    return@launch
+                }
+                else -> Unit
+            }
 
             _step.value = PurchaseStep.OrderPayment(
                 tradeNo = orderResult.tradeNo,
-                planName = detail?.planName ?: "",
-                totalAmount = detail?.totalAmount ?: 0,
-                balanceAmount = detail?.balanceAmount ?: 0,
-                couponDiscount = detail?.discountAmount ?: 0,
-                handlingAmount = detail?.handlingAmount ?: 0,
+                planName = detail.planName,
+                totalAmount = detail.totalAmount,
+                balanceAmount = detail.balanceAmount,
+                couponDiscount = detail.discountAmount,
+                surplusAmount = detail.surplusAmount,
+                refundAmount = detail.refundAmount,
+                handlingAmount = detail.handlingAmount ?: 0,
                 paymentMethods = methods,
                 selectedMethod = methods.firstOrNull()?.id,
                 isLoading = false
@@ -241,7 +259,7 @@ class PurchaseViewModel @Inject constructor(
         val current = _step.value
         // isPaying 期间拒绝重入：UI 守卫读组合期快照，同帧双击可绕过，此处做权威拦截
         if (current !is PurchaseStep.OrderPayment || current.isPaying) return
-        val methodId = current.selectedMethod ?: return
+        val methodId = if (current.zeroPayable) 0 else current.selectedMethod ?: return
 
         AppLog.d(TAG, "confirmPayment: tradeNo=${current.tradeNo} method=$methodId")
         _step.value = current.copy(isPaying = true)
@@ -255,7 +273,12 @@ class PurchaseViewModel @Inject constructor(
                 },
                 onFailure = { e ->
                     AppLog.w(TAG, "checkoutOrder failed: ${sanitizeLog(e.message ?: "Unknown")}")
-                    _toastRes.value = R.string.order_pay_failed
+                    val resId = if (e is ApiException) {
+                        ErrorMessages.mapOrderError(e.message)
+                    } else {
+                        R.string.order_pay_failed
+                    }
+                    _toastRes.value = resId
                     _step.value = current.copy(isPaying = false)
                 }
             )

@@ -165,6 +165,7 @@
     <string name="about_log_exported">日誌已匯出</string>
     <string name="about_log_export_failed">匯出失敗</string>
     <string name="about_log_export_share">分享日誌</string>
+    <string name="about_log_share_failed">無法分享日誌</string>
 
     <!-- Update (检查更新) -->
     <string name="update_title">發現新版本</string>
@@ -230,7 +231,7 @@
     <string name="purchase_coupon_hint">有優惠券？</string>
     <string name="purchase_verify">驗證</string>
     <string name="purchase_coupon_applied">優惠券已生效</string>
-    <string name="purchase_coupon_discount">優惠券</string>
+    <string name="purchase_coupon_discount">優惠券抵扣</string>
     <string name="purchase_coupon_verify_first">請先驗證優惠券</string>
     <string name="error_coupon_invalid">優惠券無效或已過期</string>
     <string name="dialog_confirm">確定</string>
@@ -240,9 +241,13 @@
     <string name="purchase_cancel">取消</string>
     <string name="purchase_confirm">確認</string>
     <string name="purchase_order_info">訂單資訊</string>
-    <string name="purchase_product">產品</string>
-    <string name="purchase_balance">餘額</string>
+    <string name="purchase_product">套餐</string>
+    <string name="purchase_product_price">套餐價格</string>
+    <string name="purchase_balance">餘額抵扣</string>
+    <string name="purchase_surplus">舊套餐折抵</string>
+    <string name="purchase_refund">返還餘額</string>
     <string name="purchase_handling">手續費</string>
+    <string name="purchase_payable">應付金額</string>
     <string name="purchase_payment_method">支付方式</string>
     <string name="purchase_payment_method_empty">暫無支付方式</string>
     <string name="purchase_pay_amount">支付 ¥%s</string>
@@ -251,6 +256,8 @@
     <string name="purchase_error_title">建立失敗</string>
     <string name="order_pay_failed">支付失敗</string>
     <string name="order_pay_success">支付成功</string>
+    <string name="order_activate_now">立即開通</string>
+    <string name="order_already_paid">訂單已支付</string>
     <string name="purchase_activation_timeout">已支付，開通確認逾時，請稍後重新整理</string>
     <string name="profile_email_label">信箱</string>
 
