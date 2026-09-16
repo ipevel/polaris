@@ -1,13 +1,14 @@
 package com.slte.app.data.remote.adapter.xiaov2b
 
-import com.slte.app.data.remote.api.dto.OrderInfoDto
 import com.slte.app.data.remote.api.dto.CouponCheckResultDto
+import com.slte.app.data.remote.api.dto.OrderInfoDto
 import com.slte.app.data.remote.api.dto.PaymentMethodDto
 import com.slte.app.data.remote.api.dto.PlanInfoDto
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
-
 
 @Serializable
 data class XiaoV2bCreateOrderRequest(
@@ -15,27 +16,27 @@ data class XiaoV2bCreateOrderRequest(
     val planId: Int,
     val period: String,
     @SerialName("coupon_code")
-    val couponCode: String? = null
+    val couponCode: String? = null,
 )
 
 @Serializable
 data class XiaoV2bCouponCheckRequest(
     val code: String,
     @SerialName("plan_id")
-    val planId: Int? = null
+    val planId: Int? = null,
 )
 
 @Serializable
 data class XiaoV2bCheckoutRequest(
     @SerialName("trade_no")
     val tradeNo: String,
-    val method: Int
+    val method: Int,
 )
 
 @Serializable
 data class XiaoV2bCancelOrderRequest(
     @SerialName("trade_no")
-    val tradeNo: String
+    val tradeNo: String,
 )
 
 @Serializable
@@ -61,7 +62,7 @@ data class XiaoV2bOrderData(
     val createdAt: Long = 0L,
     @SerialName("expired_at")
     val expiredAt: Long = 0L,
-    val plan: XiaoV2bPlanData? = null
+    val plan: XiaoV2bPlanData? = null,
 ) {
     fun toDomainOrder() = OrderInfoDto(
         id = id,
@@ -76,10 +77,9 @@ data class XiaoV2bOrderData(
         status = status,
         period = period,
         createdAt = createdAt,
-        expiredAt = expiredAt
+        expiredAt = expiredAt,
     )
 }
-
 
 @Serializable
 data class XiaoV2bCouponData(
@@ -89,12 +89,12 @@ data class XiaoV2bCouponData(
     val type: Int? = null,
     val value: Int? = null,
     @SerialName("plan_id")
-    val planId: Int? = null
+    val planId: Int? = null,
 ) {
     fun toDomainCouponCheck() = CouponCheckResultDto(
         name = name ?: code ?: "",
         type = type ?: 2,
-        value = value ?: 0
+        value = value ?: 0,
     )
 }
 
@@ -132,7 +132,7 @@ data class XiaoV2bPlanData(
     val groupId: Int? = null,
     val sort: Int? = null,
     @SerialName("transfer_enable")
-    val transferEnable: Int = 0
+    val transferEnable: Int = 0,
 ) {
     fun toDomainPlan() = PlanInfoDto(
         id = id,
@@ -151,56 +151,19 @@ data class XiaoV2bPlanData(
         transferEnable = transferEnable,
         show = show == 1,
         renew = renew == 1,
-        sort = sort
+        sort = sort,
     )
 }
 
-@Serializable
-data class XiaoV2bOrderDetailData(
-    val id: Int = 0,
-    @SerialName("trade_no")
-    val tradeNo: String = "",
-    @SerialName("total_amount")
-    val totalAmount: Int = 0,
-    @SerialName("balance_amount")
-    val balanceAmount: JsonElement? = null,
-    @SerialName("discount_amount")
-    val discountAmount: JsonElement? = null,
-    @SerialName("surplus_amount")
-    val surplusAmount: JsonElement? = null,
-    @SerialName("refund_amount")
-    val refundAmount: JsonElement? = null,
-    @SerialName("handling_amount")
-    val handlingAmount: JsonElement? = null,
-    val status: Int = 0,
-    val period: String = "",
-    @SerialName("created_at")
-    val createdAt: Long = 0L,
-    @SerialName("expired_at")
-    val expiredAt: Long = 0L,
-    val plan: XiaoV2bPlanData? = null
-) {
-    fun toDomainOrder() = OrderInfoDto(
-        id = id,
-        tradeNo = tradeNo,
-        planName = plan?.name ?: "",
-        totalAmount = totalAmount,
-        balanceAmount = balanceAmount.jsonIntOrNull() ?: 0,
-        discountAmount = discountAmount.jsonIntOrNull() ?: 0,
-        surplusAmount = surplusAmount.jsonIntOrNull() ?: 0,
-        refundAmount = refundAmount.jsonIntOrNull() ?: 0,
-        handlingAmount = handlingAmount.jsonIntOrNull(),
-        status = status,
-        period = period,
-        createdAt = createdAt,
-        expiredAt = expiredAt
-    )
-}
+private val jsonNumberText = Regex("""[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?""")
 
-/** 后端可能返回数字、JSON null 或字符串 "null"，统一容错为 Int? */
-private fun JsonElement?.jsonIntOrNull(): Int? = when (this) {
-    is kotlinx.serialization.json.JsonPrimitive -> content.toIntOrNull()
-    else -> null
+private fun JsonElement?.jsonIntOrNull(): Int? {
+    val primitive = this as? kotlinx.serialization.json.JsonPrimitive ?: return null
+    val text = primitive.content.trim()
+    if (!jsonNumberText.matches(text)) return null
+    val value = text.toDoubleOrNull() ?: return null
+    val rounded = abs(value).roundToInt()
+    return if (value < 0) -rounded else rounded
 }
 
 @Serializable
@@ -208,12 +171,12 @@ data class XiaoV2bPaymentMethodData(
     val id: Int = 0,
     val name: String = "",
     val payment: String = "",
-    val icon: String? = null
+    val icon: String? = null,
 ) {
     fun toDomainPaymentMethod() = PaymentMethodDto(
         id = id,
         name = name,
         payment = payment,
-        icon = icon
+        icon = icon,
     )
 }

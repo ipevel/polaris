@@ -2,16 +2,27 @@ package com.slte.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.slte.app.ui.screen.about.AboutScreen
+import com.slte.app.ui.screen.invite.InviteScreen
+import com.slte.app.ui.screen.invite.InviteViewModel
 import com.slte.app.ui.screen.main.DashboardData
 import com.slte.app.ui.screen.main.MainScreen
 import com.slte.app.ui.screen.main.MainViewModel
+import com.slte.app.ui.screen.notice.NoticeScreen
+import com.slte.app.ui.screen.notice.NoticeViewModel
 import com.slte.app.ui.screen.order.OrdersScreen
 import com.slte.app.ui.screen.order.OrdersViewModel
+import com.slte.app.ui.screen.plans.PlansScreen
+import com.slte.app.ui.screen.plans.PlansViewModel
 import com.slte.app.ui.screen.plans.PurchaseFlow
 import com.slte.app.ui.screen.plans.PurchaseStep
 import com.slte.app.ui.screen.plans.PurchaseViewModel
+import com.slte.app.ui.screen.profile.ProfileScreen
+import com.slte.app.ui.screen.profile.ProfileViewModel
+import com.slte.app.ui.screen.server.ServerScreen
+import com.slte.app.ui.screen.server.ServerViewModel
+import com.slte.app.ui.screen.settings.SettingsScreen
 
-/** 订单页组合：订单列表 + 支付流程 + 支付等待轮询（LoggedInApp 页面分发的一部分） */
 @Composable
 internal fun OrdersPageContent(
     ordersViewModel: OrdersViewModel,
@@ -24,7 +35,7 @@ internal fun OrdersPageContent(
     OrdersScreen(
         onBack = onBack,
         onPay = { tradeNo -> purchaseViewModel.loadPaymentForOrder(tradeNo) },
-        viewModel = ordersViewModel
+        viewModel = ordersViewModel,
     )
     PurchaseFlow(
         step = purchaseStep,
@@ -36,10 +47,13 @@ internal fun OrdersPageContent(
         onConfirmWarning = {},
         onSelectPayment = purchaseViewModel::selectPaymentMethod,
         onConfirmPayment = purchaseViewModel::confirmPayment,
-        onPaymentReturn = { purchaseViewModel.onPaymentReturn(); ordersViewModel.refresh() },
-        onDismiss = purchaseViewModel::goBack
+        onPaymentReturn = {
+            purchaseViewModel.onPaymentReturn()
+            ordersViewModel.refresh()
+        },
+        onDismiss = purchaseViewModel::goBack,
     )
-    // 支付等待轮询（轮询逻辑在 PurchaseViewModel 内，UI 只负责启动与副作用编排）
+
     val payingTradeNo = (purchaseStep as? PurchaseStep.OrderPayment)?.tradeNo
     LaunchedEffect(payingTradeNo) {
         if (payingTradeNo != null) purchaseViewModel.startOrderPolling(payingTradeNo)
@@ -52,7 +66,6 @@ internal fun OrdersPageContent(
     }
 }
 
-/** 首页组合（LoggedInApp 页面分发的一部分） */
 @Composable
 internal fun DashboardPageContent(
     mainViewModel: MainViewModel,
@@ -72,6 +85,92 @@ internal fun DashboardPageContent(
         onNotice = onNotice,
         onSupport = onSupport,
         onProfile = onProfile,
-        onRenew = onRenew
+        onRenew = onRenew,
     )
+}
+
+@Composable
+internal fun ProfilePageContent(
+    profileViewModel: ProfileViewModel,
+    onBack: () -> Unit,
+    onOrders: () -> Unit,
+    onInvite: () -> Unit,
+    onRenew: () -> Unit,
+    onContact: () -> Unit,
+    onSettings: () -> Unit,
+    onAbout: () -> Unit,
+) {
+    LaunchedEffect(Unit) { profileViewModel.refresh() }
+    ProfileScreen(
+        onBack = onBack,
+        onOrders = onOrders,
+        onInvite = onInvite,
+        onRenew = onRenew,
+        onContact = onContact,
+        onSettings = onSettings,
+        onAbout = onAbout,
+        onLogout = profileViewModel::logout,
+        viewModel = profileViewModel,
+    )
+}
+
+@Composable
+internal fun ServerPageContent(
+    serverViewModel: ServerViewModel,
+    onUpdateSubscription: () -> Unit,
+    onBack: () -> Unit,
+) {
+    LaunchedEffect(Unit) { serverViewModel.loadNodes() }
+    ServerScreen(
+        onBack = onBack,
+        onUpdateSubscription = onUpdateSubscription,
+        viewModel = serverViewModel,
+    )
+}
+
+@Composable
+internal fun InvitePageContent(
+    inviteViewModel: InviteViewModel,
+    onBack: () -> Unit,
+) {
+    InviteScreen(
+        onBack = onBack,
+        viewModel = inviteViewModel,
+    )
+}
+
+@Composable
+internal fun NoticePageContent(
+    noticeViewModel: NoticeViewModel,
+    onBack: () -> Unit,
+) {
+    NoticeScreen(
+        onBack = onBack,
+        viewModel = noticeViewModel,
+    )
+}
+
+@Composable
+internal fun PlansPageContent(
+    plansViewModel: PlansViewModel,
+    purchaseViewModel: PurchaseViewModel,
+    onBack: () -> Unit,
+    onGoToOrders: () -> Unit,
+) {
+    PlansScreen(
+        onBack = onBack,
+        viewModel = plansViewModel,
+        purchaseViewModel = purchaseViewModel,
+        onGoToOrders = onGoToOrders,
+    )
+}
+
+@Composable
+internal fun SettingsPageContent(onBack: () -> Unit) {
+    SettingsScreen(onBack = onBack)
+}
+
+@Composable
+internal fun AboutPageContent(onBack: () -> Unit) {
+    AboutScreen(onBack = onBack)
 }

@@ -17,18 +17,13 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.utils.Dimens
 
-/**
- * 图标按钮：用于 TopBar 操作按钮和返回按钮。
- *
- * @param showBackground true 时显示圆形底衬（操作按钮），false 时仅显示图标（返回按钮）
- */
 @Composable
 fun CircleIconButton(
     icon: ImageVector,
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    showBackground: Boolean = true
+    showBackground: Boolean = true,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
     IconButton(
@@ -36,29 +31,30 @@ fun CircleIconButton(
             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
             onClick()
         },
-        modifier = modifier
+        modifier = modifier,
     ) {
         if (showBackground) {
             Box(
-                modifier = Modifier
+                modifier =
+                Modifier
                     .size(Dimens.topBarActionBgSize)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = description,
-                    modifier = Modifier.size(Dimens.topBarActionIconSize),
-                    tint = SlteColors.current.iconBlue
+                    modifier = Modifier.size(Dimens.icon.lg),
+                    tint = SlteColors.current.accentInteractive,
                 )
             }
         } else {
             Icon(
                 imageVector = icon,
                 contentDescription = description,
-                modifier = Modifier.size(Dimens.topBarActionIconSize),
-                tint = MaterialTheme.colorScheme.onSurface
+                modifier = Modifier.size(Dimens.icon.lg),
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

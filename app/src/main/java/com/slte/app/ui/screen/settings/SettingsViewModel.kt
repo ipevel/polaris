@@ -4,92 +4,89 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
 import com.slte.app.data.local.LocaleStore
+import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelProxy
-import com.slte.app.data.local.ThemePreference
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Locale
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.Locale
-import javax.inject.Inject
 
-/**
- * 到期/流量邮件提醒开关状态。
- *
- * 默认开启：后台默认 remind_expire/remind_traffic=1，进入页面时再请求服务端确认；
- * remindLoading=true 表示正在请求服务端。
- */
+enum class RemindSync { Loading, Idle, Saving }
+
 data class SettingsData(
     val expireRemindEnabled: Boolean = true,
     val trafficRemindEnabled: Boolean = true,
-    val remindLoading: Boolean = true,
-    val remindSaving: Boolean = false,
+    val remindSync: RemindSync = RemindSync.Loading,
     val errorMessageRes: Int? = null,
     val tunStackMode: TunStackMode = TunStackMode.DEFAULT,
-    /** 每次切换 TUN 堆栈成功后 +1，驱动页面 Toast 提示 */
+
     val tunStackSwitchCount: Int = 0,
-    /** 深色模式（本地偏好，默认关 = 浅色） */
+
     val darkModeEnabled: Boolean = false,
-    /** 当前界面语言（null = 跟随系统） */
-    val locale: Locale? = null
+
+    val locale: Locale? = null,
 )
 
-data class ChangePasswordState(
-    val showChangePasswordSheet: Boolean = false,
+data class ChangePasswordForm(
     val oldPassword: String = "",
     val newPassword: String = "",
     val confirmPassword: String = "",
-    val oldPasswordVisible: Boolean = false,
-    val newPasswordVisible: Boolean = false,
-    val submitting: Boolean = false,
-    val errorMessageRes: Int? = null,
-    val success: Boolean = false
 )
 
-/**
- * 其他设置页 ViewModel：加载并更新到期/流量邮件提醒开关。
- */
+sealed interface ChangePasswordState {
+    object Closed : ChangePasswordState
+
+    data class Editing(
+        val form: ChangePasswordForm = ChangePasswordForm(),
+        val submitting: Boolean = false,
+        val errorMessageRes: Int? = null,
+    ) : ChangePasswordState
+
+    object Succeeded : ChangePasswordState
+}
+
 @HiltViewModel
-class SettingsViewModel @Inject constructor(
+class SettingsViewModel
+@Inject
+constructor(
     private val authRepository: AuthRepository,
     private val subscribeRepository: SubscribeRepository,
     private val kernelProxy: KernelProxy,
     private val themePreference: ThemePreference,
-    private val localeStore: LocaleStore
+    private val localeStore: LocaleStore,
 ) : ViewModel() {
-
-    private val _data = MutableStateFlow(
-        SettingsData(
-            darkModeEnabled = themePreference.dark.value,
-            locale = localeStore.locale.value
+    private val _data =
+        MutableStateFlow(
+            SettingsData(
+                darkModeEnabled = themePreference.dark.value,
+                locale = localeStore.locale.value,
+            ),
         )
-    )
     val data: StateFlow<SettingsData> = _data.asStateFlow()
 
-    private val _changePassword = MutableStateFlow(ChangePasswordState())
-    val changePasswordState: StateFlow<ChangePasswordState> = _changePassword.asStateFlow()
+    private val _changePasswordState = MutableStateFlow<ChangePasswordState>(ChangePasswordState.Closed)
+    val changePasswordState: StateFlow<ChangePasswordState> = _changePasswordState.asStateFlow()
 
     init {
         loadRemindSettings()
         loadTunStackMode()
     }
 
-    /** 切换深色模式并持久化 */
     fun setDarkMode(enabled: Boolean) {
         themePreference.setDark(enabled)
         _data.value = _data.value.copy(darkModeEnabled = enabled)
     }
 
-    /** 切换界面语言并持久化；null = 跟随系统，根组件监听后全树热切换 */
     fun setLocale(locale: Locale?) {
         localeStore.setLocale(locale)
         _data.value = _data.value.copy(locale = locale)
     }
 
-    /** 进入页面时读取内核当前 TUN 堆栈模式（后台进程 ServiceStore 为权威值） */
     private fun loadTunStackMode() {
         viewModelScope.launch {
             val mode = TunStackMode.fromValue(kernelProxy.tunStackMode())
@@ -97,149 +94,143 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** 切换 TUN 堆栈模式：写内核并持久化；运行中会自动原地重启 TUN 生效 */
     fun setTunStackMode(mode: TunStackMode) {
         if (_data.value.tunStackMode == mode) return
         viewModelScope.launch {
             kernelProxy.setTunStack(mode.value)
-            _data.value = _data.value.copy(
-                tunStackMode = mode,
-                tunStackSwitchCount = _data.value.tunStackSwitchCount + 1
-            )
+            _data.value =
+                _data.value.copy(
+                    tunStackMode = mode,
+                    tunStackSwitchCount = _data.value.tunStackSwitchCount + 1,
+                )
         }
     }
 
-    /** TUN 堆栈切换 Toast 弹出后消费 */
     fun consumeTunStackSwitch() {
         _data.value = _data.value.copy(tunStackSwitchCount = 0)
     }
 
-    /** 进入页面时直接请求服务端 remind_expire/remind_traffic 覆盖默认值 */
     fun loadRemindSettings() {
         viewModelScope.launch {
-            subscribeRepository.fetchUserInfo(force = true)
+            subscribeRepository
+                .fetchUserInfo(force = true)
                 .onSuccess { user ->
-                    _data.value = _data.value.copy(
-                        expireRemindEnabled = user.remindExpire == 1,
-                        trafficRemindEnabled = user.remindTraffic == 1,
-                        remindLoading = false,
-                        errorMessageRes = null
-                    )
-                }
-                .onFailure {
-                    // 请求失败保持默认开启，不打扰用户
-                    _data.value = _data.value.copy(remindLoading = false)
+                    _data.value =
+                        _data.value.copy(
+                            expireRemindEnabled = user.remindExpire == 1,
+                            trafficRemindEnabled = user.remindTraffic == 1,
+                            remindSync = RemindSync.Idle,
+                            errorMessageRes = null,
+                        )
+                }.onFailure {
+                    _data.value = _data.value.copy(remindSync = RemindSync.Idle)
                 }
         }
     }
 
-    /** 切换到期提醒并写入服务端；失败时回滚并提示 */
     fun setExpireRemind(enabled: Boolean) {
-        if (_data.value.remindSaving) return
-        _data.value = _data.value.copy(expireRemindEnabled = enabled, remindSaving = true, errorMessageRes = null)
+        if (_data.value.remindSync != RemindSync.Idle) return
+        _data.value = _data.value.copy(expireRemindEnabled = enabled, remindSync = RemindSync.Saving, errorMessageRes = null)
         viewModelScope.launch {
-            authRepository.updateRemindExpire(enabled)
+            authRepository
+                .updateRemindExpire(enabled)
                 .onSuccess {
-                    _data.value = _data.value.copy(remindSaving = false)
-                }
-                .onFailure {
-                    // 回滚开关状态
-                    _data.value = _data.value.copy(
-                        expireRemindEnabled = !enabled,
-                        remindSaving = false,
-                        errorMessageRes = R.string.settings_remind_save_failed
-                    )
+                    _data.value = _data.value.copy(remindSync = RemindSync.Idle)
+                }.onFailure {
+                    _data.value =
+                        _data.value.copy(
+                            expireRemindEnabled = !enabled,
+                            remindSync = RemindSync.Idle,
+                            errorMessageRes = R.string.settings_remind_save_failed,
+                        )
                 }
         }
     }
 
-    /** 切换流量提醒并写入服务端；失败时回滚并提示 */
     fun setTrafficRemind(enabled: Boolean) {
-        if (_data.value.remindSaving) return
-        _data.value = _data.value.copy(trafficRemindEnabled = enabled, remindSaving = true, errorMessageRes = null)
+        if (_data.value.remindSync != RemindSync.Idle) return
+        _data.value = _data.value.copy(trafficRemindEnabled = enabled, remindSync = RemindSync.Saving, errorMessageRes = null)
         viewModelScope.launch {
-            authRepository.updateRemindTraffic(enabled)
+            authRepository
+                .updateRemindTraffic(enabled)
                 .onSuccess {
-                    _data.value = _data.value.copy(remindSaving = false)
-                }
-                .onFailure {
-                    _data.value = _data.value.copy(
-                        trafficRemindEnabled = !enabled,
-                        remindSaving = false,
-                        errorMessageRes = R.string.settings_remind_save_failed
-                    )
+                    _data.value = _data.value.copy(remindSync = RemindSync.Idle)
+                }.onFailure {
+                    _data.value =
+                        _data.value.copy(
+                            trafficRemindEnabled = !enabled,
+                            remindSync = RemindSync.Idle,
+                            errorMessageRes = R.string.settings_remind_save_failed,
+                        )
                 }
         }
     }
 
     fun showChangePassword() {
-        _changePassword.value = ChangePasswordState(showChangePasswordSheet = true)
+        _changePasswordState.value = ChangePasswordState.Editing()
     }
 
     fun dismissChangePassword() {
-        _changePassword.value = _changePassword.value.copy(showChangePasswordSheet = false)
+        _changePasswordState.value = ChangePasswordState.Closed
     }
 
     fun onOldPasswordChange(value: String) {
-        _changePassword.value = _changePassword.value.copy(oldPassword = value, errorMessageRes = null)
+        _changePasswordState.updateEditing { it.copy(oldPassword = value) }
     }
 
     fun onNewPasswordChange(value: String) {
-        _changePassword.value = _changePassword.value.copy(newPassword = value, errorMessageRes = null)
+        _changePasswordState.updateEditing { it.copy(newPassword = value) }
     }
 
     fun onConfirmPasswordChange(value: String) {
-        _changePassword.value = _changePassword.value.copy(confirmPassword = value, errorMessageRes = null)
+        _changePasswordState.updateEditing { it.copy(confirmPassword = value) }
     }
 
-    fun toggleOldPasswordVisible() {
-        _changePassword.value = _changePassword.value.copy(oldPasswordVisible = !_changePassword.value.oldPasswordVisible)
+    private fun MutableStateFlow<ChangePasswordState>.updateEditing(transform: (ChangePasswordForm) -> ChangePasswordForm) {
+        val current = value as? ChangePasswordState.Editing ?: return
+        value = current.copy(form = transform(current.form), errorMessageRes = null)
     }
 
-    fun toggleNewPasswordVisible() {
-        _changePassword.value = _changePassword.value.copy(newPasswordVisible = !_changePassword.value.newPasswordVisible)
-    }
-
-    /** 提交修改密码：本地校验 → 服务端 → 成功后关闭弹窗并提示 */
     fun submitChangePassword() {
-        val state = _changePassword.value
+        val state = _changePasswordState.value as? ChangePasswordState.Editing ?: return
         if (state.submitting) return
-        val error = when {
-            state.oldPassword.isBlank() -> R.string.settings_change_pwd_old_required
-            state.newPassword.length < 8 -> R.string.settings_change_pwd_too_short
-            state.newPassword != state.confirmPassword -> R.string.settings_change_pwd_mismatch
-            else -> null
-        }
+        val form = state.form
+        val error =
+            when {
+                form.oldPassword.isBlank() -> R.string.settings_change_pwd_old_required
+                form.newPassword.length < 8 -> R.string.settings_change_pwd_too_short
+                form.newPassword != form.confirmPassword -> R.string.settings_change_pwd_mismatch
+                else -> null
+            }
         if (error != null) {
-            _changePassword.value = state.copy(errorMessageRes = error)
+            _changePasswordState.value = state.copy(errorMessageRes = error)
             return
         }
-        _changePassword.value = state.copy(submitting = true, errorMessageRes = null)
+        _changePasswordState.value = state.copy(submitting = true, errorMessageRes = null)
         viewModelScope.launch {
-            authRepository.changePassword(state.oldPassword, state.newPassword)
+            authRepository
+                .changePassword(form.oldPassword, form.newPassword)
                 .onSuccess {
-                    _changePassword.value = _changePassword.value.copy(
-                        submitting = false,
-                        success = true,
-                        showChangePasswordSheet = false
-                    )
-                }
-                .onFailure {
-                    _changePassword.value = _changePassword.value.copy(
-                        submitting = false,
-                        errorMessageRes = R.string.settings_change_pwd_failed
-                    )
+                    _changePasswordState.value = ChangePasswordState.Succeeded
+                }.onFailure {
+                    val editing = _changePasswordState.value as? ChangePasswordState.Editing
+                    if (editing != null) {
+                        _changePasswordState.value =
+                            editing.copy(
+                                submitting = false,
+                                errorMessageRes = R.string.settings_change_pwd_failed,
+                            )
+                    }
                 }
         }
     }
 
-    /** 修改密码成功提示消费后关闭 */
     fun consumeChangePasswordSuccess() {
-        _changePassword.value = _changePassword.value.copy(success = false)
+        _changePasswordState.value = ChangePasswordState.Closed
     }
 
-    /** 修改密码错误提示消费后关闭 */
     fun consumeChangePasswordError() {
-        _changePassword.value = _changePassword.value.copy(errorMessageRes = null)
+        val editing = _changePasswordState.value as? ChangePasswordState.Editing ?: return
+        _changePasswordState.value = editing.copy(errorMessageRes = null)
     }
 }
