@@ -2,12 +2,11 @@ name: SLTE CI
 
 on:
   push:
-
     branches: [main, master]
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   quality:
@@ -89,24 +88,13 @@ jobs:
             exit 1
           fi
 
-      - name: 失败日志推送到 ci-logs 分支（失败时）
-        if: failure()
-        run: |
-          set -e
-          test -f ci-failure.log || echo "（失败发生在日志采集之前，无 Gradle 输出）" > ci-failure.log
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B ci-logs
-          git add -f ci-failure.log
-          git commit -m "ci: 失败日志（run ${{ github.run_number }}）" || true
-          git push -f origin ci-logs
-
       - name: 上传检查报告（失败时）
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: SLTE-CI-reports
           path: |
+            ci-failure.log
             app/build/reports/tests/**
             app/build/reports/ktlint/**
             app/build/reports/lint-results-debug.html

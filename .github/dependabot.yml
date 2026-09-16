@@ -1,13 +1,19 @@
 version: 2
-# 依赖与 Action 升级：由 Dependabot 提 PR，CI（单测 + ktlint + lint）自动验收。
-# 版本目录见 gradle/libs.versions.toml；与 Kotlin/compileSdk 有硬约束的条目见下方 ignore 列表。
+# 依赖与 Action 升级：默认暂停自动提 PR。
+#
+# 原因：本项目的 compileSdk 36 / AGP 8.9.1 与新版 androidx 存在硬约束——例如
+# androidx.hilt:hilt-navigation-compose 1.4.0 要求 compileSdk ≥ 37 且 AGP ≥ 9.1，
+# 自动升级会直接让构建失败（checkDebugAarMetadata 报 14 处不兼容）。
+#
+# 需要升级依赖时：把下面的 open-pull-requests-limit 改为非 0（或加 allow: update-types
+# 只允许补丁级更新），先升级 compileSdk / AGP，再让 Dependabot 提 PR、由 CI 验证。
 updates:
   - package-ecosystem: gradle
     directory: "/"
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels:
       - dependencies
     groups:
@@ -38,5 +44,6 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    open-pull-requests-limit: 0
     labels:
       - ci
