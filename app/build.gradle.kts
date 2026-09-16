@@ -8,57 +8,68 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.ktlint)
 }
 
-// 构建配置：app/gradle.properties（模板 gradle.properties.example，真实文件已 gitignore），环境变量优先
-val slteProps = Properties().apply {
-    rootProject.file("app/gradle.properties").takeIf { it.isFile() }?.inputStream()?.use {
-        load(InputStreamReader(it, Charsets.UTF_8))
+ktlint {
+    version.set("1.5.0")
+    android.set(true)
+    ignoreFailures.set(false)
+}
+
+val slteProps =
+    Properties().apply {
+        rootProject.file("app/gradle.properties").takeIf { it.isFile() }?.inputStream()?.use {
+            load(InputStreamReader(it, Charsets.UTF_8))
+        }
     }
-}
 
-fun slteValue(name: String): String? =
-    System.getenv(name)?.takeIf { it.isNotBlank() }
-        ?: slteProps.getProperty(name)?.trim()?.takeIf { it.isNotBlank() }
+fun slteValue(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+    ?: slteProps.getProperty(name)?.trim()?.takeIf { it.isNotBlank() }
 
-/** 只接受 https：无协议自动补全，显式 http 拒绝 */
 fun slteHttps(raw: String): String? = when {
     raw.startsWith("https://") -> raw
     raw.startsWith("http://") -> null
     else -> "https://$raw"
 }
 
-/** 从注入地址提取小写域名，供白名单自动并入 */
-fun slteHost(url: String): String? = url.removePrefix("https://")
-    .substringBefore('/').substringBefore(':')
-    .takeIf { it.isNotEmpty() }?.lowercase()
+fun slteHost(url: String): String? = url
+    .removePrefix("https://")
+    .substringBefore('/')
+    .substringBefore(':')
+    .takeIf { it.isNotEmpty() }
+    ?.lowercase()
 
-// 应用信息
 val slteAppName = slteValue("SLTE_APP_NAME") ?: "SLTE"
 val slteApplicationId = slteValue("SLTE_APPLICATION_ID") ?: "com.slte.app"
 val slteVersionCode = slteValue("SLTE_VERSION_CODE")?.toIntOrNull() ?: 1
 val slteVersionName = slteValue("SLTE_VERSION_NAME") ?: "1.0.0"
 
-// 后端 API
 val slteApiBaseUrl = slteValue("SLTE_API_BASE_URL")?.let(::slteHttps) ?: "https://api.example.com"
 val slteApiType = slteValue("SLTE_API_TYPE") ?: "xiaov2b"
 val slteSubscribePath = slteValue("SLTE_SUBSCRIBE_PATH") ?: "/api/v1/client/subscribe"
-val slteRemoteConfigUrls = slteValue("SLTE_REMOTE_CONFIG_URLS")
-    ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.mapNotNull(::slteHttps)
-    ?.joinToString(",") ?: ""
+val slteRemoteConfigUrls =
+    slteValue("SLTE_REMOTE_CONFIG_URLS")
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?.mapNotNull(::slteHttps)
+        ?.joinToString(",") ?: ""
 
-// 白名单 = 手动追加 + API 域名 + 配置源域名（远程下发的地址只能在这些域内切换）
-val slteAllowedDomains = buildList {
-    slteValue("SLTE_ALLOWED_DOMAINS")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.let(::addAll)
-    slteValue("SLTE_API_BASE_URL")?.let(::slteHttps)?.let(::add)
-    slteRemoteConfigUrls.split(',').filter { it.isNotEmpty() }.forEach(::add)
-}.filter { it.isNotEmpty() }.mapNotNull(::slteHost).distinct().joinToString(",")
+val slteAllowedDomains =
+    buildList {
+        slteValue("SLTE_ALLOWED_DOMAINS")
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.let(::addAll)
+        slteValue("SLTE_API_BASE_URL")?.let(::slteHttps)?.let(::add)
+        slteRemoteConfigUrls.split(',').filter { it.isNotEmpty() }.forEach(::add)
+    }.filter { it.isNotEmpty() }.mapNotNull(::slteHost).distinct().joinToString(",")
 
-// Crisp 客服（编译期默认，运行时由远程配置覆盖）
 val slteCrispWebsiteId = slteValue("SLTE_CRISP_WEBSITE_ID") ?: ""
 val slteCrispEnabled = (slteValue("SLTE_CRISP_ENABLED") ?: "false").toBoolean()
 
-// 发布签名
 val slteReleaseStoreFile = slteValue("SLTE_RELEASE_STORE_FILE")
 
 android {
@@ -66,11 +77,10 @@ android {
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
-    // 安装包输出名带版本号：SLTE-1.0.0.apk / SLTE-1.0.0-debug.apk
     applicationVariants.all {
         outputs.all {
             (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                "SLTE-${versionName}.apk"
+                "SLTE-$versionName.apk"
         }
     }
 
@@ -84,24 +94,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
-        // 仅发布 arm64-v8a：内核 so 只有 arm64，其他 ABI 打包会导致安装成功但运行崩溃
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
 
-        // 应用显示名（覆盖 strings.xml 的 app_name；图标需自行替换 res/mipmap）
         resValue("string", "app_name", slteAppName)
 
-        // 后端 API 与订阅路径
         buildConfigField("String", "API_BASE_URL", "\"$slteApiBaseUrl\"")
         buildConfigField("String", "API_TYPE", "\"$slteApiType\"")
         buildConfigField("String", "SUBSCRIBE_PATH", "\"$slteSubscribePath\"")
 
-        // 远程配置源与域名白名单（白名单同时是凭据发送的安全边界）
         buildConfigField("String", "REMOTE_CONFIG_URLS", "\"$slteRemoteConfigUrls\"")
         buildConfigField("String", "ALLOWED_DOMAINS", "\"$slteAllowedDomains\"")
 
-        // Crisp 客服（运行时由远程配置 crisp_* 字段覆盖）
         buildConfigField("String", "CRISP_WEBSITE_ID", "\"$slteCrispWebsiteId\"")
         buildConfigField("boolean", "CRISP_ENABLED", "$slteCrispEnabled")
     }
@@ -113,6 +118,11 @@ android {
             keyAlias = slteValue("SLTE_RELEASE_KEY_ALIAS") ?: "slte"
             keyPassword = slteValue("SLTE_RELEASE_KEY_PASSWORD").orEmpty()
         }
+    }
+
+    sourceSets {
+        getByName("test").java.srcDir("src/sharedTest/java")
+        getByName("androidTest").java.srcDir("src/sharedTest/java")
     }
 
     buildTypes {
@@ -127,19 +137,19 @@ android {
             if (hasReleaseKey) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
-                // 禁止 release 静默退回 debug 签名（debug 密钥公开，同签名恶意包可覆盖安装）
+
                 gradle.taskGraph.whenReady {
                     if (allTasks.any { it.name.contains("Release") }) {
                         throw GradleException(
                             "release 构建必须设置 SLTE_RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD，" +
-                                "禁止使用 debug 签名发布（本地调试请用 assembleDebug）"
+                                "禁止使用 debug 签名发布（本地调试请用 assembleDebug）",
                         )
                     }
                 }
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -155,9 +165,15 @@ android {
 
     testOptions {
         unitTests {
-            // JVM 单测中未 mock 的 android.* 调用返回默认值而非抛异常
+            isIncludeAndroidResources = true
             isReturnDefaultValues = true
         }
+    }
+
+    lint {
+
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
     buildFeatures {
@@ -171,6 +187,13 @@ android {
         }
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+
+    bundle {
+        language {
+
+            enableSplit = false
         }
     }
 }
@@ -203,23 +226,101 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.webkit)
 
-    // VPN 内核（mihomo，经 kaild Binder 与 :background 进程通信）
     implementation(project(":kernel-service"))
     implementation(project(":kernel-common"))
     implementation(libs.kaidl.runtime)
 
-    // Crisp 客服 SDK
     implementation(libs.crisp.sdk)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockk)
     testImplementation(libs.snakeyaml)
-    // 拦截器/配置竞速集成测试的本地假服务器
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
+
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
 }
+
+val verifyReleaseApiSurvivors =
+    tasks.register("verifyReleaseApiSurvivors") {
+        group = "verification"
+        description = "校验 R8 未删除 data/remote 下的 @Serializable DTO 与 Retrofit 接口"
+
+        val sourceDir = layout.projectDirectory.dir("src/main/java/com/slte/app/data/remote")
+        val mappingFile = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
+
+        dependsOn("minifyReleaseWithR8")
+        inputs.dir(sourceDir)
+        inputs.file(mappingFile)
+
+        outputs.upToDateWhen { false }
+
+        doLast {
+            val declaration = Regex("""^\s*(?:@\w+[^)]*\)?\s*)*(?:public |internal |private )?(?:data |sealed |abstract |open )*(class|object|interface)\s+([A-Za-z0-9_]+)""")
+            val serializableMarker = "@Serializable"
+            val retrofitMarker = Regex("""\binterface\s+[A-Za-z0-9_]*Retrofit\b""")
+
+            val expected = sortedSetOf<String>()
+            sourceDir.asFile.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { file ->
+                var pendingSerializable = false
+                file.readLines().forEach { line ->
+                    val trimmed = line.trim()
+                    when {
+                        trimmed.isEmpty() -> pendingSerializable = false
+                        trimmed.startsWith(serializableMarker) -> pendingSerializable = true
+                        trimmed.startsWith("@") -> Unit
+                        trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*") -> Unit
+                        else -> {
+                            val name = declaration.find(line)?.groupValues?.get(2)
+                            if (name != null && (pendingSerializable || retrofitMarker.containsMatchIn(line))) {
+                                expected += name
+                            }
+                            pendingSerializable = false
+                        }
+                    }
+                }
+            }
+            if (expected.isEmpty()) {
+                throw GradleException("未在 ${sourceDir.asFile} 下找到任何 @Serializable DTO / Retrofit 接口，校验脚本可能已失效")
+            }
+
+            val mapping = mappingFile.get().asFile
+            if (!mapping.isFile) throw GradleException("缺少 R8 mapping 文件：${mapping.absolutePath}")
+            val mappingText = mapping.readText()
+
+            val missing =
+                expected.filterNot { name ->
+                    val pattern =
+                        Regex(
+                            "^com\\.slte\\.app\\.data\\.remote\\.[A-Za-z0-9_.]*\\." + Regex.escape(name) + " -> ",
+                            RegexOption.MULTILINE,
+                        )
+                    pattern.containsMatchIn(mappingText)
+                }
+            if (missing.isNotEmpty()) {
+                throw GradleException(
+                    "R8 删除了 data/remote 下的 ${missing.size} 个类：${missing.joinToString(", ")}\n" +
+                        "这些类通过泛型实参 + 反射 serializer 使用，R8 看不到强引用。\n" +
+                        "请检查 app/proguard-rules.pro：相关的 -keep 规则**不能**带 allowshrinking，\n" +
+                        "否则 Retrofit 会在发请求前抛 Unable to create converter for class java.lang.Object。",
+                )
+            }
+            logger.lifecycle("R8 存活校验通过（${expected.size} 个 @Serializable DTO / Retrofit 接口）")
+        }
+    }
+
+val verifyKernelBinary =
+    tasks.register("verifyKernelBinary") {
+        group = "verification"
+        description = "校验预编译内核产物 libclash.so 的 SHA-256 与 SHA256SUMS 记录一致"
+        dependsOn(":kernel-core:verifyNativeLibraries")
+    }
