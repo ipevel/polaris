@@ -4,6 +4,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class XboardDtoTest {
+    @Test
+    fun `subscribeInfo 透传 subscribe_url`() {
+        val data =
+            XboardSubscribeData(
+                planId = 1,
+                subscribeUrl = "https://sub.example.com/api/v1/client/subscribe?token=xyz789",
+            )
+        assertEquals("https://sub.example.com/api/v1/client/subscribe?token=xyz789", data.toDomainSubscribeInfo().subscribeUrl)
+    }
 
     @Test
     fun `userInfo 布尔提醒开关转为 0-1`() {
@@ -45,11 +54,12 @@ class XboardDtoTest {
 
     @Test
     fun `订单金额容错解析`() {
-        val order = XboardOrderData(
-            tradeNo = "T1",
-            balanceAmount = kotlinx.serialization.json.JsonPrimitive("100"),
-            discountAmount = null
-        )
+        val order =
+            XboardOrderData(
+                tradeNo = "T1",
+                balanceAmount = kotlinx.serialization.json.JsonPrimitive("100"),
+                discountAmount = null,
+            )
         val dto = order.toDomainOrder()
         assertEquals(100, dto.balanceAmount)
         assertEquals(0, dto.discountAmount)
