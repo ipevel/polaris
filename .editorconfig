@@ -1,0 +1,27 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+indent_size = 4
+ktlint_code_style = android_studio
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ktlint_standard_no_wildcard_imports = disabled
+ktlint_standard_max-line-length = disabled
+ktlint_standard_function-naming = disabled
+ktlint_standard_class-naming = disabled
+ktlint_standard_property-naming = disabled
+ktlint_standard_filename = disabled
+
+[*.{yml,yaml,json,md}]
+indent_size = 2
+
+[*.xml]
+indent_size = 4

@@ -23,6 +23,9 @@ import kotlinx.coroutines.*
 import java.util.*
 import java.util.concurrent.TimeUnit
 
+// 上游 CMA 的定时更新 worker：本应用没有调度方（无 AlarmManager / JobScheduler 触发，
+// ACTION_PROFILE_REQUEST_UPDATE 也没有生产者），processing()/completed()/failed()/resultBuilder() 均无调用者。
+// 后续若要对它做「修复」，请先确认可达性。
 class ProfileWorker : BaseService() {
     private val jobs = java.util.concurrent.ConcurrentLinkedQueue<Job>()
 

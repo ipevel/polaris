@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProfileNameTest {
-
     @Test
     fun `同一邮箱标记稳定`() {
         assertEquals(profileNameFor("user@example.com"), profileNameFor("user@example.com"))
@@ -28,7 +27,7 @@ class ProfileNameTest {
     fun `标记前缀与长度固定`() {
         val name = profileNameFor("user@example.com")
         assertTrue(name.startsWith("SLTE-"))
-        // SHA-256 十六进制长度固定：SLTE- + 64 位
+
         assertEquals("SLTE-".length + 64, name.length)
     }
 }

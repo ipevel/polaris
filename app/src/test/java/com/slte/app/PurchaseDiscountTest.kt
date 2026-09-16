@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PurchaseDiscountTest {
-
     @Test
     fun `百分比折扣按原价计算`() {
         assertEquals(60, computeCouponDiscount(type = 2, value = 50, priceCents = 120))
@@ -20,7 +19,6 @@ class PurchaseDiscountTest {
 
     @Test
     fun `折扣不为负`() {
-        // 异常负值输入钳制为 0；超额折扣由 finalPrice 封顶，不在折扣计算内
         assertEquals(0, computeCouponDiscount(type = 1, value = -5, priceCents = 120))
         assertEquals(0, computeCouponDiscount(type = 2, value = -10, priceCents = 120))
         assertEquals(240, computeCouponDiscount(type = 2, value = 200, priceCents = 120))

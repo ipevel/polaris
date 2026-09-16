@@ -2,7 +2,6 @@ package com.slte.app.domain.model
 
 import kotlinx.serialization.Serializable
 
-/** 服务器节点（来自 V2Board API） */
 @Serializable
 data class ServerNode(
     val id: Int,
@@ -24,10 +23,17 @@ data class ServerNode(
     val obfsPassword: String = "",
     val flow: String = "",
     val sni: String = "",
-    val groupId: Int = 0
+    val groupId: Int = 0,
 )
 
 @Serializable
 enum class ServerType {
-    SHADOWSOCKS, VMESS, VLESS, TROJAN, TUIC, HYSTERIA, HYSTERIA2, ANYTLS
+    SHADOWSOCKS,
+    VMESS,
+    VLESS,
+    TROJAN,
+    TUIC,
+    HYSTERIA,
+    HYSTERIA2,
+    ANYTLS,
 }

@@ -13,13 +13,10 @@ import com.slte.app.utils.sanitizeLog
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * 订单仓库：套餐查询、下单、支付、取消。
- *
- * 鉴权由 OkHttp 拦截器统一注入。
- */
 @Singleton
-class OrderRepository @Inject constructor(
+class OrderRepository
+@Inject
+constructor(
     private val authApi: AuthApi,
 ) {
     suspend fun fetchPlans(): Result<List<PlanInfo>> = runApi {
@@ -40,7 +37,10 @@ class OrderRepository @Inject constructor(
         authApi.getOrderDetail(tradeNo).toDomain()
     }
 
-    suspend fun checkCoupon(code: String, planId: Int?): Result<CouponCheckResult> = runApi {
+    suspend fun checkCoupon(
+        code: String,
+        planId: Int?,
+    ): Result<CouponCheckResult> = runApi {
         authApi.checkCoupon(code, planId).let {
             CouponCheckResult(name = it.name, type = it.type, value = it.value)
         }
@@ -55,7 +55,7 @@ class OrderRepository @Inject constructor(
                 type = it.type,
                 redirectUrl = it.redirectUrl,
                 message = it.message,
-                paid = it.paid
+                paid = it.paid,
             )
         }
     }
@@ -89,7 +89,7 @@ class OrderRepository @Inject constructor(
         status = status,
         period = period,
         createdAt = createdAt,
-        expiredAt = expiredAt
+        expiredAt = expiredAt,
     )
 
     private fun PlanInfoDto.toDomainPlanInfo() = PlanInfo(
@@ -100,7 +100,8 @@ class OrderRepository @Inject constructor(
         deviceLimit = deviceLimit,
         content = content,
         show = show,
-        periodPrices = listOfNotNull(
+        periodPrices =
+        listOfNotNull(
             monthPrice?.takeIf { it > 0 }?.let { PlanInfo.PeriodPrice("month_price", it.toString()) },
             quarterPrice?.takeIf { it > 0 }?.let { PlanInfo.PeriodPrice("quarter_price", it.toString()) },
             halfYearPrice?.takeIf { it > 0 }?.let { PlanInfo.PeriodPrice("half_year_price", it.toString()) },
@@ -108,6 +109,6 @@ class OrderRepository @Inject constructor(
             twoYearPrice?.takeIf { it > 0 }?.let { PlanInfo.PeriodPrice("two_year_price", it.toString()) },
             threeYearPrice?.takeIf { it > 0 }?.let { PlanInfo.PeriodPrice("three_year_price", it.toString()) },
             onetimePrice?.takeIf { it > 0 }?.let { PlanInfo.PeriodPrice("onetime_price", it.toString()) },
-        )
+        ),
     )
 }

@@ -9,15 +9,14 @@ import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.slte.app.R
 
-/** 全局 Lottie Loading 动画（用于按钮内/小尺寸场景） */
 @Composable
 fun LottieLoadingIcon(modifier: Modifier = Modifier) {
     val composition by rememberLottieComposition(
-        LottieCompositionSpec.RawRes(R.raw.loading)
+        LottieCompositionSpec.RawRes(R.raw.loading),
     )
     LottieAnimation(
         composition = composition,
         iterations = LottieConstants.IterateForever,
-        modifier = modifier
+        modifier = modifier,
     )
 }

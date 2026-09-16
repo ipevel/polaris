@@ -7,7 +7,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-
 @Serializable
 data class XiaoV2bNoticeData(
     val id: Int = 0,
@@ -20,17 +19,16 @@ data class XiaoV2bNoticeData(
     @SerialName("created_at")
     val createdAt: Long = 0,
     @SerialName("updated_at")
-    val updatedAt: Long = 0
+    val updatedAt: Long = 0,
 ) {
     fun toDomain() = Notice(
         id = id,
         title = title,
         body = content,
         tags = tags ?: emptyList(),
-        createdAt = createdAt
+        createdAt = createdAt,
     )
 }
-
 
 @Serializable
 data class XiaoV2bServerData(
@@ -54,14 +52,13 @@ data class XiaoV2bServerData(
     val method: String? = null,
     val protocol: String? = null,
     @SerialName("obfs_password") val obfsPassword: String? = null,
-    // group_id 可能为数组或 Int，用 JsonElement 容错
+
     @SerialName("group_id") val groupId: kotlinx.serialization.json.JsonElement? = null,
     val show: Int = 1,
     @SerialName("is_online") val isOnline: Int = 1,
-    val description: String? = null
+    val description: String? = null,
 ) {
     private fun resolveType(): com.slte.app.domain.model.ServerType {
-        // v2node 是 V2Board 通用节点，实际协议由 protocol 字段决定
         if (type == "v2node" && protocol != null) {
             return when (protocol) {
                 "hysteria2" -> com.slte.app.domain.model.ServerType.HYSTERIA2
@@ -88,42 +85,50 @@ data class XiaoV2bServerData(
         }
     }
 
-    /** 从 tls_settings JSON 中提取 server_name 作为 SNI */
     private fun extractSni(): String {
         val settings = tlsSettings ?: return ""
-        val obj = when (settings) {
-            is kotlinx.serialization.json.JsonObject -> settings
-            is kotlinx.serialization.json.JsonPrimitive -> runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(settings.content) as? kotlinx.serialization.json.JsonObject
-            }.getOrNull()
-            else -> null
-        } ?: return ""
+        val obj =
+            when (settings) {
+                is kotlinx.serialization.json.JsonObject -> settings
+                is kotlinx.serialization.json.JsonPrimitive ->
+                    runCatching {
+                        kotlinx.serialization.json.Json
+                            .parseToJsonElement(settings.content) as? kotlinx.serialization.json.JsonObject
+                    }.getOrNull()
+                else -> null
+            } ?: return ""
         return (obj["server_name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
     }
 
     fun toServerNode() = com.slte.app.domain.model.ServerNode(
-        id = id, name = name,
+        id = id,
+        name = name,
         type = resolveType(),
-        host = host, port = port, serverPort = serverPort,
+        host = host,
+        port = port,
+        serverPort = serverPort,
         cipher = cipher ?: method ?: "",
         password = password.orEmpty(),
         obfsPassword = obfsPassword.orEmpty(),
         uuid = uuid ?: "",
-        alterId = alterId, network = network ?: "tcp",
+        alterId = alterId,
+        network = network ?: "tcp",
         networkSettings = networkSettings?.let { jsonElementToStr(it) },
-        tls = tls == 1, tlsSettings = tlsSettings?.let { jsonElementToStr(it) },
-        obfs = obfs ?: "", obfsSettings = obfsSettings?.let { jsonElementToStr(it) },
+        tls = tls == 1,
+        tlsSettings = tlsSettings?.let { jsonElementToStr(it) },
+        obfs = obfs ?: "",
+        obfsSettings = obfsSettings?.let { jsonElementToStr(it) },
         flow = flow ?: "",
         sni = extractSni(),
-        groupId = when (groupId) {
+        groupId =
+        when (groupId) {
             is kotlinx.serialization.json.JsonArray -> (groupId.firstOrNull() as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: 0
             is kotlinx.serialization.json.JsonPrimitive -> groupId.content.toIntOrNull() ?: 0
             else -> 0
-        }
+        },
     )
 }
 
-/** 将 JsonElement 转成字符串：原始字符串去引号，对象/数组 toString */
 private fun jsonElementToStr(el: kotlinx.serialization.json.JsonElement): String = when (el) {
     is kotlinx.serialization.json.JsonPrimitive -> el.content
     else -> el.toString()
