@@ -211,6 +211,7 @@ jobs:
 
       - name: 代码风格与静态检查（ktlint + Android Lint + R8 存活校验）
         env:
+          SLTE_USE_MIRROR: 'false'
           SLTE_RELEASE_STORE_FILE: ${{ runner.temp }}/build-throwaway.keystore
           SLTE_RELEASE_STORE_PASSWORD: build-throwaway
           SLTE_RELEASE_KEY_ALIAS: build-throwaway
