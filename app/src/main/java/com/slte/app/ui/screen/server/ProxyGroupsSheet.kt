@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,12 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.ui.component.LottieLoadingIcon
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Constants
 import com.slte.app.utils.Dimens
@@ -77,7 +78,7 @@ internal fun ProxyGroupCard(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SlteShapes.large,
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = Dimens.cardElevation,
     ) {
@@ -152,13 +153,13 @@ internal fun ProxyGroupCard(
                             .fillMaxWidth()
                             .clickable(enabled = group.selectable) {
                                 if (!selected) onSelect(group.name, member.name)
-                            }.padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.sm),
+                            }.padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = member.name,
-                            style = SlteType.bodySmall,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            style = SlteType.body,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                             color =
                             if (selected) {
                                 SlteColors.current.accentInteractive
@@ -177,7 +178,7 @@ internal fun ProxyGroupCard(
                                 } else {
                                     stringResource(R.string.format_delay_ms, delay)
                                 },
-                                style = SlteType.label,
+                                style = SlteType.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(modifier = Modifier.width(Dimens.gap.sm))
@@ -192,7 +193,7 @@ internal fun ProxyGroupCard(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(Dimens.gap.sm))
+                Spacer(modifier = Modifier.height(Dimens.gap.md))
             }
         }
     }

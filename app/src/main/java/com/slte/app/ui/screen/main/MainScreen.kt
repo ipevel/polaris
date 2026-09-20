@@ -149,6 +149,8 @@ internal fun MainScreen(
             },
             onTraffic = onTraffic,
             onRenew = onRenew,
+            onServer = onServer,
+            onProfile = onProfile,
             modifier =
             Modifier
                 .fillMaxSize()
@@ -186,6 +188,8 @@ internal fun DashboardContent(
     onUpdateSubscription: () -> Unit,
     onTraffic: () -> Unit,
     onRenew: () -> Unit,
+    onServer: () -> Unit,
+    onProfile: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     androidx.compose.foundation.layout.BoxWithConstraints(
@@ -243,6 +247,8 @@ internal fun DashboardContent(
                     onUpdateSubscription = onUpdateSubscription,
                     hasPlan = data.hasPlan,
                     onTraffic = onTraffic,
+                    onServer = onServer,
+                    onProfile = onProfile,
                 )
             }
             item {

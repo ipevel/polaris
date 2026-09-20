@@ -97,7 +97,7 @@ object Dimens {
     val dashboardToggleThumbPadding = 4.dp
     val dashboardToggleGap = 10.dp
     val dashboardToggleAnimDurationMs = 350
-    val dashboardActionBtnHeight = size.button
+    val dashboardActionBtnHeight = 76.dp
 
     val inviteStatCardPaddingV = 20.dp
     val inviteStickerSize = 100.dp
