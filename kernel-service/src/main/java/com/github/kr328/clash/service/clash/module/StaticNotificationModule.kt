@@ -39,6 +39,16 @@ class StaticNotificationModule(service: Service) : Module<Unit>(service) {
                 pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT)
             )
         )
+        .addAction(
+            R.drawable.ic_action_stop,
+            service.getText(R.string.notification_action_stop),
+            PendingIntent.getBroadcast(
+                service,
+                R.id.nf_clash_stop,
+                Intent(Intents.ACTION_CLASH_REQUEST_STOP).setPackage(service.packageName),
+                pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT),
+            ),
+        )
 
     override suspend fun run() {
         val loaded = receiveBroadcast(capacity = Channel.CONFLATED) {
@@ -51,7 +61,7 @@ class StaticNotificationModule(service: Service) : Module<Unit>(service) {
             // 标题固定应用名（环境变量可覆盖），不暴露内核配置名
             val notification = builder
                 .setContentTitle(notificationTitle(service))
-                .setContentText(service.getText(R.string.running))
+                .setContentText(service.getText(R.string.notification_proxying))
                 .build()
 
             service.startForegroundCompat(R.id.nf_clash_status, notification)

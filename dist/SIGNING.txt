@@ -1,0 +1,4 @@
+Signer #1 certificate DN: CN=SLTE, OU=Mobile, O=SLTE, C=CN
+Signer #1 certificate SHA-256 digest: 4c46b76a2db4ff17dfef77535893e6308940535a68e8d7047ae19a36d6481ff7
+Signer #1 certificate SHA-1 digest: 5bf7cfb8afc512f167a127a9241e8aef4742b55d
+Signer #1 certificate MD5 digest: feb577fc64bc70465b68b43935cfc426

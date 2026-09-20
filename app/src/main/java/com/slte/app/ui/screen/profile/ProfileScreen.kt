@@ -30,6 +30,7 @@ fun ProfileScreen(
     onInvite: () -> Unit = {},
     onRenew: () -> Unit = {},
     onContact: () -> Unit = {},
+    onTickets: () -> Unit = {},
     onSettings: () -> Unit = {},
     onAbout: () -> Unit = {},
     onLogout: () -> Unit = {},
@@ -53,7 +54,14 @@ fun ProfileScreen(
             contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
         ) {
             item {
-                UserInfoCard(email = data.email, balance = data.balance)
+                if (data.userInfoError) {
+                    ErrorCard(
+                        messageRes = R.string.notice_error,
+                        onRetry = viewModel::retry,
+                    )
+                } else {
+                    UserInfoCard(email = data.email, balance = data.balance)
+                }
             }
 
             item {
@@ -99,6 +107,14 @@ fun ProfileScreen(
                     icon = SlteIcons.InviteRow,
                     title = stringResource(R.string.invite_title),
                     onClick = onInvite,
+                )
+            }
+
+            item {
+                NavigateCard(
+                    icon = SlteIcons.Ticket,
+                    title = stringResource(R.string.profile_tickets),
+                    onClick = onTickets,
                 )
             }
 

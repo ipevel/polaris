@@ -5,6 +5,7 @@ import com.slte.app.data.repository.ServerRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.domain.model.ServerNode
 import com.slte.app.domain.model.ServerType
+import com.slte.app.domain.model.SubscribeInfo
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.support.MainDispatcherRule
 import com.slte.app.support.stubKernelBridge
@@ -101,5 +102,20 @@ class ServerViewModelTest {
 
         advanceUntilIdle()
         assertTrue("测速结束后应复位", !vm.data.value.isTesting)
+    }
+
+    @Test
+    fun `无套餐时测速与更新订阅弹提示而非静默`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+        every { subscribeRepository.getCachedSubscribeInfo() } returns
+            SubscribeInfo(planName = "", transferEnable = 0L, usedTraffic = 0L, expiredAt = 0L)
+
+        vm.startSpeedTest()
+        assertEquals(R.string.dashboard_no_plan_tip, vm.errorMessageRes.value)
+        assertTrue("无套餐不应进入测速态", !vm.data.value.isTesting)
+
+        vm.dismissError()
+        vm.updateSubscription()
+        assertEquals(R.string.dashboard_no_plan_tip, vm.errorMessageRes.value)
     }
 }

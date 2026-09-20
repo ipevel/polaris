@@ -44,7 +44,10 @@ constructor() {
         context: Context,
         config: CrispConfig,
     ) {
-        if (!config.enabled || config.websiteId.isNotBlank().not()) return
+        if (!config.enabled || config.websiteId.isNotBlank().not()) {
+            AppLog.i(TAG, "Crisp 未配置，在线客服不可用")
+            return
+        }
         if (initialized && this.config?.websiteId == config.websiteId) return
         this.config = config
         if (initialized) {
@@ -81,11 +84,12 @@ constructor() {
     fun openChat(
         context: Context,
         email: String? = null,
-    ) {
-        if (!initialized) return
+    ): Boolean {
+        if (!initialized) return false
 
         email?.let { setUser(it, null) }
         context.startActivity(Intent(context, ChatActivity::class.java))
+        return true
     }
 
     fun clearUser() {

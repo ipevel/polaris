@@ -57,6 +57,17 @@ class NoticeViewModelTest {
     }
 
     @Test
+    fun `加载失败时透出脱敏后的具体原因`() = runTest(mainRule.dispatcher) {
+        coEvery { repository.fetchNotices() } returns Result.failure(IllegalStateException("未登录或登陆已过期"))
+        val vm = NoticeViewModel(repository)
+
+        vm.loadNotices()
+        advanceUntilIdle()
+
+        assertEquals("未登录或登陆已过期", vm.uiState.value.errorMessage)
+    }
+
+    @Test
     fun `刷新期间阶段为 Refreshing`() = runTest(mainRule.dispatcher) {
         coEvery { repository.fetchNotices() } returns Result.success(listOf(notice(1)))
         val vm = NoticeViewModel(repository)

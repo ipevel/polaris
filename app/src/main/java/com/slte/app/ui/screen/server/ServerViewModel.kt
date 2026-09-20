@@ -2,16 +2,21 @@ package com.slte.app.ui.screen.server
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.slte.app.R
 import com.slte.app.data.repository.ServerRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelProxy
+import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.cachedSpeedResults
 import com.slte.app.kernel.groupByTypeCurrentNode
 import com.slte.app.kernel.groupByTypeDelay
+import com.slte.app.kernel.proxyGroups
 import com.slte.app.kernel.selectAuto
 import com.slte.app.kernel.selectFallback
+import com.slte.app.kernel.selectInGroup
 import com.slte.app.kernel.selectNode
 import com.slte.app.kernel.speedTestProgressiveAndCache
+import com.slte.app.kernel.testGroup
 import com.slte.app.utils.Constants
 import com.slte.app.utils.ErrorMessages
 import com.slte.app.utils.extractCountryCode
@@ -39,6 +44,15 @@ constructor(
 
     private val _errorMessageRes = MutableStateFlow<Int?>(null)
     val errorMessageRes: StateFlow<Int?> = _errorMessageRes.asStateFlow()
+
+    private val _proxyGroups = MutableStateFlow<List<KernelProxyGroupInfo>>(emptyList())
+    val proxyGroups: StateFlow<List<KernelProxyGroupInfo>> = _proxyGroups.asStateFlow()
+
+    private val _isLoadingGroups = MutableStateFlow(false)
+    val isLoadingGroups: StateFlow<Boolean> = _isLoadingGroups.asStateFlow()
+
+    private val _testingGroup = MutableStateFlow<String?>(null)
+    val testingGroup: StateFlow<String?> = _testingGroup.asStateFlow()
 
     init {
 
@@ -148,7 +162,10 @@ constructor(
 
     fun startSpeedTest() {
         if (_data.value.isTesting) return
-        if (!hasPlan()) return
+        if (!hasPlan()) {
+            _errorMessageRes.value = R.string.dashboard_no_plan_tip
+            return
+        }
         _data.update { it.copy(isTesting = true, testedNodes = emptySet()) }
         _errorMessageRes.value = null
         viewModelScope.launch {
@@ -193,8 +210,55 @@ constructor(
     }
 
     fun updateSubscription() {
-        if (!hasPlan()) return
+        if (!hasPlan()) {
+            _errorMessageRes.value = R.string.dashboard_no_plan_tip
+            return
+        }
         loadNodes(force = true)
+    }
+
+    fun loadProxyGroups() {
+        viewModelScope.launch {
+            _isLoadingGroups.value = true
+            _proxyGroups.value = kernelProxy.proxyGroups()
+            _isLoadingGroups.value = false
+        }
+    }
+
+    fun selectInGroup(
+        groupName: String,
+        proxyName: String,
+    ) {
+        viewModelScope.launch {
+            if (kernelProxy.selectInGroup(groupName, proxyName)) {
+                _proxyGroups.value = kernelProxy.proxyGroups()
+                refreshSpecialNodes()
+            } else {
+                _errorMessageRes.value = R.string.proxy_group_select_failed
+            }
+        }
+    }
+
+    fun testGroup(groupName: String) {
+        if (_testingGroup.value != null) return
+        viewModelScope.launch {
+            _testingGroup.value = groupName
+            val delays = kernelProxy.testGroup(groupName)
+            _proxyGroups.value =
+                _proxyGroups.value.map { group ->
+                    if (group.name != groupName) {
+                        group
+                    } else {
+                        group.copy(
+                            members =
+                            group.members.map { member ->
+                                delays[member.name]?.let { member.copy(delay = it) } ?: member
+                            },
+                        )
+                    }
+                }
+            _testingGroup.value = null
+        }
     }
 }
 

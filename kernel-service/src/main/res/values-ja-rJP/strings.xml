@@ -9,6 +9,8 @@
     <string name="format_update_complete">%sを更新しました</string>
     <string name="format_update_failure">更新 %1$s: %2$s </string>
     <string name="running">実行中</string>
+    <string name="notification_action_stop">切断</string>
+    <string name="notification_proxying">プロキシ接続中</string>
     <string name="loading">読み込み中</string>
     <string name="clash_meta_for_android">SLTE</string>
     <string name="profiles_and_providers">プロファイルと外部リソース</string>

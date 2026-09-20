@@ -7,7 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 
-enum class Page { Dashboard, Invite, Server, Notice, Orders, Plans, Profile, Settings, About }
+enum class Page { Dashboard, Invite, Server, Notice, Orders, Plans, Profile, Settings, About, Ticket }
 
 internal enum class PendingNav {
     Invite,

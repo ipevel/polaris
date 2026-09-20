@@ -1,0 +1,52 @@
+name: 生成签名密钥（一次性工具）
+
+# 用途：在 CI（runner 自带 JDK/keytool）上生成一个标准的 Android 发布签名密钥，
+# 并把 keystore 与随机密码作为 artifact 上传（artifact 仅协作者可下载）。
+#
+# 使用后建议删除本文件：密钥已进 Secrets，此工具无需长期保留。
+# 生成的密钥信息：
+#   - storeType: PKCS12
+#   - keyalg RSA 2048，validity 10950 天（30 年）
+#   - 密码：32 位十六进制随机串（同样的值同时作为 store 密码与 key 密码）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 生成密钥
+        run: |
+          set -e
+          ALIAS="slte"
+          PASS="$(openssl rand -hex 16)"
+          keytool -genkeypair \
+            -keystore slte-release.keystore \
+            -storetype PKCS12 \
+            -alias "$ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 10950 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=SLTE, OU=Mobile, O=SLTE, C=CN"
+
+          echo "$PASS" > PASSWORD.txt
+          base64 -w0 slte-release.keystore > KEYSTORE_B64.txt
+
+          echo "===== 别名与证书指纹（非敏感，可公开核对）====="
+          keytool -list -v -keystore slte-release.keystore -storepass "$PASS" \
+            | grep -E "Alias name|别名|Valid from|SHA1:|SHA256:" || true
+          echo "==========================================="
+          echo "keystore 大小：$(stat -c %s slte-release.keystore) 字节"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: slte-signing-key
+          path: |
+            slte-release.keystore
+            PASSWORD.txt
+            KEYSTORE_B64.txt
+          retention-days: 1

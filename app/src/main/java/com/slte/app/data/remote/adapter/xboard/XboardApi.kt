@@ -141,4 +141,27 @@ interface XboardUserRetrofit {
     suspend fun changePassword(
         @Body request: XboardChangePasswordRequest,
     ): XboardResponse<Boolean>
+
+    @GET("user/ticket/fetch")
+    suspend fun fetchTickets(): XboardResponse<List<XboardTicketData>>
+
+    @GET("user/ticket/fetch")
+    suspend fun fetchTicketDetail(
+        @Query("id") id: Int,
+    ): XboardResponse<XboardTicketData>
+
+    @POST("user/ticket/save")
+    suspend fun createTicket(
+        @Body request: XboardCreateTicketRequest,
+    ): XboardResponse<Boolean>
+
+    @POST("user/ticket/reply")
+    suspend fun replyTicket(
+        @Body request: XboardReplyTicketRequest,
+    ): XboardResponse<Boolean>
+
+    @POST("user/ticket/close")
+    suspend fun closeTicket(
+        @Body request: XboardCloseTicketRequest,
+    ): XboardResponse<Boolean>
 }

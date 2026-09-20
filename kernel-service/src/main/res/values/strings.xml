@@ -3,7 +3,8 @@
     <string name="clash_notification_content" translatable="false">"%1$s↑\t%2$s↓"</string>
 
     <string name="clash_service_status_channel">Clash Status</string>
-    <string name="notification_action_stop">断开</string>
+    <string name="notification_action_stop">Disconnect</string>
+    <string name="notification_proxying">Connected via proxy</string>
     <string name="profile_service_status">Profile Service Status</string>
     <string name="profile_process_status">Profile Processing Status</string>
     <string name="profile_process_result">Profile Process Result</string>

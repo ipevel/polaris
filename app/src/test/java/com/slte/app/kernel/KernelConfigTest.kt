@@ -139,14 +139,34 @@ class KernelConfigTest {
     }
 
     @Test
-    fun `直连域为空时拒绝导入`() = runTest(mainRule.dispatcher) {
+    fun `直连域为空时降级导入且跳过直连规则注入`() = runTest(mainRule.dispatcher) {
+        val uuid = UUID.randomUUID()
         val cfg = config(baseUrl = "", domains = emptyList())
         coEvery { profiles.queryAll() } returns emptyList()
-        coEvery { profiles.create(any(), any(), any()) } returns UUID.randomUUID()
+        coEvery { profiles.create(any(), any(), any()) } returns uuid
+        coEvery { profiles.queryByUUID(uuid) } returns profile(uuid, imported = true)
+        coEvery { profiles.queryActive() } returns profile(uuid, imported = true)
         coEvery { subscribeSource.fetchSubscribeYaml() } returns body(yaml)
 
-        assertEquals(ProfileUpdateResult.FAILED, cfg.updateProfile())
-        coVerify(exactly = 0) { profiles.commit(any()) }
+        assertEquals(ProfileUpdateResult.UPDATED, cfg.updateProfile())
+        coVerify(exactly = 1) { profiles.commit(uuid) }
+        assertEquals(
+            "降级时应跳过直连规则注入，仍写入清洗后的配置",
+            SubscriptionSanitizer.sanitize(yaml, emptyList()),
+            tmp.root.resolve("pending/$uuid/config.yaml").readText(),
+        )
+    }
+
+    @Test
+    fun `直连域为空时订阅更新不被拒绝`() = runTest(mainRule.dispatcher) {
+        val uuid = UUID.randomUUID()
+        val cfg = config(baseUrl = "", domains = emptyList())
+        coEvery { profiles.queryAll() } returns listOf(profile(uuid, source = BuildConfig.SUBSCRIBE_PATH))
+        coEvery { subscribeSource.fetchSubscribeYaml() } returns body(yaml)
+        importedFile(uuid).writeText(SubscriptionSanitizer.sanitize(yaml, emptyList()))
+
+        assertEquals(ProfileUpdateResult.UNCHANGED, cfg.updateProfile())
+        verify { subscribeSource.saveSubscriptionUpdatedAt() }
     }
 
     @Test

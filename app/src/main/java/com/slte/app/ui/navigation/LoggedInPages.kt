@@ -22,6 +22,8 @@ import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.screen.server.ServerScreen
 import com.slte.app.ui.screen.server.ServerViewModel
 import com.slte.app.ui.screen.settings.SettingsScreen
+import com.slte.app.ui.screen.ticket.TicketScreen
+import com.slte.app.ui.screen.ticket.TicketViewModel
 
 @Composable
 internal fun OrdersPageContent(
@@ -39,12 +41,12 @@ internal fun OrdersPageContent(
     )
     PurchaseFlow(
         step = purchaseStep,
-        onSelectPeriod = {},
-        onUpdateCoupon = {},
-        onVerifyCoupon = {},
-        onConfirmOrder = {},
-        onCancelWarning = {},
-        onConfirmWarning = {},
+        onSelectPeriod = purchaseViewModel::selectPeriod,
+        onUpdateCoupon = purchaseViewModel::updateCouponCode,
+        onVerifyCoupon = purchaseViewModel::verifyCoupon,
+        onConfirmOrder = purchaseViewModel::showConfirmWarning,
+        onCancelWarning = purchaseViewModel::cancelWarning,
+        onConfirmWarning = purchaseViewModel::confirmWarning,
         onSelectPayment = purchaseViewModel::selectPaymentMethod,
         onConfirmPayment = purchaseViewModel::confirmPayment,
         onPaymentReturn = {
@@ -97,6 +99,7 @@ internal fun ProfilePageContent(
     onInvite: () -> Unit,
     onRenew: () -> Unit,
     onContact: () -> Unit,
+    onTickets: () -> Unit,
     onSettings: () -> Unit,
     onAbout: () -> Unit,
 ) {
@@ -107,6 +110,7 @@ internal fun ProfilePageContent(
         onInvite = onInvite,
         onRenew = onRenew,
         onContact = onContact,
+        onTickets = onTickets,
         onSettings = onSettings,
         onAbout = onAbout,
         onLogout = profileViewModel::logout,
@@ -147,6 +151,18 @@ internal fun NoticePageContent(
     NoticeScreen(
         onBack = onBack,
         viewModel = noticeViewModel,
+    )
+}
+
+@Composable
+internal fun TicketPageContent(
+    ticketViewModel: TicketViewModel,
+    onBack: () -> Unit,
+) {
+    LaunchedEffect(Unit) { ticketViewModel.enterAndRefresh() }
+    TicketScreen(
+        onBack = onBack,
+        viewModel = ticketViewModel,
     )
 }
 

@@ -141,4 +141,27 @@ interface XiaoV2bUserRetrofit {
     suspend fun changePassword(
         @Body request: XiaoV2bChangePasswordRequest,
     ): XiaoV2bResponse<Boolean>
+
+    @GET("user/ticket/fetch")
+    suspend fun fetchTickets(): XiaoV2bResponse<List<XiaoV2bTicketData>>
+
+    @GET("user/ticket/fetch")
+    suspend fun fetchTicketDetail(
+        @Query("id") id: Int,
+    ): XiaoV2bResponse<XiaoV2bTicketData>
+
+    @POST("user/ticket/save")
+    suspend fun createTicket(
+        @Body request: XiaoV2bCreateTicketRequest,
+    ): XiaoV2bResponse<Boolean>
+
+    @POST("user/ticket/reply")
+    suspend fun replyTicket(
+        @Body request: XiaoV2bReplyTicketRequest,
+    ): XiaoV2bResponse<Boolean>
+
+    @POST("user/ticket/close")
+    suspend fun closeTicket(
+        @Body request: XiaoV2bCloseTicketRequest,
+    ): XiaoV2bResponse<Boolean>
 }

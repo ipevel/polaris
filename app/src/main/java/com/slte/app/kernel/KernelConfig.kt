@@ -87,7 +87,8 @@ constructor(
 
     private suspend fun downloadSubscribeToPending(uuid: UUID): Boolean {
         val yaml = readSubscribeYaml() ?: return false
-        val domains = directDomains().ifEmpty { return false }
+        // 直连域名为空时降级：跳过直连规则注入，其余清洗/写入流程照常完成，不整体失败
+        val domains = directDomains()
         val cleaned = sanitizeOrNull(yaml, domains) ?: return false
         val file = context.filesDir.resolve("pending/$uuid/config.yaml")
         file.parentFile?.mkdirs()
@@ -115,7 +116,8 @@ constructor(
             val yaml = readSubscribeYaml() ?: return@withLock ProfileUpdateResult.FAILED
             AppLog.d("SLTE-Kernel", "updateProfile: yaml size=${yaml.length}")
 
-            val domains = directDomains().ifEmpty { return@withLock ProfileUpdateResult.FAILED }
+            // 直连域名为空时降级：跳过直连规则注入，订阅更新照常完成，不整体失败
+            val domains = directDomains()
             val cleaned = sanitizeOrNull(yaml, domains) ?: return@withLock ProfileUpdateResult.FAILED
             val file = context.filesDir.resolve("imported/${profile.uuid}/config.yaml")
             if (file.exists() && file.readText() == cleaned) {

@@ -10,6 +10,7 @@ import androidx.core.content.getSystemService
 import com.github.kr328.clash.common.compat.getColorCompat
 import com.github.kr328.clash.common.compat.pendingIntentFlags
 import com.github.kr328.clash.common.constants.Components
+import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.common.util.ticker
 import com.github.kr328.clash.core.Clash
 import com.github.kr328.clash.core.util.trafficDownload
@@ -38,32 +39,43 @@ class DynamicNotificationModule(service: Service) : Module<Unit>(service) {
                 pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT)
             )
         )
+        .addAction(
+            R.drawable.ic_action_stop,
+            service.getText(R.string.notification_action_stop),
+            PendingIntent.getBroadcast(
+                service,
+                R.id.nf_clash_stop,
+                Intent(Intents.ACTION_CLASH_REQUEST_STOP).setPackage(service.packageName),
+                pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT),
+            ),
+        )
 
     private val notificationManager = NotificationManagerCompat.from(service)
 
+    // 仅当配置确实装载完成（收到 PROFILE_LOADED）后才展示上行/下行速率，
+    // 在此之前只显示"载入中"，避免"界面/通知在刷速率但配置尚未装载"的假代理信号。
+    private var profileLoaded = false
+
     private fun update() {
-        val now = Clash.queryTrafficNow()
-        val total = Clash.queryTrafficTotal()
+        val notification =
+            if (profileLoaded) {
+                val now = Clash.queryTrafficNow()
 
-        val uploading = now.trafficUpload()
-        val downloading = now.trafficDownload()
-        val uploaded = total.trafficUpload()
-        val downloaded = total.trafficDownload()
+                val uploading = now.trafficUpload()
+                val downloading = now.trafficDownload()
 
-        val notification = builder
-            .setContentText(
-                service.getString(
-                    R.string.clash_notification_content,
-                    "$uploading/s", "$downloading/s"
-                )
-            )
-            .setSubText(
-                service.getString(
-                    R.string.clash_notification_content,
-                    uploaded, downloaded
-                )
-            )
-            .build()
+                builder
+                    .setContentText(
+                        service.getString(
+                            R.string.clash_notification_content,
+                            "$uploading/s", "$downloading/s"
+                        )
+                    )
+                    // 明确表达"正在代理"：配置确已装载后才显示该标签
+                    .setSubText(service.getText(R.string.notification_proxying))
+            } else {
+                builder.setContentText(service.getText(R.string.loading))
+            }.build()
 
         notificationManager.notify(R.id.nf_clash_status, notification)
     }
@@ -74,6 +86,10 @@ class DynamicNotificationModule(service: Service) : Module<Unit>(service) {
         val screenToggle = receiveBroadcast(false, Channel.CONFLATED) {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
+        }
+
+        val profileLoadedSignal = receiveBroadcast(Channel.CONFLATED) {
+            addAction(Intents.ACTION_PROFILE_LOADED)
         }
 
         val ticker = ticker(TimeUnit.SECONDS.toMillis(1))
@@ -87,6 +103,11 @@ class DynamicNotificationModule(service: Service) : Module<Unit>(service) {
                         Intent.ACTION_SCREEN_OFF ->
                             shouldUpdate = false
                     }
+                }
+                profileLoadedSignal.onReceive {
+                    profileLoaded = true
+                    // 配置就绪即刷新一次，让"正在代理"标识尽快出现在通知栏
+                    update()
                 }
                 if (shouldUpdate) {
                     ticker.onReceive {

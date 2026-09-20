@@ -21,6 +21,7 @@ data class NoticeUiState(
     val phase: ContentPhase = ContentPhase.Loading,
     val notices: List<Notice> = emptyList(),
     @StringRes val errorMessageRes: Int? = null,
+    val errorMessage: String? = null,
 
     @StringRes val toastRes: Int? = null,
 
@@ -42,19 +43,24 @@ constructor(
     }
 
     fun loadNotices() {
-        _uiState.update { it.copy(phase = ContentPhase.Loading, errorMessageRes = null) }
+        _uiState.update { it.copy(phase = ContentPhase.Loading, errorMessageRes = null, errorMessage = null) }
         viewModelScope.launch {
             subscribeRepository.fetchNotices().fold(
                 onSuccess = { notices ->
                     AppLog.d("SLTE-Notice", "fetchNotices: ${notices.size} 条")
                     _uiState.update {
-                        it.copy(phase = ContentPhase.Idle, notices = notices, isEntering = false)
+                        it.copy(phase = ContentPhase.Idle, notices = notices, errorMessage = null, isEntering = false)
                     }
                 },
                 onFailure = { e ->
                     AppLog.w("SLTE-Notice", "fetchNotices 失败: ${sanitizeLog(e.message ?: "Unknown")}")
                     _uiState.update {
-                        it.copy(phase = ContentPhase.Idle, errorMessageRes = R.string.notice_error, isEntering = false)
+                        it.copy(
+                            phase = ContentPhase.Idle,
+                            errorMessageRes = R.string.notice_error,
+                            errorMessage = e.message?.let { msg -> sanitizeLog(msg) },
+                            isEntering = false,
+                        )
                     }
                 },
             )
@@ -68,7 +74,7 @@ constructor(
             subscribeRepository.fetchNotices().fold(
                 onSuccess = { notices ->
                     AppLog.d("SLTE-Notice", "refresh: ${notices.size} 条")
-                    _uiState.update { it.copy(phase = ContentPhase.Idle, notices = notices, errorMessageRes = null) }
+                    _uiState.update { it.copy(phase = ContentPhase.Idle, notices = notices, errorMessageRes = null, errorMessage = null) }
                 },
                 onFailure = { e ->
                     AppLog.w("SLTE-Notice", "refresh 失败: ${sanitizeLog(e.message ?: "Unknown")}")
@@ -76,9 +82,9 @@ constructor(
                     val hasData = _uiState.value.notices.isNotEmpty()
                     _uiState.update {
                         if (hasData) {
-                            it.copy(phase = ContentPhase.Idle, toastRes = R.string.notice_refresh_failed)
+                            it.copy(phase = ContentPhase.Idle, toastRes = R.string.notice_refresh_failed, errorMessage = e.message?.let { msg -> sanitizeLog(msg) })
                         } else {
-                            it.copy(phase = ContentPhase.Idle, errorMessageRes = R.string.notice_error)
+                            it.copy(phase = ContentPhase.Idle, errorMessageRes = R.string.notice_error, errorMessage = e.message?.let { msg -> sanitizeLog(msg) })
                         }
                     }
                 },

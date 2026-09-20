@@ -388,6 +388,17 @@ class SubscriptionSanitizerTest {
     }
 
     @Test
+    fun `内容校验 - 接受 proxies 为 YAML null 占位符的订阅模板`() {
+        // Xboard 订阅模板用 `proxies: ~` 占位，节点在渲染时才填充。
+        // 此前该写法被判为"不是有效 Clash 订阅"，导致订阅更新直接失败。
+        assertTrue(SubscriptionSanitizer.isValidSubscribeYaml("proxies: ~"))
+        assertTrue(SubscriptionSanitizer.isValidSubscribeYaml("proxies: ~\nrule-providers:\n  r:\n    type: http"))
+        assertTrue(SubscriptionSanitizer.isValidSubscribeYaml("proxies: null"))
+        assertTrue(SubscriptionSanitizer.isValidSubscribeYaml("proxy-providers: ~"))
+        assertTrue(SubscriptionSanitizer.isValidSubscribeYaml("proxies: ~ # 由面板渲染时填充"))
+    }
+
+    @Test
     fun `内容校验 - 拒绝空体与错误响应`() {
         assertFalse(SubscriptionSanitizer.isValidSubscribeYaml(""))
         assertFalse(SubscriptionSanitizer.isValidSubscribeYaml("   "))

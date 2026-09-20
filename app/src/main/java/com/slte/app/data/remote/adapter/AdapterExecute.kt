@@ -25,16 +25,15 @@ internal object AdapterExecute {
         throw e
     } catch (e: HttpException) {
         val errorBody = e.response()?.errorBody()?.string()
-        if (BuildConfig.DEBUG) {
-            AppLog.e("SLTE-Api", "execute HttpException: code=${e.code()}, body=${AppLog.sanitize(errorBody?.take(500) ?: "")}")
-        } else {
-            AppLog.w("SLTE-Api", "execute HttpException: code=${e.code()}")
-        }
+        AppLog.w(
+            "SLTE-Api",
+            "execute HttpException: code=${e.code()}, body=${AppLog.sanitize(errorBody?.take(500) ?: "")}",
+        )
         val serverMessage = extractServerMessage(errorBody)
         if (serverMessage != null) {
             throw ApiException(serverMessage)
         }
-        throw ApiException("请求失败，请检查网络连接", ApiErrors.NETWORK)
+        throw ApiException("服务器返回 ${e.code()}，请稍后重试", ApiErrors.NETWORK)
     } catch (e: SerializationException) {
         AppLog.e(
             "SLTE-Api",

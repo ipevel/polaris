@@ -20,6 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -52,6 +55,10 @@ fun ServerScreen(
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
+    val proxyGroups by viewModel.proxyGroups.collectAsStateWithLifecycle()
+    val isLoadingGroups by viewModel.isLoadingGroups.collectAsStateWithLifecycle()
+    val testingGroup by viewModel.testingGroup.collectAsStateWithLifecycle()
+    var showProxyGroupsSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
@@ -68,6 +75,14 @@ fun ServerScreen(
         title = stringResource(R.string.server_title),
         onBack = onBack,
         actions = {
+            CircleIconButton(
+                icon = SlteIcons.ProxyMode,
+                description = stringResource(R.string.proxy_groups_title),
+                onClick = {
+                    showProxyGroupsSheet = true
+                    viewModel.loadProxyGroups()
+                },
+            )
             CircleIconButton(
                 icon = SlteIcons.SpeedTest,
                 description = stringResource(R.string.server_speed_test),
@@ -168,6 +183,17 @@ fun ServerScreen(
                 }
             }
         }
+    }
+
+    if (showProxyGroupsSheet) {
+        ProxyGroupsSheet(
+            groups = proxyGroups,
+            isLoading = isLoadingGroups,
+            testingGroup = testingGroup,
+            onDismiss = { showProxyGroupsSheet = false },
+            onSelect = viewModel::selectInGroup,
+            onTestGroup = viewModel::testGroup,
+        )
     }
 }
 

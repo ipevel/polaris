@@ -36,7 +36,7 @@ internal fun subscribeFetchUrl(
 
 object BackendAdapterFactory {
 
-    private val json =
+    internal val json =
         Json {
             ignoreUnknownKeys = true
             isLenient = true

@@ -7,7 +7,9 @@ import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.domain.model.SubscribeInfo
 import com.slte.app.domain.usecase.DaysUntilExpiryUseCase
+import com.slte.app.utils.AppLog
 import com.slte.app.utils.ErrorMessages
+import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -24,6 +26,9 @@ data class ProfileData(
     val balance: String = "0.00",
 
     val daysUntilExpired: Int? = null,
+
+    /** 用户信息拉取失败：用于在个人中心展示错误卡片（复用 R.string.notice_error） */
+    val userInfoError: Boolean = false,
 )
 
 @HiltViewModel
@@ -92,9 +97,14 @@ constructor(
 
             userResult.await().fold(
                 onSuccess = { user ->
-                    _data.update { it.copy(email = user.email, balance = user.balance) }
+                    _data.update {
+                        it.copy(email = user.email, balance = user.balance, userInfoError = false)
+                    }
                 },
-                onFailure = { },
+                onFailure = { throwable ->
+                    AppLog.w("SLTE-Profile", "fetchUserInfo 失败: ${sanitizeLog(throwable.message ?: "Unknown")}")
+                    _data.update { it.copy(userInfoError = true) }
+                },
             )
             subscribeResult.await().onFailure { throwable ->
                 _data.update { it.copy(isLoading = false) }

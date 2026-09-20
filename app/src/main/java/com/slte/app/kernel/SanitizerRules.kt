@@ -50,7 +50,9 @@ internal object SanitizerRules {
 
     val PLAIN_KEY = Regex("^[A-Za-z0-9_-]+$")
 
-    val SUBSCRIBE_ENTRY_KEY = Regex("^['\"]?(proxies|proxy-providers)['\"]?\\s*:\\s*(?:$|#|\\[|\\{|&|!)")
+    val SUBSCRIBE_ENTRY_KEY = Regex(
+        "^['\"]?(proxies|proxy-providers)['\"]?\\s*:\\s*(?:$|#|\\[|\\{|&|!|~|null(?:\\s|$|#))",
+    )
 
     val TOP_LEVEL_BLOCK_HEAD = Regex("^['\"]?(?:<<|[A-Za-z0-9_-]+)['\"]?\\s*:\\s*(?:&\\S+)?\\s*$")
 

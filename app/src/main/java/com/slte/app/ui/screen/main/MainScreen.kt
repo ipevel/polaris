@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.outlined.Notifications
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -74,11 +76,18 @@ internal fun MainScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = SlteType.title,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            style = SlteType.title,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        ProxyStatusBadge(
+                            isConnected = data.isConnected,
+                            proxyMode = data.proxyMode,
+                            modifier = Modifier.padding(start = Dimens.gap.sm),
+                        )
+                    }
                 },
                 actions = {
                     CircleIconButton(

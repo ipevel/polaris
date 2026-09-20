@@ -22,6 +22,8 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
+import com.slte.app.domain.model.Ticket
+import com.slte.app.domain.model.TicketDetail
 import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
@@ -325,4 +327,43 @@ class XboardAuthApi(
     }
 
     override suspend fun fetchSubscribeYaml(url: String): okhttp3.ResponseBody? = userApi.fetchSubscribeYaml(url)
+
+    override suspend fun fetchTickets(): List<Ticket> {
+        val response = AdapterExecute.typed { userApi.fetchTickets() }
+        return response.data.orEmptyLogged("fetchTickets").map { it.toDomain() }
+    }
+
+    override suspend fun fetchTicketDetail(id: Int): TicketDetail {
+        val response = AdapterExecute.typed { userApi.fetchTicketDetail(id) }
+        val data = response.data ?: throw ApiException("获取工单详情失败")
+        return data.toDetailDomain()
+    }
+
+    override suspend fun createTicket(
+        subject: String,
+        level: Int,
+        message: String,
+    ): Boolean {
+        val response =
+            AdapterExecute.typed {
+                userApi.createTicket(XboardCreateTicketRequest(subject, level, message))
+            }
+        return response.data.orFalseLogged("createTicket")
+    }
+
+    override suspend fun replyTicket(
+        id: Int,
+        message: String,
+    ): Boolean {
+        val response =
+            AdapterExecute.typed {
+                userApi.replyTicket(XboardReplyTicketRequest(id, message))
+            }
+        return response.data.orFalseLogged("replyTicket")
+    }
+
+    override suspend fun closeTicket(id: Int): Boolean {
+        val response = AdapterExecute.typed { userApi.closeTicket(XboardCloseTicketRequest(id)) }
+        return response.data.orFalseLogged("closeTicket")
+    }
 }

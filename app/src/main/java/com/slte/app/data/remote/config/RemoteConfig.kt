@@ -84,7 +84,7 @@ constructor(
             .callTimeout(CONFIG_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
 
-    private val _dataFlow = MutableStateFlow(store.load()?.config ?: RemoteConfigData())
+    private val _dataFlow = MutableStateFlow(sanitizeCachedConfig(store.load()?.config))
     val dataFlow: StateFlow<RemoteConfigData> = _dataFlow.asStateFlow()
     val data: RemoteConfigData get() = _dataFlow.value
 
@@ -102,7 +102,7 @@ constructor(
         val now = System.currentTimeMillis()
         val cached = store.load()
         if (!force && cached != null && ConfigValidation.isCacheFresh(cached.fetchedAt, now, CONFIG_CACHE_TTL_MS)) {
-            _dataFlow.value = cached.config
+            _dataFlow.value = sanitizeCachedConfig(cached.config)
             return true
         }
 
@@ -123,7 +123,7 @@ constructor(
 
         if (chosen.notModified && cached != null) {
             store.save(cached.copy(fetchedAt = now, sourceUrl = chosen.url))
-            _dataFlow.value = cached.config
+            _dataFlow.value = sanitizeCachedConfig(cached.config)
             AppLog.i("SLTE-Config", "RemoteConfig: 304 命中，复用缓存")
             return true
         }
@@ -235,6 +235,31 @@ constructor(
     }
 
     private fun sanitize(message: String?): String = message?.let { sanitizeLog(it) } ?: "Unknown"
+
+    /**
+     * 缓存端点必须重新过白名单：旧版本可能缓存了已下线的域名，
+     * 直接进内存会被 AppModule 当作 baseUrl，而 AuthInterceptor 会因主机
+     * 不在白名单而静默剥离 Authorization，导致所有 /user/* 请求失败。
+     * 主域名不合法时丢弃整份缓存、回落 BuildConfig 默认值；候选项同样过滤。
+     */
+    private fun sanitizeCachedConfig(cached: RemoteConfigData?): RemoteConfigData {
+        if (cached == null) return RemoteConfigData()
+
+        val allowedCandidates = cached.apiBaseUrls.filter { AllowedHosts.isAllowedHost(hostOf(it)) }
+        val staleHost = hostOf(cached.apiBaseUrl)
+
+        if (AllowedHosts.isAllowedHost(staleHost)) {
+            if (allowedCandidates.size == cached.apiBaseUrls.size) return cached
+            AppLog.w("SLTE-Config", "RemoteConfig: 已剔除 ${cached.apiBaseUrls.size - allowedCandidates.size} 个不在白名单的候选端点")
+            return cached.copy(apiBaseUrls = allowedCandidates)
+        }
+
+        AppLog.w("SLTE-Config", "RemoteConfig: 丢弃非法缓存端点 ${sanitizeLog(staleHost ?: "无法解析")}，回落 BuildConfig 默认配置")
+        return RemoteConfigData().copy(apiBaseUrls = allowedCandidates)
+    }
+
+    private fun hostOf(url: String?): String? =
+        url?.let { runCatching { java.net.URI(it).host }.getOrNull() }?.takeIf { it.isNotBlank() }
 
     private companion object {
         const val MAX_CONFIG_BYTES = 256 * 1024

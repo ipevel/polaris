@@ -34,8 +34,9 @@ class MainViewModelTest {
     private fun viewModel(
         hasPlan: Boolean = true,
         connected: Boolean = false,
+        ready: Boolean = false,
     ): MainViewModel {
-        kernelProxy.stubKernelBridge()
+        kernelProxy.stubKernelBridge(ready)
         every { kernelManager.connected } returns MutableStateFlow(connected)
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
         every { dataWriter.applyCached(any()) } answers {
@@ -122,7 +123,7 @@ class MainViewModelTest {
 
     @Test
     fun `内核连接状态同步到首页并清空 DNS 缓存`() = runTest(mainRule.dispatcher) {
-        kernelProxy.stubKernelBridge()
+        kernelProxy.stubKernelBridge(ready = true)
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
@@ -143,5 +144,31 @@ class MainViewModelTest {
 
         verify { fallbackDns.clearCache() }
         assertTrue(vm.data.value.isConnected)
+    }
+
+    @Test
+    fun `内核未就绪时不判定为已连接`() = runTest(mainRule.dispatcher) {
+        kernelProxy.stubKernelBridge(ready = false)
+        val connected = MutableStateFlow(false)
+        every { kernelManager.connected } returns connected
+        every { kernelManager.profileLoaded } returns MutableStateFlow(0)
+        val vm =
+            MainViewModel(
+                mainRule.dispatcher,
+                kernelManager,
+                kernelProxy,
+                kernelConfig,
+                fallbackDns,
+                subscriptionUpdater,
+                dataWriter,
+            )
+        advanceUntilIdle()
+
+        connected.value = true
+        advanceUntilIdle()
+
+        assertTrue("内核未就绪时不得显示已连接", !vm.data.value.isConnected)
+        assertEquals(R.string.error_vpn_kernel_unavailable, vm.data.value.errorMessageRes)
+        verify(exactly = 0) { fallbackDns.clearCache() }
     }
 }

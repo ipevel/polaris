@@ -97,6 +97,7 @@ object SlteIcons {
     val Balance: ImageVector = Icons.Outlined.AccountBalanceWallet
 
     val Orders: ImageVector = Icons.Outlined.Receipt
+    val Ticket: ImageVector = Icons.Outlined.ConfirmationNumber
     val InviteRow: ImageVector = Icons.Outlined.GroupAdd
     val CustomerService: ImageVector = Icons.Outlined.SupportAgent
     val Settings: ImageVector = Icons.Outlined.Settings

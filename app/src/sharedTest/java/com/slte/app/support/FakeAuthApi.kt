@@ -16,6 +16,8 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
+import com.slte.app.domain.model.Ticket
+import com.slte.app.domain.model.TicketDetail
 import okhttp3.ResponseBody
 
 open class FakeAuthApi : AuthApi {
@@ -164,6 +166,23 @@ open class FakeAuthApi : AuthApi {
     ): List<Notice> = unsupported()
 
     override suspend fun fetchSubscribeYaml(url: String): ResponseBody? = unsupported()
+
+    override suspend fun fetchTickets(): List<Ticket> = unsupported()
+
+    override suspend fun fetchTicketDetail(id: Int): TicketDetail = unsupported()
+
+    override suspend fun createTicket(
+        subject: String,
+        level: Int,
+        message: String,
+    ): Boolean = unsupported()
+
+    override suspend fun replyTicket(
+        id: Int,
+        message: String,
+    ): Boolean = unsupported()
+
+    override suspend fun closeTicket(id: Int): Boolean = unsupported()
 
     private fun unsupported(): Nothing = throw UnsupportedOperationException("测试未配置该接口")
 }

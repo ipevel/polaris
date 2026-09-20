@@ -11,6 +11,7 @@ import com.slte.app.ui.screen.plans.PlansViewModel
 import com.slte.app.ui.screen.plans.PurchaseViewModel
 import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.screen.server.ServerViewModel
+import com.slte.app.ui.screen.ticket.TicketViewModel
 
 internal class LoggedInViewModels(
     val invite: InviteViewModel,
@@ -20,6 +21,7 @@ internal class LoggedInViewModels(
     val purchase: PurchaseViewModel,
     val profile: ProfileViewModel,
     val server: ServerViewModel,
+    val ticket: TicketViewModel,
     val main: MainViewModel,
     val update: UpdateViewModel,
 )
@@ -33,6 +35,7 @@ internal fun rememberLoggedInViewModels(accountKey: String): LoggedInViewModels 
     purchase = hiltViewModel(key = "purchase-$accountKey"),
     profile = hiltViewModel(key = "profile-$accountKey"),
     server = hiltViewModel(key = "server-$accountKey"),
+    ticket = hiltViewModel(key = "ticket-$accountKey"),
     main = hiltViewModel(key = "main-$accountKey"),
     update = hiltViewModel(key = "update"),
 )

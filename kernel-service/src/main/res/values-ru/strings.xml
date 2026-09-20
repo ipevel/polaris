@@ -11,6 +11,8 @@
     <string name="format_update_complete">Обновление %s завершено</string>
     <string name="format_update_failure">Обновление %1$s: %2$s</string>
     <string name="running">Работает</string>
+    <string name="notification_action_stop">Отключить</string>
+    <string name="notification_proxying">Прокси подключён</string>
     <string name="loading">Загружается</string>
     <string name="clash_meta_for_android">SLTE</string>
     <string name="profiles_and_providers">Профили и провайдеры</string>

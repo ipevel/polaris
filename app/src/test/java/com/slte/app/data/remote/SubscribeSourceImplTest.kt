@@ -102,6 +102,51 @@ class SubscribeSourceImplTest {
     }
 
     @Test
+    fun `账号下发地址下载失败时回退到令牌拼接地址`() = runTest {
+        sessionStore.saveSubscribeUrl("https://dead.example.com/api/v1/client/subscribe?token=stale")
+        sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
+        every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+
+        val api = FailingHostAuthApi(failHost = "dead.example.com")
+        val source = SubscribeSourceImpl(sessionStore, api, remoteConfig)
+
+        assertNotNull(source.fetchSubscribeYaml())
+        assertEquals(
+            listOf(
+                "https://dead.example.com/api/v1/client/subscribe?token=stale",
+                "https://api.example.com${BuildConfig.SUBSCRIBE_PATH}?token=tok-123",
+            ),
+            api.requestedUrls,
+        )
+    }
+
+    @Test
+    fun `全部候选地址失败时返回null且逐一轮询`() = runTest {
+        sessionStore.saveSubscribeUrl("https://dead.example.com/sub")
+        sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
+        every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+
+        val api = AlwaysFailingAuthApi()
+        val source = SubscribeSourceImpl(sessionStore, api, remoteConfig)
+
+        assertNull(source.fetchSubscribeYaml())
+        assertEquals("两个候选都应被尝试", 2, api.requestedUrls.size)
+    }
+
+    @Test
+    fun `账号地址与兜底地址相同时只请求一次`() = runTest {
+        sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
+        every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+        sessionStore.saveSubscribeUrl("https://api.example.com${BuildConfig.SUBSCRIBE_PATH}?token=tok-123")
+
+        assertNotNull(source.fetchSubscribeYaml())
+        assertEquals(
+            listOf("https://api.example.com${BuildConfig.SUBSCRIBE_PATH}?token=tok-123"),
+            authApi.requestedUrls,
+        )
+    }
+
+    @Test
     fun `getEmail直接读取会话邮箱`() {
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
 
@@ -121,6 +166,27 @@ class SubscribeSourceImplTest {
         override suspend fun fetchSubscribeYaml(url: String): ResponseBody? {
             requestedUrls += url
             return "proxies: []".toResponseBody()
+        }
+    }
+
+    private class FailingHostAuthApi(
+        private val failHost: String,
+    ) : FakeAuthApi() {
+        val requestedUrls = mutableListOf<String>()
+
+        override suspend fun fetchSubscribeYaml(url: String): ResponseBody? {
+            requestedUrls += url
+            if (url.contains(failHost)) throw java.io.IOException("host unreachable")
+            return "proxies: []".toResponseBody()
+        }
+    }
+
+    private class AlwaysFailingAuthApi : FakeAuthApi() {
+        val requestedUrls = mutableListOf<String>()
+
+        override suspend fun fetchSubscribeYaml(url: String): ResponseBody? {
+            requestedUrls += url
+            throw java.io.IOException("host unreachable")
         }
     }
 }

@@ -1,10 +1,12 @@
 package com.slte.app.data.remote.adapter
 
+import com.slte.app.data.remote.BackendAdapterFactory
 import com.slte.app.data.remote.adapter.xboard.XboardCommissionRecordData
 import com.slte.app.data.remote.adapter.xboard.XboardCouponData
 import com.slte.app.data.remote.adapter.xboard.XboardInviteCodeData
 import com.slte.app.data.remote.adapter.xboard.XboardInviteData
 import com.slte.app.data.remote.adapter.xboard.XboardLoginData
+import com.slte.app.data.remote.adapter.xboard.XboardNoticeData
 import com.slte.app.data.remote.adapter.xboard.XboardOrderData
 import com.slte.app.data.remote.adapter.xboard.XboardPaymentMethodData
 import com.slte.app.data.remote.adapter.xboard.XboardPlanData
@@ -472,6 +474,31 @@ class DtoBoundaryTest {
 
         assertNull(response.data)
         assertEquals("账号或密码错误", response.message)
+    }
+
+    @Test
+    fun `Xboard 公告官方响应形状含未知 total 字段可解析为非空列表`() {
+        val raw =
+            """
+            {"data":[{"id":3,"title":"维护公告","content":"<p>今晚维护</p>","show":true,
+            "img_url":null,"tags":["维护","重要"],"created_at":1725000000,"updated_at":1725000000,"sort":1},
+            {"id":1,"title":"上线公告","content":"欢迎","show":true,"tags":[],
+            "created_at":1724000000,"updated_at":1724000000}],
+            "total":2}
+            """.trimIndent()
+
+        // 复用生产同一份 Json 配置（BackendAdapterFactory.json），锁住 ignoreUnknownKeys 不回归
+        val response = BackendAdapterFactory.json.decodeFromString<XboardResponse<List<XboardNoticeData>>>(raw)
+        val notices = response.data!!.map { it.toDomain() }
+
+        assertNull(response.message)
+        // total 属于未知字段，不应导致解析失败
+        assertEquals(2, notices.size)
+        assertEquals("维护公告", notices[0].title)
+        assertEquals("<p>今晚维护</p>", notices[0].body)
+        assertEquals(listOf("维护", "重要"), notices[0].tags)
+        assertEquals(1725000000L, notices[0].createdAt)
+        assertEquals(0, notices[1].tags.size)
     }
 
     @Test

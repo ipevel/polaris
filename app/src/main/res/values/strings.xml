@@ -158,10 +158,44 @@
     <string name="notice_retry">重试</string>
     <string name="notice_refresh_failed">刷新失败，请稍后重试</string>
 
+    <!-- Ticket -->
+    <string name="ticket_title">我的工单</string>
+    <string name="ticket_empty">暂无工单</string>
+    <string name="ticket_error">加载失败</string>
+    <string name="ticket_refresh_failed">刷新失败，请稍后重试</string>
+    <string name="ticket_new">新建工单</string>
+    <string name="ticket_subject">工单主题</string>
+    <string name="ticket_message">请描述你遇到的问题</string>
+    <string name="ticket_level">优先级</string>
+    <string name="ticket_level_low">低</string>
+    <string name="ticket_level_medium">中</string>
+    <string name="ticket_level_high">高</string>
+    <string name="ticket_submit">提交</string>
+    <string name="ticket_submit_success">工单已提交</string>
+    <string name="ticket_submit_failed">提交失败</string>
+    <string name="ticket_detail">工单详情</string>
+    <string name="ticket_detail_failed">详情加载失败</string>
+    <string name="ticket_reply">发送</string>
+    <string name="ticket_reply_hint">请输入回复内容</string>
+    <string name="ticket_reply_success">回复已发送</string>
+    <string name="ticket_reply_failed">回复失败</string>
+    <string name="ticket_close">关闭工单</string>
+    <string name="ticket_close_confirm">确定要关闭该工单吗？</string>
+    <string name="ticket_close_success">工单已关闭</string>
+    <string name="ticket_close_failed">关闭失败</string>
+    <string name="ticket_confirm">确定</string>
+    <string name="ticket_cancel">取消</string>
+    <string name="ticket_sender_me">我</string>
+    <string name="ticket_sender_support">客服</string>
+    <string name="ticket_status_open">待处理</string>
+    <string name="ticket_status_closed">已关闭</string>
+    <string name="ticket_created_at">创建于</string>
+
     <!-- Profile -->
     <string name="profile_title">个人中心</string>
     <string name="profile_not_logged_in">未登录</string>
     <string name="profile_orders">我的订单</string>
+    <string name="profile_tickets">我的工单</string>
     <string name="profile_contact">联系我们</string>
     <string name="profile_about">关于软件</string>
 
@@ -310,4 +344,19 @@
     <string name="language_simplified">简体中文</string>
     <string name="language_traditional">繁體中文</string>
     <string name="language_english">English</string>
+
+    <string name="proxy_groups_title">策略组</string>
+    <string name="proxy_groups_subtitle">为每个分组指定出口节点</string>
+    <string name="proxy_groups_empty">暂无策略组</string>
+    <string name="proxy_groups_loading">正在读取策略组</string>
+    <string name="proxy_group_now">当前：%1$s</string>
+    <string name="proxy_group_test">测速</string>
+    <string name="proxy_group_testing">测速中</string>
+    <string name="proxy_group_select_failed">切换失败</string>
+    <string name="proxy_group_type_select">手动选择</string>
+    <string name="proxy_group_type_auto">自动测速</string>
+    <string name="proxy_group_type_fallback">故障转移</string>
+    <string name="proxy_group_type_balance">负载均衡</string>
+    <string name="proxy_group_type_relay">链式代理</string>
+    <string name="proxy_group_type_unknown">其他</string>
 </resources>

@@ -22,7 +22,7 @@ import com.slte.app.utils.findActivity
 @Composable
 fun LoggedInApp(
     accountKey: String,
-    onSupport: () -> Unit,
+    onSupport: () -> Boolean,
 ) {
     val context = LocalContext.current
     val viewModels = rememberLoggedInViewModels(accountKey)
@@ -95,7 +95,7 @@ fun LoggedInApp(
                     onInvite = { preload.enterPage(PendingNav.Invite) },
                     onServer = { pushPage(Page.Server) },
                     onNotice = { preload.enterPage(PendingNav.Notice) },
-                    onSupport = onSupport,
+                    onSupport = { if (!onSupport()) pushPage(Page.Ticket) },
                     onProfile = { pushPage(Page.Profile) },
                     onRenew = { preload.enterPage(PendingNav.Plans) },
                 )
@@ -107,7 +107,8 @@ fun LoggedInApp(
                     onOrders = { preload.enterPage(PendingNav.Orders) },
                     onInvite = { preload.enterPage(PendingNav.Invite) },
                     onRenew = { preload.enterPage(PendingNav.Plans) },
-                    onContact = onSupport,
+                    onContact = { if (!onSupport()) pushPage(Page.Ticket) },
+                    onTickets = { pushPage(Page.Ticket) },
                     onSettings = { pushPage(Page.Settings) },
                     onAbout = { pushPage(Page.About) },
                 )
@@ -128,6 +129,12 @@ fun LoggedInApp(
             Page.Notice ->
                 NoticePageContent(
                     noticeViewModel = viewModels.notice,
+                    onBack = ::popPage,
+                )
+
+            Page.Ticket ->
+                TicketPageContent(
+                    ticketViewModel = viewModels.ticket,
                     onBack = ::popPage,
                 )
 

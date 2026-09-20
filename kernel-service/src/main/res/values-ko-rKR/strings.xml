@@ -9,6 +9,8 @@
     <string name="format_update_complete">%s 업데이트 성공</string>
     <string name="format_update_failure">업데이트 %1$s: %2$s</string>
     <string name="running">연결됨</string>
+    <string name="notification_action_stop">연결 해제</string>
+    <string name="notification_proxying">프록시 연결됨</string>
     <string name="loading">로딩중</string>
     <string name="clash_meta_for_android">SLTE</string>
     <string name="profiles_and_providers">구성 파일과 외부 리소스</string>

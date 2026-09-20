@@ -161,10 +161,44 @@
     <string name="notice_retry">Retry</string>
     <string name="notice_refresh_failed">Refresh failed, please try again</string>
 
+    <!-- Ticket -->
+    <string name="ticket_title">My Tickets</string>
+    <string name="ticket_empty">No tickets yet</string>
+    <string name="ticket_error">Failed to load</string>
+    <string name="ticket_refresh_failed">Refresh failed, please try again later</string>
+    <string name="ticket_new">New ticket</string>
+    <string name="ticket_subject">Subject</string>
+    <string name="ticket_message">Describe your issue</string>
+    <string name="ticket_level">Priority</string>
+    <string name="ticket_level_low">Low</string>
+    <string name="ticket_level_medium">Normal</string>
+    <string name="ticket_level_high">High</string>
+    <string name="ticket_submit">Submit</string>
+    <string name="ticket_submit_success">Ticket submitted</string>
+    <string name="ticket_submit_failed">Submit failed</string>
+    <string name="ticket_detail">Ticket detail</string>
+    <string name="ticket_detail_failed">Failed to load detail</string>
+    <string name="ticket_reply">Send</string>
+    <string name="ticket_reply_hint">Type your reply</string>
+    <string name="ticket_reply_success">Reply sent</string>
+    <string name="ticket_reply_failed">Reply failed</string>
+    <string name="ticket_close">Close ticket</string>
+    <string name="ticket_close_confirm">Close this ticket?</string>
+    <string name="ticket_close_success">Ticket closed</string>
+    <string name="ticket_close_failed">Close failed</string>
+    <string name="ticket_confirm">Confirm</string>
+    <string name="ticket_cancel">Cancel</string>
+    <string name="ticket_sender_me">Me</string>
+    <string name="ticket_sender_support">Support</string>
+    <string name="ticket_status_open">Open</string>
+    <string name="ticket_status_closed">Closed</string>
+    <string name="ticket_created_at">Created</string>
+
     <!-- Profile -->
     <string name="profile_title">Profile</string>
     <string name="profile_not_logged_in">Not logged in</string>
     <string name="profile_orders">My orders</string>
+    <string name="profile_tickets">My Tickets</string>
     <string name="profile_contact">Contact us</string>
     <string name="profile_about">About</string>
 
@@ -313,4 +347,19 @@
     <string name="language_simplified">简体中文</string>
     <string name="language_traditional">繁體中文</string>
     <string name="language_english">English</string>
+
+    <string name="proxy_groups_title">Proxy groups</string>
+    <string name="proxy_groups_subtitle">Pick an outbound for each group</string>
+    <string name="proxy_groups_empty">No proxy groups</string>
+    <string name="proxy_groups_loading">Loading proxy groups</string>
+    <string name="proxy_group_now">Now: %1$s</string>
+    <string name="proxy_group_test">Test</string>
+    <string name="proxy_group_testing">Testing</string>
+    <string name="proxy_group_select_failed">Failed to switch</string>
+    <string name="proxy_group_type_select">Manual</string>
+    <string name="proxy_group_type_auto">Auto</string>
+    <string name="proxy_group_type_fallback">Fallback</string>
+    <string name="proxy_group_type_balance">Load balance</string>
+    <string name="proxy_group_type_relay">Relay</string>
+    <string name="proxy_group_type_unknown">Other</string>
 </resources>

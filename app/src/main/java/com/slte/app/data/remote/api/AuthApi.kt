@@ -15,6 +15,8 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
+import com.slte.app.domain.model.Ticket
+import com.slte.app.domain.model.TicketDetail
 
 interface AuthApi {
     suspend fun login(
@@ -109,4 +111,21 @@ interface AuthApi {
     suspend fun fetchServers(): List<ServerNode>
 
     suspend fun fetchSubscribeYaml(url: String): okhttp3.ResponseBody?
+
+    suspend fun fetchTickets(): List<Ticket>
+
+    suspend fun fetchTicketDetail(id: Int): TicketDetail
+
+    suspend fun createTicket(
+        subject: String,
+        level: Int,
+        message: String,
+    ): Boolean
+
+    suspend fun replyTicket(
+        id: Int,
+        message: String,
+    ): Boolean
+
+    suspend fun closeTicket(id: Int): Boolean
 }

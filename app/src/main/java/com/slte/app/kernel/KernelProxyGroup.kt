@@ -60,6 +60,90 @@ suspend fun KernelProxy.serverInfo(): KernelServerInfo? = safe(null, "serverInfo
     KernelServerInfo(selection, node)
 }
 
+/** 策略组内的一个候选成员（可能是节点，也可能是另一个策略组）。 */
+data class KernelProxyMember(
+    val name: String,
+    val isGroup: Boolean,
+    val delay: Int?,
+)
+
+/** 一个策略组的快照，用于「可分流的选择」界面。 */
+data class KernelProxyGroupInfo(
+    val name: String,
+    val type: String,
+    val now: String?,
+    val selectable: Boolean,
+    val members: List<KernelProxyMember>,
+)
+
+/**
+ * 读取内核中全部策略组（排除 GLOBAL）。
+ *
+ * 此前的 selectorGroup() 只返回第一个组，多策略组订阅（如按应用分组的
+ * 电报/AI/油管/奈飞/GitHub 等）无法分别调整，用户表现为"没地方调规则"。
+ */
+suspend fun KernelProxy.proxyGroups(): List<KernelProxyGroupInfo> = safe(emptyList(), "proxyGroups") {
+    val clash = manager.clash() ?: return@safe emptyList()
+    clash
+        .queryProxyGroupNames(excludeNotSelectable = false)
+        .filter { it != GLOBAL_GROUP }
+        .mapNotNull { groupName ->
+            runCatching {
+                val group = clash.queryProxyGroup(groupName, ProxySort.Default)
+                KernelProxyGroupInfo(
+                    name = groupName,
+                    type = group.type,
+                    now = group.now.takeIf { it.isNotBlank() },
+                    selectable = group.type.equals(GROUP_TYPE_SELECTOR, ignoreCase = true),
+                    members =
+                    group.proxies
+                        .filter { it.name != groupName }
+                        .map { proxy ->
+                            KernelProxyMember(
+                                name = proxy.name,
+                                isGroup = proxy.isGroup,
+                                delay = normalizeDelay(proxy.delay),
+                            )
+                        },
+                )
+            }.getOrNull()
+        }
+}
+
+/** 在指定策略组内切换选中项。仅 Selector 类型支持手动切换。 */
+suspend fun KernelProxy.selectInGroup(
+    groupName: String,
+    proxyName: String,
+): Boolean = safe(false, "selectInGroup") {
+    val clash = manager.clash() ?: return@safe false
+    val group = clash.queryProxyGroup(groupName, ProxySort.Default)
+    if (!group.type.equals(GROUP_TYPE_SELECTOR, ignoreCase = true)) {
+        AppLog.w("SLTE-Kernel", "selectInGroup: 组 $groupName 类型 ${group.type} 不支持手动切换")
+        return@safe false
+    }
+    if (group.proxies.none { it.name == proxyName }) {
+        AppLog.w("SLTE-Kernel", "selectInGroup: 组成员不存在 $proxyName")
+        return@safe false
+    }
+    val result = clash.patchSelector(groupName, proxyName)
+    AppLog.d("SLTE-Kernel", "selectInGroup: $groupName -> $proxyName result=$result")
+    result
+}
+
+/** 触发指定策略组的延迟测试，返回成员名到延迟的映射（超时为 DELAY_TIMEOUT）。 */
+suspend fun KernelProxy.testGroup(groupName: String): Map<String, Int> = safe(emptyMap(), "testGroup") {
+    val clash = manager.clash() ?: return@safe emptyMap()
+    clash.healthCheck(groupName)
+    clash
+        .queryProxyGroup(groupName, ProxySort.Delay)
+        .proxies
+        .associate { it.name to normalizeDelay(it.delay) }
+}
+
+private const val GROUP_TYPE_SELECTOR = "Selector"
+
+private const val GLOBAL_GROUP = "GLOBAL"
+
 suspend fun KernelProxy.groupByTypeCurrentNode(type: String): String? = safe(null, "groupByTypeCurrentNode") {
     val clash = manager.clash() ?: return@safe null
     val group = queryGroupByTypeName(type) ?: return@safe null
