@@ -116,6 +116,12 @@ constructor(
         if (!AuthRules.isAuthPath(response.request.url.encodedPath)) {
             return false
         }
+        // 认证路径上的 403 一律视为会话失效：面板正常未登录响应带「未登录」
+        // 关键字，但边缘（如 Cloudflare WAF）拦截页返回的是 HTML/无关键字体，
+        // 按体内容判断会漏掉，用户会被卡在报错页而不是被引导重新登录。
+        if (response.code == 401 || response.code == 403) {
+            return true
+        }
         return isAuthFailureBody(response)
     }
 

@@ -199,7 +199,7 @@
     <string name="profile_not_logged_in">Not logged in</string>
     <string name="profile_orders">My orders</string>
     <string name="profile_tickets">My Tickets</string>
-    <string name="profile_contact">Contact us</string>
+    <string name="profile_telegram">Telegram Group</string>
     <string name="profile_about">About</string>
 
     <!-- About (关于软件) -->
@@ -349,6 +349,7 @@
     <string name="language_english">English</string>
 
     <string name="proxy_groups_title">Proxy groups</string>
+    <string name="server_nodes_title">Nodes</string>
     <string name="proxy_groups_subtitle">Pick an outbound for each group</string>
     <string name="proxy_groups_empty">No proxy groups</string>
     <string name="proxy_groups_loading">Loading proxy groups</string>

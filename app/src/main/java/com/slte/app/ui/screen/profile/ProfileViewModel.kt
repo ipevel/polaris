@@ -29,6 +29,9 @@ data class ProfileData(
 
     /** 用户信息拉取失败：用于在个人中心展示错误卡片（复用 R.string.notice_error） */
     val userInfoError: Boolean = false,
+
+    /** 面板后台配置的 Telegram 讨论组链接（未配置为 null，个人页隐藏入口） */
+    val telegramDiscussLink: String? = null,
 )
 
 @HiltViewModel
@@ -94,6 +97,7 @@ constructor(
             }
             val userResult = async { subscribeRepository.fetchUserInfo() }
             val subscribeResult = async { subscribeRepository.fetchSubscribeInfo() }
+            val telegramResult = async { authRepository.fetchTelegramDiscussLink() }
 
             userResult.await().fold(
                 onSuccess = { user ->
@@ -111,6 +115,9 @@ constructor(
                 if (_data.value.subscribeInfo == null) {
                     _errorMessageRes.value = ErrorMessages.forSubscribe(throwable)
                 }
+            }
+            telegramResult.await()?.let { link ->
+                _data.update { it.copy(telegramDiscussLink = link) }
             }
             loading = false
         }

@@ -69,6 +69,7 @@ val slteAllowedDomains =
 
 val slteCrispWebsiteId = slteValue("SLTE_CRISP_WEBSITE_ID") ?: ""
 val slteCrispEnabled = (slteValue("SLTE_CRISP_ENABLED") ?: "false").toBoolean()
+val slteTelegramGroupUrl = slteValue("SLTE_TELEGRAM_GROUP_URL") ?: ""
 
 val slteReleaseStoreFile = slteValue("SLTE_RELEASE_STORE_FILE")
 
@@ -109,6 +110,7 @@ android {
 
         buildConfigField("String", "CRISP_WEBSITE_ID", "\"$slteCrispWebsiteId\"")
         buildConfigField("boolean", "CRISP_ENABLED", "$slteCrispEnabled")
+        buildConfigField("String", "TELEGRAM_GROUP_URL", "\"$slteTelegramGroupUrl\"")
     }
 
     signingConfigs {

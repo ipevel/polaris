@@ -13,16 +13,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -46,7 +42,6 @@ import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Constants
 import com.slte.app.utils.Dimens
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerScreen(
     onBack: () -> Unit,
@@ -58,9 +53,11 @@ fun ServerScreen(
     val proxyGroups by viewModel.proxyGroups.collectAsStateWithLifecycle()
     val isLoadingGroups by viewModel.isLoadingGroups.collectAsStateWithLifecycle()
     val testingGroup by viewModel.testingGroup.collectAsStateWithLifecycle()
-    var showProxyGroupsSheet by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    // 策略组随页面直接加载，不再等用户找入口
+    LaunchedEffect(Unit) { viewModel.loadProxyGroups() }
 
     LaunchedEffect(errorMessageRes) {
         errorMessageRes?.let {
@@ -75,14 +72,6 @@ fun ServerScreen(
         title = stringResource(R.string.server_title),
         onBack = onBack,
         actions = {
-            CircleIconButton(
-                icon = SlteIcons.ProxyMode,
-                description = stringResource(R.string.proxy_groups_title),
-                onClick = {
-                    showProxyGroupsSheet = true
-                    viewModel.loadProxyGroups()
-                },
-            )
             CircleIconButton(
                 icon = SlteIcons.SpeedTest,
                 description = stringResource(R.string.server_speed_test),
@@ -117,6 +106,40 @@ fun ServerScreen(
                 verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
             ) {
                 item { Spacer(modifier = Modifier.height(Dimens.gap.md)) }
+
+                // 分流/策略组直接内嵌在节点列表顶部，不用再找隐藏入口
+                item {
+                    Text(
+                        text = stringResource(R.string.proxy_groups_title),
+                        style = SlteType.title,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(vertical = Dimens.gap.xs),
+                    )
+                }
+                when {
+                    proxyGroups.isEmpty() && isLoadingGroups ->
+                        item { ProxyGroupsHint(message = stringResource(R.string.proxy_groups_loading), showLoading = true) }
+                    proxyGroups.isEmpty() ->
+                        item { ProxyGroupsHint(message = stringResource(R.string.proxy_groups_empty), showLoading = false) }
+                    else ->
+                        items(proxyGroups, key = { it.name }) { group ->
+                            ProxyGroupCard(
+                                group = group,
+                                isTesting = testingGroup == group.name,
+                                onSelect = viewModel::selectInGroup,
+                                onTest = { viewModel.testGroup(group.name) },
+                            )
+                        }
+                }
+
+                item {
+                    Text(
+                        text = stringResource(R.string.server_nodes_title),
+                        style = SlteType.title,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = Dimens.gap.sm, bottom = Dimens.gap.xs),
+                    )
+                }
 
                 item {
                     NodeCard(
@@ -185,15 +208,6 @@ fun ServerScreen(
         }
     }
 
-    if (showProxyGroupsSheet) {
-        ProxyGroupsSheet(
-            groups = proxyGroups,
-            isLoading = isLoadingGroups,
-            testingGroup = testingGroup,
-            onDismiss = { showProxyGroupsSheet = false },
-            onSelect = viewModel::selectInGroup,
-            onTestGroup = viewModel::testGroup,
-        )
     }
 }
 

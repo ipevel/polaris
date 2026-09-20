@@ -192,6 +192,8 @@ data class XiaoV2bWithdrawRequest(
 
 @Serializable
 data class XiaoV2bUserCommConfigData(
+    @SerialName("telegram_discuss_link")
+    val telegramDiscussLink: String? = null,
     @SerialName("withdraw_methods")
     val withdrawMethods: List<String>? = null,
     @SerialName("withdraw_close")

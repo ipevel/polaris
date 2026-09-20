@@ -3,6 +3,7 @@ package com.slte.app.ui.theme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
@@ -98,6 +99,7 @@ object SlteIcons {
 
     val Orders: ImageVector = Icons.Outlined.Receipt
     val Ticket: ImageVector = Icons.Outlined.ConfirmationNumber
+    val Telegram: ImageVector = Icons.AutoMirrored.Outlined.Send
     val InviteRow: ImageVector = Icons.Outlined.GroupAdd
     val CustomerService: ImageVector = Icons.Outlined.SupportAgent
     val Settings: ImageVector = Icons.Outlined.Settings

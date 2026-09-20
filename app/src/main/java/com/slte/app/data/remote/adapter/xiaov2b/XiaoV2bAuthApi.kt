@@ -296,6 +296,11 @@ class XiaoV2bAuthApi(
         return data.withdrawMethods.orEmpty()
     }
 
+    override suspend fun fetchTelegramDiscussLink(): String? {
+        val response = AdapterExecute.typed { userApi.fetchUserCommConfig() }
+        return response.data.orNullLogged("fetchTelegramDiscussLink")?.telegramDiscussLink?.takeIf { it.isNotBlank() }
+    }
+
     override suspend fun fetchNotices(
         page: Int,
         pageSize: Int,

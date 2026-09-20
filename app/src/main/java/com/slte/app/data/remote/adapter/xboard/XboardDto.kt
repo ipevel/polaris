@@ -54,6 +54,8 @@ data class XboardWithdrawRequest(
 
 @Serializable
 data class XboardUserCommConfigData(
+    @SerialName("telegram_discuss_link")
+    val telegramDiscussLink: String? = null,
     @SerialName("withdraw_methods")
     val withdrawMethods: List<String>? = null,
     @SerialName("withdraw_close")

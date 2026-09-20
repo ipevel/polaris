@@ -107,7 +107,6 @@ fun LoggedInApp(
                     onOrders = { preload.enterPage(PendingNav.Orders) },
                     onInvite = { preload.enterPage(PendingNav.Invite) },
                     onRenew = { preload.enterPage(PendingNav.Plans) },
-                    onContact = { if (!onSupport()) pushPage(Page.Ticket) },
                     onTickets = { pushPage(Page.Ticket) },
                     onSettings = { pushPage(Page.Settings) },
                     onAbout = { pushPage(Page.About) },

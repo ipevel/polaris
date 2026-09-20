@@ -1,5 +1,7 @@
 package com.slte.app.ui.screen.profile
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,16 +14,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.slte.app.BuildConfig
 import com.slte.app.R
 import com.slte.app.domain.model.isPlanValid
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.utils.AppLog
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
+import com.slte.app.utils.sanitizeLog
 
 @Composable
 fun ProfileScreen(
@@ -29,7 +35,6 @@ fun ProfileScreen(
     onOrders: () -> Unit = {},
     onInvite: () -> Unit = {},
     onRenew: () -> Unit = {},
-    onContact: () -> Unit = {},
     onTickets: () -> Unit = {},
     onSettings: () -> Unit = {},
     onAbout: () -> Unit = {},
@@ -39,6 +44,9 @@ fun ProfileScreen(
     val data by viewModel.data.collectAsStateWithLifecycle()
     val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
     var showLogoutSheet by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    // 优先读面板后台配置（telegram_discuss_link），编译期参数兜底
+    val telegramUrl = data.telegramDiscussLink ?: BuildConfig.TELEGRAM_GROUP_URL
 
     SlteScaffold(
         title = stringResource(R.string.profile_title),
@@ -118,12 +126,20 @@ fun ProfileScreen(
                 )
             }
 
-            item {
-                NavigateCard(
-                    icon = SlteIcons.CustomerService,
-                    title = stringResource(R.string.profile_contact),
-                    onClick = onContact,
-                )
+            if (telegramUrl.isNotBlank()) {
+                item {
+                    NavigateCard(
+                        icon = SlteIcons.Telegram,
+                        title = stringResource(R.string.profile_telegram),
+                        onClick = {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl)))
+                            } catch (e: Exception) {
+                                AppLog.w("SLTE-Profile", "打开 Telegram 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                            }
+                        },
+                    )
+                }
             }
             item {
                 NavigateCard(

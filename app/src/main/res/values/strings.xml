@@ -196,7 +196,7 @@
     <string name="profile_not_logged_in">未登录</string>
     <string name="profile_orders">我的订单</string>
     <string name="profile_tickets">我的工单</string>
-    <string name="profile_contact">联系我们</string>
+    <string name="profile_telegram">Telegram 讨论组</string>
     <string name="profile_about">关于软件</string>
 
     <!-- About (关于软件) -->
@@ -346,6 +346,7 @@
     <string name="language_english">English</string>
 
     <string name="proxy_groups_title">策略组</string>
+    <string name="server_nodes_title">节点列表</string>
     <string name="proxy_groups_subtitle">为每个分组指定出口节点</string>
     <string name="proxy_groups_empty">暂无策略组</string>
     <string name="proxy_groups_loading">正在读取策略组</string>

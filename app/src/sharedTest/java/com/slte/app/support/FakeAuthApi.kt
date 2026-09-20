@@ -169,6 +169,8 @@ open class FakeAuthApi : AuthApi {
 
     override suspend fun fetchTickets(): List<Ticket> = unsupported()
 
+    override suspend fun fetchTelegramDiscussLink(): String? = null
+
     override suspend fun fetchTicketDetail(id: Int): TicketDetail = unsupported()
 
     override suspend fun createTicket(

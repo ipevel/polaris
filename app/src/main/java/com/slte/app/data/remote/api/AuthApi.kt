@@ -103,6 +103,9 @@ interface AuthApi {
 
     suspend fun fetchWithdrawMethods(): List<String>
 
+    /** 面板后台配置的 Telegram 讨论组链接（未配置返回 null） */
+    suspend fun fetchTelegramDiscussLink(): String?
+
     suspend fun fetchNotices(
         page: Int = 1,
         pageSize: Int = 20,

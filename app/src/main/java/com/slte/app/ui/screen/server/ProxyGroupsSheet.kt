@@ -1,7 +1,6 @@
 package com.slte.app.ui.screen.server
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -29,7 +27,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.ui.component.LottieLoadingIcon
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteShapes
@@ -40,49 +37,11 @@ import com.slte.app.utils.Dimens
 /**
  * 「可分流的选择」：列出内核中全部策略组，可逐组指定出口节点。
  *
- * 容器 SlteSheet 自带 verticalScroll，故此处用普通 Column 承载，
- * 不使用 LazyColumn（嵌套滚动会冲突）。
+ * 直接内嵌在节点列表顶部（LazyColumn item），不再通过弹层入口。
  */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun ProxyGroupsSheet(
-    groups: List<KernelProxyGroupInfo>,
-    isLoading: Boolean,
-    testingGroup: String?,
-    onDismiss: () -> Unit,
-    onSelect: (String, String) -> Unit,
-    onTestGroup: (String) -> Unit,
-) {
-    SlteSheet(
-        title = stringResource(R.string.proxy_groups_title),
-        subtitle = stringResource(R.string.proxy_groups_subtitle),
-        onDismiss = onDismiss,
-    ) {
-        when {
-            groups.isEmpty() && isLoading -> ProxyGroupsHint(
-                message = stringResource(R.string.proxy_groups_loading),
-                showLoading = true,
-            )
-            groups.isEmpty() -> ProxyGroupsHint(
-                message = stringResource(R.string.proxy_groups_empty),
-                showLoading = false,
-            )
-            else -> Column(verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm)) {
-                groups.forEach { group ->
-                    ProxyGroupCard(
-                        group = group,
-                        isTesting = testingGroup == group.name,
-                        onSelect = onSelect,
-                        onTest = { onTestGroup(group.name) },
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
-private fun ProxyGroupsHint(
+internal fun ProxyGroupsHint(
     message: String,
     showLoading: Boolean,
 ) {
@@ -108,7 +67,7 @@ private fun ProxyGroupsHint(
 }
 
 @Composable
-private fun ProxyGroupCard(
+internal fun ProxyGroupCard(
     group: KernelProxyGroupInfo,
     isTesting: Boolean,
     onSelect: (String, String) -> Unit,

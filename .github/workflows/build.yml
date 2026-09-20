@@ -58,6 +58,10 @@ on:
           - 'true'
           - 'false'
         default: 'true'
+      telegramGroupUrl:
+        description: Telegram 讨论组链接（留空则个人页不显示该入口）
+        required: false
+        default: ''
       buildType:
         description: 构建类型（release 需仓库 Secrets 签名四件套）
         type: choice
@@ -190,6 +194,7 @@ jobs:
           SLTE_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
           SLTE_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
           SLTE_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
+          SLTE_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
 
           SLTE_VERSION_NAME: ${{ inputs.versionName }}
           SLTE_VERSION_CODE: ${{ inputs.versionCode }}
