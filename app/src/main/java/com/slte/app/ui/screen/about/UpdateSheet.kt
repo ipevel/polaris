@@ -122,6 +122,16 @@ fun UpdateDownloadingDialog() {
                 textAlign = TextAlign.Center,
             )
         },
+        confirmButton = {
+            SlteButton(
+                text = stringResource(R.string.update_downloading),
+                onClick = {},
+                enabled = false,
+                loading = true,
+                modifier = Modifier.fillMaxWidth(),
+                style = SlteButtonStyle.Primary,
+            )
+        },
     )
 }
 
