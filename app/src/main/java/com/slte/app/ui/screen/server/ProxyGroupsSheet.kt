@@ -114,10 +114,13 @@ internal fun ProxyGroupCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = stringResource(proxyGroupTypeLabelRes(group.type)),
+                    BoldNameText(
+                        text = group.now?.takeIf { it.isNotBlank() } ?: stringResource(R.string.proxy_group_type_select),
                         style = SlteType.label,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        color = SlteColors.current.accentInteractive,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
 
