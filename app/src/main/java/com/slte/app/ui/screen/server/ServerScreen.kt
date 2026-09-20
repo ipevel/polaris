@@ -207,8 +207,6 @@ fun ServerScreen(
             }
         }
     }
-
-    }
 }
 
 @Composable
