@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.screen.about.ForceUpdateDialog
+import com.slte.app.ui.screen.about.UpdateDownloadingDialog
 import com.slte.app.ui.screen.about.UpdateSheet
 import com.slte.app.ui.screen.about.UpdateUiState
 import com.slte.app.ui.screen.about.UpdateViewModel
