@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -228,7 +229,7 @@ private fun MemberCard(
                         stringResource(R.string.format_delay_ms, delay)
                     },
                     style = SlteType.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = latencyColor(delay),
                 )
             }
             if (selected) {
@@ -327,4 +328,11 @@ internal fun proxyGroupTypeLabelRes(type: String): Int = when (type.lowercase())
     "loadbalance" -> R.string.proxy_group_type_balance
     "relay" -> R.string.proxy_group_type_relay
     else -> R.string.proxy_group_type_unknown
+}
+
+/** Anywhere 风格延迟分级着色：绿 <300ms / 黄 300-499ms / 红 ≥500ms */
+private fun latencyColor(ms: Int): Color = when {
+    ms < 300 -> Color(0xFF4CAF50)
+    ms < 500 -> Color(0xFFFFC107)
+    else -> Color(0xFFF44336)
 }
