@@ -149,6 +149,16 @@ class AuthInterceptorTest {
     }
 
     @Test
+    fun `认证接口403且响应体为边缘拦截页HTML时清会话`() {
+        every { sessionStore.getAuthData() } returns "token-a"
+        val chain = chain(request(), code = 403, body = "<html><body>Access denied</body></html>")
+
+        interceptor.intercept(chain)
+
+        verify { sessionStore.clear() }
+    }
+
+    @Test
     fun `非认证接口的401同样清会话`() {
         every { sessionStore.getAuthData() } returns "token-a"
         val chain = chain(request(url = "https://example.com${ApiPaths.PREFIX}/guest/comm/config"), code = 401)

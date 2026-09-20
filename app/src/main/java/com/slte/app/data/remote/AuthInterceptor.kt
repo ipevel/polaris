@@ -116,11 +116,23 @@ constructor(
         if (!AuthRules.isAuthPath(response.request.url.encodedPath)) {
             return false
         }
-        // 认证路径上的 403 一律视为会话失效：面板正常未登录响应带「未登录」
-        // 关键字，但边缘（如 Cloudflare WAF）拦截页返回的是 HTML/无关键字体，
-        // 按体内容判断会漏掉，用户会被卡在报错页而不是被引导重新登录。
-        if (response.code == 401 || response.code == 403) {
+        if (response.code == 401) {
             return true
+        }
+        if (response.code == 403) {
+            // 边缘拦截页（Cloudflare WAF/CDN 返回 HTML）没有「未登录」关键字，
+            // 按体内容判断会漏掉，用户会被卡在「错误代码403」页面；这类 403
+            // 同样视为会话失效场景。JSON 业务错误（如 {"msg":"余额不足"}）
+            // 不是会话问题，保持不清会话。
+            val body =
+                try {
+                    response.peekBody(MAX_PEEK_BYTES).string().trimStart()
+                } catch (_: Exception) {
+                    return false
+                }
+            if (body.startsWith("<")) {
+                return true
+            }
         }
         return isAuthFailureBody(response)
     }
