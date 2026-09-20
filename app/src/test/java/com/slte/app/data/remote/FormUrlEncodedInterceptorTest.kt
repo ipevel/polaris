@@ -4,6 +4,7 @@ import java.net.URLDecoder
 import java.util.concurrent.TimeUnit
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -147,7 +148,9 @@ class FormUrlEncodedInterceptorTest {
                 contentType = jsonMedia,
             )
 
-        assertEquals("application/json", recorded.getHeader("Content-Type"))
+        // OkHttp 会给 String.toRequestBody 的媒体类型补上 charset，这里只比对主/子类型
+        assertEquals("application", recorded.mediaType()?.type)
+        assertEquals("json", recorded.mediaType()?.subtype)
         assertEquals("[1,2]", recorded.body.readUtf8())
     }
 
@@ -160,7 +163,8 @@ class FormUrlEncodedInterceptorTest {
                 contentType = textMedia,
             )
 
-        assertEquals("text/plain", recorded.getHeader("Content-Type"))
+        assertEquals("text", recorded.mediaType()?.type)
+        assertEquals("plain", recorded.mediaType()?.subtype)
         assertEquals("plain text", recorded.body.readUtf8())
     }
 
@@ -207,6 +211,8 @@ class FormUrlEncodedInterceptorTest {
             decode(pair.substring(0, separator)) to decode(pair.substring(separator + 1))
         }
     }
+
+    private fun RecordedRequest.mediaType(): MediaType? = getHeader("Content-Type")?.toMediaTypeOrNull()
 
     private fun decode(value: String): String = URLDecoder.decode(value, "UTF-8")
 }
