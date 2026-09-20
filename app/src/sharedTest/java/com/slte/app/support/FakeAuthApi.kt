@@ -18,6 +18,7 @@ import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
+import com.slte.app.domain.model.TrafficLogRecord
 import okhttp3.ResponseBody
 
 open class FakeAuthApi : AuthApi {
@@ -166,6 +167,8 @@ open class FakeAuthApi : AuthApi {
     ): List<Notice> = unsupported()
 
     override suspend fun fetchSubscribeYaml(url: String): ResponseBody? = unsupported()
+
+    override suspend fun fetchTrafficLog(): List<TrafficLogRecord> = emptyList()
 
     override suspend fun fetchTickets(): List<Ticket> = unsupported()
 
