@@ -86,6 +86,7 @@ object BackendAdapterFactory {
                 .dns(dns)
                 .addInterceptor(ApiFailoverInterceptor(remoteConfig, remoteConfig.endpointSelector))
                 .addInterceptor(authInterceptor)
+                .addInterceptor(FormUrlEncodedInterceptor())
                 .apply {
                     if (isDebug) {
                         addInterceptor { chain ->
