@@ -29,6 +29,7 @@ import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -375,6 +376,41 @@ class XboardAuthApi(
 
     override suspend fun fetchTrafficLog(): List<TrafficLogRecord> {
         val response = AdapterExecute.typed { userApi.getTrafficLog() }
-        return response.data.orEmptyLogged("fetchTrafficLog").map { it.toDomain() }
+        val data = response.data ?: return emptyList()
+        return parseTrafficLog(data)
     }
+
+    private fun parseTrafficLog(data: JsonElement): List<TrafficLogRecord> {
+        val array = data as? JsonArray ?: return emptyList()
+        return array.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val dPrimitive = obj["d"] as? JsonPrimitive
+            val dIsString = dPrimitive?.isString == true
+            TrafficLogRecord(
+                date =
+                obj.stringField("record_at", "date", "log_date", "created_at")
+                    .ifEmpty { if (dIsString) dPrimitive.content else "" },
+                uploadBytes = obj.longField("u", "upload"),
+                downloadBytes =
+                if (dIsString) obj.longField("download") else obj.longField("d", "download"),
+            )
+        }
+    }
+}
+
+private fun JsonObject.stringField(vararg keys: String): String {
+    for (k in keys) {
+        val p = this[k] as? JsonPrimitive ?: continue
+        if (p.isString) return p.content
+    }
+    return ""
+}
+
+private fun JsonObject.longField(vararg keys: String): Long {
+    for (k in keys) {
+        val p = this[k] as? JsonPrimitive ?: continue
+        val v = p.content.toLongOrNull()
+        if (v != null) return v
+    }
+    return 0L
 }

@@ -166,5 +166,5 @@ interface XboardUserRetrofit {
     ): XboardResponse<Boolean>
 
     @GET("user/getTrafficLog")
-    suspend fun getTrafficLog(): XboardResponse<List<XboardTrafficLogData>>
+    suspend fun getTrafficLog(): XboardResponse<kotlinx.serialization.json.JsonElement?>
 }
