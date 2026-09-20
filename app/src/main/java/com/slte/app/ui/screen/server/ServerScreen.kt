@@ -18,9 +18,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.CircleIconButton
+import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
-import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.utils.Dimens
 
 @Composable
