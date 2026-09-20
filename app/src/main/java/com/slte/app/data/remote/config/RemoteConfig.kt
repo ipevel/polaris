@@ -239,7 +239,7 @@ constructor(
     /**
      * 缓存端点必须重新过白名单：旧版本可能缓存了已下线的域名，
      * 直接进内存会被 AppModule 当作 baseUrl，而 AuthInterceptor 会因主机
-     * 不在白名单而静默剥离 Authorization，导致所有 /user/* 请求失败。
+     * 不在白名单而静默剥离 Authorization，导致所有 user 路径下的请求失败。
      * 主域名不合法时丢弃整份缓存、回落 BuildConfig 默认值；候选项同样过滤。
      */
     private fun sanitizeCachedConfig(cached: RemoteConfigData?): RemoteConfigData {
