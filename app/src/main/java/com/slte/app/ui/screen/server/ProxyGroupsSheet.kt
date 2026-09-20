@@ -2,6 +2,7 @@ package com.slte.app.ui.screen.server
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
+import com.slte.app.kernel.KernelProxyMember
 import com.slte.app.ui.component.LottieLoadingIcon
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
@@ -93,14 +95,21 @@ internal fun ProxyGroupCard(
                 Modifier
                     .fillMaxWidth()
                     .clickable { expanded = !expanded }
-                    .padding(Dimens.gap.lg),
+                    .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(
+                    imageVector = SlteIcons.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(if (expanded) Dimens.icon.lg else Dimens.icon.md),
+                )
+                Spacer(modifier = Modifier.width(Dimens.gap.md))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = group.name,
                         style = SlteType.body,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -111,6 +120,8 @@ internal fun ProxyGroupCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+
+                MemberCountBadge(count = group.members.size)
 
                 if (isTesting) {
                     LottieLoadingIcon(modifier = Modifier.size(Dimens.icon.md))
@@ -136,75 +147,115 @@ internal fun ProxyGroupCard(
                 )
             }
 
-            Text(
-                text = stringResource(R.string.proxy_group_now, group.now ?: Constants.PLACEHOLDER_DASH),
-                style = SlteType.label,
-                color = SlteColors.current.accentInteractive,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Dimens.gap.lg)
-                    .padding(bottom = Dimens.gap.sm),
-            )
-
             if (expanded) {
-                group.members.forEach { member ->
-                    val selected = member.name == group.now
-                    Row(
-                        modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = group.selectable) {
-                                if (!selected) onSelect(group.name, member.name)
-                            }.padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BoldNameText(
-                            text = member.name,
-                            style = SlteType.body,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            color =
-                            if (selected) {
-                                SlteColors.current.accentInteractive
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
+                Column(
+                    modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Dimens.gap.lg),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
+                ) {
+                    group.members.forEach { member ->
+                        MemberCard(
+                            member = member,
+                            selected = member.name == group.now,
+                            selectable = group.selectable,
+                            onClick = { onSelect(group.name, member.name) },
                         )
-                        if (member.isGroup) {
-                            Spacer(modifier = Modifier.width(Dimens.gap.sm))
-                            GroupBadge()
-                        }
-                        member.delay?.let { delay ->
-                            Text(
-                                text =
-                                if (delay >= Constants.DELAY_TIMEOUT) {
-                                    stringResource(R.string.server_timeout)
-                                } else {
-                                    stringResource(R.string.format_delay_ms, delay)
-                                },
-                                style = SlteType.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.width(Dimens.gap.sm))
-                        }
-                        if (selected) {
-                            Icon(
-                                imageVector = SlteIcons.Check,
-                                contentDescription = null,
-                                tint = SlteColors.current.accentInteractive,
-                                modifier = Modifier.size(Dimens.icon.sm),
-                            )
-                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(Dimens.gap.md))
             }
         }
+    }
+}
+
+@Composable
+private fun MemberCard(
+    member: KernelProxyMember,
+    selected: Boolean,
+    selectable: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = selectable && !selected, onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color =
+        if (selected) {
+            SlteColors.current.accentInteractiveBg
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+    ) {
+        Row(
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Dimens.gap.md, vertical = Dimens.gap.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BoldNameText(
+                text = member.name,
+                style = SlteType.body,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color =
+                if (selected) {
+                    SlteColors.current.accentInteractive
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (member.isGroup) {
+                Spacer(modifier = Modifier.width(Dimens.gap.sm))
+                GroupBadge()
+            }
+            member.delay?.let { delay ->
+                Spacer(modifier = Modifier.width(Dimens.gap.sm))
+                Text(
+                    text =
+                    if (delay >= Constants.DELAY_TIMEOUT) {
+                        stringResource(R.string.server_timeout)
+                    } else {
+                        stringResource(R.string.format_delay_ms, delay)
+                    },
+                    style = SlteType.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (selected) {
+                Spacer(modifier = Modifier.width(Dimens.gap.sm))
+                Icon(
+                    imageVector = SlteIcons.Check,
+                    contentDescription = null,
+                    tint = SlteColors.current.accentInteractive,
+                    modifier = Modifier.size(Dimens.icon.sm),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberCountBadge(count: Int) {
+    Box(
+        modifier =
+        Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = Dimens.gap.sm, vertical = Dimens.gap.xs),
+    ) {
+        Text(
+            text = count.toString(),
+            style = SlteType.label,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -1,1 +1,1 @@
-e75daa49507c6de3b04b0f1d421363dfab29ba74fa04309a7c9a2804f9ddb5d4  ./SLTE-1.1.6.apk
+e6990a58dfad59d0dbe756e82b716f04ecc98bb699e8fc06012ef438baffdbf4  ./SLTE-1.1.7.apk

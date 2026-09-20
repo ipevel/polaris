@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
@@ -92,6 +93,8 @@ object SlteIcons {
 
     val ExpandMore: ImageVector = Icons.Outlined.ExpandMore
     val ExpandLess: ImageVector = Icons.Outlined.ExpandLess
+
+    val Folder: ImageVector = Icons.Outlined.Folder
 
     val Check: ImageVector = Icons.Outlined.Check
 

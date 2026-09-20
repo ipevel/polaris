@@ -28,6 +28,7 @@ import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -374,8 +375,12 @@ class XboardAuthApi(
     }
 
     override suspend fun fetchTrafficLog(): List<TrafficLogRecord> {
-        val response = AdapterExecute.typed { userApi.getTrafficLog() }
-        val data = response.data ?: return emptyList()
+        // 直接用 ResponseBody 手动解析，彻底避开 Retrofit 泛型反序列化问题
+        // （此前 JsonElement?/JsonArray 作为 XboardResponse<T> 的泛型参数都触发过序列化异常）。
+        val body = AdapterExecute.raw { userApi.getTrafficLog() }
+        val root = runCatching { Json.parseToJsonElement(body.string()) as? JsonObject }.getOrNull()
+            ?: return emptyList()
+        val data = root["data"] as? JsonArray ?: return emptyList()
         return parseTrafficLog(data)
     }
 
