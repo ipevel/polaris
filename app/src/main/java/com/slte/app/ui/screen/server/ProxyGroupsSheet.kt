@@ -186,7 +186,7 @@ private fun MemberCard(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = selectable && !selected, onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(24.dp),
         color =
         if (selected) {
             SlteColors.current.accentInteractiveBg
@@ -250,7 +250,7 @@ private fun MemberCountBadge(count: Int) {
     Box(
         modifier =
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = Dimens.gap.sm, vertical = Dimens.gap.xs),
     ) {
@@ -263,13 +263,13 @@ private fun MemberCountBadge(count: Int) {
     }
 }
 
-/** 解析 Clash 风格 **粗体** 标记并渲染。 */
+/** Anywhere-style 胶囊形 TagBadge。 */
 @Composable
 private fun GroupBadge() {
     Box(
         modifier =
         Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(50))
             .background(SlteColors.current.statusNeutralBg)
             .padding(horizontal = Dimens.gap.sm, vertical = Dimens.gap.xs),
     ) {
@@ -282,6 +282,7 @@ private fun GroupBadge() {
     }
 }
 
+/** 解析 Clash 风格 **粗体** 标记并渲染。 */
 @Composable
 private fun BoldNameText(
     text: String,
