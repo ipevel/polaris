@@ -88,7 +88,7 @@ class DynamicNotificationModule(service: Service) : Module<Unit>(service) {
             addAction(Intent.ACTION_SCREEN_OFF)
         }
 
-        val profileLoadedSignal = receiveBroadcast(Channel.CONFLATED) {
+        val profileLoadedSignal = receiveBroadcast(capacity = Channel.CONFLATED) {
             addAction(Intents.ACTION_PROFILE_LOADED)
         }
 
