@@ -42,12 +42,17 @@ fun ConnectToggleCard(
     minHeight: Dp = Dimens.dashboardToggleCardMinHeight,
 ) {
     val haptic = LocalHapticFeedback.current
-    val powerBg =
+    val powerBg: Brush =
         when {
             isConnected -> Brush.linearGradient(
                 listOf(Color(0xFF4BCB1C), Color(0xFF2E7D32)),
             )
-            else -> Color(0xFF757575)
+            isConnecting -> Brush.linearGradient(
+                listOf(Color(0xFFFFAB40), Color(0xFFFF9800)),
+            )
+            else -> Brush.linearGradient(
+                listOf(Color(0xFF757575), Color(0xFF616161)),
+            )
         }
     val statusText =
         when {

@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -58,7 +59,10 @@ fun CurrentIpCard(
                 ).padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SlteIconBadge(icon = SlteIcons.CurrentIp)
+            ColorfulIconBadge(
+                icon = SlteIcons.CurrentIp,
+                colors = listOf(Color(0xFF4BCB1C), Color(0xFF00B0A0)),
+            )
 
             Spacer(modifier = Modifier.width(Dimens.gap.md))
 
