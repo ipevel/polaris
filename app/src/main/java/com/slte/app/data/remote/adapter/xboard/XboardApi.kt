@@ -166,5 +166,6 @@ interface XboardUserRetrofit {
     ): XboardResponse<Boolean>
 
     @GET("user/getTrafficLog")
+    @Headers(ApiHeaders.NO_FAILOVER_HEADER)
     suspend fun getTrafficLog(): okhttp3.ResponseBody
 }

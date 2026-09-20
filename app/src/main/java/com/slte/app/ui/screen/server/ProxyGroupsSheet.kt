@@ -96,7 +96,7 @@ internal fun ProxyGroupCard(
                 Modifier
                     .fillMaxWidth()
                     .clickable { expanded = !expanded }
-                    .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
+                    .padding(horizontal = Dimens.gap.xl, vertical = Dimens.gap.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -105,7 +105,7 @@ internal fun ProxyGroupCard(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(if (expanded) Dimens.icon.lg else Dimens.icon.md),
                 )
-                Spacer(modifier = Modifier.width(Dimens.gap.md))
+                Spacer(modifier = Modifier.width(Dimens.gap.lg))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = group.name,
@@ -156,8 +156,8 @@ internal fun ProxyGroupCard(
                     modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = Dimens.gap.lg),
-                    verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
+                        .padding(horizontal = Dimens.gap.xl, vertical = Dimens.gap.md),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.gap.md),
                 ) {
                     group.members.forEach { member ->
                         MemberCard(
@@ -168,7 +168,7 @@ internal fun ProxyGroupCard(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(Dimens.gap.md))
+                Spacer(modifier = Modifier.height(Dimens.gap.lg))
             }
         }
     }
@@ -198,13 +198,13 @@ private fun MemberCard(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = Dimens.gap.md, vertical = Dimens.gap.md),
+                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.lg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BoldNameText(
                 text = member.name,
                 style = SlteType.body,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 color =
                 if (selected) {
                     SlteColors.current.accentInteractive
@@ -294,7 +294,7 @@ private fun BoldNameText(
     modifier: Modifier = Modifier,
 ) {
     val boldPattern = remember { Regex("\\*\\*(.+?)\\*\\*") }
-    val annotated = remember(text) {
+    val annotated = remember(text, color) {
         buildAnnotatedString {
             var last = 0
             boldPattern.findAll(text).forEach { match ->
@@ -313,9 +313,7 @@ private fun BoldNameText(
     }
     Text(
         text = annotated,
-        style = style,
-        fontWeight = fontWeight,
-        color = color,
+        style = style.copy(fontWeight = fontWeight, color = color),
         maxLines = maxLines,
         overflow = overflow,
         modifier = modifier,

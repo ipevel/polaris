@@ -99,6 +99,9 @@ suspend fun KernelProxy.proxyGroups(): List<KernelProxyGroupInfo> = safe(emptyLi
                     group.proxies
                         .filter { it.name != groupName }
                         .map { proxy ->
+                            if (proxy.name.contains("**")) {
+                                AppLog.d("SLTE-Kernel", "proxyGroups: member name 含粗体标记=${proxy.name}")
+                            }
                             KernelProxyMember(
                                 name = proxy.name,
                                 isGroup = proxy.isGroup,

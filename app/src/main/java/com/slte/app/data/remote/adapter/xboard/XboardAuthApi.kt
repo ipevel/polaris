@@ -381,17 +381,12 @@ class XboardAuthApi(
             val body = AdapterExecute.raw { userApi.getTrafficLog() }
             val raw = body.string()
             AppLog.d("SLTE-Traffic", "getTrafficLog 原始响应长度=${raw.length} 前200字符=${sanitizeLog(raw.take(200))}")
-            val root = Json.parseToJsonElement(raw) as? JsonObject
-            if (root == null) {
-                AppLog.w("SLTE-Traffic", "getTrafficLog 响应不是 JSON 对象")
+            val array = extractTrafficLogArray(raw)
+            if (array == null) {
+                AppLog.w("SLTE-Traffic", "getTrafficLog 无法从响应中提取 data 数组")
                 return emptyList()
             }
-            val data = root["data"] as? JsonArray
-            if (data == null) {
-                AppLog.w("SLTE-Traffic", "getTrafficLog 响应缺少 data 数组，实际字段: ${root.keys}")
-                return emptyList()
-            }
-            parseTrafficLog(data)
+            parseTrafficLog(array)
         } catch (e: ApiException) {
             AppLog.w("SLTE-Traffic", "getTrafficLog ApiException: ${sanitizeLog(e.message ?: "Unknown")}")
             throw e
@@ -399,6 +394,25 @@ class XboardAuthApi(
             AppLog.w("SLTE-Traffic", "getTrafficLog 异常: ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
             emptyList()
         }
+    }
+
+    /** 兼容多种 Xboard 响应结构：顶层数组 / data 数组 / data.items / data.data 嵌套。 */
+    private fun extractTrafficLogArray(raw: String): JsonArray? {
+        val root = runCatching { Json.parseToJsonElement(raw) }.getOrNull() ?: return null
+        // 顶层直接是数组
+        if (root is JsonArray) return root
+        if (root !is JsonObject) return null
+        val data = root["data"] ?: return null
+        // data 直接是数组
+        if (data is JsonArray) return data
+        // data 是对象，尝试常见包裹字段
+        if (data is JsonObject) {
+            listOf("items", "data", "list", "logs", "records").forEach { key ->
+                val inner = data[key] as? JsonArray
+                if (inner != null) return inner
+            }
+        }
+        return null
     }
 
     private fun parseTrafficLog(array: JsonArray): List<TrafficLogRecord> {
