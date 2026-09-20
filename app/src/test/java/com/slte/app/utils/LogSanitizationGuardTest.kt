@@ -10,6 +10,8 @@ class LogSanitizationGuardTest {
         val root = File("src/main/java")
         assertTrue("源码目录不存在: ${root.absolutePath}", root.isDirectory)
 
+        // .message 后接词边界，避免误伤 .messages / .messageCount 等成员访问
+        val exceptionMessageUsage = Regex("""\.message\b""")
         val offenders =
             root
                 .walkTopDown()
@@ -20,7 +22,7 @@ class LogSanitizationGuardTest {
                         .withIndex()
                         .filter { (_, line) ->
                             line.contains("AppLog.") &&
-                                line.contains(".message") &&
+                                exceptionMessageUsage.containsMatchIn(line) &&
                                 !line.contains("sanitizeLog(") &&
                                 !line.contains("sanitize(")
                         }.map { (index, line) -> "${file.name}:${index + 1}  ${line.trim()}" }

@@ -86,7 +86,9 @@ class MainViewModelTest {
 
     @Test
     fun `已连接时点击断开`() = runTest(mainRule.dispatcher) {
-        val vm = viewModel(hasPlan = true, connected = true)
+        // ready=true：observeKernelState 会经 awaitTunnelReady 门控，
+        // 未就绪时会把 isConnected 纠正回 false（假连接防护），断开路径走不到
+        val vm = viewModel(hasPlan = true, connected = true, ready = true)
         advanceUntilIdle()
 
         vm.toggleConnection()

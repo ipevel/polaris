@@ -125,6 +125,17 @@ android {
         getByName("androidTest").java.srcDir("src/sharedTest/java")
     }
 
+    testOptions {
+        unitTests {
+            all {
+                // CI 上 662 个单测与 R8 混合同一 runner 内存，累积后 OOM：
+                // 提高堆上限并每 200 个用例 fork 新 JVM，防内存累积
+                it.maxHeapSize = "3g"
+                it.setForkEvery(200)
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
