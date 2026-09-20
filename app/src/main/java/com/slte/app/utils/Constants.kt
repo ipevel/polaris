@@ -17,6 +17,17 @@ object ApiErrors {
     val SERIALIZATION = R.string.api_error_bad_response
 
     val UNSUPPORTED_BACKEND = R.string.api_error_unsupported_backend
+
+    /** HTTP 失败应答不是面板 JSON 时（拦截页 / 网关错误页）的可定位文案 */
+    fun forHttpStatus(code: Int): Int = when {
+        code == 403 -> R.string.api_error_edge_blocked
+        code == 429 -> R.string.api_error_rate_limited
+        code in 500..599 -> R.string.api_error_server_unavailable
+        else -> NETWORK
+    }
+
+    /** 给用户看的失败描述：保留状态码，便于把「请求失败」这类模糊报错定位到具体环节 */
+    fun httpFailureMessage(code: Int): String = "服务器返回 HTTP $code，且响应不是面板 JSON（疑似 CDN/WAF 拦截或网关错误）"
 }
 
 object Constants {

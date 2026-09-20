@@ -29,12 +29,20 @@ class AuthRulesTest {
     }
 
     @Test
-    fun `403空响应体在认证接口也判为登录态失效`() {
-        assertTrue(AuthRules.isAuthFailureBody(""))
-        assertTrue(AuthRules.isAuthFailureBody(null))
-        assertTrue(AuthRules.isAuthFailureBody("未登录"))
-        assertTrue(AuthRules.isAuthFailureBody("{\"message\":\"invalid token\"}"))
-        assertFalse(AuthRules.isAuthFailureBody("无套餐"))
+    fun `403只有面板JSON且含失效关键词才算会话失效`() {
+        assertTrue(AuthRules.isSessionExpiryFor403("未登录"))
+        assertTrue(AuthRules.isSessionExpiryFor403("""{"status":"fail","message":"未登录或登陆已过期"}"""))
+        assertTrue(AuthRules.isSessionExpiryFor403("""{"message":"invalid token"}"""))
+
+        // 边缘拦截页 / 空体 / 业务错误一律不算：
+        // 一次 CDN 拦截就清会话并停 VPN，会把用户彻底锁在外面
+        assertFalse(AuthRules.isSessionExpiryFor403("<html><body>Sorry, you have been blocked</body></html>"))
+        assertFalse(AuthRules.isSessionExpiryFor403("\n  <!DOCTYPE html>"))
+        assertFalse(AuthRules.isSessionExpiryFor403(""))
+        assertFalse(AuthRules.isSessionExpiryFor403("   "))
+        assertFalse(AuthRules.isSessionExpiryFor403(null))
+        assertFalse(AuthRules.isSessionExpiryFor403("""{"msg":"余额不足"}"""))
+        assertFalse(AuthRules.isSessionExpiryFor403("无套餐"))
     }
 
     @Test

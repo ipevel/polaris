@@ -179,4 +179,39 @@ class ApiFailoverInterceptorTest {
             .use { assertEquals(500, it.code) }
         assertEquals(1, server1.requestCount)
     }
+
+    @Test
+    fun `全部候选熔断后仍尝试主地址一次`() {
+        val singleConfig =
+            object : FailoverConfig {
+                override val apiBaseUrl: String = primary
+
+                override fun apiCandidates(primary: String): List<String> = listOf(primary)
+            }
+        val singleClient =
+            OkHttpClient
+                .Builder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .addInterceptor(ApiFailoverInterceptor(singleConfig, selector))
+                .build()
+
+        repeat(3) {
+            server1.enqueue(MockResponse().setResponseCode(500))
+            singleClient
+                .newCall(Request.Builder().url(server1.url("/api/v1/user/info")).build())
+                .execute()
+                .use { assertEquals(500, it.code) }
+        }
+        assertEquals(3, server1.requestCount)
+
+        // 唯一候选已进入熔断窗口：仍必须真的发一次请求，否则用户「点什么都是请求失败」
+        // 且拿不到任何真实原因（2026-09-20 事故里的第二次症状）
+        server1.enqueue(ok())
+        singleClient
+            .newCall(Request.Builder().url(server1.url("/api/v1/user/info")).build())
+            .execute()
+            .use { assertEquals(200, it.code) }
+        assertEquals(4, server1.requestCount)
+    }
 }

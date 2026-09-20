@@ -33,7 +33,9 @@ internal object AdapterExecute {
         if (serverMessage != null) {
             throw ApiException(serverMessage)
         }
-        throw ApiException("服务器返回 ${e.code()}，请稍后重试", ApiErrors.NETWORK)
+        // 拿不到面板消息（HTML 拦截页 / 网关错误页）：按状态码给出可定位的文案，
+        // 不再一律显示「请求失败」——那是 2026-09-20 事故里最贵的排查成本。
+        throw ApiException(ApiErrors.httpFailureMessage(e.code()), ApiErrors.forHttpStatus(e.code()))
     } catch (e: SerializationException) {
         AppLog.e(
             "SLTE-Api",

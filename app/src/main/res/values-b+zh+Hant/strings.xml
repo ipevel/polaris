@@ -323,6 +323,9 @@
 
     <!-- API error messages -->
     <string name="api_error_bad_response">伺服器回應格式異常</string>
+    <string name="api_error_edge_blocked">請求被面板的安全策略攔截（HTTP 403），可更換網路後重試</string>
+    <string name="api_error_rate_limited">請求過於頻繁，請稍後重試</string>
+    <string name="api_error_server_unavailable">伺服器暫時無法使用，請稍後重試</string>
     <string name="api_error_empty_data">伺服器回傳資料為空</string>
     <string name="api_error_register_config">取得註冊設定失敗</string>
     <string name="api_error_user_info">取得用戶資訊失敗</string>

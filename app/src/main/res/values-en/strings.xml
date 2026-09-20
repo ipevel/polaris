@@ -326,6 +326,9 @@
 
     <!-- API error messages -->
     <string name="api_error_bad_response">Unexpected server response</string>
+    <string name="api_error_edge_blocked">Blocked by the panel security policy (HTTP 403). Try another network.</string>
+    <string name="api_error_rate_limited">Too many requests. Please try again later.</string>
+    <string name="api_error_server_unavailable">Server temporarily unavailable. Please try again later.</string>
     <string name="api_error_empty_data">Empty server response</string>
     <string name="api_error_register_config">Failed to get sign-up config</string>
     <string name="api_error_user_info">Failed to get user info</string>

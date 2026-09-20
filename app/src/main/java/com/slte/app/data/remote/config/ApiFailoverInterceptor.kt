@@ -21,9 +21,11 @@ class ApiFailoverInterceptor(
         val candidates = config.apiCandidates(primary)
         var lastError: IOException? = null
         var lastFailureResponse: Response? = null
+        var attemptedAny = false
 
         for ((index, base) in candidates.withIndex()) {
             if (selector.isOpen(base)) continue
+            attemptedAny = true
             lastFailureResponse?.close()
             lastFailureResponse = null
             val attemptStart = System.currentTimeMillis()
@@ -58,6 +60,18 @@ class ApiFailoverInterceptor(
                 if (!retryable) throw e
                 AppLog.w("SLTE-Api", "ApiFailover: 候选 ${index + 1} 不可用，切换下一个: ${sanitizeLog(e.message ?: "")}")
             }
+        }
+        if (!attemptedAny) {
+            // 所有候选都在熔断窗口内：仍然放行一次主地址请求。
+            // 否则用户在这段时间里「任何操作都直接失败」，而且一次请求都没发出去、
+            // 拿不到任何真实原因（登录只会显示「请求失败」）。成功即自愈熔断状态；
+            // 失败不再累加失败计数，避免用户反复重试把退避越推越长。
+            val probeStart = System.currentTimeMillis()
+            val probe = chain.proceed(rewriteBaseUrl(request, primary) ?: request)
+            if (probe.isSuccessful) {
+                selector.recordSuccess(primary, System.currentTimeMillis() - probeStart)
+            }
+            return probe
         }
         lastFailureResponse?.let { return it }
         throw lastError ?: IOException("所有 API 地址均不可用")

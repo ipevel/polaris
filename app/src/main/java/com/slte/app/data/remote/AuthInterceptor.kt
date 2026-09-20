@@ -30,7 +30,18 @@ internal object AuthRules {
         return AUTH_FAILURE_KEYWORDS.any { lower.contains(it) }
     }
 
-    fun isAuthFailureBody(body: String?): Boolean = body.isNullOrBlank() || isAuthFailureBodyText(body)
+    /**
+     * 403 是否代表「会话失效」。
+     *
+     * 只有**面板自身**的 JSON 应答且带失效关键词才算。边缘拦截页（Cloudflare / WAF /
+     * CDN 返回的 HTML）与空体一律不算：一次 CDN 拦截就清会话并停 VPN，用户会被彻底
+     * 锁在外面（2026-09-20 线上事故：面板 WAF 直连拦截 → 点工单被登出 → 之后登录全失败）。
+     */
+    fun isSessionExpiryFor403(body: String?): Boolean {
+        val text = body?.trimStart() ?: return false
+        if (text.isEmpty() || text.startsWith("<")) return false
+        return isAuthFailureBodyText(text)
+    }
 
     fun decide(
         token: String?,
@@ -119,32 +130,21 @@ constructor(
         if (response.code == 401) {
             return true
         }
-        if (response.code == 403) {
-            // 边缘拦截页（Cloudflare WAF/CDN 返回 HTML）没有「未登录」关键字，
-            // 按体内容判断会漏掉，用户会被卡在「错误代码403」页面；这类 403
-            // 同样视为会话失效场景。JSON 业务错误（如 {"msg":"余额不足"}）
-            // 不是会话问题，保持不清会话。
-            val body =
-                try {
-                    response.peekBody(MAX_PEEK_BYTES).string().trimStart()
-                } catch (_: Exception) {
-                    return false
-                }
-            if (body.startsWith("<")) {
-                return true
-            }
+        if (response.code != 403) {
+            return false
         }
-        return isAuthFailureBody(response)
+        // 403 分三类：
+        //   - 面板 JSON + 失效关键词（未登录 / 登陆已过期）→ 真·会话失效，清会话；
+        //   - JSON 业务错误（如 {"msg":"余额不足"}）→ 网络没有「未登录」关键字，不清；
+        //   - 边缘拦截页（Cloudflare/WAF/CDN 的 HTML）或空体 → 只是被拦截，
+        //     不是会话问题，绝不清会话、更不停 VPN（否则一次拦截就把用户锁在外面）。
+        return AuthRules.isSessionExpiryFor403(peekBody(response))
     }
 
-    private fun isAuthFailureBody(response: Response): Boolean {
-        val body =
-            try {
-                response.peekBody(MAX_PEEK_BYTES).string()
-            } catch (_: Exception) {
-                return false
-            }
-        return AuthRules.isAuthFailureBody(body)
+    private fun peekBody(response: Response): String? = try {
+        response.peekBody(MAX_PEEK_BYTES).string()
+    } catch (_: Exception) {
+        null
     }
 
     private companion object {

@@ -149,13 +149,29 @@ class AuthInterceptorTest {
     }
 
     @Test
-    fun `认证接口403且响应体为边缘拦截页HTML时清会话`() {
+    fun `认证接口403且响应体为边缘拦截页HTML时不清会话`() {
+        // 2026-09-20 事故：面板被 Cloudflare 直连拦截返回 403 HTML，
+        // 旧逻辑把它当会话失效 → 清会话 + 停 VPN，用户被彻底锁在外面。
         every { sessionStore.getAuthData() } returns "token-a"
-        val chain = chain(request(), code = 403, body = "<html><body>Access denied</body></html>")
+        val chain = chain(
+            request(),
+            code = 403,
+            body = "<html><body>Sorry, you have been blocked</body></html>",
+        )
 
         interceptor.intercept(chain)
 
-        verify { sessionStore.clear() }
+        verify(exactly = 0) { sessionStore.clear() }
+    }
+
+    @Test
+    fun `认证接口403且响应体为空时不清会话`() {
+        every { sessionStore.getAuthData() } returns "token-a"
+        val chain = chain(request(), code = 403, body = "")
+
+        interceptor.intercept(chain)
+
+        verify(exactly = 0) { sessionStore.clear() }
     }
 
     @Test

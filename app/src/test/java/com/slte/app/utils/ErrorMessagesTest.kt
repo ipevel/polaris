@@ -58,6 +58,26 @@ class ErrorMessagesTest {
     }
 
     @Test
+    fun `HTTP失败应答按状态码给出可定位文案`() {
+        // 2026-09-20 事故：面板被 Cloudflare 直连拦截返回 403 HTML，
+        // 客户端只显示「请求失败」，把「被安全策略拦截」误当成网络问题。
+        assertEquals(R.string.api_error_edge_blocked, ApiErrors.forHttpStatus(403))
+        assertEquals(R.string.api_error_rate_limited, ApiErrors.forHttpStatus(429))
+        assertEquals(R.string.api_error_server_unavailable, ApiErrors.forHttpStatus(502))
+        assertEquals(R.string.api_error_server_unavailable, ApiErrors.forHttpStatus(503))
+        assertEquals(R.string.error_network, ApiErrors.forHttpStatus(400))
+        assertEquals(R.string.error_network, ApiErrors.forHttpStatus(404))
+
+        assertTrue(ApiErrors.httpFailureMessage(403).contains("403"))
+        assertTrue(ApiErrors.httpFailureMessage(503).contains("503"))
+
+        assertEquals(
+            R.string.api_error_edge_blocked,
+            ErrorMessages.forLogin(ApiException(ApiErrors.httpFailureMessage(403), ApiErrors.forHttpStatus(403))),
+        )
+    }
+
+    @Test
     fun `注册与找回不透露邮箱是否已注册`() {
         assertEquals(R.string.error_register_failed, ErrorMessages.forRegister(ApiException("该邮箱已注册")))
         assertEquals(R.string.error_forgot_failed, ErrorMessages.forForgot(ApiException("该邮箱未注册")))
