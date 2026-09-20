@@ -1,5 +1,6 @@
 package com.slte.app.ui.screen.server
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +23,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
@@ -156,7 +161,7 @@ internal fun ProxyGroupCard(
                             }.padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
+                        BoldNameText(
                             text = member.name,
                             style = SlteType.body,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
@@ -170,6 +175,10 @@ internal fun ProxyGroupCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        if (member.isGroup) {
+                            Spacer(modifier = Modifier.width(Dimens.gap.sm))
+                            GroupBadge()
+                        }
                         member.delay?.let { delay ->
                             Text(
                                 text =
@@ -197,6 +206,64 @@ internal fun ProxyGroupCard(
             }
         }
     }
+}
+
+/** 解析 Clash 风格 **粗体** 标记并渲染。 */
+@Composable
+private fun GroupBadge() {
+    Box(
+        modifier =
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(SlteColors.current.statusNeutralBg)
+            .padding(horizontal = Dimens.gap.sm, vertical = Dimens.gap.xs),
+    ) {
+        Text(
+            text = stringResource(R.string.proxy_group_badge),
+            style = SlteType.label,
+            fontWeight = FontWeight.Medium,
+            color = SlteColors.current.statusNeutral,
+        )
+    }
+}
+
+@Composable
+private fun BoldNameText(
+    text: String,
+    style: androidx.compose.ui.text.TextStyle,
+    fontWeight: FontWeight,
+    color: androidx.compose.ui.graphics.Color,
+    maxLines: Int,
+    overflow: TextOverflow,
+    modifier: Modifier = Modifier,
+) {
+    val boldPattern = remember { Regex("\\*\\*(.+?)\\*\\*") }
+    val annotated = remember(text) {
+        buildAnnotatedString {
+            var last = 0
+            boldPattern.findAll(text).forEach { match ->
+                if (match.range.first > last) {
+                    append(text.substring(last, match.range.first))
+                }
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = color)) {
+                    append(match.groupValues[1])
+                }
+                last = match.range.last + 1
+            }
+            if (last < text.length) {
+                append(text.substring(last))
+            }
+        }
+    }
+    Text(
+        text = annotated,
+        style = style,
+        fontWeight = fontWeight,
+        color = color,
+        maxLines = maxLines,
+        overflow = overflow,
+        modifier = modifier,
+    )
 }
 
 internal fun proxyGroupTypeLabelRes(type: String): Int = when (type.lowercase()) {

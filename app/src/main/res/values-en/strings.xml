@@ -376,4 +376,5 @@
     <string name="proxy_group_type_balance">Load balance</string>
     <string name="proxy_group_type_relay">Relay</string>
     <string name="proxy_group_type_unknown">Other</string>
+    <string name="proxy_group_badge">Group</string>
 </resources>

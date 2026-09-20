@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Speed
@@ -74,6 +75,8 @@ object SlteIcons {
     val CurrentIp: ImageVector = Icons.Rounded.CheckCircle
 
     val UpdateSubscription: ImageVector = Icons.Rounded.Refresh
+
+    val Power: ImageVector = Icons.Rounded.PowerSettingsNew
 
     val Invite: ImageVector = Icons.Rounded.GroupAdd
 

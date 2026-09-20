@@ -29,7 +29,6 @@ import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -380,8 +379,7 @@ class XboardAuthApi(
         return parseTrafficLog(data)
     }
 
-    private fun parseTrafficLog(data: JsonElement): List<TrafficLogRecord> {
-        val array = data as? JsonArray ?: return emptyList()
+    private fun parseTrafficLog(array: JsonArray): List<TrafficLogRecord> {
         return array.mapNotNull { element ->
             val obj = element as? JsonObject ?: return@mapNotNull null
             val dPrimitive = obj["d"] as? JsonPrimitive

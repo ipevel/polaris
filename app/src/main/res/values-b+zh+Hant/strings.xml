@@ -373,4 +373,5 @@
     <string name="proxy_group_type_balance">負載均衡</string>
     <string name="proxy_group_type_relay">鏈式代理</string>
     <string name="proxy_group_type_unknown">其他</string>
+    <string name="proxy_group_badge">分組</string>
 </resources>

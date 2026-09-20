@@ -32,63 +32,44 @@ fun DashboardActionButtons(
     onUpdateSubscription: () -> Unit,
     onTraffic: () -> Unit,
     onServer: () -> Unit,
-    onProfile: () -> Unit,
     modifier: Modifier = Modifier,
     hasPlan: Boolean = false,
 ) {
-    Column(
+    Row(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-        ) {
-            ActionButton(
-                icon = SlteIcons.UpdateSubscription,
-                text =
-                stringResource(
-                    if (hasPlan) {
-                        R.string.dashboard_update_subscription
-                    } else {
-                        R.string.dashboard_subscribe_buy
-                    },
-                ),
-                tint = SlteColors.current.accentInteractive,
-                containerColor = SlteColors.current.accentInteractiveBg,
-                modifier = Modifier.weight(1f),
-                onClick = onUpdateSubscription,
-            )
-            ActionButton(
-                icon = SlteIcons.Orders,
-                text = stringResource(R.string.traffic_title),
-                tint = SlteColors.current.statusSuccess,
-                containerColor = SlteColors.current.statusSuccessBg,
-                modifier = Modifier.weight(1f),
-                onClick = onTraffic,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-        ) {
-            ActionButton(
-                icon = SlteIcons.Server,
-                text = stringResource(R.string.proxy_groups_title),
-                tint = SlteColors.current.statusWarning,
-                containerColor = SlteColors.current.statusWarningBg,
-                modifier = Modifier.weight(1f),
-                onClick = onServer,
-            )
-            ActionButton(
-                icon = SlteIcons.Profile,
-                text = stringResource(R.string.profile_title),
-                tint = SlteColors.current.statusNeutral,
-                containerColor = SlteColors.current.statusNeutralBg,
-                modifier = Modifier.weight(1f),
-                onClick = onProfile,
-            )
-        }
+        ActionButton(
+            icon = SlteIcons.UpdateSubscription,
+            text =
+            stringResource(
+                if (hasPlan) {
+                    R.string.dashboard_update_subscription
+                } else {
+                    R.string.dashboard_subscribe_buy
+                },
+            ),
+            tint = SlteColors.current.accentInteractive,
+            containerColor = SlteColors.current.accentInteractiveBg,
+            modifier = Modifier.weight(1f),
+            onClick = onUpdateSubscription,
+        )
+        ActionButton(
+            icon = SlteIcons.Orders,
+            text = stringResource(R.string.traffic_title),
+            tint = SlteColors.current.statusSuccess,
+            containerColor = SlteColors.current.statusSuccessBg,
+            modifier = Modifier.weight(1f),
+            onClick = onTraffic,
+        )
+        ActionButton(
+            icon = SlteIcons.Server,
+            text = stringResource(R.string.proxy_groups_title),
+            tint = SlteColors.current.statusWarning,
+            containerColor = SlteColors.current.statusWarningBg,
+            modifier = Modifier.weight(1f),
+            onClick = onServer,
+        )
     }
 }
 

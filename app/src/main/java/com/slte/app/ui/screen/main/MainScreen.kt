@@ -138,7 +138,6 @@ internal fun MainScreen(
                     }
                 }
             },
-            onServerClick = onServer,
             onProxyClick = { showProxySheet = true },
             onUpdateSubscription = {
                 if (data.hasPlan) {
@@ -150,7 +149,6 @@ internal fun MainScreen(
             onTraffic = onTraffic,
             onRenew = onRenew,
             onServer = onServer,
-            onProfile = onProfile,
             modifier =
             Modifier
                 .fillMaxSize()
@@ -183,13 +181,11 @@ private fun requestNotificationPermission(
 internal fun DashboardContent(
     data: DashboardData,
     onToggleConnection: () -> Unit,
-    onServerClick: () -> Unit,
     onProxyClick: () -> Unit,
     onUpdateSubscription: () -> Unit,
     onTraffic: () -> Unit,
     onRenew: () -> Unit,
     onServer: () -> Unit,
-    onProfile: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     androidx.compose.foundation.layout.BoxWithConstraints(
@@ -232,14 +228,15 @@ internal fun DashboardContent(
                 )
             }
             item {
-                InfoListCard(
-                    daysUntilExpired = if (data.expiredAt > 0L) data.daysUntilExpired else null,
-                    serverName = data.serverName,
+                ProxyModeCard(
                     proxyMode = data.proxyMode,
+                    onClick = onProxyClick,
+                )
+            }
+            item {
+                CurrentIpCard(
                     currentIp = data.currentIp,
                     ipCountryCode = data.ipCountryCode,
-                    onServerClick = onServerClick,
-                    onProxyClick = onProxyClick,
                 )
             }
             item {
@@ -248,7 +245,6 @@ internal fun DashboardContent(
                     hasPlan = data.hasPlan,
                     onTraffic = onTraffic,
                     onServer = onServer,
-                    onProfile = onProfile,
                 )
             }
             item {
