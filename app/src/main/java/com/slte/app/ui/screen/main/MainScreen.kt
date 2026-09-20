@@ -44,7 +44,7 @@ import com.slte.app.utils.FormatUtils
 internal fun MainScreen(
     mainViewModel: MainViewModel,
     data: DashboardData,
-    onInvite: () -> Unit = {},
+    onTraffic: () -> Unit = {},
     onServer: () -> Unit = {},
     onNotice: () -> Unit = {},
     onSupport: () -> Unit = {},
@@ -147,7 +147,7 @@ internal fun MainScreen(
                     onRenew()
                 }
             },
-            onInvite = onInvite,
+            onTraffic = onTraffic,
             onRenew = onRenew,
             modifier =
             Modifier
@@ -184,7 +184,7 @@ internal fun DashboardContent(
     onServerClick: () -> Unit,
     onProxyClick: () -> Unit,
     onUpdateSubscription: () -> Unit,
-    onInvite: () -> Unit,
+    onTraffic: () -> Unit,
     onRenew: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -242,7 +242,7 @@ internal fun DashboardContent(
                 DashboardActionButtons(
                     onUpdateSubscription = onUpdateSubscription,
                     hasPlan = data.hasPlan,
-                    onInvite = onInvite,
+                    onTraffic = onTraffic,
                 )
             }
             item {

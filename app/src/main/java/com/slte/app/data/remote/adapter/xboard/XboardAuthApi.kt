@@ -24,6 +24,7 @@ import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
+import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
@@ -370,5 +371,10 @@ class XboardAuthApi(
     override suspend fun closeTicket(id: Int): Boolean {
         val response = AdapterExecute.typed { userApi.closeTicket(XboardCloseTicketRequest(id)) }
         return response.data.orFalseLogged("closeTicket")
+    }
+
+    override suspend fun fetchTrafficLog(): List<TrafficLogRecord> {
+        val response = AdapterExecute.typed { userApi.getTrafficLog() }
+        return response.data.orEmptyLogged("fetchTrafficLog").map { it.toDomain() }
     }
 }

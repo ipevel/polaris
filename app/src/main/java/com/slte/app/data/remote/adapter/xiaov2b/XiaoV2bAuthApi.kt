@@ -24,6 +24,7 @@ import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
+import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
@@ -354,4 +355,6 @@ class XiaoV2bAuthApi(
         val response = AdapterExecute.typed { userApi.closeTicket(XiaoV2bCloseTicketRequest(id)) }
         return response.data.orFalseLogged("closeTicket")
     }
+
+    override suspend fun fetchTrafficLog(): List<TrafficLogRecord> = emptyList()
 }

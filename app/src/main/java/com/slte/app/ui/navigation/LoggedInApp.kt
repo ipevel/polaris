@@ -92,7 +92,7 @@ fun LoggedInApp(
                 DashboardPageContent(
                     mainViewModel = viewModels.main,
                     mainData = mainData,
-                    onInvite = { preload.enterPage(PendingNav.Invite) },
+                    onTraffic = { preload.enterPage(PendingNav.Traffic) },
                     onServer = { pushPage(Page.Server) },
                     onNotice = { preload.enterPage(PendingNav.Notice) },
                     onSupport = { if (!onSupport()) pushPage(Page.Ticket) },
@@ -162,6 +162,13 @@ fun LoggedInApp(
             Page.Settings -> SettingsPageContent(onBack = ::popPage)
 
             Page.About -> AboutPageContent(onBack = ::popPage)
+
+            Page.Traffic ->
+                TrafficPageContent(
+                    trafficViewModel = viewModels.traffic,
+                    onBack = ::popPage,
+                    onRenew = { preload.enterPage(PendingNav.Plans) },
+                )
         }
     }
 

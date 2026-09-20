@@ -206,6 +206,8 @@ constructor(
                 )
             }
             refreshSpecialNodes()
+            // 测速完成后刷新策略组，让成员延迟同步更新
+            loadProxyGroups()
         }
     }
 

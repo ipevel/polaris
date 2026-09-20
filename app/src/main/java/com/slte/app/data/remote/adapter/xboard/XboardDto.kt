@@ -222,3 +222,16 @@ fun XboardCommissionRecordData.toDomain() = CommissionRecord(
     getAmount = getAmount,
     createdAt = createdAt,
 )
+
+@Serializable
+data class XboardTrafficLogData(
+    val d: String = "",
+    val u: Long = 0L,
+    @SerialName("download") val download: Long = 0L,
+) {
+    fun toDomain() = com.slte.app.domain.model.TrafficLogRecord(
+        date = d,
+        uploadBytes = u,
+        downloadBytes = download,
+    )
+}

@@ -97,6 +97,35 @@ fun UpdateSheet(
 }
 
 @Composable
+fun UpdateDownloadingDialog() {
+    LocaleAwareAlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        icon = {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                AnimatedSticker(
+                    assetPath = Stickers.UPDATE,
+                    modifier = Modifier.size(Dimens.logoSize),
+                )
+            }
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.update_downloading),
+                style = SlteType.heading,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+        },
+    )
+}
+
+@Composable
 fun ForceUpdateDialog(
     onUpdateNow: () -> Unit,
 ) {

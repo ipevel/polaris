@@ -33,6 +33,7 @@ internal fun GlobalToastHosts(
     }
     LaunchedEffect(updateState) {
         val failedRes = (updateState as? UpdateUiState.Failed)?.messageRes
+            ?: (updateState as? UpdateUiState.DownloadFailed)?.messageRes
         if (failedRes != null) {
             toast.show(failedRes)
             onUpdateTipShown()
@@ -45,6 +46,10 @@ internal fun UpdateHost(
     updateState: UpdateUiState,
     updateViewModel: UpdateViewModel,
 ) {
+    if (updateState is UpdateUiState.Downloading) {
+        UpdateDownloadingDialog()
+        return
+    }
     val available = updateState as? UpdateUiState.Available ?: return
     if (available.force) {
         ForceUpdateDialog(onUpdateNow = updateViewModel::updateNow)

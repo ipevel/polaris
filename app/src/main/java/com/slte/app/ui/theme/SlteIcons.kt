@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -75,6 +76,8 @@ object SlteIcons {
     val UpdateSubscription: ImageVector = Icons.Rounded.Refresh
 
     val Invite: ImageVector = Icons.Rounded.GroupAdd
+
+    val Traffic: ImageVector = Icons.Outlined.DataUsage
 
     val Transfer: ImageVector = Icons.Rounded.SwapHoriz
 

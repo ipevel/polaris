@@ -17,6 +17,7 @@ import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
+import com.slte.app.domain.model.TrafficLogRecord
 
 interface AuthApi {
     suspend fun login(
@@ -131,4 +132,6 @@ interface AuthApi {
     ): Boolean
 
     suspend fun closeTicket(id: Int): Boolean
+
+    suspend fun fetchTrafficLog(): List<TrafficLogRecord>
 }

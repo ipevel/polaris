@@ -161,6 +161,15 @@
     <string name="notice_retry">Retry</string>
     <string name="notice_refresh_failed">Refresh failed, please try again</string>
 
+    <!-- Traffic -->
+    <string name="traffic_title">Traffic Details</string>
+    <string name="traffic_records_title">Traffic Log</string>
+    <string name="traffic_records_empty">No traffic records</string>
+    <string name="traffic_upload">Upload</string>
+    <string name="traffic_download">Download</string>
+    <string name="traffic_total">Total %1$s</string>
+    <string name="traffic_load_failed">Failed to load traffic details</string>
+
     <!-- Ticket -->
     <string name="ticket_title">My Tickets</string>
     <string name="ticket_empty">No tickets yet</string>
@@ -225,7 +234,8 @@
     <string name="update_changelog_title_default">Changelog</string>
     <string name="update_changelog_default">No changelog available</string>
     <string name="update_apk_missing">Update link missing</string>
-    <string name="update_download_failed">Can\'t open download page</string>
+    <string name="update_download_failed">Failed to download update, try again later</string>
+    <string name="update_downloading">Downloading update…</string>
 
     <string name="profile_logout">Log out</string>
     <string name="logout_confirm_message">Log out of this account?</string>

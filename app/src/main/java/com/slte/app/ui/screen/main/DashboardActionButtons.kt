@@ -28,7 +28,7 @@ import com.slte.app.utils.Dimens
 @Composable
 fun DashboardActionButtons(
     onUpdateSubscription: () -> Unit,
-    onInvite: () -> Unit,
+    onTraffic: () -> Unit,
     modifier: Modifier = Modifier,
     hasPlan: Boolean = false,
 ) {
@@ -52,12 +52,12 @@ fun DashboardActionButtons(
             onClick = onUpdateSubscription,
         )
         ActionButton(
-            icon = SlteIcons.Invite,
-            text = stringResource(R.string.invite_title),
+            icon = SlteIcons.Orders,
+            text = stringResource(R.string.traffic_title),
             tint = SlteColors.current.accentInteractive,
             bg = SlteColors.current.accentInteractiveBg,
             modifier = Modifier.weight(1f),
-            onClick = onInvite,
+            onClick = onTraffic,
         )
     }
 }

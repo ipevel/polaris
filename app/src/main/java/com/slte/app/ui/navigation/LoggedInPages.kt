@@ -24,6 +24,8 @@ import com.slte.app.ui.screen.server.ServerViewModel
 import com.slte.app.ui.screen.settings.SettingsScreen
 import com.slte.app.ui.screen.ticket.TicketScreen
 import com.slte.app.ui.screen.ticket.TicketViewModel
+import com.slte.app.ui.screen.traffic.TrafficScreen
+import com.slte.app.ui.screen.traffic.TrafficViewModel
 
 @Composable
 internal fun OrdersPageContent(
@@ -72,7 +74,7 @@ internal fun OrdersPageContent(
 internal fun DashboardPageContent(
     mainViewModel: MainViewModel,
     mainData: DashboardData,
-    onInvite: () -> Unit,
+    onTraffic: () -> Unit,
     onServer: () -> Unit,
     onNotice: () -> Unit,
     onSupport: () -> Unit,
@@ -82,7 +84,7 @@ internal fun DashboardPageContent(
     MainScreen(
         mainViewModel = mainViewModel,
         data = mainData,
-        onInvite = onInvite,
+        onTraffic = onTraffic,
         onServer = onServer,
         onNotice = onNotice,
         onSupport = onSupport,
@@ -187,4 +189,17 @@ internal fun SettingsPageContent(onBack: () -> Unit) {
 @Composable
 internal fun AboutPageContent(onBack: () -> Unit) {
     AboutScreen(onBack = onBack)
+}
+
+@Composable
+internal fun TrafficPageContent(
+    trafficViewModel: TrafficViewModel,
+    onBack: () -> Unit,
+    onRenew: () -> Unit,
+) {
+    TrafficScreen(
+        onBack = onBack,
+        onRenew = onRenew,
+        viewModel = trafficViewModel,
+    )
 }

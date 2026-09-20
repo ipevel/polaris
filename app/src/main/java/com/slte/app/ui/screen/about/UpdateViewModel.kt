@@ -2,7 +2,6 @@ package com.slte.app.ui.screen.about
 
 import android.content.Context
 import android.content.Intent
-import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.BuildConfig
@@ -14,6 +13,7 @@ import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
 
 internal fun shouldShowUpdateDialog(
     updateVersion: String,
@@ -63,6 +64,12 @@ sealed interface UpdateUiState {
         val force: Boolean,
     ) : UpdateUiState
 
+    data object Downloading : UpdateUiState
+
+    data class DownloadFailed(
+        val messageRes: Int,
+    ) : UpdateUiState
+
     data object Latest : UpdateUiState
 
     data object Error : UpdateUiState
@@ -90,6 +97,14 @@ constructor(
     private var dismissedInSession = false
 
     private var lastShownSignature: String? = null
+
+    private val downloadClient: OkHttpClient by lazy {
+        OkHttpClient
+            .Builder()
+            .connectTimeout(DOWNLOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(DOWNLOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build()
+    }
 
     init {
         viewModelScope.launch {
@@ -160,16 +175,54 @@ constructor(
             _state.value = UpdateUiState.Failed(R.string.update_apk_missing)
             return
         }
+        if (_state.value is UpdateUiState.Downloading) return
 
-        AppLog.i("SLTE-Update", "跳转浏览器下载 ${remoteConfig.data.updateVersion}")
+        _state.value = UpdateUiState.Downloading
+        viewModelScope.launch {
+            val result =
+                withContext(ioDispatcher) {
+                    runCatching { downloadApk(url) }
+                }
+            result.onSuccess { apkFile ->
+                AppLog.i("SLTE-Update", "APK 下载完成: ${apkFile.name} size=${apkFile.length()}")
+                _state.value = UpdateUiState.Idle
+                installApk(apkFile)
+            }.onFailure { e ->
+                AppLog.w("SLTE-Update", "APK 下载失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                _state.value = UpdateUiState.DownloadFailed(R.string.update_download_failed)
+            }
+        }
+    }
+
+    private fun downloadApk(url: String): java.io.File {
+        val dir =
+            context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                ?: context.filesDir
+        val target = java.io.File(dir, "SLTE-update.apk")
+        val request = okhttp3.Request.Builder().url(url).build()
+        downloadClient.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
+            val body = resp.body ?: throw java.io.IOException("empty body")
+            body.byteStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        return target
+    }
+
+    private fun installApk(file: java.io.File) {
         try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent =
-                Intent(Intent.ACTION_VIEW, url.toUri())
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             context.startActivity(intent)
         } catch (e: Exception) {
-            AppLog.w("SLTE-Update", "打开下载页失败: ${sanitizeLog(e.message ?: "Unknown")}")
-            _state.value = UpdateUiState.Failed(R.string.update_download_failed)
+            AppLog.w("SLTE-Update", "拉起安装器失败: ${sanitizeLog(e.message ?: "Unknown")}")
+            _state.value = UpdateUiState.DownloadFailed(R.string.update_download_failed)
         }
     }
 
@@ -190,5 +243,7 @@ constructor(
     private companion object {
 
         const val REFRESH_TIMEOUT_MS = 6_000L
+
+        const val DOWNLOAD_TIMEOUT_SECONDS = 60L
     }
 }

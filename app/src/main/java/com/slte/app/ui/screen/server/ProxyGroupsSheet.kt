@@ -78,7 +78,8 @@ internal fun ProxyGroupCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = SlteShapes.large,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = Dimens.cardElevation,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(

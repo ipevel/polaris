@@ -158,6 +158,15 @@
     <string name="notice_retry">重试</string>
     <string name="notice_refresh_failed">刷新失败，请稍后重试</string>
 
+    <!-- Traffic -->
+    <string name="traffic_title">流量明细</string>
+    <string name="traffic_records_title">流量明细</string>
+    <string name="traffic_records_empty">暂无流量记录</string>
+    <string name="traffic_upload">上行</string>
+    <string name="traffic_download">下行</string>
+    <string name="traffic_total">合计 %1$s</string>
+    <string name="traffic_load_failed">获取流量明细失败</string>
+
     <!-- Ticket -->
     <string name="ticket_title">我的工单</string>
     <string name="ticket_empty">暂无工单</string>
@@ -222,7 +231,8 @@
     <string name="update_changelog_title_default">更新日志</string>
     <string name="update_changelog_default">本次更新内容以远程配置为准</string>
     <string name="update_apk_missing">更新安装包地址缺失</string>
-    <string name="update_download_failed">打开下载页失败</string>
+    <string name="update_download_failed">下载更新包失败，请稍后重试</string>
+    <string name="update_downloading">正在下载更新包…</string>
 
     <string name="profile_logout">退出登录</string>
     <string name="logout_confirm_message">确定要退出当前账号吗？</string>

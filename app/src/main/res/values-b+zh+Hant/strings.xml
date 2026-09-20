@@ -158,6 +158,15 @@
     <string name="notice_retry">重試</string>
     <string name="notice_refresh_failed">刷新失敗，請稍後再試</string>
 
+    <!-- Traffic -->
+    <string name="traffic_title">流量明細</string>
+    <string name="traffic_records_title">流量明細</string>
+    <string name="traffic_records_empty">暫無流量記錄</string>
+    <string name="traffic_upload">上行</string>
+    <string name="traffic_download">下行</string>
+    <string name="traffic_total">合計 %1$s</string>
+    <string name="traffic_load_failed">取得流量明細失敗</string>
+
     <!-- Ticket -->
     <string name="ticket_title">我的工單</string>
     <string name="ticket_empty">暫無工單</string>
@@ -222,7 +231,8 @@
     <string name="update_changelog_title_default">更新日誌</string>
     <string name="update_changelog_default">更新內容見遠端設定</string>
     <string name="update_apk_missing">更新位址缺失</string>
-    <string name="update_download_failed">開啟下載頁失敗</string>
+    <string name="update_download_failed">下載更新包失敗，請稍後重試</string>
+    <string name="update_downloading">正在下載更新包…</string>
 
     <string name="profile_logout">登出</string>
     <string name="logout_confirm_message">確定登出目前帳號？</string>

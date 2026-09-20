@@ -1,45 +1,26 @@
 package com.slte.app.ui.screen.server
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.CircleIconButton
-import com.slte.app.ui.component.EmptyState
-import com.slte.app.ui.component.ErrorState
-import com.slte.app.ui.component.FlagPlaceholder
-import com.slte.app.ui.component.LottieLoadingIcon
-import com.slte.app.ui.component.SlteScaffold
-import com.slte.app.ui.component.SpecialNodeIcon
-import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.SlteType
-import com.slte.app.utils.Constants
+import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.utils.Dimens
 
 @Composable
@@ -48,25 +29,12 @@ fun ServerScreen(
     onUpdateSubscription: (() -> Unit)? = null,
     viewModel: ServerViewModel = hiltViewModel(),
 ) {
-    val data by viewModel.data.collectAsStateWithLifecycle()
-    val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
     val proxyGroups by viewModel.proxyGroups.collectAsStateWithLifecycle()
     val isLoadingGroups by viewModel.isLoadingGroups.collectAsStateWithLifecycle()
     val testingGroup by viewModel.testingGroup.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
-    // 策略组随页面直接加载，不再等用户找入口
+    // 策略组随页面直接加载
     LaunchedEffect(Unit) { viewModel.loadProxyGroups() }
-
-    LaunchedEffect(errorMessageRes) {
-        errorMessageRes?.let {
-            android.widget.Toast
-                .makeText(context, context.getString(it), android.widget.Toast.LENGTH_SHORT)
-                .show()
-            viewModel.dismissError()
-        }
-    }
 
     SlteScaffold(
         title = stringResource(R.string.server_title),
@@ -84,208 +52,40 @@ fun ServerScreen(
             )
         },
     ) { innerPadding ->
-        val errorRes = errorMessageRes
-        if (errorRes != null && data.nodes.isEmpty()) {
-            ErrorState(
-                message = stringResource(errorRes),
-                onRetry = viewModel::retry,
-                modifier = Modifier.padding(innerPadding),
-            )
-        } else if (data.nodes.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.server_nodes_empty),
-                modifier = Modifier.padding(innerPadding),
-            )
-        } else {
-            LazyColumn(
-                modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = Dimens.dashboardScreenPaddingH),
-                verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
-            ) {
-                item { Spacer(modifier = Modifier.height(Dimens.gap.md)) }
-
-                // 分流/策略组直接内嵌在节点列表顶部，不用再找隐藏入口
-                item {
-                    Text(
-                        text = stringResource(R.string.proxy_groups_title),
-                        style = SlteType.title,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(vertical = Dimens.gap.xs),
-                    )
-                }
-                when {
-                    proxyGroups.isEmpty() && isLoadingGroups ->
-                        item { ProxyGroupsHint(message = stringResource(R.string.proxy_groups_loading), showLoading = true) }
-                    proxyGroups.isEmpty() ->
-                        item { ProxyGroupsHint(message = stringResource(R.string.proxy_groups_empty), showLoading = false) }
-                    else ->
-                        items(proxyGroups, key = { it.name }) { group ->
-                            ProxyGroupCard(
-                                group = group,
-                                isTesting = testingGroup == group.name,
-                                onSelect = viewModel::selectInGroup,
-                                onTest = { viewModel.testGroup(group.name) },
-                            )
-                        }
-                }
-
-                item {
-                    Text(
-                        text = stringResource(R.string.server_nodes_title),
-                        style = SlteType.title,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = Dimens.gap.sm, bottom = Dimens.gap.xs),
-                    )
-                }
-
-                item {
-                    NodeCard(
-                        name = stringResource(R.string.server_auto),
-                        desc = stringResource(R.string.server_auto_now, data.autoNode ?: "--"),
-                        icon = {
-                            val code = data.autoNodeCountryCode
-                            if (code != null) {
-                                FlagPlaceholder(countryCode = code, circular = true)
-                            } else {
-                                SpecialNodeIcon(
-                                    icon = "A",
-                                    contentDescription = stringResource(R.string.server_auto),
-                                )
-                            }
-                        },
-                        delay = data.autoDelay,
-                        selected = data.selectedNodeId == 0,
-                        isTesting = data.isTesting,
-                        onClick = { viewModel.selectNode(0) },
-                    )
-                }
-
-                item {
-                    NodeCard(
-                        name = stringResource(R.string.server_fallback),
-                        desc = stringResource(R.string.server_fallback_now, data.fallbackNode ?: "--"),
-                        icon = {
-                            val code = data.fallbackNodeCountryCode
-                            if (code != null) {
-                                FlagPlaceholder(countryCode = code, circular = true)
-                            } else {
-                                SpecialNodeIcon(
-                                    icon = "F",
-                                    contentDescription = stringResource(R.string.server_fallback),
-                                )
-                            }
-                        },
-                        delay = data.fallbackDelay,
-                        selected = data.selectedNodeId == -1,
-                        isTesting = data.isTesting,
-                        onClick = { viewModel.selectNode(-1) },
-                    )
-                }
-
-                items(data.nodes.distinctBy { it.id }, key = { it.id }) { node ->
-                    NodeCard(
-                        name = node.name,
-                        icon = {
-                            if (node.countryCode != "XX") {
-                                FlagPlaceholder(countryCode = node.countryCode, circular = true)
-                            } else {
-                                SpecialNodeIcon(
-                                    icon = "🌐",
-                                    contentDescription = stringResource(R.string.server_special_node),
-                                )
-                            }
-                        },
-                        delay = node.delay,
-                        selected = data.selectedNodeId == node.id,
-                        isTesting = data.isTesting && node.name !in data.testedNodes,
-                        onClick = { viewModel.selectNode(node.id) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NodeCard(
-    name: String,
-    desc: String? = null,
-    icon: @Composable () -> Unit,
-    delay: Int?,
-    selected: Boolean,
-    isTesting: Boolean,
-    onClick: () -> Unit,
-) {
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = SlteShapes.large,
-        color = MaterialTheme.colorScheme.surface,
-        border =
-        if (selected) {
-            BorderStroke(Dimens.strokeMedium, MaterialTheme.colorScheme.primary)
-        } else {
-            null
-        },
-        shadowElevation = Dimens.cardElevation,
-        onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            onClick()
-        },
-    ) {
-        Row(
+        LazyColumn(
             modifier =
             Modifier
-                .fillMaxWidth()
-                .padding(Dimens.gap.lg),
-            verticalAlignment = Alignment.CenterVertically,
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = Dimens.dashboardScreenPaddingH),
+            verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
         ) {
-            icon()
+            item { Spacer(modifier = Modifier.height(Dimens.gap.md)) }
 
-            Spacer(modifier = Modifier.width(Dimens.gap.md))
-
-            Column(modifier = Modifier.weight(1f)) {
+            // 分流/策略组
+            item {
                 Text(
-                    text = name,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    style = SlteType.body,
+                    text = stringResource(R.string.proxy_groups_title),
+                    style = SlteType.title,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(vertical = Dimens.gap.xs),
                 )
-                if (desc != null) {
-                    Text(
-                        text = desc,
-                        style = SlteType.label,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
-
-            if (isTesting) {
-                LottieLoadingIcon(modifier = Modifier.size(Dimens.icon.lg))
-            } else if (delay != null) {
-                DelayText(delay = delay)
+            when {
+                proxyGroups.isEmpty() && isLoadingGroups ->
+                    item { ProxyGroupsHint(message = stringResource(R.string.proxy_groups_loading), showLoading = true) }
+                proxyGroups.isEmpty() ->
+                    item { ProxyGroupsHint(message = stringResource(R.string.proxy_groups_empty), showLoading = false) }
+                else ->
+                    items(proxyGroups, key = { it.name }) { group ->
+                        ProxyGroupCard(
+                            group = group,
+                            isTesting = testingGroup == group.name,
+                            onSelect = viewModel::selectInGroup,
+                            onTest = { viewModel.testGroup(group.name) },
+                        )
+                    }
             }
         }
     }
-}
-
-@Composable
-private fun DelayText(delay: Int) {
-    val (text, color) =
-        when {
-            delay == Constants.DELAY_TIMEOUT -> stringResource(R.string.server_timeout) to SlteColors.current.statusDanger
-            delay < 100 -> stringResource(R.string.format_delay_ms, delay) to SlteColors.current.statusSuccess
-            delay < 200 -> stringResource(R.string.format_delay_ms, delay) to SlteColors.current.statusInfo
-            else -> stringResource(R.string.format_delay_ms, delay) to SlteColors.current.statusSlow
-        }
-
-    Text(
-        text = text,
-        fontWeight = FontWeight.SemiBold,
-        style = SlteType.label,
-        color = color,
-    )
 }

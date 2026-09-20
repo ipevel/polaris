@@ -164,4 +164,7 @@ interface XboardUserRetrofit {
     suspend fun closeTicket(
         @Body request: XboardCloseTicketRequest,
     ): XboardResponse<Boolean>
+
+    @GET("user/getTrafficLog")
+    suspend fun getTrafficLog(): XboardResponse<List<XboardTrafficLogData>>
 }
