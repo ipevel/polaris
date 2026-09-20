@@ -258,8 +258,7 @@ constructor(
         return RemoteConfigData().copy(apiBaseUrls = allowedCandidates)
     }
 
-    private fun hostOf(url: String?): String? =
-        url?.let { runCatching { java.net.URI(it).host }.getOrNull() }?.takeIf { it.isNotBlank() }
+    private fun hostOf(url: String?): String? = url?.let { runCatching { java.net.URI(it).host }.getOrNull() }?.takeIf { it.isNotBlank() }
 
     private companion object {
         const val MAX_CONFIG_BYTES = 256 * 1024

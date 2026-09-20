@@ -4,8 +4,8 @@ import android.graphics.Typeface
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
-import android.text.style.UnderlineSpan
 import android.text.style.URLSpan
+import android.text.style.UnderlineSpan
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
