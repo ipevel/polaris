@@ -139,19 +139,19 @@ constructor(
     }
 
     /** 面板后台配置的 Telegram 讨论组链接；失败或未配置返回 null，不阻塞个人页 */
-    suspend fun fetchTelegramDiscussLink(): String? =
-        try {
-            authApi.fetchTelegramDiscussLink()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            AppLog.w("SLTE-Auth", "fetchTelegramDiscussLink 失败: ${sanitizeLog(e.message ?: "Unknown")}")
-            null
-        }
+    suspend fun fetchTelegramDiscussLink(): String? = try {
+        authApi.fetchTelegramDiscussLink()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AppLog.w("SLTE-Auth", "fetchTelegramDiscussLink 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+        null
+    }
 
     fun logout() {
         val authData = sessionStore.getAuthData()
-        if (authData != null) {            revokeScope.launch {
+        if (authData != null) {
+            revokeScope.launch {
                 runCatching {
                     val current = sessionStore.getAuthData()
                     if (current == null || current == authData) {
