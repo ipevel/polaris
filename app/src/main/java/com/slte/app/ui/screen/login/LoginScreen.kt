@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -149,6 +150,14 @@ fun LoginScreen(
                 bordered = false,
             )
 
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
+
+            BackendTypeSelector(
+                selected = form.backendType,
+                enabled = !isLoading,
+                onSelect = viewModel::onBackendTypeChange,
+            )
+
             Spacer(modifier = Modifier.height(Dimens.gap.lg))
             SlteButton(
                 text = stringResource(R.string.login_button),
@@ -242,6 +251,65 @@ internal fun RememberMeRow(
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun BackendTypeSelector(
+    selected: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
+    ) {
+        BackendOption(
+            label = "XiaoV2b",
+            selected = selected == "xiaov2b",
+            enabled = enabled,
+            onClick = { onSelect("xiaov2b") },
+            modifier = Modifier.weight(1f),
+        )
+        BackendOption(
+            label = "Xboard",
+            selected = selected == "xboard",
+            enabled = enabled,
+            onClick = { onSelect("xboard") },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun BackendOption(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bgColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier =
+        modifier
+            .clip(MaterialTheme.shapes.medium)
+            .background(bgColor)
+            .toggleable(
+                value = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onValueChange = { onClick() },
+            )
+            .padding(vertical = Dimens.gap.md),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = SlteType.body,
+            color = contentColor,
         )
     }
 }

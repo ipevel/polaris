@@ -2,6 +2,7 @@ package com.slte.app.ui.screen.main
 
 import com.slte.app.R
 import com.slte.app.data.remote.FallbackDns
+import com.slte.app.data.repository.AuthRepository
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
@@ -30,6 +31,7 @@ class MainViewModelTest {
     private val fallbackDns = mockk<FallbackDns>(relaxed = true)
     private val subscriptionUpdater = mockk<SubscriptionUpdater>(relaxed = true)
     private val dataWriter = mockk<DashboardDataWriter>(relaxed = true)
+    private val authRepository = mockk<AuthRepository>(relaxed = true)
 
     private fun viewModel(
         hasPlan: Boolean = true,
@@ -43,7 +45,8 @@ class MainViewModelTest {
             firstArg<MutableStateFlow<DashboardData>>().value =
                 DashboardData(hasPlan = hasPlan, isConnected = connected)
         }
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter)
+        coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository)
     }
 
     @Test
@@ -138,6 +141,7 @@ class MainViewModelTest {
                 fallbackDns,
                 subscriptionUpdater,
                 dataWriter,
+                authRepository,
             )
         advanceUntilIdle()
 
@@ -163,6 +167,7 @@ class MainViewModelTest {
                 fallbackDns,
                 subscriptionUpdater,
                 dataWriter,
+                authRepository,
             )
         advanceUntilIdle()
 

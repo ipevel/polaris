@@ -16,7 +16,6 @@ import com.slte.app.ui.component.SlteInput
 import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.Stickers
 

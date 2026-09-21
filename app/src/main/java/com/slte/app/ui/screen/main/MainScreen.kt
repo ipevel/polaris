@@ -7,9 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,9 +33,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.ContextCompat
 import com.slte.app.R
 import com.slte.app.ui.component.CircleIconButton
+import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
@@ -198,6 +202,14 @@ internal fun DashboardContent(
                 vertical = if (compact) Dimens.dashboardScreenPaddingVCompact else Dimens.dashboardScreenPaddingV,
             ),
         ) {
+            if (data.siteName.isNotBlank() || data.siteDescription.isNotBlank()) {
+                item {
+                    SiteInfoCard(
+                        siteName = data.siteName,
+                        siteDescription = data.siteDescription,
+                    )
+                }
+            }
             item {
                 UsageCard(
                     planName = data.planName,
@@ -257,6 +269,36 @@ internal fun DashboardContent(
                     } else {
                         Dimens.dashboardToggleCardMinHeight
                     },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SiteInfoCard(
+    siteName: String,
+    siteDescription: String,
+) {
+    SlteCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(Dimens.gap.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = siteName,
+                style = SlteType.title,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (siteDescription.isNotBlank()) {
+                Spacer(modifier = Modifier.height(Dimens.gap.xs))
+                Text(
+                    text = siteDescription,
+                    style = SlteType.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
             }
         }

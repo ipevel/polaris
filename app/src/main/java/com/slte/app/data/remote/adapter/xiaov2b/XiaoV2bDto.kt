@@ -62,6 +62,12 @@ fun XiaoV2bLoginData.toDomainLoginResponse() = LoginResponseDto(
 
 @Serializable
 data class XiaoV2bSiteConfig(
+    @SerialName("app_name")
+    val appName: String? = null,
+    @SerialName("app_description")
+    val appDescription: String? = null,
+    @SerialName("app_url")
+    val appUrl: String? = null,
     val is_email_verify: Int? = 0,
     val is_invite_force: Int? = 0,
 )

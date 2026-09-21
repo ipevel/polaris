@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.slte.app.BuildConfig
 import com.slte.app.R
 import com.slte.app.data.remote.config.RemoteConfig
+import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
+import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
@@ -88,10 +90,14 @@ constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val remoteConfig: RemoteConfig,
     private val kernelProxy: KernelProxy,
+    private val authRepository: AuthRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
     val state: StateFlow<UpdateUiState> = _state.asStateFlow()
+
+    private val _siteInfo = MutableStateFlow<SiteInfo?>(null)
+    val siteInfo: StateFlow<SiteInfo?> = _siteInfo.asStateFlow()
 
     private val _kernelVersion = MutableStateFlow<String?>(null)
     val kernelVersion: StateFlow<String?> = _kernelVersion.asStateFlow()
@@ -121,6 +127,10 @@ constructor(
             remoteConfig.dataFlow.collect {
                 checkUpdate()
             }
+        }
+
+        viewModelScope.launch {
+            _siteInfo.value = authRepository.fetchSiteInfo()
         }
     }
 

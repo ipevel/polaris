@@ -22,6 +22,7 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
+import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
@@ -72,6 +73,20 @@ class XiaoV2bAuthApi(
         return RegisterConfig(
             emailVerifyEnabled = data.is_email_verify == 1,
             inviteForceEnabled = data.is_invite_force == 1,
+        )
+    }
+
+    override suspend fun fetchSiteInfo(): SiteInfo {
+        val response = try {
+            authApi.fetchConfig()
+        } catch (_: Exception) {
+            return SiteInfo()
+        }
+        val data = response.data ?: return SiteInfo()
+        return SiteInfo(
+            appName = data.appName?.takeIf { it.isNotBlank() },
+            appDescription = data.appDescription?.takeIf { it.isNotBlank() },
+            appUrl = data.appUrl?.takeIf { it.isNotBlank() },
         )
     }
 

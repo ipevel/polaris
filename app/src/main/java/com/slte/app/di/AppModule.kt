@@ -1,6 +1,7 @@
 package com.slte.app.di
 
 import com.slte.app.BuildConfig
+import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.data.local.SessionStore
 import com.slte.app.data.remote.ApiBackend
 import com.slte.app.data.remote.AuthInterceptor
@@ -45,6 +46,7 @@ object AppModule {
         authInterceptor: AuthInterceptor,
         fallbackDns: FallbackDns,
         remoteConfig: RemoteConfig,
+        apiUrlStore: ApiUrlStore,
     ): AuthApi {
         val cfg = remoteConfig.data
         val backend =
@@ -52,12 +54,13 @@ object AppModule {
                 type = cfg.apiType,
                 baseUrl = cfg.apiBaseUrl,
             )
-        return BackendAdapterFactory.createAuthApi(
+        return BackendAdapterFactory.createDualAuthApi(
             backend,
             isDebug = BuildConfig.DEBUG,
             authInterceptor = authInterceptor,
             dns = fallbackDns,
             remoteConfig = remoteConfig,
+            apiUrlStore = apiUrlStore,
         )
     }
 }

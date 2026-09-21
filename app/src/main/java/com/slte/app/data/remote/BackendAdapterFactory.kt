@@ -69,6 +69,41 @@ object BackendAdapterFactory {
         else -> throw ApiException("不支持的后端类型: ${backend.type}", ApiErrors.UNSUPPORTED_BACKEND)
     }
 
+    /**
+     * 双后端运行时代理：同时实例化 XiaoV2b 与 Xboard 两套适配器，
+     * 由 [DualBackendAuthApi] 按 [com.slte.app.data.local.ApiUrlStore.backendType] 每次请求路由。
+     */
+    fun createDualAuthApi(
+        backend: ApiBackend,
+        isDebug: Boolean,
+        authInterceptor: AuthInterceptor,
+        dns: okhttp3.Dns,
+        remoteConfig: RemoteConfig,
+        apiUrlStore: com.slte.app.data.local.ApiUrlStore,
+    ): AuthApi {
+        val xiaov2bRetrofit = buildRetrofit(backend.copy(type = "xiaov2b"), isDebug, authInterceptor, dns, remoteConfig)
+        val xiaov2bApi =
+            XiaoV2bAuthApi(
+                authApi = xiaov2bRetrofit.create(XiaoV2bAuthRetrofit::class.java),
+                userApi = xiaov2bRetrofit.create(XiaoV2bUserRetrofit::class.java),
+                userPlanApi = xiaov2bRetrofit.create(XiaoV2bUserPlanRetrofit::class.java),
+            )
+
+        val xboardRetrofit = buildRetrofit(backend.copy(type = "xboard"), isDebug, authInterceptor, dns, remoteConfig)
+        val xboardApi =
+            XboardAuthApi(
+                authApi = xboardRetrofit.create(XboardAuthRetrofit::class.java),
+                userApi = xboardRetrofit.create(XboardUserRetrofit::class.java),
+                userPlanApi = xboardRetrofit.create(XboardUserPlanRetrofit::class.java),
+            )
+
+        return DualBackendAuthApi(
+            xiaov2b = xiaov2bApi,
+            xboard = xboardApi,
+            apiUrlStore = apiUrlStore,
+        )
+    }
+
     private fun buildRetrofit(
         backend: ApiBackend,
         isDebug: Boolean,

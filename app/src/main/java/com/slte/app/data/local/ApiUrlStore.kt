@@ -31,6 +31,9 @@ constructor(
 
     private val _urlFlow = MutableStateFlow(readPersistedUrl())
 
+    @Volatile
+    private var cachedBackendType: String = readPersistedBackendType()
+
     /** 已保存的用户面板地址流；null 表示未配置 */
     val urlFlow: StateFlow<String?> = _urlFlow.asStateFlow()
 
@@ -41,6 +44,22 @@ constructor(
     /** 实际生效的 API 基地址；未配置时为空串（不回退任何内置地址） */
     val effectiveBaseUrl: String
         get() = currentUrl?.takeIf { it.toHttpUrlOrNull() != null }.orEmpty()
+
+    /**
+     * 运行时后端类型：`xiaov2b` / `xboard`。
+     * 优先读用户登录页选择并持久化的值，否则回退编译期 [com.slte.app.BuildConfig.API_TYPE]。
+     * 用 [cachedBackendType] 内存缓存，网络层每次请求读取不触发主线程加密存储解密。
+     */
+    val backendType: String
+        get() = cachedBackendType
+
+    /** 持久化后端类型（登录页切换后调用，先落盘供下次冷启动读取，再更新内存缓存） */
+    suspend fun setBackendType(type: String) {
+        withContext(Dispatchers.IO) {
+            prefs.edit { putString(KEY_BACKEND_TYPE, type) }
+        }
+        cachedBackendType = type
+    }
 
     /**
      * 保存自定义面板地址（null / 空白 = 清除，回退默认地址）。
@@ -68,11 +87,14 @@ constructor(
 
     private fun readPersistedUrl(): String? = normalize(raw = prefs.getString(KEY_PANEL_URL, null))
 
+    private fun readPersistedBackendType() = prefs.getString(KEY_BACKEND_TYPE, null)?.takeIf { it.isNotBlank() } ?: com.slte.app.BuildConfig.API_TYPE
+
     private fun normalize(raw: String?): String? = raw?.trim().orEmpty().trimEnd('/').takeIf { it.isNotEmpty() }
 
     private companion object {
         const val PREFS_NAME = "polaris_api_url"
         const val KEY_ALIAS = "polaris_api_url_master_key"
         const val KEY_PANEL_URL = "panel_url"
+        const val KEY_BACKEND_TYPE = "backend_type"
     }
 }

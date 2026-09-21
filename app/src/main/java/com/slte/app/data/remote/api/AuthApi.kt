@@ -15,6 +15,7 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
+import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
@@ -33,6 +34,9 @@ interface AuthApi {
     ): LoginResponseDto
 
     suspend fun fetchRegisterConfig(): RegisterConfig
+
+    /** 拉取站点名称/描述/地址（来自 guest/comm/config，无需登录态，失败不抛异常返回默认值） */
+    suspend fun fetchSiteInfo(): SiteInfo
 
     suspend fun forgotPassword(
         email: String,

@@ -22,6 +22,7 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.ServerNode
+import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
@@ -77,6 +78,20 @@ class XboardAuthApi(
         return RegisterConfig(
             emailVerifyEnabled = data.is_email_verify == 1,
             inviteForceEnabled = data.is_invite_force == 1,
+        )
+    }
+
+    override suspend fun fetchSiteInfo(): SiteInfo {
+        val response = try {
+            authApi.fetchConfig()
+        } catch (_: Exception) {
+            return SiteInfo()
+        }
+        val data = response.data ?: return SiteInfo()
+        return SiteInfo(
+            appName = data.appName?.takeIf { it.isNotBlank() },
+            appDescription = data.appDescription?.takeIf { it.isNotBlank() },
+            appUrl = data.appUrl?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -427,13 +442,13 @@ class XboardAuthApi(
         // 必须按日聚合求和：既保证 TrafficScreen 的 LazyColumn key（date）唯一不闪退，
         // 也让 UI 展示为「每天一行总量」的合理形态。
         return array.mapNotNull { element ->
-                val obj = element as? JsonObject ?: return@mapNotNull null
-                TrafficLogRecord(
-                    date = obj.longField("record_at").toDateString(),
-                    uploadBytes = obj.longField("u"),
-                    downloadBytes = obj.longField("d"),
-                )
-            }
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            TrafficLogRecord(
+                date = obj.longField("record_at").toDateString(),
+                uploadBytes = obj.longField("u"),
+                downloadBytes = obj.longField("d"),
+            )
+        }
             .filter { it.date.isNotBlank() }
             .groupBy { it.date }
             .map { (date, records) ->

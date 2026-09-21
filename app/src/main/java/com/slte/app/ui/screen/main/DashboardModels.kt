@@ -21,4 +21,8 @@ data class DashboardData(
     val dataLoaded: Boolean = false,
     val errorMessageRes: Int? = null,
     val isUpdating: Boolean = false,
+    /** 后端站点名称（动态拉取，未配置为空） */
+    val siteName: String = "",
+    /** 后端站点描述（动态拉取，未配置为空） */
+    val siteDescription: String = "",
 )

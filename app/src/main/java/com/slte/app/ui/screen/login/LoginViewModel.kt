@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
 import com.slte.app.data.local.ApiUrlStore
-import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.remote.config.ConfigValidation
+import com.slte.app.data.repository.AuthRepository
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
@@ -25,6 +25,7 @@ sealed interface LoginUiState {
         val rememberMe: Boolean = false,
 
         val panelUrl: String = "",
+        val backendType: String = "",
     ) : LoginUiState
 
     data class LoggingIn(
@@ -65,7 +66,10 @@ constructor(
     private var registerConfigJob: Job? = null
 
     /** 面板地址初始值：仅回显已保存的用户地址，App 不预填任何内置地址 */
-    private fun initialForm(): LoginUiState.Form = LoginUiState.Form(panelUrl = apiUrlStore.currentUrl.orEmpty())
+    private fun initialForm() = LoginUiState.Form(
+        panelUrl = apiUrlStore.currentUrl.orEmpty(),
+        backendType = apiUrlStore.backendType,
+    )
 
     private fun currentForm() = when (val s = _uiState.value) {
         is LoginUiState.Form -> s
@@ -92,6 +96,7 @@ constructor(
                     rememberMe = true,
 
                     panelUrl = f.panelUrl,
+                    backendType = f.backendType,
                 )
         }
     }
@@ -123,6 +128,11 @@ constructor(
         _uiState.value = f.copy(panelUrl = value)
     }
 
+    fun onBackendTypeChange(type: String) {
+        val f = currentForm()
+        _uiState.value = f.copy(backendType = type)
+    }
+
     fun toggleRememberMe() {
         val f = currentForm()
         val newValue = !f.rememberMe
@@ -139,9 +149,10 @@ constructor(
         else -> null
     }
 
-    /** 保存面板地址（与账号密码一起在提交时写入持久化，随后请求立即生效） */
-    private suspend fun persistPanelUrl(raw: String) {
+    /** 保存面板地址和后端类型（与账号密码一起在提交时写入持久化，随后请求立即生效） */
+    private suspend fun persistPanelSettings(raw: String, backendType: String) {
         apiUrlStore.setUrl(ConfigValidation.normalizePanelUrl(raw))
+        apiUrlStore.setBackendType(backendType)
     }
 
     fun dismissError() {
@@ -153,6 +164,7 @@ constructor(
                 rememberMe = f.rememberMe,
 
                 panelUrl = f.panelUrl,
+                backendType = f.backendType,
             )
     }
 
@@ -177,7 +189,7 @@ constructor(
         loginJob =
             viewModelScope.launch {
                 val f2 = currentForm()
-                persistPanelUrl(f2.panelUrl)
+                persistPanelSettings(f2.panelUrl, f2.backendType)
                 val result = authRepository.login(f2.account.trim(), f2.password)
                 result.fold(
                     onSuccess = { user ->
@@ -211,7 +223,7 @@ constructor(
         registerConfigJob =
             viewModelScope.launch {
                 val f2 = currentForm()
-                persistPanelUrl(f2.panelUrl)
+                persistPanelSettings(f2.panelUrl, f2.backendType)
                 val result = authRepository.fetchRegisterConfig()
                 result.fold(
                     onSuccess = { config ->
@@ -236,6 +248,7 @@ constructor(
                 rememberMe = f.rememberMe,
 
                 panelUrl = f.panelUrl,
+                backendType = f.backendType,
             )
     }
 
@@ -248,6 +261,7 @@ constructor(
                 rememberMe = f.rememberMe,
 
                 panelUrl = f.panelUrl,
+                backendType = f.backendType,
             )
     }
 
@@ -262,6 +276,7 @@ constructor(
                 rememberMe = f.rememberMe,
 
                 panelUrl = f.panelUrl,
+                backendType = f.backendType,
             )
     }
 }

@@ -8,6 +8,7 @@ import com.slte.app.data.remote.api.dto.LoginResponseDto
 import com.slte.app.domain.model.EmailCodePurpose
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.SessionState
+import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.User
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
@@ -75,6 +76,21 @@ constructor(
 
     suspend fun fetchRegisterConfig(): Result<RegisterConfig> = runApi {
         authApi.fetchRegisterConfig()
+    }
+
+    @Volatile
+    private var cachedSiteInfo: SiteInfo? = null
+
+    /** 获取站点信息（带内存缓存，失败/无内容时返回默认空 [SiteInfo]） */
+    suspend fun fetchSiteInfo(force: Boolean = false): SiteInfo {
+        cachedSiteInfo?.let { if (!force) return it }
+        val info = try {
+            authApi.fetchSiteInfo()
+        } catch (_: Exception) {
+            SiteInfo()
+        }
+        cachedSiteInfo = info
+        return info
     }
 
     suspend fun forgotPassword(

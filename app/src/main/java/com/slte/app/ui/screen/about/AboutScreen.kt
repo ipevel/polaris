@@ -51,6 +51,7 @@ fun AboutScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val kernelVersion by viewModel.kernelVersion.collectAsStateWithLifecycle()
+    val siteInfo by viewModel.siteInfo.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
@@ -86,14 +87,16 @@ fun AboutScreen(
                         )
                         Spacer(modifier = Modifier.height(Dimens.gap.md))
                         Text(
-                            text = stringResource(R.string.app_name),
+                            text = siteInfo?.appName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.app_name),
                             style = SlteType.title,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(modifier = Modifier.height(Dimens.gap.sm))
                         Text(
-                            text = stringResource(R.string.about_app_desc),
+                            text =
+                            siteInfo?.appDescription?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.about_app_desc),
                             style = SlteType.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,

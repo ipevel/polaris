@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
 import com.slte.app.data.remote.FallbackDns
+import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
@@ -42,6 +43,7 @@ constructor(
     private val fallbackDns: FallbackDns,
     private val subscriptionUpdater: SubscriptionUpdater,
     private val dataWriter: DashboardDataWriter,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
@@ -57,6 +59,15 @@ constructor(
         observeKernelState()
         observeProfileLoaded()
         viewModelScope.launch { subscriptionUpdater.maybeSilentUpdate(_data, viewModelScope) }
+
+        viewModelScope.launch {
+            val info = authRepository.fetchSiteInfo()
+            val name = info.appName?.takeIf { it.isNotBlank() } ?: ""
+            val desc = info.appDescription?.takeIf { it.isNotBlank() } ?: ""
+            if (name.isNotEmpty() || desc.isNotEmpty()) {
+                _data.update { it.copy(siteName = name, siteDescription = desc) }
+            }
+        }
 
         viewModelScope.launch {
             repeat(10) {

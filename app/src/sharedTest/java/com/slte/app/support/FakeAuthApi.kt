@@ -82,6 +82,8 @@ open class FakeAuthApi : AuthApi {
 
     override suspend fun fetchRegisterConfig(): RegisterConfig = unsupported()
 
+    override suspend fun fetchSiteInfo(): com.slte.app.domain.model.SiteInfo = com.slte.app.domain.model.SiteInfo()
+
     override suspend fun forgotPassword(
         email: String,
         emailCode: String,
