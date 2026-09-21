@@ -16,11 +16,11 @@ on:
       appName:
         description: 应用名称（桌面显示名）
         required: true
-        default: Polaris
+        default: 北辰
       applicationId:
         description: 包名
         required: true
-        default: com.slte.app
+        default: com.polaris.app
       versionName:
         description: 版本号
         required: true
