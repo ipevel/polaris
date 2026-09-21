@@ -42,7 +42,8 @@
     <string name="error_invite_required">Invite code required</string>
 
     <!-- Top bar actions -->
-    <string name="topbar_support">Support</string>
+    <string name="topbar_dark_mode">Dark Mode</string>
+    <string name="topbar_light_mode">Light Mode</string>
     <string name="topbar_notice">Notice</string>
     <string name="topbar_profile">Me</string>
 

@@ -6,8 +6,8 @@ import com.slte.app.R
 import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.data.remote.config.ConfigValidation
 import com.slte.app.data.repository.AuthRepository
-import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.di.IoDispatcher
+import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
 import com.slte.app.utils.ErrorMessages

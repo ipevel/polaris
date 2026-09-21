@@ -2,7 +2,6 @@ package com.slte.app.ui.screen.settings
 
 import com.slte.app.R
 import com.slte.app.data.local.LocaleStore
-import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.domain.model.User
@@ -28,14 +27,12 @@ class SettingsViewModelTest {
     private val authRepository = mockk<AuthRepository>(relaxed = true)
     private val subscribeRepository = mockk<SubscribeRepository>(relaxed = true)
     private val kernelProxy = mockk<KernelProxy>(relaxed = true)
-    private val themePreference = mockk<ThemePreference>(relaxed = true)
     private val localeStore = mockk<LocaleStore>(relaxed = true)
 
     private fun viewModel(): SettingsViewModel {
-        every { themePreference.dark } returns MutableStateFlow(false)
         every { localeStore.locale } returns MutableStateFlow(null)
         coEvery { kernelProxy.tunStackMode() } returns "system"
-        return SettingsViewModel(authRepository, subscribeRepository, kernelProxy, themePreference, localeStore)
+        return SettingsViewModel(authRepository, subscribeRepository, kernelProxy, localeStore)
     }
 
     private fun user(

@@ -1,6 +1,7 @@
 package com.slte.app.ui.screen.main
 
 import com.slte.app.R
+import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.kernel.KernelConfig
@@ -32,6 +33,7 @@ class MainViewModelTest {
     private val subscriptionUpdater = mockk<SubscriptionUpdater>(relaxed = true)
     private val dataWriter = mockk<DashboardDataWriter>(relaxed = true)
     private val authRepository = mockk<AuthRepository>(relaxed = true)
+    private val themePreference = mockk<ThemePreference>(relaxed = true)
 
     private fun viewModel(
         hasPlan: Boolean = true,
@@ -41,12 +43,13 @@ class MainViewModelTest {
         kernelProxy.stubKernelBridge(ready)
         every { kernelManager.connected } returns MutableStateFlow(connected)
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
+        every { themePreference.dark } returns MutableStateFlow(false)
         every { dataWriter.applyCached(any()) } answers {
             firstArg<MutableStateFlow<DashboardData>>().value =
                 DashboardData(hasPlan = hasPlan, isConnected = connected)
         }
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository)
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, themePreference)
     }
 
     @Test
@@ -130,6 +133,7 @@ class MainViewModelTest {
     fun `内核连接状态同步到首页并清空 DNS 缓存`() = runTest(mainRule.dispatcher) {
         kernelProxy.stubKernelBridge(ready = true)
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
+        every { themePreference.dark } returns MutableStateFlow(false)
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
@@ -143,6 +147,7 @@ class MainViewModelTest {
                 subscriptionUpdater,
                 dataWriter,
                 authRepository,
+                themePreference,
             )
         advanceUntilIdle()
 
@@ -157,6 +162,7 @@ class MainViewModelTest {
     fun `内核未就绪时不判定为已连接`() = runTest(mainRule.dispatcher) {
         kernelProxy.stubKernelBridge(ready = false)
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
+        every { themePreference.dark } returns MutableStateFlow(false)
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
@@ -170,6 +176,7 @@ class MainViewModelTest {
                 subscriptionUpdater,
                 dataWriter,
                 authRepository,
+                themePreference,
             )
         advanceUntilIdle()
 

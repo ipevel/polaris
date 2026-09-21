@@ -77,7 +77,6 @@ internal fun DashboardPageContent(
     onTraffic: () -> Unit,
     onServer: () -> Unit,
     onNotice: () -> Unit,
-    onSupport: () -> Unit,
     onProfile: () -> Unit,
     onRenew: () -> Unit,
 ) {
@@ -87,7 +86,6 @@ internal fun DashboardPageContent(
         onTraffic = onTraffic,
         onServer = onServer,
         onNotice = onNotice,
-        onSupport = onSupport,
         onProfile = onProfile,
         onRenew = onRenew,
     )

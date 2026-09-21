@@ -77,15 +77,6 @@ fun SettingsScreen(
 
             item {
                 SettingsSwitchCard(
-                    icon = if (data.darkModeEnabled) SlteIcons.LightMode else SlteIcons.DarkMode,
-                    title = stringResource(R.string.settings_dark_mode),
-                    checked = data.darkModeEnabled,
-                    onCheckedChange = viewModel::setDarkMode,
-                )
-            }
-
-            item {
-                SettingsSwitchCard(
                     icon = SlteIcons.Email,
                     title = stringResource(R.string.settings_expire_remind),
                     checked = data.expireRemindEnabled,

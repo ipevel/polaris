@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
 import com.slte.app.data.local.LocaleStore
-import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelProxy
@@ -26,9 +25,6 @@ data class SettingsData(
     val tunStackMode: TunStackMode = TunStackMode.DEFAULT,
 
     val tunStackSwitchCount: Int = 0,
-
-    val darkModeEnabled: Boolean = false,
-
     val locale: Locale? = null,
 )
 
@@ -57,13 +53,11 @@ constructor(
     private val authRepository: AuthRepository,
     private val subscribeRepository: SubscribeRepository,
     private val kernelProxy: KernelProxy,
-    private val themePreference: ThemePreference,
     private val localeStore: LocaleStore,
 ) : ViewModel() {
     private val _data =
         MutableStateFlow(
             SettingsData(
-                darkModeEnabled = themePreference.dark.value,
                 locale = localeStore.locale.value,
             ),
         )
@@ -75,11 +69,6 @@ constructor(
     init {
         loadRemindSettings()
         loadTunStackMode()
-    }
-
-    fun setDarkMode(enabled: Boolean) {
-        themePreference.setDark(enabled)
-        _data.value = _data.value.copy(darkModeEnabled = enabled)
     }
 
     fun setLocale(locale: Locale?) {

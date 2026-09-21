@@ -22,7 +22,6 @@ import com.slte.app.utils.findActivity
 @Composable
 fun LoggedInApp(
     accountKey: String,
-    onSupport: () -> Boolean,
 ) {
     val context = LocalContext.current
     val viewModels = rememberLoggedInViewModels(accountKey)
@@ -95,7 +94,6 @@ fun LoggedInApp(
                     onTraffic = { preload.enterPage(PendingNav.Traffic) },
                     onServer = { pushPage(Page.Server) },
                     onNotice = { preload.enterPage(PendingNav.Notice) },
-                    onSupport = { if (!onSupport()) pushPage(Page.Ticket) },
                     onProfile = { pushPage(Page.Profile) },
                     onRenew = { preload.enterPage(PendingNav.Plans) },
                 )

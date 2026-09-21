@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
@@ -44,9 +45,16 @@ constructor(
     private val subscriptionUpdater: SubscriptionUpdater,
     private val dataWriter: DashboardDataWriter,
     private val authRepository: AuthRepository,
+    private val themePreference: ThemePreference,
 ) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
+
+    val darkMode: StateFlow<Boolean> = themePreference.dark
+
+    fun toggleDarkMode() {
+        themePreference.setDark(!themePreference.dark.value)
+    }
 
     private var autoTested = false
 

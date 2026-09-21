@@ -35,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.CircleIconButton
 import com.slte.app.ui.component.SlteCard
@@ -52,11 +53,11 @@ internal fun MainScreen(
     onTraffic: () -> Unit = {},
     onServer: () -> Unit = {},
     onNotice: () -> Unit = {},
-    onSupport: () -> Unit = {},
     onProfile: () -> Unit = {},
     onRenew: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val isDarkMode by mainViewModel.darkMode.collectAsStateWithLifecycle()
     val vpnPermissionLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult(),
@@ -95,9 +96,11 @@ internal fun MainScreen(
                 },
                 actions = {
                     CircleIconButton(
-                        icon = SlteIcons.Support,
-                        description = stringResource(R.string.topbar_support),
-                        onClick = onSupport,
+                        icon = if (isDarkMode) SlteIcons.LightMode else SlteIcons.DarkMode,
+                        description = stringResource(
+                            if (isDarkMode) R.string.topbar_light_mode else R.string.topbar_dark_mode,
+                        ),
+                        onClick = mainViewModel::toggleDarkMode,
                     )
                     CircleIconButton(
                         icon = SlteIcons.Notifications,

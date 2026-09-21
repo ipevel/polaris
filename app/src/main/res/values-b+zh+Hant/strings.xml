@@ -42,7 +42,8 @@
     <string name="error_invite_required">邀請碼必填</string>
 
     <!-- Top bar actions -->
-    <string name="topbar_support">客服</string>
+    <string name="topbar_dark_mode">深色模式</string>
+    <string name="topbar_light_mode">淺色模式</string>
     <string name="topbar_notice">公告</string>
     <string name="topbar_profile">我的</string>
 

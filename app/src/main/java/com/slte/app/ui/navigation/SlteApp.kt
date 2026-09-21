@@ -51,7 +51,6 @@ fun SlteApp(
                 val loggedIn = sessionState as SessionState.LoggedIn
                 LoggedInApp(
                     accountKey = loggedIn.user.subscribeToken,
-                    onSupport = { viewModel.crispManager.openChat(context, loggedIn.user.email) },
                 )
             }
             is SessionState.LoggedOut -> AuthNavGraph()
