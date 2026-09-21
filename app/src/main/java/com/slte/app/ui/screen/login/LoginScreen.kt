@@ -131,6 +131,19 @@ fun LoginScreen(
                 onValueChange = viewModel::onPasswordChange,
                 placeholder = stringResource(R.string.login_password_hint),
                 icon = SlteIcons.Password,
+                imeAction = ImeAction.Next,
+                enabled = !isLoading,
+                bordered = false,
+            )
+
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
+
+            SlteInput(
+                value = form.panelUrl,
+                onValueChange = viewModel::onPanelUrlChange,
+                placeholder = stringResource(R.string.login_url_hint),
+                icon = SlteIcons.Language,
+                keyboardType = KeyboardType.Uri,
                 imeAction = ImeAction.Done,
                 enabled = !isLoading,
                 bordered = false,

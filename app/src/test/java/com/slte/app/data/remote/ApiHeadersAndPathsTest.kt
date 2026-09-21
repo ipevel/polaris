@@ -34,7 +34,7 @@ class ApiHeadersAndPathsTest {
     fun `无故障转移头固定为常量名与值1`() {
         val request = requestWith(ApiHeaders.NO_FAILOVER_HEADER)
 
-        assertEquals("X-SLTE-No-Failover", ApiHeaders.NO_FAILOVER_NAME)
+        assertEquals("X-Polaris-No-Failover", ApiHeaders.NO_FAILOVER_NAME)
         assertEquals(
             ApiHeaders.NO_FAILOVER_HEADER,
             "${ApiHeaders.NO_FAILOVER_NAME}: 1",

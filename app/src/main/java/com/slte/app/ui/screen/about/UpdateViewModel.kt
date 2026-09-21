@@ -158,7 +158,7 @@ constructor(
                     }
                 return@launch
             }
-            AppLog.i("SLTE-Update", "发现新版 ${cfg.updateVersion} force=${cfg.updateForce} manual=$manual")
+            AppLog.i("Polaris-Update", "发现新版 ${cfg.updateVersion} force=${cfg.updateForce} manual=$manual")
             lastShownSignature = signature
             _state.value =
                 UpdateUiState.Available(
@@ -186,11 +186,11 @@ constructor(
                     runCatching { downloadApk(url) { pct -> _state.value = UpdateUiState.Downloading(progress = pct) } }
                 }
             result.onSuccess { apkFile ->
-                AppLog.i("SLTE-Update", "APK 下载完成: ${apkFile.name} size=${apkFile.length()}")
+                AppLog.i("Polaris-Update", "APK 下载完成: ${apkFile.name} size=${apkFile.length()}")
                 _state.value = UpdateUiState.Idle
                 installApk(apkFile)
             }.onFailure { e ->
-                AppLog.w("SLTE-Update", "APK 下载失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                AppLog.w("Polaris-Update", "APK 下载失败: ${sanitizeLog(e.message ?: "Unknown")}")
                 _state.value = UpdateUiState.DownloadFailed(R.string.update_download_failed)
             }
         }
@@ -203,7 +203,7 @@ constructor(
         val dir =
             context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
                 ?: context.filesDir
-        val target = java.io.File(dir, "SLTE-update.apk")
+        val target = java.io.File(dir, "polaris-update.apk")
         val request = okhttp3.Request.Builder().url(url).build()
         downloadClient.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
@@ -240,7 +240,7 @@ constructor(
                 }
             context.startActivity(intent)
         } catch (e: Exception) {
-            AppLog.w("SLTE-Update", "拉起安装器失败: ${sanitizeLog(e.message ?: "Unknown")}")
+            AppLog.w("Polaris-Update", "拉起安装器失败: ${sanitizeLog(e.message ?: "Unknown")}")
             _state.value = UpdateUiState.DownloadFailed(R.string.update_download_failed)
         }
     }

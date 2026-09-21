@@ -86,6 +86,9 @@ interface AuthApi {
 
     suspend fun cancelOrder(tradeNo: String)
 
+    /** 礼品卡兑换：成功静默返回，失败抛带后端文案的 [com.slte.app.data.remote.ApiException]。 */
+    suspend fun redeemGiftCard(code: String)
+
     suspend fun fetchInviteInfo(): InviteInfo
 
     suspend fun generateInviteCode(): Boolean

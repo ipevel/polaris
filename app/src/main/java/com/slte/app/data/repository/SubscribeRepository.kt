@@ -196,6 +196,6 @@ private fun logSubscribeHostChange(
     val oldHost = subscribeHostOf(previous) ?: return
     val newHost = subscribeHostOf(current) ?: return
     if (oldHost != newHost) {
-        AppLog.w("SLTE-Subscribe", "订阅地址主机变更: $oldHost -> $newHost")
+        AppLog.w("Polaris-Subscribe", "订阅地址主机变更: $oldHost -> $newHost")
     }
 }

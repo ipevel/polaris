@@ -29,7 +29,7 @@ suspend fun KernelProxy.awaitTunnelReady(timeoutMs: Long = TUNNEL_READY_TIMEOUT_
         }
         delay(TUNNEL_READY_POLL_MS)
     }
-    AppLog.w("SLTE-Kernel", "awaitTunnelReady 超时 ${timeoutMs}ms，最后 TunnelState.mode=$lastMode")
+    AppLog.w("Polaris-Kernel", "awaitTunnelReady 超时 ${timeoutMs}ms，最后 TunnelState.mode=$lastMode")
     return false
 }
 

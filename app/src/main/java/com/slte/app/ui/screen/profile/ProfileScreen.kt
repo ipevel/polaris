@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,6 +24,9 @@ import com.slte.app.R
 import com.slte.app.domain.model.isPlanValid
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.UsageCard
+import com.slte.app.ui.component.rememberToast
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemSheet
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemViewModel
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Dimens
@@ -45,8 +49,27 @@ fun ProfileScreen(
     val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
     var showLogoutSheet by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
+    val toast = rememberToast()
     // 优先读面板后台配置（telegram_discuss_link），编译期参数兜底
     val telegramUrl = data.telegramDiscussLink ?: BuildConfig.TELEGRAM_GROUP_URL
+
+    // 礼品卡兑换：弹窗状态 + 结果提示 + 成功后刷新个人中心
+    val giftCardViewModel: GiftCardRedeemViewModel = hiltViewModel()
+    val giftCardState by giftCardViewModel.state.collectAsStateWithLifecycle()
+    val giftCardTip by giftCardViewModel.tip.collectAsStateWithLifecycle()
+    val giftCardRedeemed by giftCardViewModel.redeemed.collectAsStateWithLifecycle()
+
+    LaunchedEffect(giftCardTip) {
+        giftCardTip?.let { tip ->
+            tip.messageRes?.let { toast.show(it) }
+            tip.message?.let { toast.show(it) }
+            giftCardViewModel.clearTip()
+        }
+    }
+
+    LaunchedEffect(giftCardRedeemed) {
+        if (giftCardRedeemed > 0) viewModel.refresh()
+    }
 
     SlteScaffold(
         title = stringResource(R.string.profile_title),
@@ -112,6 +135,14 @@ fun ProfileScreen(
 
             item {
                 NavigateCard(
+                    icon = SlteIcons.InviteCode,
+                    title = stringResource(R.string.gift_card_title),
+                    onClick = giftCardViewModel::open,
+                )
+            }
+
+            item {
+                NavigateCard(
                     icon = SlteIcons.InviteRow,
                     title = stringResource(R.string.invite_title),
                     onClick = onInvite,
@@ -135,7 +166,7 @@ fun ProfileScreen(
                             try {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl)))
                             } catch (e: Exception) {
-                                AppLog.w("SLTE-Profile", "打开 Telegram 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                                AppLog.w("Polaris-Profile", "打开 Telegram 失败: ${sanitizeLog(e.message ?: "Unknown")}")
                             }
                         },
                     )
@@ -169,6 +200,15 @@ fun ProfileScreen(
                 onLogout()
             },
             onDismiss = { showLogoutSheet = false },
+        )
+    }
+
+    if (giftCardState.visible) {
+        GiftCardRedeemSheet(
+            state = giftCardState,
+            onCodeChange = giftCardViewModel::updateCode,
+            onSubmit = giftCardViewModel::submit,
+            onDismiss = giftCardViewModel::dismiss,
         )
     }
 }

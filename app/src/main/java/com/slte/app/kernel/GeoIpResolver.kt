@@ -41,7 +41,7 @@ constructor(
     private fun load(): Reader? = runCatching {
         Reader(File(context.filesDir, "clash/geoip.metadb"))
     }.getOrElse {
-        AppLog.w("SLTE-Kernel", "GeoIpResolver: metadb 加载失败: ${sanitizeLog(it.message ?: "Unknown")}")
+        AppLog.w("Polaris-Kernel", "GeoIpResolver: metadb 加载失败: ${sanitizeLog(it.message ?: "Unknown")}")
         null
     }
 }

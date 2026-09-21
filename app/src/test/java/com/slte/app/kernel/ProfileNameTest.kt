@@ -18,16 +18,16 @@ class ProfileNameTest {
 
     @Test
     fun `无邮箱回退通用名`() {
-        assertEquals("SLTE", profileNameFor(null))
-        assertEquals("SLTE", profileNameFor(""))
-        assertEquals("SLTE", profileNameFor("   "))
+        assertEquals("Polaris", profileNameFor(null))
+        assertEquals("Polaris", profileNameFor(""))
+        assertEquals("Polaris", profileNameFor("   "))
     }
 
     @Test
     fun `标记前缀与长度固定`() {
         val name = profileNameFor("user@example.com")
-        assertTrue(name.startsWith("SLTE-"))
+        assertTrue(name.startsWith("Polaris-"))
 
-        assertEquals("SLTE-".length + 64, name.length)
+        assertEquals("Polaris-".length + 64, name.length)
     }
 }

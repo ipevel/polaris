@@ -89,7 +89,7 @@ internal object SecurePreferences {
         if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
     }
 
-    private const val TAG = "SLTE-SecurePrefs"
+    private const val TAG = "Polaris-SecurePrefs"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     private const val LEGACY_KEY_ALIAS = "_androidx_security_master_key_"

@@ -19,8 +19,8 @@ fun slteValue(name: String): String? =
     System.getenv(name)?.takeIf { it.isNotBlank() }
         ?: slteProps.getProperty(name)?.trim()?.takeIf { it.isNotBlank() }
 
-val slteNotificationTitle = slteValue("SLTE_NOTIFICATION_TITLE") ?: ""
-val slteNotificationTraffic = slteValue("SLTE_NOTIFICATION_TRAFFIC") ?: "true"
+val slteNotificationTitle = slteValue("POLARIS_NOTIFICATION_TITLE") ?: ""
+val slteNotificationTraffic = slteValue("POLARIS_NOTIFICATION_TRAFFIC") ?: "true"
 
 android {
     namespace = "com.github.kr328.clash.service"

@@ -26,7 +26,7 @@ internal object AdapterExecute {
     } catch (e: HttpException) {
         val errorBody = e.response()?.errorBody()?.string()
         AppLog.w(
-            "SLTE-Api",
+            "Polaris-Api",
             "execute HttpException: code=${e.code()}, body=${AppLog.sanitize(errorBody?.take(500) ?: "")}",
         )
         val serverMessage = extractServerMessage(errorBody)
@@ -38,15 +38,15 @@ internal object AdapterExecute {
         throw ApiException(ApiErrors.httpFailureMessage(e.code()), ApiErrors.forHttpStatus(e.code()))
     } catch (e: SerializationException) {
         AppLog.e(
-            "SLTE-Api",
+            "Polaris-Api",
             "响应解析失败（后端字段类型可能与客户端不一致）: ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}",
         )
         throw ApiException("服务器响应格式异常，请稍后重试", ApiErrors.SERIALIZATION)
     } catch (e: IOException) {
-        AppLog.w("SLTE-Api", "execute IOException: ${sanitizeLog(e.message ?: "Unknown")}")
+        AppLog.w("Polaris-Api", "execute IOException: ${sanitizeLog(e.message ?: "Unknown")}")
         throw ApiException("请求失败，请检查网络连接", ApiErrors.NETWORK)
     } catch (e: Exception) {
-        AppLog.w("SLTE-Api", "execute unexpected ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
+        AppLog.w("Polaris-Api", "execute unexpected ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
         throw ApiException("服务器响应异常", ApiErrors.NETWORK)
     }
 
@@ -55,7 +55,7 @@ internal object AdapterExecute {
         val message = response.message
         if (response.data == null && message != null) {
             if (BuildConfig.DEBUG) {
-                AppLog.w("SLTE-Api", "execute: data=null, message=${sanitizeLog(message)}")
+                AppLog.w("Polaris-Api", "execute: data=null, message=${sanitizeLog(message)}")
             }
             throw ApiException(message)
         }
@@ -88,17 +88,17 @@ internal object AdapterExecute {
 
 internal fun <T> List<T>?.orEmptyLogged(what: String): List<T> {
     if (this != null) return this
-    AppLog.w("SLTE-Api", "$what: 响应 data 为空且无 message，按空结果处理")
+    AppLog.w("Polaris-Api", "$what: 响应 data 为空且无 message，按空结果处理")
     return emptyList()
 }
 
 internal fun Boolean?.orFalseLogged(what: String): Boolean {
     if (this != null) return this
-    AppLog.w("SLTE-Api", "$what: 响应 data 为空且无 message，按 false 处理")
+    AppLog.w("Polaris-Api", "$what: 响应 data 为空且无 message，按 false 处理")
     return false
 }
 
 internal fun <T : Any> T?.orNullLogged(what: String): T? {
-    if (this == null) AppLog.w("SLTE-Api", "$what: 响应 data 为空且无 message，按空对象处理")
+    if (this == null) AppLog.w("Polaris-Api", "$what: 响应 data 为空且无 message，按空对象处理")
     return this
 }

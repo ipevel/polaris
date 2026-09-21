@@ -45,7 +45,7 @@ class XboardAuthApi(
     ): LoginResponseDto {
         val response = AdapterExecute.typed { authApi.login(XboardLoginRequest(email, password)) }
         val data = response.data ?: throw ApiException("服务器返回数据为空", ApiErrors.EMPTY_DATA)
-        AppLog.i("SLTE-Api", "login success")
+        AppLog.i("Polaris-Api", "login success")
         return data.toDomainLoginResponse()
     }
 
@@ -67,7 +67,7 @@ class XboardAuthApi(
                 )
             }
         val data = response.data ?: throw ApiException("服务器返回数据为空", ApiErrors.EMPTY_DATA)
-        AppLog.i("SLTE-Api", "register success")
+        AppLog.i("Polaris-Api", "register success")
         return data.toDomainLoginResponse()
     }
 
@@ -88,7 +88,7 @@ class XboardAuthApi(
         AdapterExecute.typed {
             authApi.forgotPassword(XboardForgotRequest(email, password, emailCode))
         }
-        AppLog.i("SLTE-Api", "forgotPassword success")
+        AppLog.i("Polaris-Api", "forgotPassword success")
     }
 
     override suspend fun sendEmailCode(
@@ -103,7 +103,7 @@ class XboardAuthApi(
         AdapterExecute.typed {
             authApi.sendEmailCode(XboardSendCodeRequest(email, isforget = isForget))
         }
-        AppLog.i("SLTE-Api", "sendEmailCode success purpose=$purpose")
+        AppLog.i("Polaris-Api", "sendEmailCode success purpose=$purpose")
     }
 
     override suspend fun revokeActiveSessions(authData: String) {
@@ -121,7 +121,7 @@ class XboardAuthApi(
                 else -> emptyList()
             }
         if (sessionIds.isEmpty()) {
-            AppLog.w("SLTE-Api", "revokeActiveSessions: 会话列表解析为空，登出后服务端会话可能未吊销")
+            AppLog.w("Polaris-Api", "revokeActiveSessions: 会话列表解析为空，登出后服务端会话可能未吊销")
         }
         sessionIds.forEach { sessionId ->
             try {
@@ -131,7 +131,7 @@ class XboardAuthApi(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLog.w("SLTE-Api", "revokeActiveSessions: 会话吊销失败，继续吊销其余会话")
+                AppLog.w("Polaris-Api", "revokeActiveSessions: 会话吊销失败，继续吊销其余会话")
             }
         }
     }
@@ -140,7 +140,7 @@ class XboardAuthApi(
         val response = AdapterExecute.typed { userApi.fetchUserInfo() }
         val data = response.data ?: throw ApiException("获取用户信息失败", ApiErrors.USER_INFO)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchUserInfo: planId=${data.planId}, expiredAt=${data.expiredAt}, transferEnable=${data.transferEnable}")
+            AppLog.d("Polaris-Api", "fetchUserInfo: planId=${data.planId}, expiredAt=${data.expiredAt}, transferEnable=${data.transferEnable}")
         }
         return data.toDomainUserInfo()
     }
@@ -171,12 +171,12 @@ class XboardAuthApi(
         val data = response.data
         if (data == null) {
             if (BuildConfig.DEBUG) {
-                AppLog.d("SLTE-Api", "fetchSubscribeInfo: 无订阅，返回空订阅")
+                AppLog.d("Polaris-Api", "fetchSubscribeInfo: 无订阅，返回空订阅")
             }
             return SubscribeInfoDto()
         }
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchSubscribeInfo: planId=${data.planId}, planName=${data.plan?.name}, expiredAt=${data.expiredAt}")
+            AppLog.d("Polaris-Api", "fetchSubscribeInfo: planId=${data.planId}, planName=${data.plan?.name}, expiredAt=${data.expiredAt}")
         }
         return data.toDomainSubscribeInfo()
     }
@@ -185,20 +185,20 @@ class XboardAuthApi(
         val response = AdapterExecute.typed { userApi.fetchOrders() }
         val data = response.data.orEmptyLogged("fetchOrders")
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchOrders: 共 ${data.size} 条订单")
+            AppLog.d("Polaris-Api", "fetchOrders: 共 ${data.size} 条订单")
         }
         return data.map { it.toDomainOrder() }
     }
 
     override suspend fun fetchPlans(): List<PlanInfoDto> {
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchPlans: 请求 /user/plan/fetch")
+            AppLog.d("Polaris-Api", "fetchPlans: 请求 /user/plan/fetch")
         }
 
         val response = AdapterExecute.typed { userPlanApi.fetchPlans() }
         val data = response.data.orEmptyLogged("fetchPlans")
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchPlans: 返回 ${data.size} 条套餐")
+            AppLog.d("Polaris-Api", "fetchPlans: 返回 ${data.size} 条套餐")
         }
         return data.map { it.toDomainPlan() }
     }
@@ -214,7 +214,7 @@ class XboardAuthApi(
             }
         val tradeNo = response.data ?: throw ApiException("创建订单失败", ApiErrors.CREATE_ORDER)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "createOrder success: tradeNo=$tradeNo")
+            AppLog.d("Polaris-Api", "createOrder success: tradeNo=$tradeNo")
         }
         return CreateOrderResultDto(tradeNo)
     }
@@ -232,7 +232,7 @@ class XboardAuthApi(
         val response = AdapterExecute.typed { userApi.checkCoupon(XboardCouponCheckRequest(code, planId)) }
         val data = response.data ?: throw ApiException("优惠券无效", ApiErrors.COUPON_INVALID)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "checkCoupon raw: type=${data.type} value=${data.value} name=${data.name}")
+            AppLog.d("Polaris-Api", "checkCoupon raw: type=${data.type} value=${data.value} name=${data.name}")
         }
         return data.toDomainCouponCheck()
     }
@@ -257,15 +257,22 @@ class XboardAuthApi(
     override suspend fun cancelOrder(tradeNo: String) {
         AdapterExecute.typed { userApi.cancelOrder(XboardCancelOrderRequest(tradeNo)) }
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "cancelOrder: tradeNo=$tradeNo")
+            AppLog.d("Polaris-Api", "cancelOrder: tradeNo=$tradeNo")
         }
+    }
+
+    override suspend fun redeemGiftCard(code: String) {
+        // 成功：data 返回兑换结果；失败：data=null 且 message 携带后端原文（如「兑换码不存在」），
+        // typed() 会抛出带原文的 ApiException，由 UI 层映射本地化文案或透传。
+        AdapterExecute.typed { userApi.redeemGiftCard(XboardGiftCardRedeemRequest(code)) }
+        AppLog.i("Polaris-Api", "redeemGiftCard: 兑换成功")
     }
 
     override suspend fun fetchInviteInfo(): InviteInfo {
         val response = AdapterExecute.typed { userApi.fetchInviteInfo() }
         val data = response.data ?: throw ApiException("获取邀请信息失败", ApiErrors.INVITE_INFO)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchInviteInfo: codes=${data.codes.size}, stat=${data.stat}")
+            AppLog.d("Polaris-Api", "fetchInviteInfo: codes=${data.codes.size}, stat=${data.stat}")
         }
         return data.toDomain()
     }
@@ -282,7 +289,7 @@ class XboardAuthApi(
         val response = AdapterExecute.typed { userApi.fetchCommissionRecords(page, pageSize) }
         val data = response.data.orEmptyLogged("fetchCommissionRecords")
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchCommissionRecords: ${data.size} 条记录")
+            AppLog.d("Polaris-Api", "fetchCommissionRecords: ${data.size} 条记录")
         }
         return data.map { it.toDomain() }
     }
@@ -304,7 +311,7 @@ class XboardAuthApi(
                 userApi.withdrawCommission(XboardWithdrawRequest(withdrawMethod, withdrawAccount))
             }
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "withdrawCommission: method=$withdrawMethod")
+            AppLog.d("Polaris-Api", "withdrawCommission: method=$withdrawMethod")
         }
         return response.data.orFalseLogged("withdrawCommission")
     }
@@ -380,18 +387,18 @@ class XboardAuthApi(
         return try {
             val body = AdapterExecute.raw { userApi.getTrafficLog() }
             val raw = body.string()
-            AppLog.d("SLTE-Traffic", "getTrafficLog 原始响应长度=${raw.length} 前200字符=${sanitizeLog(raw.take(200))}")
+            AppLog.d("Polaris-Traffic", "getTrafficLog 原始响应长度=${raw.length} 前200字符=${sanitizeLog(raw.take(200))}")
             val array = extractTrafficLogArray(raw)
             if (array == null) {
-                AppLog.w("SLTE-Traffic", "getTrafficLog 无法从响应中提取 data 数组")
+                AppLog.w("Polaris-Traffic", "getTrafficLog 无法从响应中提取 data 数组")
                 return emptyList()
             }
             parseTrafficLog(array)
         } catch (e: ApiException) {
-            AppLog.w("SLTE-Traffic", "getTrafficLog ApiException: ${sanitizeLog(e.message ?: "Unknown")}")
+            AppLog.w("Polaris-Traffic", "getTrafficLog ApiException: ${sanitizeLog(e.message ?: "Unknown")}")
             throw e
         } catch (e: Exception) {
-            AppLog.w("SLTE-Traffic", "getTrafficLog 异常: ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
+            AppLog.w("Polaris-Traffic", "getTrafficLog 异常: ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
             emptyList()
         }
     }
@@ -416,14 +423,27 @@ class XboardAuthApi(
     }
 
     private fun parseTrafficLog(array: JsonArray): List<TrafficLogRecord> {
+        // Xboard StatUser 返回按节点/时段的多条记录，同一天会有多条。
+        // 必须按日聚合求和：既保证 TrafficScreen 的 LazyColumn key（date）唯一不闪退，
+        // 也让 UI 展示为「每天一行总量」的合理形态。
         return array.mapNotNull { element ->
-            val obj = element as? JsonObject ?: return@mapNotNull null
-            TrafficLogRecord(
-                date = obj.longField("record_at").toDateString(),
-                uploadBytes = obj.longField("u"),
-                downloadBytes = obj.longField("d"),
-            )
-        }
+                val obj = element as? JsonObject ?: return@mapNotNull null
+                TrafficLogRecord(
+                    date = obj.longField("record_at").toDateString(),
+                    uploadBytes = obj.longField("u"),
+                    downloadBytes = obj.longField("d"),
+                )
+            }
+            .filter { it.date.isNotBlank() }
+            .groupBy { it.date }
+            .map { (date, records) ->
+                TrafficLogRecord(
+                    date = date,
+                    uploadBytes = records.sumOf { it.uploadBytes },
+                    downloadBytes = records.sumOf { it.downloadBytes },
+                )
+            }
+            .sortedByDescending { it.date }
     }
 }
 

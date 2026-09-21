@@ -34,6 +34,6 @@ constructor(
         )
 
     private companion object {
-        const val TAG = "SLTE-Purchase"
+        const val TAG = "Polaris-Purchase"
     }
 }

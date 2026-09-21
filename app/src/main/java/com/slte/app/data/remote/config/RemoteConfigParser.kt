@@ -84,7 +84,7 @@ internal object RemoteConfigParser {
         val accepted = ConfigValidation.isValidApiUrl(candidate, ALLOWED_HOST_SUFFIXES)
         if (!accepted) {
             AppLog.w(
-                "SLTE-Config",
+                "Polaris-Config",
                 "RemoteConfig: API 候选被拒（https 且主机需在编译期白名单内）: ${sanitizeLog(candidate)}",
             )
             return null
@@ -107,7 +107,7 @@ internal object RemoteConfigParser {
         value.trim().lowercase().trimEnd('.')
     } else {
         AppLog.w(
-            "SLTE-Config",
+            "Polaris-Config",
             "RemoteConfig: 直连域名被拒（需两段以上且在编译期白名单内）: ${sanitizeLog(value)}",
         )
         null

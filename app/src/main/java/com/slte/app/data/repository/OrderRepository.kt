@@ -73,7 +73,7 @@ constructor(
     suspend fun fetchOrders(): Result<List<OrderInfo>> = runApi {
         authApi.fetchOrders().map { it.toDomain() }
     }.onFailure {
-        AppLog.w("SLTE-Repo", "fetchOrders failed: ${sanitizeLog(it.message ?: "Unknown")}")
+        AppLog.w("Polaris-Repo", "fetchOrders failed: ${sanitizeLog(it.message ?: "Unknown")}")
     }
 
     private fun com.slte.app.data.remote.api.dto.OrderInfoDto.toDomain() = OrderInfo(

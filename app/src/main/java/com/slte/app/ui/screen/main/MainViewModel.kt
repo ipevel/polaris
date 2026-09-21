@@ -92,7 +92,7 @@ constructor(
                 // 是 onCreate 里异步进行的。直接据此置为已连接会造成假连接
                 // （界面显示已连接、出口 IP 也变了，但流量并未走代理）。
                 if (!kernelProxy.awaitTunnelReady()) {
-                    AppLog.w("SLTE-Main", "连接超时：内核未在预期时间内就绪，判定为未连接")
+                    AppLog.w("Polaris-Main", "连接超时：内核未在预期时间内就绪，判定为未连接")
                     _data.update {
                         it.copy(
                             isConnected = false,
@@ -170,7 +170,7 @@ constructor(
 
         if (!current.hasPlan) return
 
-        AppLog.i("SLTE-Main", "toggleConnection: connected=${current.isConnected} -> ${!current.isConnected}")
+        AppLog.i("Polaris-Main", "toggleConnection: connected=${current.isConnected} -> ${!current.isConnected}")
         if (current.isConnected) {
             kernelManager.stopVpn()
         } else {
@@ -179,7 +179,7 @@ constructor(
                 try {
                     val profile = kernelConfig.ensureProfile()
                     if (profile == null) {
-                        AppLog.w("SLTE-Main", "toggleConnection: ensureProfile 返回 null，内核不可用")
+                        AppLog.w("Polaris-Main", "toggleConnection: ensureProfile 返回 null，内核不可用")
                         _data.update {
                             it.copy(
                                 isConnecting = false,
@@ -191,7 +191,7 @@ constructor(
                     kernelManager.startVpn()
                     watchConnectTimeout()
                 } catch (e: Exception) {
-                    AppLog.w("SLTE-Main", "toggleConnection: 启动失败 ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Main", "toggleConnection: 启动失败 ${sanitizeLog(e.message ?: "Unknown")}")
                     _data.update {
                         it.copy(
                             isConnecting = false,
@@ -221,7 +221,7 @@ constructor(
     }
 
     fun onVpnPermissionDenied() {
-        AppLog.w("SLTE-Main", "VPN 授权被拒绝，连接未建立")
+        AppLog.w("Polaris-Main", "VPN 授权被拒绝，连接未建立")
         _data.update {
             it.copy(isConnecting = false, errorMessageRes = R.string.error_vpn_permission_denied)
         }
@@ -234,7 +234,7 @@ constructor(
         viewModelScope.launch {
             delay(CONNECT_WATCHDOG_MS)
             if (_data.value.isConnecting) {
-                AppLog.w("SLTE-Main", "连接看门狗触发：${CONNECT_WATCHDOG_MS}ms 内未完成连接")
+                AppLog.w("Polaris-Main", "连接看门狗触发：${CONNECT_WATCHDOG_MS}ms 内未完成连接")
                 _data.update {
                     it.copy(isConnecting = false, errorMessageRes = R.string.error_vpn_kernel_unavailable)
                 }

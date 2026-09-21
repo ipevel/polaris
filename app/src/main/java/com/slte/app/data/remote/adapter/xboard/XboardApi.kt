@@ -142,6 +142,11 @@ interface XboardUserRetrofit {
         @Body request: XboardChangePasswordRequest,
     ): XboardResponse<Boolean>
 
+    @POST("user/gift-card/redeem")
+    suspend fun redeemGiftCard(
+        @Body request: XboardGiftCardRedeemRequest,
+    ): XboardResponse<kotlinx.serialization.json.JsonElement>
+
     @GET("user/ticket/fetch")
     suspend fun fetchTickets(): XboardResponse<List<XboardTicketData>>
 

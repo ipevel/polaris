@@ -51,7 +51,7 @@ constructor(
     }
 
     private companion object {
-        const val TAG = "SLTE-Purchase"
+        const val TAG = "Polaris-Purchase"
 
         const val POLL_INTERVAL_MS = 3_000L
         const val POLL_TIMEOUT_MS = 300_000L

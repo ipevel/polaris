@@ -50,7 +50,7 @@ constructor(
         if (force) throw e
         val cached = sessionStore.getServerNodes()
         if (cached != null) {
-            AppLog.w("SLTE-Repo", "fetchServers: 网络失败,使用本地缓存 ${cached.size} 个节点: ${sanitizeLog(e.message ?: "")}")
+            AppLog.w("Polaris-Repo", "fetchServers: 网络失败,使用本地缓存 ${cached.size} 个节点: ${sanitizeLog(e.message ?: "")}")
             cached
         } else {
             throw e
@@ -65,7 +65,7 @@ constructor(
 
     private fun debugLog(message: String) {
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Repo", message)
+            AppLog.d("Polaris-Repo", message)
         }
     }
 }

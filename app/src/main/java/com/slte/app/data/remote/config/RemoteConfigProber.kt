@@ -52,10 +52,10 @@ internal class RemoteConfigProber(
             val latency = probeOne(url)
             if (latency != null) {
                 selector.recordProbe(url, latency)
-                AppLog.i("SLTE-Config", "RemoteConfig: 半开探测恢复 latency=$latency")
+                AppLog.i("Polaris-Config", "RemoteConfig: 半开探测恢复 latency=$latency")
             } else {
                 selector.recordFailure(url)
-                AppLog.w("SLTE-Config", "RemoteConfig: 半开探测仍失败")
+                AppLog.w("Polaris-Config", "RemoteConfig: 半开探测仍失败")
             }
         }
     }

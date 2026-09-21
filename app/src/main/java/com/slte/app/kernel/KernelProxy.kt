@@ -67,12 +67,12 @@ constructor(
     }
 
     suspend fun setProxyMode(mode: String) = safe(Unit, "setProxyMode") {
-        AppLog.d("SLTE-Kernel", "setProxyMode: $mode")
+        AppLog.d("Polaris-Kernel", "setProxyMode: $mode")
 
         modePrefs.edit { putString(KEY_PROXY_MODE, mode) }
         val clash = manager.clash()
         if (clash == null) {
-            AppLog.d("SLTE-Kernel", "setProxyMode: clash=null，已本地保存，待内核就绪后同步")
+            AppLog.d("Polaris-Kernel", "setProxyMode: clash=null，已本地保存，待内核就绪后同步")
             return@safe
         }
         val override =
@@ -80,7 +80,7 @@ constructor(
                 this.mode = tunnelModeOf(mode)
             }
         clash.patchOverride(Clash.OverrideSlot.Persist, override)
-        AppLog.d("SLTE-Kernel", "setProxyMode: override written, sending broadcast")
+        AppLog.d("Polaris-Kernel", "setProxyMode: override written, sending broadcast")
         context.sendBroadcastSelf(Intent(Intents.ACTION_OVERRIDE_CHANGED))
     }
 
@@ -96,7 +96,7 @@ constructor(
                 }
             clash.patchOverride(Clash.OverrideSlot.Persist, override)
             context.sendBroadcastSelf(Intent(Intents.ACTION_OVERRIDE_CHANGED))
-            AppLog.d("SLTE-Kernel", "ensurePersistedMode: synced $saved")
+            AppLog.d("Polaris-Kernel", "ensurePersistedMode: synced $saved")
         }
     }
 
@@ -122,11 +122,11 @@ constructor(
         modePrefs.edit { putString(KEY_TUN_STACK, normalized) }
         val clash = manager.clash()
         if (clash == null) {
-            AppLog.w("SLTE-Kernel", "setTunStack: clash=null，已本地保存，待内核就绪后同步")
+            AppLog.w("Polaris-Kernel", "setTunStack: clash=null，已本地保存，待内核就绪后同步")
             return@safe
         }
         clash.setTunStackMode(normalized)
-        AppLog.d("SLTE-Kernel", "setTunStack: $normalized")
+        AppLog.d("Polaris-Kernel", "setTunStack: $normalized")
     }
 
     internal val ipClient: OkHttpClient by lazy {

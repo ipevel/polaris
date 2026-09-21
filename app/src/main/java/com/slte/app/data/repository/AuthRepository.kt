@@ -144,7 +144,7 @@ constructor(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        AppLog.w("SLTE-Auth", "fetchTelegramDiscussLink 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+        AppLog.w("Polaris-Auth", "fetchTelegramDiscussLink 失败: ${sanitizeLog(e.message ?: "Unknown")}")
         null
     }
 
@@ -158,7 +158,7 @@ constructor(
                         authApi.revokeActiveSessions(authData)
                     }
                 }.onFailure { e ->
-                    AppLog.w("SLTE-Repo", "revokeActiveSessions failed: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Repo", "revokeActiveSessions failed: ${sanitizeLog(e.message ?: "Unknown")}")
                 }
             }
         }

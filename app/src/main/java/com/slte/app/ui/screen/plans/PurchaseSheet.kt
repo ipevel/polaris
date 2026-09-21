@@ -80,7 +80,7 @@ fun PurchaseFlow(
                     }
                     browserLaunched.value = true
                 } catch (e: Exception) {
-                    AppLog.w("SLTE-Purchase", "打开支付页面失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Purchase", "打开支付页面失败: ${sanitizeLog(e.message ?: "Unknown")}")
                     onPaymentReturn()
                 }
             }

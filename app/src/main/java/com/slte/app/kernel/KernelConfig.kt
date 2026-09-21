@@ -17,9 +17,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal fun profileNameFor(email: String?): String {
-    if (email.isNullOrBlank()) return "SLTE"
+    if (email.isNullOrBlank()) return "Polaris"
     val digest = MessageDigest.getInstance("SHA-256").digest(email.toByteArray(Charsets.UTF_8))
-    return "SLTE-" + digest.joinToString("") { "%02x".format(it) }
+    return "Polaris-" + digest.joinToString("") { "%02x".format(it) }
 }
 
 enum class ProfileUpdateResult {
@@ -106,22 +106,22 @@ constructor(
                     it.name == expectedName && it.source == subscribeUrl && it.imported
                 }
             if (profile == null) {
-                AppLog.i("SLTE-Kernel", "updateProfile: 配置不存在，先重新导入")
+                AppLog.i("Polaris-Kernel", "updateProfile: 配置不存在，先重新导入")
                 val uuid = ensureProfileLocked() ?: return@withLock ProfileUpdateResult.FAILED
                 subscribeSource.saveSubscriptionUpdatedAt()
                 return@withLock ProfileUpdateResult.UPDATED
             }
 
-            AppLog.d("SLTE-Kernel", "updateProfile: downloading subscription")
+            AppLog.d("Polaris-Kernel", "updateProfile: downloading subscription")
             val yaml = readSubscribeYaml() ?: return@withLock ProfileUpdateResult.FAILED
-            AppLog.d("SLTE-Kernel", "updateProfile: yaml size=${yaml.length}")
+            AppLog.d("Polaris-Kernel", "updateProfile: yaml size=${yaml.length}")
 
             // 直连域名为空时降级：跳过直连规则注入，订阅更新照常完成，不整体失败
             val domains = directDomains()
             val cleaned = sanitizeOrNull(yaml, domains) ?: return@withLock ProfileUpdateResult.FAILED
             val file = context.filesDir.resolve("imported/${profile.uuid}/config.yaml")
             if (file.exists() && file.readText() == cleaned) {
-                AppLog.d("SLTE-Kernel", "updateProfile: 订阅内容未变化，跳过内核重载")
+                AppLog.d("Polaris-Kernel", "updateProfile: 订阅内容未变化，跳过内核重载")
                 subscribeSource.saveSubscriptionUpdatedAt()
                 return@withLock ProfileUpdateResult.UNCHANGED
             }
@@ -139,16 +139,16 @@ constructor(
     private suspend fun readSubscribeYaml(): String? {
         val body = subscribeSource.fetchSubscribeYaml()
         if (body == null) {
-            AppLog.w("SLTE-Kernel", "readSubscribeYaml: 订阅响应体为空，拒绝写入")
+            AppLog.w("Polaris-Kernel", "readSubscribeYaml: 订阅响应体为空，拒绝写入")
             return null
         }
         val text = body.byteStream().use { readLimited(it, MAX_SUBSCRIPTION_BYTES) }
         if (text == null) {
-            AppLog.w("SLTE-Kernel", "readSubscribeYaml: 订阅超过大小上限 ${MAX_SUBSCRIPTION_BYTES / 1024 / 1024}MB，拒绝写入")
+            AppLog.w("Polaris-Kernel", "readSubscribeYaml: 订阅超过大小上限 ${MAX_SUBSCRIPTION_BYTES / 1024 / 1024}MB，拒绝写入")
             return null
         }
         if (!SubscriptionSanitizer.isValidSubscribeYaml(text)) {
-            AppLog.w("SLTE-Kernel", "readSubscribeYaml: 响应不是有效 Clash 订阅，拒绝写入")
+            AppLog.w("Polaris-Kernel", "readSubscribeYaml: 响应不是有效 Clash 订阅，拒绝写入")
             return null
         }
         return text
@@ -233,7 +233,11 @@ constructor(
                 out.fd.sync()
             }
             if (!tmp.renameTo(file)) {
-                throw java.io.IOException("rename failed: ${file.name}")
+                // Windows 的 rename 不允许覆盖已存在目标（POSIX 允许）：先删旧文件再重试一次
+                file.delete()
+                if (!tmp.renameTo(file)) {
+                    throw java.io.IOException("rename failed: ${file.name}")
+                }
             }
         } finally {
             tmp.delete()

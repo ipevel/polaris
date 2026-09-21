@@ -80,7 +80,7 @@ constructor(
                 name: ComponentName?,
                 service: IBinder,
             ) {
-                AppLog.d("SLTE-Kernel", "onServiceConnected: $name")
+                AppLog.d("Polaris-Kernel", "onServiceConnected: $name")
 
                 bound = true
                 rebindJob?.cancel()
@@ -90,7 +90,7 @@ constructor(
 
                 scope.launch {
                     runCatching { remote?.clash()?.setLogObserver(kernelLogObserver) }
-                        .onFailure { AppLog.w("SLTE-Kernel", "setLogObserver failed: ${sanitizeLog(it.message ?: "Unknown")}") }
+                        .onFailure { AppLog.w("Polaris-Kernel", "setLogObserver failed: ${sanitizeLog(it.message ?: "Unknown")}") }
                 }
                 syncConnectedState()
             }
@@ -109,7 +109,7 @@ constructor(
         }
 
     private fun handleBindingLost(reason: String) {
-        AppLog.w("SLTE-Kernel", "$reason → 复位绑定状态并进入退避重绑")
+        AppLog.w("Polaris-Kernel", "$reason → 复位绑定状态并进入退避重绑")
         remote = null
         bound = false
         rebindAttempts = 0
@@ -122,7 +122,7 @@ constructor(
         try {
             context.unbindService(connection)
         } catch (e: IllegalArgumentException) {
-            AppLog.d("SLTE-Kernel", "unbindService: ${sanitizeLog(e.message ?: "Unknown")}")
+            AppLog.d("Polaris-Kernel", "unbindService: ${sanitizeLog(e.message ?: "Unknown")}")
         }
     }
 
@@ -163,7 +163,7 @@ constructor(
             Context.BIND_AUTO_CREATE,
         )
     } catch (e: Exception) {
-        AppLog.w("SLTE-Kernel", "bindService failed: ${sanitizeLog(e.message ?: "Unknown")}")
+        AppLog.w("Polaris-Kernel", "bindService failed: ${sanitizeLog(e.message ?: "Unknown")}")
         false
     }
 
@@ -188,7 +188,7 @@ constructor(
             mainScope.launch {
                 while (!bound && remote == null && rebindAttempts < MAX_REBIND_ATTEMPTS) {
                     val backoffMs = minOf(INITIAL_REBIND_DELAY_MS shl rebindAttempts, MAX_REBIND_DELAY_MS)
-                    AppLog.d("SLTE-Kernel", "rebind #$rebindAttempts in ${backoffMs}ms")
+                    AppLog.d("Polaris-Kernel", "rebind #$rebindAttempts in ${backoffMs}ms")
                     delay(backoffMs)
 
                     if (bound || remote != null) return@launch
@@ -201,7 +201,7 @@ constructor(
                     }
                 }
                 if (!bound && remote == null) {
-                    AppLog.w("SLTE-Kernel", "rebind 已重试 $MAX_REBIND_ATTEMPTS 次仍失败，等待下次按需 bind()")
+                    AppLog.w("Polaris-Kernel", "rebind 已重试 $MAX_REBIND_ATTEMPTS 次仍失败，等待下次按需 bind()")
                 }
             }
     }
@@ -226,7 +226,7 @@ constructor(
                         null,
                     ) != null
                 } catch (e: Exception) {
-                    AppLog.w("SLTE-Kernel", "syncConnectedState 查询失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Kernel", "syncConnectedState 查询失败: ${sanitizeLog(e.message ?: "Unknown")}")
                     false
                 }
 
@@ -237,12 +237,12 @@ constructor(
     fun vpnRequestIntent(): Intent? = VpnService.prepare(context)
 
     fun startVpn() {
-        AppLog.i("SLTE-Kernel", "startVpn: 请求启动 TUN")
+        AppLog.i("Polaris-Kernel", "startVpn: 请求启动 TUN")
         context.startForegroundService(Intent(context, TunService::class.java))
     }
 
     fun stopVpn() {
-        AppLog.i("SLTE-Kernel", "stopVpn: 请求停止 TUN")
+        AppLog.i("Polaris-Kernel", "stopVpn: 请求停止 TUN")
         context.sendBroadcastSelf(Intent(Intents.ACTION_CLASH_REQUEST_STOP))
     }
 

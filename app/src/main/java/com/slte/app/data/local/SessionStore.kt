@@ -55,7 +55,7 @@ constructor(
         return try {
             decode(raw)
         } catch (e: Exception) {
-            AppLog.w("SLTE-Session", "SessionStore: 缓存解析失败 key=$key: ${sanitizeLog(e.message ?: "Unknown")}")
+            AppLog.w("Polaris-Session", "SessionStore: 缓存解析失败 key=$key: ${sanitizeLog(e.message ?: "Unknown")}")
             prefs.edit { remove(key) }
             null
         }
@@ -138,8 +138,8 @@ constructor(
 
     internal companion object {
 
-        internal const val PREFS_NAME = "slte_session"
-        internal const val KEY_ALIAS = "slte_session_master_key"
+        internal const val PREFS_NAME = "polaris_session"
+        internal const val KEY_ALIAS = "polaris_session_master_key"
         private const val KEY_AUTH_DATA = "auth_data"
         private const val KEY_EMAIL = "email"
         private const val KEY_SUBSCRIBE_TOKEN = "subscribe_token"

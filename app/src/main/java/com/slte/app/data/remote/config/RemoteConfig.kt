@@ -2,6 +2,7 @@ package com.slte.app.data.remote.config
 
 import android.content.Context
 import com.slte.app.BuildConfig
+import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.kernel.AppRemoteConfig
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
@@ -52,9 +53,16 @@ class RemoteConfig
 @Inject
 constructor(
     @ApplicationContext private val context: Context,
+    private val apiUrlStore: ApiUrlStore,
 ) : AppRemoteConfig,
     FailoverConfig {
-    override val apiBaseUrl: String get() = data.apiBaseUrl
+
+    /**
+     * 实际生效的 API 基地址：唯一来源是用户在登录页输入并保存的面板地址，
+     * App 不内置、不兜底任何默认面板地址（未配置时为空串，网络层快速失败）。
+     * ApiFailoverInterceptor 每次请求都会读它来改写主机，改地址即时生效。
+     */
+    override val apiBaseUrl: String get() = apiUrlStore.effectiveBaseUrl
 
     override val directDomains: List<String> get() = data.directDomains
 
@@ -88,7 +96,11 @@ constructor(
     val dataFlow: StateFlow<RemoteConfigData> = _dataFlow.asStateFlow()
     val data: RemoteConfigData get() = _dataFlow.value
 
-    override fun apiCandidates(primary: String): List<String> = selector.candidateOrder(primary, dataFlow.value.apiBaseUrls)
+    override fun apiCandidates(primary: String): List<String> {
+        // 仅以用户输入并保存的面板地址为准，不提供任何内置候选、不做兜底：
+        // 未配置地址时返回空列表，由 ApiFailoverInterceptor 快速失败。
+        return apiUrlStore.currentUrl?.let { listOf(it) } ?: emptyList()
+    }
 
     fun startFetch() {
         scope.launch { refresh(force = true) }
@@ -116,7 +128,7 @@ constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLog.w("SLTE-Config", "RemoteConfig: 配置竞速失败: ${sanitize(e.message)}")
+                AppLog.w("Polaris-Config", "RemoteConfig: 配置竞速失败: ${sanitize(e.message)}")
                 return false
             }
         val chosen = result.chosen ?: return false
@@ -124,7 +136,7 @@ constructor(
         if (chosen.notModified && cached != null) {
             store.save(cached.copy(fetchedAt = now, sourceUrl = chosen.url))
             _dataFlow.value = sanitizeCachedConfig(cached.config)
-            AppLog.i("SLTE-Config", "RemoteConfig: 304 命中，复用缓存")
+            AppLog.i("Polaris-Config", "RemoteConfig: 304 命中，复用缓存")
             return true
         }
 
@@ -132,7 +144,7 @@ constructor(
             try {
                 json.decodeFromString<RemoteConfigDto>(chosen.raw)
             } catch (e: Exception) {
-                AppLog.w("SLTE-Config", "RemoteConfig: 配置解析失败: ${sanitize(e.message)}")
+                AppLog.w("Polaris-Config", "RemoteConfig: 配置解析失败: ${sanitize(e.message)}")
                 return false
             }
 
@@ -150,7 +162,7 @@ constructor(
         val compatible = candidates.filter { ConfigValidation.hasSamePath(it, primary) }
         if (compatible.size != candidates.size) {
             AppLog.w(
-                "SLTE-Config",
+                "Polaris-Config",
                 "RemoteConfig: ${candidates.size - compatible.size} 个候选与主地址 path 不一致，已剔除（failover 只重写主机）",
             )
         }
@@ -167,7 +179,7 @@ constructor(
         )
         _dataFlow.value = merged
         AppLog.i(
-            "SLTE-Config",
+            "Polaris-Config",
             "RemoteConfig: 已更新 version=${chosen.version} candidates=${candidates.size} crisp=${merged.crispEnabled}",
         )
         return true
@@ -212,7 +224,7 @@ constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            AppLog.w("SLTE-Config", "RemoteConfig: 配置源不可用: ${sanitize(e.message)}")
+            AppLog.w("Polaris-Config", "RemoteConfig: 配置源不可用: ${sanitize(e.message)}")
             null
         }
     }
@@ -250,11 +262,11 @@ constructor(
 
         if (AllowedHosts.isAllowedHost(staleHost)) {
             if (allowedCandidates.size == cached.apiBaseUrls.size) return cached
-            AppLog.w("SLTE-Config", "RemoteConfig: 已剔除 ${cached.apiBaseUrls.size - allowedCandidates.size} 个不在白名单的候选端点")
+            AppLog.w("Polaris-Config", "RemoteConfig: 已剔除 ${cached.apiBaseUrls.size - allowedCandidates.size} 个不在白名单的候选端点")
             return cached.copy(apiBaseUrls = allowedCandidates)
         }
 
-        AppLog.w("SLTE-Config", "RemoteConfig: 丢弃非法缓存端点 ${sanitizeLog(staleHost ?: "无法解析")}，回落 BuildConfig 默认配置")
+        AppLog.w("Polaris-Config", "RemoteConfig: 丢弃非法缓存端点 ${sanitizeLog(staleHost ?: "无法解析")}，回落 BuildConfig 默认配置")
         return RemoteConfigData().copy(apiBaseUrls = allowedCandidates)
     }
 

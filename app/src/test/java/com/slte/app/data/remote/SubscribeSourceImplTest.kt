@@ -47,6 +47,7 @@ class SubscribeSourceImplTest {
         sessionStore.saveSubscribeUrl("http://api.example.com/api/v1/client/subscribe?token=x")
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
         every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+        every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
 
         assertNotNull(source.fetchSubscribeYaml())
         assertEquals(
@@ -93,6 +94,7 @@ class SubscribeSourceImplTest {
         sessionStore.saveSubscribeUrl("   ")
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
         every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+        every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
 
         assertNotNull(source.fetchSubscribeYaml())
         assertEquals(
@@ -106,6 +108,7 @@ class SubscribeSourceImplTest {
         sessionStore.saveSubscribeUrl("https://dead.example.com/api/v1/client/subscribe?token=stale")
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
         every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+        every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
 
         val api = FailingHostAuthApi(failHost = "dead.example.com")
         val source = SubscribeSourceImpl(sessionStore, api, remoteConfig)
@@ -125,6 +128,7 @@ class SubscribeSourceImplTest {
         sessionStore.saveSubscribeUrl("https://dead.example.com/sub")
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
         every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+        every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
 
         val api = AlwaysFailingAuthApi()
         val source = SubscribeSourceImpl(sessionStore, api, remoteConfig)
@@ -137,6 +141,7 @@ class SubscribeSourceImplTest {
     fun `账号地址与兜底地址相同时只请求一次`() = runTest {
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
         every { remoteConfig.data } returns RemoteConfigData(apiBaseUrl = "https://api.example.com")
+        every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
         sessionStore.saveSubscribeUrl("https://api.example.com${BuildConfig.SUBSCRIBE_PATH}?token=tok-123")
 
         assertNotNull(source.fetchSubscribeYaml())

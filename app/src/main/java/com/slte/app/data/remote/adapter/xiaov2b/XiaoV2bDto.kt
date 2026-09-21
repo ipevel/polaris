@@ -39,6 +39,11 @@ data class XiaoV2bSendCodeRequest(
 )
 
 @Serializable
+data class XiaoV2bGiftCardRedeemRequest(
+    val giftcard: String,
+)
+
+@Serializable
 data class XiaoV2bResponse<T>(
     override val data: T? = null,
     override val message: String? = null,

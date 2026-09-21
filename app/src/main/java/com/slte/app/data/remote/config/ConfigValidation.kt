@@ -37,6 +37,27 @@ internal object ConfigValidation {
         return ua.encodedPath == ub.encodedPath
     }
 
+    /**
+     * 规范化用户输入的面板地址：
+     * - 空白输入返回 null（表示未填写，回落默认地址）；
+     * - 无协议前缀时自动补 https://；
+     * - 去掉尾部斜杠；
+     * - 仅接受能解析出主机的 https 地址（App 全局禁明文流量，http 在运行时会被
+     *   networkSecurityConfig 拦截，这里直接判为无效），其余返回 null 由调用方报错。
+     */
+    fun normalizePanelUrl(raw: String?): String? {
+        val trimmed = raw?.trim().orEmpty()
+        if (trimmed.isEmpty()) return null
+        val withScheme =
+            when {
+                trimmed.startsWith("https://") || trimmed.startsWith("http://") -> trimmed
+                else -> "https://$trimmed"
+            }
+        val url = withScheme.toHttpUrlOrNull() ?: return null
+        if (url.scheme != "https" || url.host.isBlank()) return null
+        return withScheme.trimEnd('/')
+    }
+
     fun compareVersions(
         a: String,
         b: String,

@@ -108,5 +108,27 @@ object ErrorMessages {
 
     fun mapServerError(backendMessage: String?): Int = R.string.error_server_load
 
+    /**
+     * 礼品卡兑换失败文案映射：识别后端常见错误描述转本地化提示；
+     * 未识别返回 null（调用方决定透传后端原文还是兜底文案）。
+     */
+    fun giftCardMessageRes(backendMessage: String?): Int? {
+        val message = backendMessage ?: return null
+        return when {
+            message.contains("不存在", ignoreCase = true) ||
+                message.contains("无效", ignoreCase = true) ||
+                message.contains("已过期", ignoreCase = true) ||
+                message.contains("已使用", ignoreCase = true) ||
+                message.contains("已兑换", ignoreCase = true) ||
+                message.contains("not found", ignoreCase = true) ||
+                message.contains("invalid", ignoreCase = true) ||
+                message.contains("expired", ignoreCase = true) ||
+                message.contains("used", ignoreCase = true) ||
+                message.contains("redeemed", ignoreCase = true) -> R.string.error_gift_card_invalid
+
+            else -> null
+        }
+    }
+
     fun networkError(): Int = R.string.error_network
 }

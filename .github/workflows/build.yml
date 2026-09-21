@@ -1,11 +1,11 @@
-name: SLTE Build
+name: 北辰 Polaris Build
 
 # 打包并（可选）发布到 GitHub Releases。
 #
-# 用法：Actions → SLTE Build → Run workflow，填参数后运行。
+# 用法：Actions → Polaris Build → Run workflow，填参数后运行。
 #   - buildType=release 需要仓库 Secrets 四件套：
-#       SLTE_RELEASE_STORE_B64 / SLTE_RELEASE_STORE_PASSWORD
-#       SLTE_RELEASE_KEY_ALIAS / SLTE_RELEASE_KEY_PASSWORD
+#       SLTE_RELEASE_STORE_B64 / POLARIS_RELEASE_STORE_PASSWORD
+#       POLARIS_RELEASE_KEY_ALIAS / POLARIS_RELEASE_KEY_PASSWORD
 #   - publishRelease=true 时，构建成功后自动创建/更新 Release 并附上 APK、
 #     SHA256SUMS.txt 与签名证书指纹（SIGNING.txt）。
 #   - 重复运行同一标签（releaseTag 相同）会更新既有 Release 的资产与说明，不会失败。
@@ -16,7 +16,7 @@ on:
       appName:
         description: 应用名称（桌面显示名）
         required: true
-        default: SLTE
+        default: Polaris
       applicationId:
         description: 包名
         required: true
@@ -186,45 +186,45 @@ jobs:
 
       - name: 单元测试 + 编译
         env:
-          SLTE_APP_NAME: ${{ inputs.appName }}
-          SLTE_APPLICATION_ID: ${{ inputs.applicationId }}
-          SLTE_API_BASE_URL: ${{ inputs.apiBaseUrl }}
-          SLTE_API_TYPE: ${{ inputs.apiType }}
-          SLTE_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls }}
-          SLTE_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
-          SLTE_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
-          SLTE_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
-          SLTE_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
+          POLARIS_APP_NAME: ${{ inputs.appName }}
+          POLARIS_APPLICATION_ID: ${{ inputs.applicationId }}
+          POLARIS_API_BASE_URL: ${{ inputs.apiBaseUrl }}
+          POLARIS_API_TYPE: ${{ inputs.apiType }}
+          POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls }}
+          POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
+          POLARIS_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
+          POLARIS_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
+          POLARIS_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
 
-          SLTE_VERSION_NAME: ${{ inputs.versionName }}
-          SLTE_VERSION_CODE: ${{ inputs.versionCode }}
-          SLTE_BUILD_TYPE: ${{ inputs.buildType }}
+          POLARIS_VERSION_NAME: ${{ inputs.versionName }}
+          POLARIS_VERSION_CODE: ${{ inputs.versionCode }}
+          POLARIS_BUILD_TYPE: ${{ inputs.buildType }}
 
-          SLTE_USE_MIRROR: 'false'
+          POLARIS_USE_MIRROR: 'false'
 
-          SLTE_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
-          SLTE_RELEASE_STORE_PASSWORD: ${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}
-          SLTE_RELEASE_KEY_ALIAS: ${{ secrets.SLTE_RELEASE_KEY_ALIAS }}
-          SLTE_RELEASE_KEY_PASSWORD: ${{ secrets.SLTE_RELEASE_KEY_PASSWORD }}
+          POLARIS_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
+          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}
+          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}
+          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.POLARIS_RELEASE_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
 
-          VC="$SLTE_VERSION_CODE"
+          VC="$POLARIS_VERSION_CODE"
           if [ -z "$VC" ]; then VC=$(( $(date +%s) / 60 )); fi
-          export SLTE_VERSION_CODE="$VC"
-          ./gradlew :app:testDebugUnitTest ":app:assemble$SLTE_BUILD_TYPE"
+          export POLARIS_VERSION_CODE="$VC"
+          ./gradlew :app:testDebugUnitTest ":app:assemble$POLARIS_BUILD_TYPE"
 
       - name: 代码风格与静态检查（ktlint + Android Lint + R8 存活校验）
         env:
-          SLTE_USE_MIRROR: 'false'
-          SLTE_RELEASE_STORE_FILE: ${{ runner.temp }}/build-throwaway.keystore
-          SLTE_RELEASE_STORE_PASSWORD: build-throwaway
-          SLTE_RELEASE_KEY_ALIAS: build-throwaway
-          SLTE_RELEASE_KEY_PASSWORD: build-throwaway
+          POLARIS_USE_MIRROR: 'false'
+          POLARIS_RELEASE_STORE_FILE: ${{ runner.temp }}/build-throwaway.keystore
+          POLARIS_RELEASE_STORE_PASSWORD: build-throwaway
+          POLARIS_RELEASE_KEY_ALIAS: build-throwaway
+          POLARIS_RELEASE_KEY_PASSWORD: build-throwaway
         run: |
           set -e
           keytool -genkeypair -v \
-            -keystore "$SLTE_RELEASE_STORE_FILE" \
+            -keystore "$POLARIS_RELEASE_STORE_FILE" \
             -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 \
             -storepass build-throwaway -keypass build-throwaway \
             -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN"
@@ -242,7 +242,7 @@ jobs:
         if: inputs.buildType == 'release'
         run: |
           set -e
-          APK="app/build/outputs/apk/release/SLTE-${{ inputs.versionName }}.apk"
+          APK="app/build/outputs/apk/release/Polaris-${{ inputs.versionName }}.apk"
           if [ ! -f "$APK" ]; then
             echo "::error::未找到 APK：$APK"
             ls -R app/build/outputs/apk || true
@@ -256,8 +256,8 @@ jobs:
             "$APKSIGNER" verify --print-certs "$APK" > dist/SIGNING.txt 2>&1 || true
           else
             keytool -list -v -keystore release.keystore \
-              -alias "${{ secrets.SLTE_RELEASE_KEY_ALIAS }}" \
-              -storepass "${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || true
+              -alias "${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}" \
+              -storepass "${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || true
           fi
           echo "--- SHA256SUMS.txt ---"
           cat dist/SHA256SUMS.txt
@@ -268,7 +268,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: SLTE-reports-${{ inputs.versionName }}
+          name: Polaris-reports-${{ inputs.versionName }}
           path: |
             app/build/reports/ktlint/**
             app/build/reports/lint-results-debug.html
@@ -277,9 +277,9 @@ jobs:
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: SLTE-${{ inputs.versionName }}
+          name: Polaris-${{ inputs.versionName }}
           path: |
-            app/build/outputs/apk/*/SLTE-*.apk
+            app/build/outputs/apk/*/Polaris-*.apk
             dist/SHA256SUMS.txt
             dist/SIGNING.txt
           if-no-files-found: error
@@ -295,14 +295,14 @@ jobs:
       - name: 下载构建产物
         uses: actions/download-artifact@v4
         with:
-          name: SLTE-${{ inputs.versionName }}
+          name: Polaris-${{ inputs.versionName }}
           path: incoming
 
       - name: 整理发布资产
         run: |
           set -e
           mkdir -p out
-          find incoming -name 'SLTE-*.apk' -exec cp -v {} out/ \;
+          find incoming -name 'Polaris-*.apk' -exec cp -v {} out/ \;
           for f in SHA256SUMS.txt SIGNING.txt; do
             src=$(find incoming -name "$f" -print -quit)
             if [ -n "$src" ]; then cp "$src" out/; fi
@@ -317,7 +317,7 @@ jobs:
         run: |
           set -e
           {
-            echo "## SLTE ${VERSION}"
+            echo "## Polaris ${VERSION}"
             echo ""
             echo "| 项 | 值 |"
             echo "| --- | --- |"
@@ -356,13 +356,13 @@ jobs:
             echo "::notice::Release $TAG 已存在，更新资产与说明"
             gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$TAG" \
-              --title "SLTE $VERSION" \
+              --title "Polaris $VERSION" \
               --notes-file notes.md \
               --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$TAG" out/* \
               --repo "$GITHUB_REPOSITORY" \
-              --title "SLTE $VERSION" \
+              --title "Polaris $VERSION" \
               --notes-file notes.md \
               --latest
           fi

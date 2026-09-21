@@ -12,12 +12,31 @@ import okhttp3.Response
 class ApiFailoverInterceptor(
     private val config: FailoverConfig,
     private val selector: EndpointSelector,
+    private val staticBaseUrlHost: String? = null,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        if (request.header(HEADER_NO_FAILOVER) != null) return chain.proceed(request)
-        val retryable = FailoverPolicy.isRetryableMethod(request.method)
+        if (request.header(HEADER_NO_FAILOVER) != null) {
+            // NO_FAILOVER 请求（如 @Url 订阅下载、流量日志）不参与候选切换，
+            // 但相对路径请求仍要跟随用户配置的面板地址改写主机。
+            // 仅当请求主机与 Retrofit 静态 baseUrl 主机一致时改写：
+            // 账号下发的绝对订阅地址（其他主机）必须原样放行。
+            val isStaticHostRequest =
+                staticBaseUrlHost != null && request.url.host.equals(staticBaseUrlHost, ignoreCase = true)
+            val noFailoverPrimary = config.apiBaseUrl
+            if (isStaticHostRequest && noFailoverPrimary.isBlank()) {
+                // 面板地址未配置且不做内置兜底：面板自身的请求直接失败
+                throw IOException(ERROR_PANEL_URL_MISSING)
+            }
+            val rewritten = if (isStaticHostRequest) rewriteBaseUrl(request, noFailoverPrimary) else null
+            return chain.proceed(rewritten ?: request)
+        }
         val primary = config.apiBaseUrl
+        if (primary.isBlank()) {
+            // 面板地址唯一来源是用户输入的持久化地址，未配置时不兜底、快速失败
+            throw IOException(ERROR_PANEL_URL_MISSING)
+        }
+        val retryable = FailoverPolicy.isRetryableMethod(request.method)
         val candidates = config.apiCandidates(primary)
         var lastError: IOException? = null
         var lastFailureResponse: Response? = null
@@ -36,7 +55,7 @@ class ApiFailoverInterceptor(
                     selector.recordFailure(base)
                     lastFailureResponse = attempt
                     if (!retryable) return attempt
-                    AppLog.w("SLTE-Api", "ApiFailover: 候选 ${index + 1} HTTP ${attempt.code}，切换下一个")
+                    AppLog.w("Polaris-Api", "ApiFailover: 候选 ${index + 1} HTTP ${attempt.code}，切换下一个")
                     continue
                 }
                 val jsonMismatch =
@@ -48,7 +67,7 @@ class ApiFailoverInterceptor(
                     selector.recordFailure(base)
                     lastFailureResponse = attempt
                     if (!retryable) return attempt
-                    AppLog.w("SLTE-Api", "ApiFailover: 候选 ${index + 1} 200 但响应与 JSON 声明不符，切换下一个")
+                    AppLog.w("Polaris-Api", "ApiFailover: 候选 ${index + 1} 200 但响应与 JSON 声明不符，切换下一个")
                     continue
                 }
                 selector.recordSuccess(base, latency)
@@ -58,7 +77,7 @@ class ApiFailoverInterceptor(
                 selector.recordFailure(base)
                 lastError = e
                 if (!retryable) throw e
-                AppLog.w("SLTE-Api", "ApiFailover: 候选 ${index + 1} 不可用，切换下一个: ${sanitizeLog(e.message ?: "")}")
+                AppLog.w("Polaris-Api", "ApiFailover: 候选 ${index + 1} 不可用，切换下一个: ${sanitizeLog(e.message ?: "")}")
             }
         }
         if (!attemptedAny) {
@@ -80,6 +99,8 @@ class ApiFailoverInterceptor(
     companion object {
 
         const val HEADER_NO_FAILOVER = ApiHeaders.NO_FAILOVER_NAME
+
+        const val ERROR_PANEL_URL_MISSING = "面板地址未设置"
     }
 
     private fun rewriteBaseUrl(

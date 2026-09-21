@@ -85,6 +85,11 @@ data class XboardChangePasswordRequest(
 )
 
 @Serializable
+data class XboardGiftCardRedeemRequest(
+    val code: String,
+)
+
+@Serializable
 data class XboardResponse<T>(
     override val data: T? = null,
     override val message: String? = null,

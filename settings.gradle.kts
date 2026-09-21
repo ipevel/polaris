@@ -1,8 +1,8 @@
-fun useAliyunMirror(): Boolean = System.getenv("SLTE_USE_MIRROR")?.toBoolean() ?: true
+fun useAliyunMirror(): Boolean = System.getenv("POLARIS_USE_MIRROR")?.toBoolean() ?: true
 
 pluginManagement {
     repositories {
-        if (System.getenv("SLTE_USE_MIRROR")?.toBoolean() != false) {
+        if (System.getenv("POLARIS_USE_MIRROR")?.toBoolean() != false) {
             maven { url = uri("https://maven.aliyun.com/repository/google") }
             maven { url = uri("https://maven.aliyun.com/repository/central") }
             maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
@@ -25,7 +25,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SLTE"
+rootProject.name = "Polaris"
 include(":app")
 include(":kernel-common")
 include(":kernel-core")

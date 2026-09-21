@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base application theme (Light). The actual Material 3 colors come from Compose theme. -->
-    <style name="Theme.SLTE" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.Polaris" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/light_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>

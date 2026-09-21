@@ -7,9 +7,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -217,17 +220,23 @@ internal fun DashboardContent(
                 )
             }
             item {
-                ProxyModeCard(
-                    proxyMode = data.proxyMode,
-                    onSelectMode = onSelectProxyMode,
-                )
-            }
-            item {
-                CurrentIpCard(
-                    currentIp = data.currentIp,
-                    ipCountryCode = data.ipCountryCode,
-                    onSettingsClick = onServer,
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
+                ) {
+                    ProxyModeCard(
+                        modifier = Modifier.weight(1f),
+                        proxyMode = data.proxyMode,
+                        onSelectMode = onSelectProxyMode,
+                    )
+                    CurrentIpCard(
+                        modifier = Modifier.weight(1f),
+                        currentIp = data.currentIp,
+                        ipCountryCode = data.ipCountryCode,
+                    )
+                }
             }
             item {
                 DashboardActionButtons(

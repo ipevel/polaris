@@ -3,7 +3,9 @@ package com.slte.app.ui.screen.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.data.repository.AuthRepository
+import com.slte.app.data.remote.config.ConfigValidation
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
@@ -21,6 +23,8 @@ sealed interface LoginUiState {
         val account: String = "",
         val password: String = "",
         val rememberMe: Boolean = false,
+
+        val panelUrl: String = "",
     ) : LoginUiState
 
     data class LoggingIn(
@@ -52,12 +56,16 @@ class LoginViewModel
 @Inject
 constructor(
     private val authRepository: AuthRepository,
+    private val apiUrlStore: ApiUrlStore,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Form())
+    private val _uiState = MutableStateFlow<LoginUiState>(initialForm())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     private var loginJob: Job? = null
     private var registerConfigJob: Job? = null
+
+    /** 面板地址初始值：仅回显已保存的用户地址，App 不预填任何内置地址 */
+    private fun initialForm(): LoginUiState.Form = LoginUiState.Form(panelUrl = apiUrlStore.currentUrl.orEmpty())
 
     private fun currentForm() = when (val s = _uiState.value) {
         is LoginUiState.Form -> s
@@ -82,6 +90,8 @@ constructor(
                     account = savedEmail,
                     password = authRepository.savedPassword() ?: "",
                     rememberMe = true,
+
+                    panelUrl = f.panelUrl,
                 )
         }
     }
@@ -108,6 +118,11 @@ constructor(
         _uiState.value = f.copy(password = value)
     }
 
+    fun onPanelUrlChange(value: String) {
+        val f = currentForm()
+        _uiState.value = f.copy(panelUrl = value)
+    }
+
     fun toggleRememberMe() {
         val f = currentForm()
         val newValue = !f.rememberMe
@@ -117,6 +132,18 @@ constructor(
         _uiState.value = f.copy(rememberMe = newValue)
     }
 
+    /** 校验面板地址：必填且须为合法 https 地址；非法时返回错误文案资源 */
+    private fun panelUrlErrorRes(raw: String): Int? = when {
+        raw.isBlank() -> R.string.login_url_required
+        ConfigValidation.normalizePanelUrl(raw) == null -> R.string.login_url_invalid
+        else -> null
+    }
+
+    /** 保存面板地址（与账号密码一起在提交时写入持久化，随后请求立即生效） */
+    private suspend fun persistPanelUrl(raw: String) {
+        apiUrlStore.setUrl(ConfigValidation.normalizePanelUrl(raw))
+    }
+
     fun dismissError() {
         val f = currentForm()
         _uiState.value =
@@ -124,6 +151,8 @@ constructor(
                 account = f.account,
                 password = f.password,
                 rememberMe = f.rememberMe,
+
+                panelUrl = f.panelUrl,
             )
     }
 
@@ -138,12 +167,17 @@ constructor(
             _uiState.value = LoginUiState.Error(f, R.string.error_password_required)
             return
         }
+        panelUrlErrorRes(f.panelUrl)?.let { resId ->
+            _uiState.value = LoginUiState.Error(f, resId)
+            return
+        }
 
         _uiState.value = LoginUiState.LoggingIn(f)
         loginJob?.cancel()
         loginJob =
             viewModelScope.launch {
                 val f2 = currentForm()
+                persistPanelUrl(f2.panelUrl)
                 val result = authRepository.login(f2.account.trim(), f2.password)
                 result.fold(
                     onSuccess = { user ->
@@ -168,11 +202,16 @@ constructor(
     fun checkRegisterConfig() {
         if (isLoading) return
         val f = currentForm()
+        panelUrlErrorRes(f.panelUrl)?.let { resId ->
+            _uiState.value = LoginUiState.Error(f, resId)
+            return
+        }
         _uiState.value = LoginUiState.CheckingRegisterConfig(f)
         registerConfigJob?.cancel()
         registerConfigJob =
             viewModelScope.launch {
                 val f2 = currentForm()
+                persistPanelUrl(f2.panelUrl)
                 val result = authRepository.fetchRegisterConfig()
                 result.fold(
                     onSuccess = { config ->
@@ -195,6 +234,8 @@ constructor(
                 account = f.account,
                 password = f.password,
                 rememberMe = f.rememberMe,
+
+                panelUrl = f.panelUrl,
             )
     }
 
@@ -205,6 +246,8 @@ constructor(
                 account = f.account,
                 password = f.password,
                 rememberMe = f.rememberMe,
+
+                panelUrl = f.panelUrl,
             )
     }
 
@@ -217,6 +260,8 @@ constructor(
                 account = f.account,
                 password = f.password,
                 rememberMe = f.rememberMe,
+
+                panelUrl = f.panelUrl,
             )
     }
 }

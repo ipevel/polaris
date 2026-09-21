@@ -16,7 +16,7 @@ suspend fun KernelProxy.selectNode(name: String): Boolean = safe(false, "selectN
             .firstOrNull { it.name == name } ?: return@safe false
 
     val result = clash.patchSelector(group, proxy.name)
-    AppLog.d("SLTE-Kernel", "selectNode: group=$group proxy=${proxy.name} result=$result")
+    AppLog.d("Polaris-Kernel", "selectNode: group=$group proxy=${proxy.name} result=$result")
     patchGlobalIfGlobal(proxy.name)
     result
 }
@@ -38,7 +38,7 @@ suspend fun KernelProxy.serverInfo(): KernelServerInfo? = safe(null, "serverInfo
     val selector = selectorGroup() ?: return@safe null
     val state = clash.queryProxyGroup(selector, ProxySort.Default)
     val now = state.now
-    AppLog.d("SLTE-Kernel", "serverInfo: selector=$selector now=$now type=${state.type}")
+    AppLog.d("Polaris-Kernel", "serverInfo: selector=$selector now=$now type=${state.type}")
     if (now.isBlank()) return@safe KernelServerInfo(null, null)
 
     val autoGroup = autoGroupName()
@@ -56,7 +56,7 @@ suspend fun KernelProxy.serverInfo(): KernelServerInfo? = safe(null, "serverInfo
         } else {
             clash.queryProxyGroup(now, ProxySort.Default).now.ifBlank { null }
         }
-    AppLog.d("SLTE-Kernel", "serverInfo: selection=$selection node=$node")
+    AppLog.d("Polaris-Kernel", "serverInfo: selection=$selection node=$node")
     KernelServerInfo(selection, node)
 }
 
@@ -100,7 +100,7 @@ suspend fun KernelProxy.proxyGroups(): List<KernelProxyGroupInfo> = safe(emptyLi
                         .filter { it.name != groupName }
                         .map { proxy ->
                             if (proxy.name.contains("**")) {
-                                AppLog.d("SLTE-Kernel", "proxyGroups: member name 含粗体标记=${proxy.name}")
+                                AppLog.d("Polaris-Kernel", "proxyGroups: member name 含粗体标记=${proxy.name}")
                             }
                             KernelProxyMember(
                                 name = proxy.name,
@@ -121,15 +121,15 @@ suspend fun KernelProxy.selectInGroup(
     val clash = manager.clash() ?: return@safe false
     val group = clash.queryProxyGroup(groupName, ProxySort.Default)
     if (!group.type.equals(GROUP_TYPE_SELECTOR, ignoreCase = true)) {
-        AppLog.w("SLTE-Kernel", "selectInGroup: 组 $groupName 类型 ${group.type} 不支持手动切换")
+        AppLog.w("Polaris-Kernel", "selectInGroup: 组 $groupName 类型 ${group.type} 不支持手动切换")
         return@safe false
     }
     if (group.proxies.none { it.name == proxyName }) {
-        AppLog.w("SLTE-Kernel", "selectInGroup: 组成员不存在 $proxyName")
+        AppLog.w("Polaris-Kernel", "selectInGroup: 组成员不存在 $proxyName")
         return@safe false
     }
     val result = clash.patchSelector(groupName, proxyName)
-    AppLog.d("SLTE-Kernel", "selectInGroup: $groupName -> $proxyName result=$result")
+    AppLog.d("Polaris-Kernel", "selectInGroup: $groupName -> $proxyName result=$result")
     result
 }
 
@@ -180,11 +180,11 @@ suspend fun KernelProxy.ensureGlobalSelection() = safe(Unit, "ensureGlobalSelect
     val clash = manager.clash() ?: return@safe
     if (clash.queryTunnelState().mode != TunnelState.Mode.Global) return@safe
     val now = clash.queryProxyGroup("GLOBAL", ProxySort.Default).now
-    AppLog.d("SLTE-Kernel", "ensureGlobalSelection: GLOBAL now=$now")
+    AppLog.d("Polaris-Kernel", "ensureGlobalSelection: GLOBAL now=$now")
     if (now.isBlank() || now == "DIRECT" || now == "REJECT") {
         val target = autoGroupName() ?: return@safe
         val result = clash.patchSelector("GLOBAL", target)
-        AppLog.d("SLTE-Kernel", "ensureGlobalSelection: GLOBAL -> $target result=$result")
+        AppLog.d("Polaris-Kernel", "ensureGlobalSelection: GLOBAL -> $target result=$result")
     }
 }
 
@@ -206,7 +206,7 @@ internal suspend fun KernelProxy.selectorGroup(): String? {
 
         if (group == "GLOBAL") return@forEach
         val type = clash.queryProxyGroup(group, ProxySort.Default).type
-        AppLog.d("SLTE-Kernel", "selectorGroup: $group type=$type")
+        AppLog.d("Polaris-Kernel", "selectorGroup: $group type=$type")
         if (type.equals("Selector", ignoreCase = true) || type.equals("URLTest", ignoreCase = true)) {
             return group
         }
@@ -223,7 +223,7 @@ internal suspend fun KernelProxy.selectSpecialGroup(
     val target = queryGroupByTypeName(type) ?: nameMatch(*nameKeywords) ?: return false
 
     val result = clash.patchSelector(selector, target)
-    AppLog.d("SLTE-Kernel", "selectSpecial($type): selector=$selector target=$target result=$result")
+    AppLog.d("Polaris-Kernel", "selectSpecial($type): selector=$selector target=$target result=$result")
     return result
 }
 
@@ -231,7 +231,7 @@ internal suspend fun KernelProxy.patchGlobalIfGlobal(target: String) {
     val clash = manager.clash() ?: return
     if (clash.queryTunnelState().mode != TunnelState.Mode.Global) return
     val result = clash.patchSelector("GLOBAL", target)
-    AppLog.d("SLTE-Kernel", "patchGlobalIfGlobal: GLOBAL -> $target result=$result")
+    AppLog.d("Polaris-Kernel", "patchGlobalIfGlobal: GLOBAL -> $target result=$result")
 }
 
 internal suspend fun KernelProxy.autoGroupName(): String? = queryGroupByTypeName("URLTest") ?: nameMatch("自动", "auto", "url")

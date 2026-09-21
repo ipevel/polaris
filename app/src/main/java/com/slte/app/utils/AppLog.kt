@@ -56,7 +56,7 @@ object AppLog {
     fun export(context: android.content.Context): java.io.File? {
         val header =
             buildString {
-                appendLine("SLTE 日志导出")
+                appendLine("Polaris 日志导出")
                 appendLine("时间: ${now()}")
                 appendLine("应用版本: ${com.slte.app.BuildConfig.VERSION_NAME} (${com.slte.app.BuildConfig.VERSION_CODE})")
                 appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
@@ -66,7 +66,7 @@ object AppLog {
         val content = sanitize(dump(header))
         return try {
             val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-            val file = java.io.File(dir, "SLTE_log_${System.currentTimeMillis()}.txt")
+            val file = java.io.File(dir, "polaris_log_${System.currentTimeMillis()}.txt")
             file.writeText(content)
             file
         } catch (e: Exception) {

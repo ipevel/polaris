@@ -177,7 +177,7 @@ class KernelConfigTest {
         coEvery { profiles.queryAll() } returns
             listOf(
                 profile(mine),
-                profile(other, name = "SLTE-别人", source = "https://other.example/api"),
+                profile(other, name = "Polaris-别人", source = "https://other.example/api"),
             )
 
         assertTrue(cfg.deleteAccountProfiles(email))

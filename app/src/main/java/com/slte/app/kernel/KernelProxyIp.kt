@@ -8,7 +8,7 @@ import kotlinx.coroutines.coroutineScope
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-private const val IP_FAULT_TAG = "SLTE-IP"
+private const val IP_FAULT_TAG = "Polaris-IP"
 
 suspend fun KernelProxy.fetchPublicIp(): IpGeoInfo? = safe(null, "fetchPublicIp", IP_FAULT_TAG) {
     val (ipv4, ipv6) =
@@ -30,7 +30,7 @@ internal fun KernelProxy.queryIp(
         .execute()
         .use { response ->
             if (!response.isSuccessful) {
-                AppLog.d("SLTE-IP", "queryIp($url): HTTP ${response.code}")
+                AppLog.d("Polaris-IP", "queryIp($url): HTTP ${response.code}")
                 null
             } else {
                 response.body

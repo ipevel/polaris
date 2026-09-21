@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SLTE</string>
+    <string name="app_name">北辰</string>
 
     <!-- Login -->
     <string name="login_welcome">歡迎登入</string>
@@ -10,6 +10,9 @@
     <string name="login_button">登入</string>
     <string name="login_remember_me">記住密碼</string>
     <string name="login_forgot_password">忘記密碼？</string>
+    <string name="login_url_hint">面板地址</string>
+    <string name="login_url_required">請輸入面板地址</string>
+    <string name="login_url_invalid">面板地址無效，範例：https://panel.example.com</string>
 
     <!-- Register -->
     <string name="register_title">建立帳號</string>
@@ -210,7 +213,7 @@
 
     <!-- About (关于软件) -->
     <string name="about_title">關於軟體</string>
-    <string name="about_app_desc">SLTE 是基於 mihomo 核心的輕量代理用戶端</string>
+    <string name="about_app_desc">北辰（Polaris）是一款基於 mihomo 內核的輕量代理用戶端，如北極星般穩定可靠，為你指引網絡航向</string>
     <string name="about_app_version">應用版本</string>
     <string name="about_kernel_version">核心版本</string>
     <string name="about_check_update">檢查更新</string>
@@ -291,6 +294,13 @@
     <string name="purchase_coupon_discount">優惠券抵扣</string>
     <string name="purchase_coupon_verify_first">請先驗證優惠券</string>
     <string name="error_coupon_invalid">優惠券無效或已過期</string>
+    <string name="gift_card_title">禮品卡兌換</string>
+    <string name="gift_card_subtitle">輸入禮品卡兌換碼，兌換成功後餘額或套餐立即到賬</string>
+    <string name="gift_card_redeem">立即兌換</string>
+    <string name="gift_card_code_hint">請輸入兌換碼</string>
+    <string name="gift_card_success_toast">兌換成功</string>
+    <string name="error_gift_card_invalid">兌換碼無效或已過期</string>
+    <string name="error_gift_card_generic">兌換失敗，請稍後重試</string>
     <string name="purchase_confirm_order">確認訂單</string>
     <string name="purchase_warning_title">警告</string>
     <string name="purchase_warning_message">更換方案將覆蓋目前訂閱。</string>

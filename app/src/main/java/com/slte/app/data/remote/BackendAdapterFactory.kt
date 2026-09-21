@@ -76,6 +76,10 @@ object BackendAdapterFactory {
         dns: okhttp3.Dns,
         remoteConfig: RemoteConfig,
     ): Retrofit {
+        // 静态 baseUrl 只决定 Retrofit 建请求时的起始主机；
+        // 实际请求主机由 ApiFailoverInterceptor 按运行时面板地址改写。
+        // staticBaseUrlHost 供 NO_FAILOVER 请求判断「是否原生面板请求」。
+        val staticBaseUrlHost = backend.baseUrl.trimEnd('/').toHttpUrlOrNull()?.host
         val client =
             OkHttpClient
                 .Builder()
@@ -84,7 +88,7 @@ object BackendAdapterFactory {
                 .writeTimeout(Constants.API_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .callTimeout(Constants.API_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .dns(dns)
-                .addInterceptor(ApiFailoverInterceptor(remoteConfig, remoteConfig.endpointSelector))
+                .addInterceptor(ApiFailoverInterceptor(remoteConfig, remoteConfig.endpointSelector, staticBaseUrlHost))
                 .addInterceptor(authInterceptor)
                 .addInterceptor(FormUrlEncodedInterceptor())
                 .apply {
@@ -92,9 +96,9 @@ object BackendAdapterFactory {
                         addInterceptor { chain ->
                             val request = chain.request()
                             val safePath = request.url.encodedPath
-                            AppLog.d("SLTE-Api", "${request.method} $safePath")
+                            AppLog.d("Polaris-Api", "${request.method} $safePath")
                             val response = chain.proceed(request)
-                            AppLog.d("SLTE-Api", "${request.method} ${response.code} $safePath")
+                            AppLog.d("Polaris-Api", "${request.method} ${response.code} $safePath")
                             response
                         }
                     }

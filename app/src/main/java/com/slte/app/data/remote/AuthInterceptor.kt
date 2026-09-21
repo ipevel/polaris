@@ -1,5 +1,6 @@
 package com.slte.app.data.remote
 
+import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.data.local.SessionStore
 import com.slte.app.data.remote.config.AllowedHosts
 import com.slte.app.utils.AppLog
@@ -75,6 +76,7 @@ class AuthInterceptor
 @Inject
 constructor(
     private val sessionStore: SessionStore,
+    private val apiUrlStore: ApiUrlStore,
 ) : Interceptor {
     private val _authErrorEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -84,7 +86,8 @@ constructor(
         val request = chain.request()
         val token = sessionStore.getAuthData()
 
-        val canAttachToken = AllowedHosts.isAllowedHost(request.url.host)
+        // 自定义面板主机也要注入 token：不在 BuildConfig 白名单里，否则登录必失败
+        val canAttachToken = AllowedHosts.isAllowedHost(request.url.host) || apiUrlStore.isCurrentHost(request.url.host)
         val decision =
             AuthRules.decide(
                 token = token,
@@ -101,7 +104,7 @@ constructor(
                     .build()
             } else {
                 if (token != null && !canAttachToken) {
-                    AppLog.w("SLTE-Api", "非白名单主机，已跳过凭据注入: ${request.url.encodedPath}")
+                    AppLog.w("Polaris-Api", "非白名单主机，已跳过凭据注入: ${request.url.encodedPath}")
                 }
                 request
             }

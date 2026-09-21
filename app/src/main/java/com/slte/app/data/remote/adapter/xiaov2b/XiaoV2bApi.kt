@@ -78,6 +78,11 @@ interface XiaoV2bUserRetrofit {
         @Body request: XiaoV2bCancelOrderRequest,
     ): XiaoV2bResponse<Boolean>
 
+    @POST("user/redeemgiftcard")
+    suspend fun redeemGiftCard(
+        @Body request: XiaoV2bGiftCardRedeemRequest,
+    ): XiaoV2bResponse<Boolean>
+
     @GET("user/invite/fetch")
     suspend fun fetchInviteInfo(): XiaoV2bResponse<XiaoV2bInviteData>
 

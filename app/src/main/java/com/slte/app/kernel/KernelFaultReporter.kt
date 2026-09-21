@@ -67,9 +67,9 @@ private val PROGRAMMATIC_FAULTS =
 private fun Throwable.isProgrammaticFault(): Boolean = PROGRAMMATIC_FAULTS.any { it.isInstance(this) } ||
     javaClass.name.startsWith("kotlin.")
 
-internal const val DEFAULT_FAULT_TAG = "SLTE-Kernel"
+internal const val DEFAULT_FAULT_TAG = "Polaris-Kernel"
 
-internal fun Exception.logAsFault(tag: String = "SLTE-Kernel") {
+internal fun Exception.logAsFault(tag: String = "Polaris-Kernel") {
     val summary = "${javaClass.simpleName}: ${sanitizeLog(message ?: "Unknown")}"
     if (isProgrammaticFault()) {
         AppLog.e(tag, "$summary\n${stackTraceToString()}")

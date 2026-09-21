@@ -19,7 +19,7 @@ import okio.Buffer
 /**
  * 把 JSON 请求体改写成 `application/x-www-form-urlencoded`。
  *
- * **为什么需要**：部分 V2Board / Xboard 面板部署（如 cp.mbe.cc）只解析表单编码，
+ * **为什么需要**：部分 V2Board / Xboard 面板部署只解析表单编码，
  * `Content-Type: application/json` 的请求体在进入后端校验前就被丢弃，服务端读到的
  * 字段全为空 → 直接 `422 {"message":"邮箱不能为空 (and 1 more error)"}`，
  * 与账号密码是否正确无关，登录必然失败（客户端此前只会把它显示成「邮箱或密码错误」）。
@@ -58,7 +58,7 @@ class FormUrlEncodedInterceptor : Interceptor {
                 body.writeTo(buffer)
                 buffer.readUtf8()
             } catch (e: IOException) {
-                AppLog.w("SLTE-Api", "FormUrlEncoded: 读取请求体失败，保持原样: ${sanitizeLog(e.message ?: "")}")
+                AppLog.w("Polaris-Api", "FormUrlEncoded: 读取请求体失败，保持原样: ${sanitizeLog(e.message ?: "")}")
                 return null
             }
         if (text.isBlank()) return null
@@ -67,12 +67,12 @@ class FormUrlEncodedInterceptor : Interceptor {
             try {
                 Json.parseToJsonElement(text)
             } catch (e: SerializationException) {
-                AppLog.w("SLTE-Api", "FormUrlEncoded: 请求体不是合法 JSON，保持原样: ${sanitizeLog(e.message ?: "")}")
+                AppLog.w("Polaris-Api", "FormUrlEncoded: 请求体不是合法 JSON，保持原样: ${sanitizeLog(e.message ?: "")}")
                 return null
             }
         val json = root as? JsonObject
         if (json == null) {
-            AppLog.w("SLTE-Api", "FormUrlEncoded: 请求体不是 JSON 对象，保持原样: ${request.url.encodedPath}")
+            AppLog.w("Polaris-Api", "FormUrlEncoded: 请求体不是 JSON 对象，保持原样: ${request.url.encodedPath}")
             return null
         }
 

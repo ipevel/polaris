@@ -40,16 +40,16 @@ fun slteHost(url: String): String? = url
     .takeIf { it.isNotEmpty() }
     ?.lowercase()
 
-val slteAppName = slteValue("SLTE_APP_NAME") ?: "SLTE"
-val slteApplicationId = slteValue("SLTE_APPLICATION_ID") ?: "com.slte.app"
-val slteVersionCode = slteValue("SLTE_VERSION_CODE")?.toIntOrNull() ?: 1
-val slteVersionName = slteValue("SLTE_VERSION_NAME") ?: "1.0.0"
+val slteAppName = slteValue("POLARIS_APP_NAME") ?: "北辰"
+val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
+val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 1
+val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.0.0"
 
-val slteApiBaseUrl = slteValue("SLTE_API_BASE_URL")?.let(::slteHttps) ?: "https://api.example.com"
-val slteApiType = slteValue("SLTE_API_TYPE") ?: "xiaov2b"
-val slteSubscribePath = slteValue("SLTE_SUBSCRIBE_PATH") ?: "/api/v1/client/subscribe"
+val slteApiBaseUrl = slteValue("POLARIS_API_BASE_URL")?.let(::slteHttps) ?: "https://api.example.com"
+val slteApiType = slteValue("POLARIS_API_TYPE") ?: "xiaov2b"
+val slteSubscribePath = slteValue("POLARIS_SUBSCRIBE_PATH") ?: "/api/v1/client/subscribe"
 val slteRemoteConfigUrls =
-    slteValue("SLTE_REMOTE_CONFIG_URLS")
+    slteValue("POLARIS_REMOTE_CONFIG_URLS")
         ?.split(',')
         ?.map { it.trim() }
         ?.filter { it.isNotEmpty() }
@@ -58,20 +58,20 @@ val slteRemoteConfigUrls =
 
 val slteAllowedDomains =
     buildList {
-        slteValue("SLTE_ALLOWED_DOMAINS")
+        slteValue("POLARIS_ALLOWED_DOMAINS")
             ?.split(',')
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
             ?.let(::addAll)
-        slteValue("SLTE_API_BASE_URL")?.let(::slteHttps)?.let(::add)
+        slteValue("POLARIS_API_BASE_URL")?.let(::slteHttps)?.let(::add)
         slteRemoteConfigUrls.split(',').filter { it.isNotEmpty() }.forEach(::add)
     }.filter { it.isNotEmpty() }.mapNotNull(::slteHost).distinct().joinToString(",")
 
-val slteCrispWebsiteId = slteValue("SLTE_CRISP_WEBSITE_ID") ?: ""
-val slteCrispEnabled = (slteValue("SLTE_CRISP_ENABLED") ?: "false").toBoolean()
-val slteTelegramGroupUrl = slteValue("SLTE_TELEGRAM_GROUP_URL") ?: ""
+val slteCrispWebsiteId = slteValue("POLARIS_CRISP_WEBSITE_ID") ?: ""
+val slteCrispEnabled = (slteValue("POLARIS_CRISP_ENABLED") ?: "false").toBoolean()
+val slteTelegramGroupUrl = slteValue("POLARIS_TELEGRAM_GROUP_URL") ?: ""
 
-val slteReleaseStoreFile = slteValue("SLTE_RELEASE_STORE_FILE")
+val slteReleaseStoreFile = slteValue("POLARIS_RELEASE_STORE_FILE")
 
 android {
     namespace = "com.slte.app"
@@ -81,7 +81,7 @@ android {
     applicationVariants.all {
         outputs.all {
             (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                "SLTE-$versionName.apk"
+                "Polaris-$versionName.apk"
         }
     }
 
@@ -116,9 +116,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = rootProject.file(slteReleaseStoreFile ?: "release.keystore")
-            storePassword = slteValue("SLTE_RELEASE_STORE_PASSWORD").orEmpty()
-            keyAlias = slteValue("SLTE_RELEASE_KEY_ALIAS") ?: "slte"
-            keyPassword = slteValue("SLTE_RELEASE_KEY_PASSWORD").orEmpty()
+            storePassword = slteValue("POLARIS_RELEASE_STORE_PASSWORD").orEmpty()
+            keyAlias = slteValue("POLARIS_RELEASE_KEY_ALIAS") ?: "slte"
+            keyPassword = slteValue("POLARIS_RELEASE_KEY_PASSWORD").orEmpty()
         }
     }
 
@@ -154,7 +154,7 @@ android {
                 gradle.taskGraph.whenReady {
                     if (allTasks.any { it.name.contains("Release") }) {
                         throw GradleException(
-                            "release 构建必须设置 SLTE_RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD，" +
+                            "release 构建必须设置 POLARIS_RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD，" +
                                 "禁止使用 debug 签名发布（本地调试请用 assembleDebug）",
                         )
                     }

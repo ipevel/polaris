@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.1.12",
+  "update_version": "1.2.0",
   "update_changelog_title": "新版可用",
-  "update_changelog": "🛡 修复流量明细无法获取（接口路径纠正）\n📊 更新下载进度条\n🎨 代理模式 / 当前IP 卡片化",
+  "update_changelog": "🎁 新增：礼品卡兑换（个人中心）\n🔗 新增：登录页自定义面板地址，App 不再内置任何面板地址\n✨ 全新品牌：北辰 Polaris + 全新图标\n📱 优化：代理模式与当前 IP 并排一行\n🛠 修复：流量明细列表闪退",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/slte/releases/download/v1.1.12/SLTE-1.1.12.apk"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.2.0/Polaris-1.2.0.apk"
 }

@@ -16,7 +16,7 @@ internal object SanitizerRules {
 
     const val MAX_DOMAIN_LABEL_LENGTH = 63
 
-    const val LOG_TAG = "SLTE-Sanitizer"
+    const val LOG_TAG = "Polaris-Sanitizer"
 
     const val BOM = '\uFEFF'
 

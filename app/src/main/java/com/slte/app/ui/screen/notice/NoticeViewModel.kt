@@ -47,13 +47,13 @@ constructor(
         viewModelScope.launch {
             subscribeRepository.fetchNotices().fold(
                 onSuccess = { notices ->
-                    AppLog.d("SLTE-Notice", "fetchNotices: ${notices.size} 条")
+                    AppLog.d("Polaris-Notice", "fetchNotices: ${notices.size} 条")
                     _uiState.update {
                         it.copy(phase = ContentPhase.Idle, notices = notices, errorMessage = null, isEntering = false)
                     }
                 },
                 onFailure = { e ->
-                    AppLog.w("SLTE-Notice", "fetchNotices 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Notice", "fetchNotices 失败: ${sanitizeLog(e.message ?: "Unknown")}")
                     _uiState.update {
                         it.copy(
                             phase = ContentPhase.Idle,
@@ -73,11 +73,11 @@ constructor(
         viewModelScope.launch {
             subscribeRepository.fetchNotices().fold(
                 onSuccess = { notices ->
-                    AppLog.d("SLTE-Notice", "refresh: ${notices.size} 条")
+                    AppLog.d("Polaris-Notice", "refresh: ${notices.size} 条")
                     _uiState.update { it.copy(phase = ContentPhase.Idle, notices = notices, errorMessageRes = null, errorMessage = null) }
                 },
                 onFailure = { e ->
-                    AppLog.w("SLTE-Notice", "refresh 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Notice", "refresh 失败: ${sanitizeLog(e.message ?: "Unknown")}")
 
                     val hasData = _uiState.value.notices.isNotEmpty()
                     _uiState.update {

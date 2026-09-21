@@ -26,7 +26,8 @@ class AuthInterceptorTest {
     val mainRule = MainDispatcherRule()
 
     private val sessionStore = mockk<SessionStore>(relaxed = true)
-    private val interceptor = AuthInterceptor(sessionStore)
+    private val apiUrlStore = mockk<com.slte.app.data.local.ApiUrlStore>(relaxed = true)
+    private val interceptor = AuthInterceptor(sessionStore, apiUrlStore)
 
     private fun request(
         url: String = "https://example.com${ApiPaths.AUTH}login",

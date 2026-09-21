@@ -11,7 +11,7 @@ import kotlinx.coroutines.withTimeout
 suspend fun KernelProxy.speedTest(): Map<String, Int> = safe(emptyMap(), "speedTest") {
     val clash = manager.clash()
     if (clash == null) {
-        AppLog.d("SLTE-Kernel", "speedTest: clash=null")
+        AppLog.d("Polaris-Kernel", "speedTest: clash=null")
         return@safe emptyMap()
     }
     if (selectorGroup() == null) {
@@ -28,7 +28,7 @@ suspend fun KernelProxy.speedTest(): Map<String, Int> = safe(emptyMap(), "speedT
         delay(500)
         result = queryAllGroupDelays(clash)
     }
-    AppLog.d("SLTE-Kernel", "speedTest: result=$result")
+    AppLog.d("Polaris-Kernel", "speedTest: result=$result")
     result
 }
 
@@ -37,7 +37,7 @@ suspend fun KernelProxy.speedTestProgressive(
 ): Map<String, Int> = safe(emptyMap(), "speedTestProgressive") {
     val clash = manager.clash()
     if (clash == null) {
-        AppLog.d("SLTE-Kernel", "speedTestProgressive: clash=null")
+        AppLog.d("Polaris-Kernel", "speedTestProgressive: clash=null")
         return@safe emptyMap()
     }
     if (selectorGroup() == null) {
@@ -118,7 +118,7 @@ suspend fun KernelProxy.speedTestUntilReady(maxDurationMs: Long = 60_000L): Map<
             }
         }
     } catch (e: TimeoutCancellationException) {
-        AppLog.d("SLTE-Kernel", "speedTestUntilReady: ${maxDurationMs}ms 截止，返回当前结果")
+        AppLog.d("Polaris-Kernel", "speedTestUntilReady: ${maxDurationMs}ms 截止，返回当前结果")
     }
     delays
 }
@@ -126,16 +126,16 @@ suspend fun KernelProxy.speedTestUntilReady(maxDurationMs: Long = 60_000L): Map<
 fun KernelProxy.cachedSpeedResults(): Map<String, Int>? = speedResultStore.getSpeedResults()
 
 suspend fun KernelProxy.runAutoSpeedTest(): Map<String, Int> = safe(emptyMap(), "runAutoSpeedTest") {
-    AppLog.d("SLTE-Kernel", "runAutoSpeedTest: start")
+    AppLog.d("Polaris-Kernel", "runAutoSpeedTest: start")
     var delays = speedTestAndCache()
 
     repeat(5) { attempt ->
         if (delays.isNotEmpty()) return@repeat
-        AppLog.d("SLTE-Kernel", "runAutoSpeedTest: 分组未就绪，第 ${attempt + 1} 次重试")
+        AppLog.d("Polaris-Kernel", "runAutoSpeedTest: 分组未就绪，第 ${attempt + 1} 次重试")
         delay(1000)
         delays = speedTestAndCache()
     }
-    AppLog.d("SLTE-Kernel", "runAutoSpeedTest: delays=$delays")
+    AppLog.d("Polaris-Kernel", "runAutoSpeedTest: delays=$delays")
     if (delays.isNotEmpty()) {
         val info = serverInfo()
         if (info?.selection == null ||

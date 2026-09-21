@@ -5,7 +5,7 @@ object ApiHeaders {
     const val USER_AGENT_NAME = "User-Agent"
     const val USER_AGENT_VALUE = "ClashMetaForAndroid/2.11.32"
 
-    const val NO_FAILOVER_NAME = "X-SLTE-No-Failover"
+    const val NO_FAILOVER_NAME = "X-Polaris-No-Failover"
 
     const val USER_AGENT_HEADER = "$USER_AGENT_NAME: $USER_AGENT_VALUE"
 

@@ -40,7 +40,7 @@ class XiaoV2bAuthApi(
     ): LoginResponseDto {
         val response = AdapterExecute.typed { authApi.login(XiaoV2bLoginRequest(email, password)) }
         val data = response.data ?: throw ApiException("服务器返回数据为空", ApiErrors.EMPTY_DATA)
-        AppLog.i("SLTE-Api", "login success")
+        AppLog.i("Polaris-Api", "login success")
         return data.toDomainLoginResponse()
     }
 
@@ -62,7 +62,7 @@ class XiaoV2bAuthApi(
                 )
             }
         val data = response.data ?: throw ApiException("服务器返回数据为空", ApiErrors.EMPTY_DATA)
-        AppLog.i("SLTE-Api", "register success")
+        AppLog.i("Polaris-Api", "register success")
         return data.toDomainLoginResponse()
     }
 
@@ -83,7 +83,7 @@ class XiaoV2bAuthApi(
         AdapterExecute.typed {
             authApi.forgotPassword(XiaoV2bForgotRequest(email, password, emailCode))
         }
-        AppLog.i("SLTE-Api", "forgotPassword success")
+        AppLog.i("Polaris-Api", "forgotPassword success")
     }
 
     override suspend fun sendEmailCode(
@@ -98,7 +98,7 @@ class XiaoV2bAuthApi(
         AdapterExecute.typed {
             authApi.sendEmailCode(XiaoV2bSendCodeRequest(email, isforget = isForget))
         }
-        AppLog.i("SLTE-Api", "sendEmailCode success purpose=$purpose")
+        AppLog.i("Polaris-Api", "sendEmailCode success purpose=$purpose")
     }
 
     override suspend fun revokeActiveSessions(authData: String) {
@@ -112,7 +112,7 @@ class XiaoV2bAuthApi(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLog.w("SLTE-Api", "revokeActiveSessions: 会话吊销失败，继续吊销其余会话")
+                AppLog.w("Polaris-Api", "revokeActiveSessions: 会话吊销失败，继续吊销其余会话")
             }
         }
     }
@@ -121,7 +121,7 @@ class XiaoV2bAuthApi(
         val response = AdapterExecute.typed { userApi.fetchUserInfo() }
         val data = response.data ?: throw ApiException("获取用户信息失败", ApiErrors.USER_INFO)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchUserInfo: planId=${data.planId}, expiredAt=${data.expiredAt}, transferEnable=${data.transferEnable}")
+            AppLog.d("Polaris-Api", "fetchUserInfo: planId=${data.planId}, expiredAt=${data.expiredAt}, transferEnable=${data.transferEnable}")
         }
         return data.toDomainUserInfo()
     }
@@ -152,12 +152,12 @@ class XiaoV2bAuthApi(
         val data = response.data
         if (data == null) {
             if (BuildConfig.DEBUG) {
-                AppLog.d("SLTE-Api", "fetchSubscribeInfo: 无订阅，返回空订阅")
+                AppLog.d("Polaris-Api", "fetchSubscribeInfo: 无订阅，返回空订阅")
             }
             return SubscribeInfoDto()
         }
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchSubscribeInfo: planId=${data.planId}, planName=${data.plan?.name}, expiredAt=${data.expiredAt}")
+            AppLog.d("Polaris-Api", "fetchSubscribeInfo: planId=${data.planId}, planName=${data.plan?.name}, expiredAt=${data.expiredAt}")
         }
         return data.toDomainSubscribeInfo()
     }
@@ -166,20 +166,20 @@ class XiaoV2bAuthApi(
         val response = AdapterExecute.typed { userApi.fetchOrders() }
         val data = response.data.orEmptyLogged("fetchOrders")
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchOrders: 共 ${data.size} 条订单")
+            AppLog.d("Polaris-Api", "fetchOrders: 共 ${data.size} 条订单")
         }
         return data.map { it.toDomainOrder() }
     }
 
     override suspend fun fetchPlans(): List<PlanInfoDto> {
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchPlans: 请求 /user/plan/fetch")
+            AppLog.d("Polaris-Api", "fetchPlans: 请求 /user/plan/fetch")
         }
 
         val response = AdapterExecute.typed { userPlanApi.fetchPlans() }
         val data = response.data.orEmptyLogged("fetchPlans")
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchPlans: 返回 ${data.size} 条套餐")
+            AppLog.d("Polaris-Api", "fetchPlans: 返回 ${data.size} 条套餐")
         }
         return data.map { it.toDomainPlan() }
     }
@@ -195,7 +195,7 @@ class XiaoV2bAuthApi(
             }
         val tradeNo = response.data ?: throw ApiException("创建订单失败", ApiErrors.CREATE_ORDER)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "createOrder success: tradeNo=$tradeNo")
+            AppLog.d("Polaris-Api", "createOrder success: tradeNo=$tradeNo")
         }
         return CreateOrderResultDto(tradeNo)
     }
@@ -213,7 +213,7 @@ class XiaoV2bAuthApi(
         val response = AdapterExecute.typed { userApi.checkCoupon(XiaoV2bCouponCheckRequest(code, planId)) }
         val data = response.data ?: throw ApiException("优惠券无效", ApiErrors.COUPON_INVALID)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "checkCoupon raw: type=${data.type} value=${data.value} name=${data.name}")
+            AppLog.d("Polaris-Api", "checkCoupon raw: type=${data.type} value=${data.value} name=${data.name}")
         }
         return data.toDomainCouponCheck()
     }
@@ -238,15 +238,24 @@ class XiaoV2bAuthApi(
     override suspend fun cancelOrder(tradeNo: String) {
         AdapterExecute.typed { userApi.cancelOrder(XiaoV2bCancelOrderRequest(tradeNo)) }
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "cancelOrder: tradeNo=$tradeNo")
+            AppLog.d("Polaris-Api", "cancelOrder: tradeNo=$tradeNo")
         }
+    }
+
+    override suspend fun redeemGiftCard(code: String) {
+        // v2board 风格：成功 data=true；失败 data 非 true 且 message 携带后端原文。
+        val response = AdapterExecute.typed { userApi.redeemGiftCard(XiaoV2bGiftCardRedeemRequest(code)) }
+        if (response.data != true) {
+            throw ApiException(response.message ?: "兑换失败")
+        }
+        AppLog.i("Polaris-Api", "redeemGiftCard: 兑换成功")
     }
 
     override suspend fun fetchInviteInfo(): InviteInfo {
         val response = AdapterExecute.typed { userApi.fetchInviteInfo() }
         val data = response.data ?: throw ApiException("获取邀请信息失败", ApiErrors.INVITE_INFO)
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchInviteInfo: codes=${data.codes.size}, stat=${data.stat}")
+            AppLog.d("Polaris-Api", "fetchInviteInfo: codes=${data.codes.size}, stat=${data.stat}")
         }
         return data.toDomain()
     }
@@ -263,7 +272,7 @@ class XiaoV2bAuthApi(
         val response = AdapterExecute.typed { userApi.fetchCommissionRecords(page, pageSize) }
         val data = response.data.orEmptyLogged("fetchCommissionRecords")
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "fetchCommissionRecords: ${data.size} 条记录")
+            AppLog.d("Polaris-Api", "fetchCommissionRecords: ${data.size} 条记录")
         }
         return data.map { it.toDomain() }
     }
@@ -285,7 +294,7 @@ class XiaoV2bAuthApi(
                 userApi.withdrawCommission(XiaoV2bWithdrawRequest(withdrawMethod, withdrawAccount))
             }
         if (BuildConfig.DEBUG) {
-            AppLog.d("SLTE-Api", "withdrawCommission: method=$withdrawMethod")
+            AppLog.d("Polaris-Api", "withdrawCommission: method=$withdrawMethod")
         }
         return response.data.orFalseLogged("withdrawCommission")
     }

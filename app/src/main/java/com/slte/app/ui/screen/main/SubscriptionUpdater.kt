@@ -111,7 +111,7 @@ constructor(
                 },
                 onFailure = { e ->
 
-                    AppLog.w("SLTE-Main", "silent subscription update failed: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Main", "silent subscription update failed: ${sanitizeLog(e.message ?: "Unknown")}")
                 },
             )
         } finally {

@@ -1,6 +1,7 @@
 package com.slte.app.ui.screen.login
 
 import com.slte.app.R
+import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.SessionState
@@ -25,6 +26,8 @@ class LoginViewModelTest {
 
     private val authRepository = mockk<AuthRepository>(relaxed = true)
 
+    private val apiUrlStore = mockk<ApiUrlStore>(relaxed = true)
+
     private fun viewModel(
         savedEmail: String? = null,
         savedPassword: String? = null,
@@ -32,7 +35,8 @@ class LoginViewModelTest {
         every { authRepository.sessionState } returns MutableStateFlow(SessionState.LoggedOut)
         every { authRepository.savedEmail() } returns savedEmail
         every { authRepository.savedPassword() } returns savedPassword
-        return LoginViewModel(authRepository)
+        every { apiUrlStore.currentUrl } returns null
+        return LoginViewModel(authRepository, apiUrlStore)
     }
 
     @Test
@@ -64,6 +68,7 @@ class LoginViewModelTest {
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://panel.example.com")
         vm.toggleRememberMe()
         vm.login()
         advanceUntilIdle()
@@ -79,6 +84,7 @@ class LoginViewModelTest {
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://panel.example.com")
         vm.login()
         advanceUntilIdle()
 
@@ -93,6 +99,7 @@ class LoginViewModelTest {
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://panel.example.com")
         vm.login()
         advanceUntilIdle()
 
@@ -118,6 +125,7 @@ class LoginViewModelTest {
             Result.success(RegisterConfig(emailVerifyEnabled = true, inviteForceEnabled = false))
         val vm = viewModel()
 
+        vm.onPanelUrlChange("https://panel.example.com")
         vm.checkRegisterConfig()
         advanceUntilIdle()
 
@@ -132,10 +140,57 @@ class LoginViewModelTest {
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://panel.example.com")
         vm.login()
         vm.login()
         advanceUntilIdle()
 
         coVerify(exactly = 1) { authRepository.login(any(), any()) }
+    }
+
+    @Test
+    fun `面板地址未填时不发请求`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw123456")
+        vm.login()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value as LoginUiState.Error
+        assertEquals(R.string.login_url_required, state.messageRes)
+        coVerify(exactly = 0) { authRepository.login(any(), any()) }
+        coVerify(exactly = 0) { apiUrlStore.setUrl(any()) }
+    }
+
+    @Test
+    fun `面板地址非法时不发请求`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("bad url with spaces")
+        vm.login()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value as LoginUiState.Error
+        assertEquals(R.string.login_url_invalid, state.messageRes)
+        coVerify(exactly = 0) { authRepository.login(any(), any()) }
+        coVerify(exactly = 0) { apiUrlStore.setUrl(any()) }
+    }
+
+    @Test
+    fun `登录时保存规范化后的面板地址`() = runTest(mainRule.dispatcher) {
+        coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
+        val vm = viewModel()
+
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://my.panel.dev/")
+        vm.login()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value is LoginUiState.LoginSuccess)
+        coVerify { apiUrlStore.setUrl("https://my.panel.dev") }
     }
 }

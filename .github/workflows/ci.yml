@@ -1,4 +1,4 @@
-name: SLTE CI
+name: 北辰 Polaris CI
 
 on:
   push:
@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      SLTE_USE_MIRROR: 'false'
-      SLTE_RELEASE_STORE_FILE: ${{ github.workspace }}/ci-throwaway.keystore
-      SLTE_RELEASE_STORE_PASSWORD: ci-throwaway
-      SLTE_RELEASE_KEY_ALIAS: ci-throwaway
-      SLTE_RELEASE_KEY_PASSWORD: ci-throwaway
+      POLARIS_USE_MIRROR: 'false'
+      POLARIS_RELEASE_STORE_FILE: ${{ github.workspace }}/ci-throwaway.keystore
+      POLARIS_RELEASE_STORE_PASSWORD: ci-throwaway
+      POLARIS_RELEASE_KEY_ALIAS: ci-throwaway
+      POLARIS_RELEASE_KEY_PASSWORD: ci-throwaway
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
         run: |
           set -e
           keytool -genkeypair -v \
-            -keystore "$SLTE_RELEASE_STORE_FILE" \
+            -keystore "$POLARIS_RELEASE_STORE_FILE" \
             -alias ci-throwaway -keyalg RSA -keysize 2048 -validity 1 \
             -storepass ci-throwaway -keypass ci-throwaway \
             -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN"
@@ -92,7 +92,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: SLTE-CI-reports
+          name: Polaris-CI-reports
           path: |
             ci-failure.log
             app/build/reports/tests/**

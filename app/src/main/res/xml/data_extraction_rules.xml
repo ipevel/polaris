@@ -4,8 +4,8 @@
          备份或换机迁移会导致新设备解密失败，且避免任何会话数据离开本机 -->
     <cloud-backup>
         <exclude domain="sharedpref" path="device.xml" />
-        <exclude domain="sharedpref" path="slte_session.xml" />
-        <exclude domain="sharedpref" path="slte_credential_store.xml" />
+        <exclude domain="sharedpref" path="polaris_session.xml" />
+        <exclude domain="sharedpref" path="polaris_credential_store.xml" />
         <!-- 节点凭据 YAML / 订阅配置文件 / 内核数据不随云端备份（D2D/云备份均排除） -->
         <exclude domain="file" path="imported" />
         <exclude domain="file" path="pending" />
@@ -16,8 +16,8 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="device.xml" />
-        <exclude domain="sharedpref" path="slte_session.xml" />
-        <exclude domain="sharedpref" path="slte_credential_store.xml" />
+        <exclude domain="sharedpref" path="polaris_session.xml" />
+        <exclude domain="sharedpref" path="polaris_credential_store.xml" />
         <exclude domain="file" path="imported" />
         <exclude domain="file" path="pending" />
         <exclude domain="file" path="clash" />

@@ -48,7 +48,7 @@ constructor(
                     }
                 },
                 onFailure = { e ->
-                    AppLog.w("SLTE-Main", "loadServers failed: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Main", "loadServers failed: ${sanitizeLog(e.message ?: "Unknown")}")
                 },
             )
         }

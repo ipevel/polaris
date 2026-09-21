@@ -56,11 +56,11 @@ constructor(
         viewModelScope.launch {
             trafficRepository.fetchTrafficLog().fold(
                 onSuccess = { records ->
-                    AppLog.d("SLTE-Traffic", "fetchTrafficLog: ${records.size} 条")
+                    AppLog.d("Polaris-Traffic", "fetchTrafficLog: ${records.size} 条")
                     _data.update { it.copy(records = records, isLoading = false, errorMessageRes = null) }
                 },
                 onFailure = { e ->
-                    AppLog.w("SLTE-Traffic", "fetchTrafficLog 失败: ${sanitizeLog(e.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Traffic", "fetchTrafficLog 失败: ${sanitizeLog(e.message ?: "Unknown")}")
                     val hasData = _data.value.records.isNotEmpty()
                     _data.update {
                         it.copy(

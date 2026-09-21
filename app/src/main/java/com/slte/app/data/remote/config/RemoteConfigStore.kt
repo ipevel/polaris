@@ -34,7 +34,7 @@ internal class RemoteConfigStore(
         return try {
             json.decodeFromString<CachedConfig>(raw)
         } catch (e: Exception) {
-            AppLog.w("SLTE-Config", "RemoteConfig: 缓存解析失败，回退默认配置")
+            AppLog.w("Polaris-Config", "RemoteConfig: 缓存解析失败，回退默认配置")
             null
         }
     }
@@ -60,8 +60,8 @@ internal class RemoteConfigStore(
     }
 
     private companion object {
-        const val PREFS_NAME = "slte_remote_config"
-        const val KEY_ALIAS = "slte_remote_config_master_key"
+        const val PREFS_NAME = "polaris_remote_config"
+        const val KEY_ALIAS = "polaris_remote_config_master_key"
         const val KEY_CACHE = "cached_config"
         const val KEY_LAST_URL = "last_url"
     }

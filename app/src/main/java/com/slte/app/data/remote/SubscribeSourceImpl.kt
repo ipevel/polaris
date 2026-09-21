@@ -56,7 +56,8 @@ constructor(
         val out = mutableListOf<String>()
         accountSubscribeUrl()?.let { out.add(it) }
         sessionStore.getSubscribeToken()?.let { token ->
-            subscribeFetchUrl(remoteConfig.data.apiBaseUrl, token)?.let { fallback ->
+            // 用 RemoteConfig.apiBaseUrl（运行时面板地址，含用户自定义）而非 data 缓存字段
+            subscribeFetchUrl(remoteConfig.apiBaseUrl, token)?.let { fallback ->
                 if (fallback !in out) out.add(fallback)
             }
         }
@@ -77,6 +78,6 @@ constructor(
     override fun saveSubscriptionUpdatedAt() = sessionStore.saveSubscriptionUpdatedAt()
 
     private companion object {
-        const val TAG = "SLTE-Subscribe"
+        const val TAG = "Polaris-Subscribe"
     }
 }

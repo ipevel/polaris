@@ -106,7 +106,7 @@ constructor(
                     }
                 },
                 onFailure = { throwable ->
-                    AppLog.w("SLTE-Profile", "fetchUserInfo 失败: ${sanitizeLog(throwable.message ?: "Unknown")}")
+                    AppLog.w("Polaris-Profile", "fetchUserInfo 失败: ${sanitizeLog(throwable.message ?: "Unknown")}")
                     _data.update { it.copy(userInfoError = true) }
                 },
             )

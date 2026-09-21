@@ -40,8 +40,8 @@ constructor(
     fun getSavedPassword(): String? = prefs.getString(KEY_PASSWORD, null)
 
     internal companion object {
-        internal const val PREFS_NAME = "slte_credential_store"
-        internal const val KEY_ALIAS = "slte_credential_master_key"
+        internal const val PREFS_NAME = "polaris_credential_store"
+        internal const val KEY_ALIAS = "polaris_credential_master_key"
         private const val KEY_EMAIL = "email"
         private const val KEY_PASSWORD = "password"
     }

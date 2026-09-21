@@ -1,6 +1,6 @@
-# SLTE 配置说明
+# Polaris 配置说明
 
-SLTE 的配置分三层，按优先级从高到低：
+Polaris 的配置分三层，按优先级从高到低：
 
 1. **环境变量**（CI secrets / 发布时 `export`）—— 最高优先级
 2. **`app/gradle.properties`**（本地文件，已被 .gitignore 忽略，不入库）—— 日常开发测试改这里
@@ -16,32 +16,32 @@ SLTE 的配置分三层，按优先级从高到低：
 
 | 变量 | 默认值 | 作用 |
 |---|---|---|
-| `SLTE_APP_NAME` | `SLTE` | 应用显示名（桌面名称；图标需自行替换 res/mipmap） |
-| `SLTE_VERSION_CODE` | `1` | 版本号（整数） |
-| `SLTE_VERSION_NAME` | `1.0.0` | 版本号（显示） |
-| `SLTE_API_BASE_URL` | `https://api.example.com` | 后端 API 主地址（https） |
-| `SLTE_API_TYPE` | `xiaov2b` | 后端类型：`xiaov2b` / `xboard` |
-| `SLTE_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅接口路径（与后端契约一致时勿动） |
-| `SLTE_REMOTE_CONFIG_URLS` | 空 | 远程配置源 URL（逗号分隔多个，https） |
-| `SLTE_ALLOWED_DOMAINS` | 空 | 追加 API 域名白名单（API 与配置源域名自动并入，一般无需填写） |
-| `SLTE_CRISP_WEBSITE_ID` | 空 | Crisp 客服 ID（远程配置会覆盖） |
-| `SLTE_CRISP_ENABLED` | `false` | 是否启用 Crisp 客服（远程配置会覆盖） |
-| `SLTE_NOTIFICATION_TITLE` | 空 | 通知标题（空 = 跟随应用名） |
-| `SLTE_NOTIFICATION_TRAFFIC` | `true` | 通知是否显示实时流量/流速 |
-| `SLTE_RELEASE_STORE_FILE` | 空 | keystore 路径（发布签名，只编 debug 可留空） |
-| `SLTE_RELEASE_STORE_PASSWORD` | 空 | store 密码 |
-| `SLTE_RELEASE_KEY_ALIAS` | `slte` | 密钥别名 |
-| `SLTE_RELEASE_KEY_PASSWORD` | 空 | 密钥密码 |
+| `POLARIS_APP_NAME` | `Polaris` | 应用显示名（桌面名称；图标需自行替换 res/mipmap） |
+| `POLARIS_VERSION_CODE` | `1` | 版本号（整数） |
+| `POLARIS_VERSION_NAME` | `1.0.0` | 版本号（显示） |
+| `POLARIS_API_BASE_URL` | `https://api.example.com` | 后端 API 主地址（https） |
+| `POLARIS_API_TYPE` | `xiaov2b` | 后端类型：`xiaov2b` / `xboard` |
+| `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅接口路径（与后端契约一致时勿动） |
+| `POLARIS_REMOTE_CONFIG_URLS` | 空 | 远程配置源 URL（逗号分隔多个，https） |
+| `POLARIS_ALLOWED_DOMAINS` | 空 | 追加 API 域名白名单（API 与配置源域名自动并入，一般无需填写） |
+| `POLARIS_CRISP_WEBSITE_ID` | 空 | Crisp 客服 ID（远程配置会覆盖） |
+| `POLARIS_CRISP_ENABLED` | `false` | 是否启用 Crisp 客服（远程配置会覆盖） |
+| `POLARIS_NOTIFICATION_TITLE` | 空 | 通知标题（空 = 跟随应用名） |
+| `POLARIS_NOTIFICATION_TRAFFIC` | `true` | 通知是否显示实时流量/流速 |
+| `POLARIS_RELEASE_STORE_FILE` | 空 | keystore 路径（发布签名，只编 debug 可留空） |
+| `POLARIS_RELEASE_STORE_PASSWORD` | 空 | store 密码 |
+| `POLARIS_RELEASE_KEY_ALIAS` | `slte` | 密钥别名 |
+| `POLARIS_RELEASE_KEY_PASSWORD` | 空 | 密钥密码 |
 
 > 安全白名单：凭据（JWT / 订阅 token）只发往白名单内域名。
-> 白名单 = `SLTE_ALLOWED_DOMAINS` + API 地址域名 + 远程配置源域名（构建期自动并入），
+> 白名单 = `POLARIS_ALLOWED_DOMAINS` + API 地址域名 + 远程配置源域名（构建期自动并入），
 > 运行时校验见 `RemoteConfig.ALLOWED_HOST_SUFFIXES`。
 
 ---
 
 ## 二、远程配置 JSON（运行时下发，无需重新编译）
 
-部署在 `SLTE_REMOTE_CONFIG_URLS` 指向的地址（OSS / CF Workers / 静态托管）。
+部署在 `POLARIS_REMOTE_CONFIG_URLS` 指向的地址（OSS / CF Workers / 静态托管）。
 多源并发拉取、按 `config_version` 择优，单源失效不影响。
 
 ### 完整字段说明
@@ -98,7 +98,7 @@ SLTE 的配置分三层，按优先级从高到低：
 
 ## 三、发布签名
 
-- 只编 debug：`SLTE_RELEASE_STORE_*` 全部留空。
+- 只编 debug：`POLARIS_RELEASE_STORE_*` 全部留空。
 - 编 release：在 `app/gradle.properties` 填 keystore 路径与密码即可。
   未配置时 `assembleRelease` 直接报错（防止误用 debug 签名发布，本地调试请用 assembleDebug）。
 

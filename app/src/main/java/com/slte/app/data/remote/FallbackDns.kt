@@ -38,7 +38,7 @@ constructor() : Dns {
             cache[hostname] = CachedEntry(result, now)
             return result
         } catch (_: UnknownHostException) {
-            AppLog.w("SLTE-Dns", "FallbackDns: 系统 DNS 解析失败，尝试备用 DNS")
+            AppLog.w("Polaris-Dns", "FallbackDns: 系统 DNS 解析失败，尝试备用 DNS")
         }
 
         val deadline = now + FALLBACK_TIMEOUT_MS
@@ -52,7 +52,7 @@ constructor() : Dns {
                     return result
                 }
             } catch (e: Exception) {
-                AppLog.w("SLTE-Dns", "FallbackDns: 备用 DNS $dnsStr 失败")
+                AppLog.w("Polaris-Dns", "FallbackDns: 备用 DNS $dnsStr 失败")
             }
         }
 

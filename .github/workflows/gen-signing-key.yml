@@ -30,7 +30,7 @@ jobs:
             -alias "$ALIAS" \
             -keyalg RSA -keysize 2048 -validity 10950 \
             -storepass "$PASS" -keypass "$PASS" \
-            -dname "CN=SLTE, OU=Mobile, O=SLTE, C=CN"
+            -dname "CN=Polaris, OU=Mobile, O=Polaris, C=CN"
 
           echo "$PASS" > PASSWORD.txt
           base64 -w0 slte-release.keystore > KEYSTORE_B64.txt

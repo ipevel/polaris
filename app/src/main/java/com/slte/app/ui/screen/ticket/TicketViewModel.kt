@@ -255,6 +255,6 @@ constructor(
     }
 
     private companion object {
-        const val TAG = "SLTE-Ticket"
+        const val TAG = "Polaris-Ticket"
     }
 }
