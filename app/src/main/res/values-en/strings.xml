@@ -47,10 +47,10 @@
 
     <!-- Plan card -->
     <string name="plan_status_expired">Expired</string>
-    splurals name="plan_expire_days_label">
-        sitem quantity="one">%d day lefts/item>
-        sitem quantity="other">%d days lefts/item>
-    s/plurals>
+    <plurals name="plan_expire_days_label">
+        <item quantity="one">%d day left</item>
+        <item quantity="other">%d days left</item>
+    </plurals>
     <string name="plan_expire_date_label">Expires %1$s</string>
     <string name="plan_expired_today">Expires today</string>
     <string name="plan_no_expiry">No expiry</string>
@@ -81,10 +81,10 @@
     <string name="dashboard_usage_title">Usage</string>
     <string name="dashboard_usage_valid">Valid</string>
     <string name="dashboard_expiry">Expiry</string>
-    splurals name="dashboard_days">
-        sitem quantity="one">%d days/item>
-        sitem quantity="other">%d dayss/item>
-    s/plurals>
+    <plurals name="dashboard_days">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
     <string name="dashboard_proxy_rule">Rule</string>
     <string name="dashboard_proxy_direct">Direct</string>
     <string name="dashboard_proxy_script">Script</string>
@@ -145,10 +145,10 @@
     <string name="invite_record_amount_label">Order amount ¥%s</string>
     <string name="invite_record_order">Order %s</string>
     <string name="invite_code_pv">PV %d</string>
-    splurals name="invite_users">
-        sitem quantity="one">%d users/item>
-        sitem quantity="other">%d userss/item>
-    s/plurals>
+    <plurals name="invite_users">
+        <item quantity="one">%d user</item>
+        <item quantity="other">%d users</item>
+    </plurals>
     <string name="invite_rate">%d%%</string>
     <string name="invite_success_transfer">Transfer successful</string>
     <string name="invite_success_withdraw">Withdrawal submitted</string>
