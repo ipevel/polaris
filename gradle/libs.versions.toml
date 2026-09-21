@@ -75,7 +75,6 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 kaidl = { group = "com.github.kr328.kaidl", name = "kaidl", version.ref = "kaidl" }
 kaidl-runtime = { group = "com.github.kr328.kaidl", name = "kaidl-runtime", version.ref = "kaidl" }
 rikkax-multiprocess = { group = "dev.rikka.rikkax.preference", name = "multiprocess", version.ref = "multiprocess" }
-crisp-sdk = { group = "im.crisp", name = "crisp-sdk", version = "2.0.23" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

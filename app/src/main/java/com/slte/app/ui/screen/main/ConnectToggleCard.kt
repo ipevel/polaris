@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -42,17 +41,11 @@ fun ConnectToggleCard(
     minHeight: Dp = Dimens.dashboardToggleCardMinHeight,
 ) {
     val haptic = LocalHapticFeedback.current
-    val powerBg: Brush =
+    val powerBg: Color =
         when {
-            isConnected -> Brush.linearGradient(
-                listOf(SlteColors.current.statusSuccess, SlteColors.current.statusSuccess),
-            )
-            isConnecting -> Brush.linearGradient(
-                listOf(SlteColors.current.statusWarning, SlteColors.current.statusWarning),
-            )
-            else -> Brush.linearGradient(
-                listOf(SlteColors.current.statusNeutral, SlteColors.current.statusNeutral),
-            )
+            isConnected -> SlteColors.current.statusSuccess
+            isConnecting -> SlteColors.current.statusWarning
+            else -> SlteColors.current.statusNeutral
         }
     val statusText =
         when {

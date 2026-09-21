@@ -3,7 +3,6 @@ package com.slte.app.ui.navigation
 import androidx.lifecycle.ViewModel
 import com.slte.app.data.local.LocaleStore
 import com.slte.app.data.local.SessionManager
-import com.slte.app.data.remote.config.CrispManager
 import com.slte.app.domain.model.SessionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
@@ -16,7 +15,6 @@ class AppViewModel
 @Inject
 constructor(
     sessionManager: SessionManager,
-    val crispManager: CrispManager,
     val localeStore: LocaleStore,
 ) : ViewModel() {
     val sessionState: StateFlow<SessionState> = sessionManager.sessionState

@@ -34,8 +34,6 @@ data class RemoteConfigData(
 
     val directDomains: List<String> = emptyList(),
     val apiType: String = BuildConfig.API_TYPE,
-    val crispWebsiteId: String = BuildConfig.CRISP_WEBSITE_ID,
-    val crispEnabled: Boolean = BuildConfig.CRISP_ENABLED,
 
     val updateVersion: String = "",
 
@@ -46,6 +44,8 @@ data class RemoteConfigData(
     val updateForce: Boolean = false,
 
     val updateApkUrl: String = "",
+
+    val updateApkSha256: String = "",
 )
 
 @Singleton
@@ -180,7 +180,7 @@ constructor(
         _dataFlow.value = merged
         AppLog.i(
             "Polaris-Config",
-            "RemoteConfig: 已更新 version=${chosen.version} candidates=${candidates.size} crisp=${merged.crispEnabled}",
+            "RemoteConfig: 已更新 version=${chosen.version} candidates=${candidates.size}",
         )
         return true
     }

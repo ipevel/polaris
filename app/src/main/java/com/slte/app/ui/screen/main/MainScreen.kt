@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
+import com.slte.app.data.local.ThemeMode
 import com.slte.app.ui.component.CircleIconButton
 import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.UsageCard
@@ -57,7 +58,7 @@ internal fun MainScreen(
     onRenew: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val isDarkMode by mainViewModel.darkMode.collectAsStateWithLifecycle()
+    val themeMode by mainViewModel.themeMode.collectAsStateWithLifecycle()
     val vpnPermissionLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult(),
@@ -96,9 +97,17 @@ internal fun MainScreen(
                 },
                 actions = {
                     CircleIconButton(
-                        icon = if (isDarkMode) SlteIcons.LightMode else SlteIcons.DarkMode,
+                        icon = when (themeMode) {
+                            ThemeMode.DARK -> SlteIcons.LightMode
+                            ThemeMode.LIGHT -> SlteIcons.DarkMode
+                            ThemeMode.SYSTEM -> SlteIcons.DarkMode
+                        },
                         description = stringResource(
-                            if (isDarkMode) R.string.topbar_light_mode else R.string.topbar_dark_mode,
+                            when (themeMode) {
+                                ThemeMode.DARK -> R.string.topbar_light_mode
+                                ThemeMode.LIGHT -> R.string.topbar_dark_mode
+                                ThemeMode.SYSTEM -> R.string.topbar_auto_mode
+                            },
                         ),
                         onClick = mainViewModel::toggleDarkMode,
                     )

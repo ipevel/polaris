@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.local.ThemeMode
 import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
@@ -50,10 +51,10 @@ constructor(
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
 
-    val darkMode: StateFlow<Boolean> = themePreference.dark
+    val themeMode: StateFlow<ThemeMode> = themePreference.mode
 
     fun toggleDarkMode() {
-        themePreference.setDark(!themePreference.dark.value)
+        themePreference.toggleDarkMode()
     }
 
     private var autoTested = false

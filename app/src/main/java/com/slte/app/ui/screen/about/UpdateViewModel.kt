@@ -15,6 +15,7 @@ import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
@@ -197,6 +198,19 @@ constructor(
                 }
             result.onSuccess { apkFile ->
                 AppLog.i("Polaris-Update", "APK 下载完成: ${apkFile.name} size=${apkFile.length()}")
+                val expectedSha = remoteConfig.data.updateApkSha256
+                if (expectedSha.isNotBlank()) {
+                    val actualSha = fileSha256(apkFile)
+                    if (!actualSha.equals(expectedSha, ignoreCase = true)) {
+                        AppLog.w("Polaris-Update", "APK 哈希校验失败: expected=$expectedSha actual=$actualSha")
+                        apkFile.delete()
+                        _state.value = UpdateUiState.DownloadFailed(R.string.update_hash_mismatch)
+                        return@launch
+                    }
+                    AppLog.i("Polaris-Update", "APK 哈希校验通过")
+                } else {
+                    AppLog.w("Polaris-Update", "APK 无 SHA-256 校验和，跳过完整性验证")
+                }
                 _state.value = UpdateUiState.Idle
                 installApk(apkFile)
             }.onFailure { e ->
@@ -237,6 +251,19 @@ constructor(
             onProgress(100)
         }
         return target
+    }
+
+    private fun fileSha256(file: java.io.File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun installApk(file: java.io.File) {

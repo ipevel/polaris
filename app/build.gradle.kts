@@ -67,8 +67,6 @@ val slteAllowedDomains =
         slteRemoteConfigUrls.split(',').filter { it.isNotEmpty() }.forEach(::add)
     }.filter { it.isNotEmpty() }.mapNotNull(::slteHost).distinct().joinToString(",")
 
-val slteCrispWebsiteId = slteValue("POLARIS_CRISP_WEBSITE_ID") ?: ""
-val slteCrispEnabled = (slteValue("POLARIS_CRISP_ENABLED") ?: "false").toBoolean()
 val slteTelegramGroupUrl = slteValue("POLARIS_TELEGRAM_GROUP_URL") ?: ""
 
 val slteReleaseStoreFile = slteValue("POLARIS_RELEASE_STORE_FILE")
@@ -108,8 +106,6 @@ android {
         buildConfigField("String", "REMOTE_CONFIG_URLS", "\"$slteRemoteConfigUrls\"")
         buildConfigField("String", "ALLOWED_DOMAINS", "\"$slteAllowedDomains\"")
 
-        buildConfigField("String", "CRISP_WEBSITE_ID", "\"$slteCrispWebsiteId\"")
-        buildConfigField("boolean", "CRISP_ENABLED", "$slteCrispEnabled")
         buildConfigField("String", "TELEGRAM_GROUP_URL", "\"$slteTelegramGroupUrl\"")
     }
 
@@ -242,8 +238,6 @@ dependencies {
     implementation(project(":kernel-service"))
     implementation(project(":kernel-common"))
     implementation(libs.kaidl.runtime)
-
-    implementation(libs.crisp.sdk)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

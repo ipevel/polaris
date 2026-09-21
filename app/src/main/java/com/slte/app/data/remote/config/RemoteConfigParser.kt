@@ -18,8 +18,6 @@ internal data class RemoteConfigDto(
     @SerialName("api") val api: JsonElement? = null,
     @SerialName("direct_domains") val directDomains: JsonElement? = null,
     @SerialName("api_type") val apiType: String? = null,
-    @SerialName("crisp_website_id") val crispWebsiteId: String? = null,
-    @SerialName("crisp_enabled") val crispEnabled: Boolean? = null,
 
     @SerialName("config_version") val configVersion: String? = null,
     @SerialName("update_version") val updateVersion: String? = null,
@@ -27,6 +25,7 @@ internal data class RemoteConfigDto(
     @SerialName("update_changelog") val updateChangelog: String? = null,
     @SerialName("update_force") val updateForce: Boolean? = null,
     @SerialName("update_apk_url") val updateApkUrl: String? = null,
+    @SerialName("update_apk_sha256") val updateApkSha256: String? = null,
 )
 
 internal object RemoteConfigParser {
@@ -61,15 +60,12 @@ internal object RemoteConfigParser {
             apiBaseUrls = candidates.ifEmpty { listOf(BuildConfig.API_BASE_URL) },
             directDomains = resolveDirectDomains(dto.directDomains),
             apiType = dto.apiType?.trim()?.takeIf { it == BuildConfig.API_TYPE } ?: BuildConfig.API_TYPE,
-            crispWebsiteId =
-            dto.crispWebsiteId?.trim()?.takeIf { it.isNotBlank() }
-                ?: BuildConfig.CRISP_WEBSITE_ID,
-            crispEnabled = dto.crispEnabled ?: BuildConfig.CRISP_ENABLED,
             updateVersion = dto.updateVersion?.trim() ?: "",
             updateChangelogTitle = dto.updateChangelogTitle?.trim() ?: "",
             updateChangelog = dto.updateChangelog ?: "",
             updateForce = dto.updateForce == true && updateApkUrl.isNotBlank(),
             updateApkUrl = updateApkUrl,
+            updateApkSha256 = dto.updateApkSha256?.trim()?.lowercase() ?: "",
         )
     }
 

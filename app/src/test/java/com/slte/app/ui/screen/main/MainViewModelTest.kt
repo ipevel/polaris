@@ -1,6 +1,7 @@
 package com.slte.app.ui.screen.main
 
 import com.slte.app.R
+import com.slte.app.data.local.ThemeMode
 import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
@@ -43,7 +44,7 @@ class MainViewModelTest {
         kernelProxy.stubKernelBridge(ready)
         every { kernelManager.connected } returns MutableStateFlow(connected)
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
-        every { themePreference.dark } returns MutableStateFlow(false)
+        every { themePreference.mode } returns MutableStateFlow(ThemeMode.SYSTEM)
         every { dataWriter.applyCached(any()) } answers {
             firstArg<MutableStateFlow<DashboardData>>().value =
                 DashboardData(hasPlan = hasPlan, isConnected = connected)
@@ -133,7 +134,7 @@ class MainViewModelTest {
     fun `内核连接状态同步到首页并清空 DNS 缓存`() = runTest(mainRule.dispatcher) {
         kernelProxy.stubKernelBridge(ready = true)
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
-        every { themePreference.dark } returns MutableStateFlow(false)
+        every { themePreference.mode } returns MutableStateFlow(ThemeMode.SYSTEM)
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
@@ -162,7 +163,7 @@ class MainViewModelTest {
     fun `内核未就绪时不判定为已连接`() = runTest(mainRule.dispatcher) {
         kernelProxy.stubKernelBridge(ready = false)
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
-        every { themePreference.dark } returns MutableStateFlow(false)
+        every { themePreference.mode } returns MutableStateFlow(ThemeMode.SYSTEM)
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)

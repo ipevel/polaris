@@ -2,6 +2,7 @@ package config
 
 import (
 	"io"
+	"log"
 	"os"
 
 	"github.com/metacubex/mihomo/constant"
@@ -30,6 +31,7 @@ func ReadOverride(slot OverrideSlot) string {
 		if err != nil {
 			return defaultPersistOverride
 		}
+		defer file.Close()
 
 		buf, err := io.ReadAll(file)
 		if err != nil {
@@ -51,8 +53,12 @@ func WriteOverride(slot OverrideSlot, content string) {
 		if err != nil {
 			return
 		}
+		defer file.Close()
 
 		_, err = file.Write([]byte(content))
+		if err != nil {
+			log.Warnln("WriteOverride: write failed: %v", err)
+		}
 	case OverrideSlotSession:
 		sessionOverride = content
 	}

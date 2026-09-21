@@ -3,7 +3,6 @@ package com.slte.app.data.local
 import com.slte.app.data.local.SessionStore
 import com.slte.app.data.remote.AuthInterceptor
 import com.slte.app.data.remote.FallbackDns
-import com.slte.app.data.remote.config.CrispManager
 import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
 import com.slte.app.kernel.KernelConfig
@@ -27,7 +26,6 @@ class SessionManager
 constructor(
     private val sessionStore: SessionStore,
     private val authInterceptor: AuthInterceptor,
-    private val crispManager: CrispManager,
     private val kernelManager: KernelManager,
     private val kernelConfig: KernelConfig,
     private val fallbackDns: FallbackDns,
@@ -103,7 +101,6 @@ constructor(
         }
         _sessionState.value = SessionState.LoggedOut
         sessionStore.clear()
-        crispManager.clearUser()
         _logoutEvents.tryEmit(Unit)
         if (expired) _sessionExpiredEvents.tryEmit(Unit)
     }

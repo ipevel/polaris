@@ -3,8 +3,6 @@ package com.slte.app
 import android.app.Application
 import com.github.kr328.clash.common.Global
 import com.slte.app.data.local.LocaleStore
-import com.slte.app.data.remote.config.CrispConfig
-import com.slte.app.data.remote.config.CrispManager
 import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.kernel.KernelManager
 import dagger.hilt.android.HiltAndroidApp
@@ -14,13 +12,9 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 
 @HiltAndroidApp
 class SlteApplication : Application() {
-    @Inject
-    lateinit var crispManager: CrispManager
-
     @Inject
     lateinit var kernelManager: KernelManager
 
@@ -46,19 +40,7 @@ class SlteApplication : Application() {
         if (getProcessName() == packageName) {
             remoteConfig.startFetch()
             remoteConfig.startProbeLoop()
-            observeCrispConfig()
             kernelManager.bind()
-        }
-    }
-
-    private fun observeCrispConfig() {
-        scope.launch {
-            remoteConfig.dataFlow.collect { cfg ->
-                crispManager.init(
-                    this@SlteApplication,
-                    CrispConfig(cfg.crispWebsiteId, cfg.crispEnabled),
-                )
-            }
         }
     }
 

@@ -44,6 +44,7 @@
     <!-- Top bar actions -->
     <string name="topbar_dark_mode">深色模式</string>
     <string name="topbar_light_mode">浅色模式</string>
+    <string name="topbar_auto_mode">跟随系统</string>
     <string name="topbar_notice">公告</string>
     <string name="topbar_profile">我的</string>
 
@@ -237,6 +238,8 @@
     <string name="update_changelog_default">本次更新内容以远程配置为准</string>
     <string name="update_apk_missing">更新安装包地址缺失</string>
     <string name="update_download_failed">下载更新包失败，请稍后重试</string>
+    <string name="update_hash_mismatch">安装包校验失败，文件可能被篡改</string>
+    <string name="update_hash_missing">安装包缺少校验信息，无法验证完整性</string>
     <string name="update_downloading">正在下载更新包…</string>
 
     <string name="profile_logout">退出登录</string>

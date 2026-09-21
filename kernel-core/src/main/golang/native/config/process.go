@@ -98,6 +98,10 @@ func patchDns(cfg *config.RawConfig, _ string) error {
 	// 安全:订阅不得开启本机/局域网 DNS 监听(未认证递归解析器)
 	cfg.DNS.Listen = ""
 
+	// 保存 App 侧 Sanitizer 注入的 fake-ip-filter 条目（面板域名等），
+	// 重置 DNS 后合并回来，防止面板域名被 fake-ip 劫持导致 API 请求失败
+	appInjectedFilters := cfg.DNS.FakeIPFilter
+
 	// 安全:订阅不得提供 DNS 上游/解析模式(fake-ip 范围、redir-host、自定
 	// nameserver/fallback/policy 等),一律重置为应用侧默认解析,防止订阅方
 	// nameserver 接管全设备解析
@@ -114,8 +118,22 @@ func patchDns(cfg *config.RawConfig, _ string) error {
 		cfg.DNS.NameServer = append(cfg.DNS.NameServer, "system://")
 	}
 
+	// 合并 App 侧注入的 fake-ip-filter：面板域名等业务域名不走 fake-ip
+	for _, f := range appInjectedFilters {
+		found := false
+		for _, existing := range cfg.DNS.FakeIPFilter {
+			if strings.EqualFold(existing, f) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			cfg.DNS.FakeIPFilter = append(cfg.DNS.FakeIPFilter, f)
+		}
+	}
+
 	// 自家后端域名不进 fake-ip：否则内核抓订阅时解析到 fake-ip 会回环失败。
-	// app 侧清洗已注入完整列表，此处逐项兜底缺失域名（大小写不敏感、幂等）
+// app 侧清洗已注入完整列表，此处逐项兜底缺失域名（大小写不敏感、幂等）
 	for _, domain := range directDomains {
 		found := false
 		for _, f := range cfg.DNS.FakeIPFilter {

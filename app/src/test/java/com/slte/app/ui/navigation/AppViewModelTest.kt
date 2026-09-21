@@ -2,7 +2,6 @@ package com.slte.app.ui.navigation
 
 import com.slte.app.data.local.LocaleStore
 import com.slte.app.data.local.SessionManager
-import com.slte.app.data.remote.config.CrispManager
 import com.slte.app.domain.model.SessionState
 import io.mockk.every
 import io.mockk.mockk
@@ -14,7 +13,6 @@ import org.junit.Test
 
 class AppViewModelTest {
     private val sessionManager = mockk<SessionManager>(relaxed = true)
-    private val crispManager = mockk<CrispManager>(relaxed = true)
     private val localeStore = mockk<LocaleStore>(relaxed = true)
 
     @Test
@@ -23,7 +21,7 @@ class AppViewModelTest {
         every { sessionManager.sessionExpiredEvents } returns MutableSharedFlow()
         every { localeStore.locale } returns MutableStateFlow(Locale.SIMPLIFIED_CHINESE)
 
-        val vm = AppViewModel(sessionManager, crispManager, localeStore)
+        val vm = AppViewModel(sessionManager, localeStore)
 
         assertEquals(SessionState.LoggedOut, vm.sessionState.value)
         assertEquals(Locale.SIMPLIFIED_CHINESE, vm.locale.value)
