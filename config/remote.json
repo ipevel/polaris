@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.4.0",
-  "update_changelog_title": "Polaris 1.4.0 — Backend Auto-Detect & More",
-  "update_changelog": "🔄 后端自动识别：输入面板地址后自动判断 xiaov2b/xboard\n🖼 代理模式配色统一主题色，与当前IP卡等高\n📝 策略组去文件夹图标，组名加大\n📊 流量明细无套餐不再显示「暂无套餐」\n📡 站点信息动态拉取 + 关于页/首页显示\n🔗 双后端运行时支持，登录页切换即时生效\n🔧 修复 values-en 三处 plurals 编码损坏",
+  "update_version": "1.4.1",
+  "update_changelog_title": "Polaris 1.4.1 — Dark Theme Green Fix",
+  "update_changelog": "\uD83C\uDF19 深色主题：首页连接按钮、在线状态点、节点延迟色适配暗色主题\n\uD83C\uDFA8 3 处硬编码绿色改用主题色，暗模式下自动降亮不刺眼",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.0/Polaris-1.4.0.apk"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.1/Polaris-1.4.1.apk"
 }
