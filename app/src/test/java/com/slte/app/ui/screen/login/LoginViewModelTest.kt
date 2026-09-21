@@ -198,8 +198,8 @@ class LoginViewModelTest {
     @Test
     fun `面板地址变更时需确认再登录`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
-        // currentUrl 为 null，输入新地址应触发确认
-        val vm = viewModel()
+        // 已保存旧地址，输入新地址应触发确认
+        val vm = viewModel(currentPanelUrl = "https://old.panel.com")
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
@@ -220,8 +220,25 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun `首次设置面板地址不弹确认直接登录`() = runTest(mainRule.dispatcher) {
+        coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
+        // 首次安装（无已保存地址）：地址是用户刚输入的，不应再弹确认打扰
+        val vm = viewModel(currentPanelUrl = null)
+
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://panel.example.com")
+        vm.login()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value is LoginUiState.LoginSuccess)
+        coVerify(exactly = 1) { authRepository.login(any(), any()) }
+    }
+
+    @Test
     fun `私有地址确认对话框标记风险`() = runTest(mainRule.dispatcher) {
-        val vm = viewModel()
+        // 已保存正常地址，改输入私有地址 → 确认框 + 风险标记
+        val vm = viewModel(currentPanelUrl = "https://panel.example.com")
 
         vm.onPanelUrlChange("https://192.168.1.1")
         vm.onAccountChange("a@b.c")

@@ -14,7 +14,6 @@
     <string name="login_url_hint">Panel URL</string>
     <string name="login_url_required">Enter panel URL</string>
     <string name="login_url_invalid">Invalid panel URL, e.g. https://panel.example.com</string>
-    <string name="login_backend_auto_hint">Auto-detected from panel, tap to override</string>
     <string name="panel_url_confirm_title">Confirm Panel URL</string>
     <string name="panel_url_confirm_private_title">Security Risk: Internal Address</string>
     <string name="panel_url_confirm_message">You are about to connect to the following panel. Your credentials will be sent to this server:</string>

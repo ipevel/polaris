@@ -194,11 +194,15 @@ jobs:
           POLARIS_APPLICATION_ID: ${{ inputs.applicationId }}
           POLARIS_API_BASE_URL: ${{ inputs.apiBaseUrl }}
           POLARIS_API_TYPE: ${{ inputs.apiType }}
-          POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls }}
-          POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
           POLARIS_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
           POLARIS_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
           POLARIS_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
+
+          # 应用内更新依赖 remote.json（版本/变更/APK 直链+SHA-256）。
+          # 远程配置源与 APK 直链域名必须进编译期白名单，否则 RemoteConfigParser
+          # 会静默拒绝 update_apk_url，更新功能形同虚设（SEC-2 教训）。
+          POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls != '' && inputs.remoteConfigUrls || 'https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json' }}
+          POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains != '' && inputs.allowedDomains || 'github.com,raw.githubusercontent.com,objects.githubusercontent.com' }}
 
           POLARIS_VERSION_NAME: ${{ inputs.versionName }}
           POLARIS_VERSION_CODE: ${{ inputs.versionCode }}
@@ -240,7 +244,7 @@ jobs:
 
           if rg -n 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
                app/src/main/java --glob '!**/ui/theme/SlteIcons.kt'; then
-            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（UI-GUIDELINES §3.4）"
+            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（SlteIcons 统一图标规范）"
             exit 1
           fi
 
@@ -262,8 +266,9 @@ jobs:
             "$APKSIGNER" verify --print-certs "$APK" > dist/SIGNING.txt 2>&1 || true
           else
             keytool -list -v -keystore release.keystore \
-              -alias "${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}" \
-              -storepass "${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || true
+              -alias "${{ secrets.SLTE_RELEASE_KEY_ALIAS }}" \
+              -storepass "${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || \
+              echo "::warning::SIGNING.txt 生成失败（apksigner 与 keytool 回退均不可用）"
           fi
           echo "--- SHA256SUMS.txt ---"
           cat dist/SHA256SUMS.txt
@@ -395,21 +400,28 @@ jobs:
           git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
           cd polaris-updater
           APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Polaris-${VERSION}.apk"
+          # 从构建产物校验文件中提取 APK SHA-256，写入 remote.json 驱动应用内
+          # 更新的完整性校验（UpdateViewModel 读取 update_apk_sha256 验证下载包）
+          APK_SHA="$(awk '{print tolower($1)}' ../out/SHA256SUMS.txt | head -1)"
+          test -n "$APK_SHA" || { echo "::warning::未取到 APK SHA-256，update_apk_sha256 置空"; }
+          export APK_SHA
           python3 -c "
           import json, os
           version = os.environ['VERSION']
           notes = os.environ.get('NOTES', '').strip()
           apk = os.environ.get('APK_URL', '')
+          sha = os.environ.get('APK_SHA', '')
           with open('config/remote.json', 'r') as f:
               cfg = json.load(f)
           cfg['update_version'] = version
           cfg['update_apk_url'] = apk
+          cfg['update_apk_sha256'] = sha
           if notes and notes != 'auto':
               cfg['update_changelog'] = notes
           with open('config/remote.json', 'w') as f:
               json.dump(cfg, f, indent=2, ensure_ascii=False)
               f.write('\n')
-          print('remote.json 已更新')
+          print('remote.json 已更新 (version=%s, sha256=%s...)' % (version, sha[:12]))
           "
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

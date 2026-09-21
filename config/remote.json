@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.4.2",
-  "update_changelog_title": "Polaris 1.4.2 — 安全与体验修复",
-  "update_changelog": "- fix: 全局代理模式 VPN 连接后不生效（override.json 未预写）\n- fix: 面板地址变更时增加用户确认对话框，私有地址加强警告（SSRF 防护）\n- fix: 加密存储降级为内存时显示持久性警告横幅\n- fix: 站点名称/描述为空时回退到应用默认值\n- fix: Go 内核不支持 script 模式导致 override 静默丢弃\n- fix: R8 混淆构建失败（error-prone annotations）\n- chore: 版本号升到 1.4.2 (versionCode 16)",
+  "update_version": "1.4.3",
+  "update_changelog_title": "Polaris 1.4.3 — 登录与连接体验修复",
+  "update_changelog": "- fix: 首次登录被面板地址确认框阻塞，现首次设置不再弹确认\n- fix: 连接后隧道就绪持续监听（大订阅首连不再卡在\"连接中\"）\n- fix: 登录成功后强制刷新面板站点名称/描述\n- fix: 登录页移除冗余的后端类型切换器（保留自动识别）\n- fix: 应用内更新管线修复（SHA-256 校验落地 + 更新源白名单默认值）\n- fix: 应用图标更新为深色版北极星\n- chore: 版本号升到 1.4.3 (versionCode 17)",
   "update_force": false,
   "update_apk_url": "",
   "update_apk_sha256": ""

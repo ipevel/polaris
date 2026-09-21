@@ -22,3 +22,13 @@ AGENTS.md
 desktop/helper/polaris-helper.exe
 desktop/helper/polaris-helper
 desktop/packaging/exe/dist/
+
+# 扫描工具会话状态（不入库）
+.mimosa/
+
+# 构建发布产物
+dist/
+
+# 密钥材料（上游 mkcert 测试夹具除外，见 THIRD-PARTY-NOTICES.md）
+*.pem
+!kernel-core/src/foss/golang/clash/test/config/*.pem

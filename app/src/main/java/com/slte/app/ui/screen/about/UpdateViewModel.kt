@@ -131,7 +131,9 @@ constructor(
         }
 
         viewModelScope.launch {
-            _siteInfo.value = authRepository.fetchSiteInfo()
+            // 关于页展示的是面板下发的动态站点名/描述；force=true 确保每次进入
+            // 都取最新（登录切换面板后缓存里的旧站点信息不能再用）
+            _siteInfo.value = authRepository.fetchSiteInfo(force = true)
         }
     }
 

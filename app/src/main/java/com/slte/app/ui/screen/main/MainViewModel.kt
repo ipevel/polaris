@@ -9,6 +9,8 @@ import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
+import com.slte.app.domain.model.SessionState
+import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
@@ -58,6 +60,7 @@ constructor(
     }
 
     private var autoTested = false
+    private var tunnelWatchJob: Job? = null
 
     init {
 
@@ -71,10 +74,17 @@ constructor(
 
         viewModelScope.launch {
             val info = authRepository.fetchSiteInfo(force = true)
-            val name = info.appName?.takeIf { it.isNotBlank() } ?: ""
-            val desc = info.appDescription?.takeIf { it.isNotBlank() } ?: ""
-            if (name.isNotEmpty() || desc.isNotEmpty()) {
-                _data.update { it.copy(siteName = name, siteDescription = desc) }
+            applySiteInfo(info)
+        }
+
+        // 登录成功后面板地址/凭据才可用，此时强制重新拉取站点名称与描述，
+        // 保证顶栏与关于页显示的是面板下发的动态站点信息而非缓存/默认值
+        viewModelScope.launch {
+            authRepository.sessionState.collect { state ->
+                if (state is SessionState.LoggedIn) {
+                    val info = authRepository.fetchSiteInfo(force = true)
+                    applySiteInfo(info)
+                }
             }
         }
 
@@ -83,6 +93,14 @@ constructor(
                 if (kernelProxy.warmUp()) return@launch
                 delay(1000)
             }
+        }
+    }
+
+    private fun applySiteInfo(info: SiteInfo) {
+        val name = info.appName?.takeIf { it.isNotBlank() } ?: ""
+        val desc = info.appDescription?.takeIf { it.isNotBlank() } ?: ""
+        if (name.isNotEmpty() || desc.isNotEmpty()) {
+            _data.update { it.copy(siteName = name, siteDescription = desc) }
         }
     }
 
@@ -98,6 +116,7 @@ constructor(
         viewModelScope.launch {
             kernelManager.connected.collect { connected ->
                 if (!connected) {
+                    tunnelWatchJob?.cancel()
                     _data.update {
                         it.copy(
                             isConnected = false,
@@ -109,32 +128,47 @@ constructor(
                 }
 
                 // ACTION_CLASH_STARTED 只代表内核进程已启动，TUN 建立与配置装载
-                // 是 onCreate 里异步进行的。直接据此置为已连接会造成假连接
-                // （界面显示已连接、出口 IP 也变了，但流量并未走代理）。
-                if (!kernelProxy.awaitTunnelReady()) {
-                    AppLog.w("Polaris-Main", "连接超时：内核未在预期时间内就绪，判定为未连接")
-                    _data.update {
-                        it.copy(
-                            isConnected = false,
-                            isConnecting = false,
-                            currentIp = Constants.PLACEHOLDER_DASH,
-                            errorMessageRes = R.string.error_vpn_kernel_unavailable,
-                        )
-                    }
-                    return@collect
-                }
-
-                _data.update { it.copy(isConnected = true, isConnecting = false) }
-                fallbackDns.clearCache()
-                if (!autoTested) {
-                    autoTested = true
+                // 是 onCreate 里异步进行的，大订阅时可能远超 12 秒。此前一次性
+                // awaitTunnelReady 超时即放弃，而 connected 是 StateFlow（true 期间
+                // 不会再发射），隧道真正就绪后 UI 永远不会更新——表现为"连接中"
+                // 卡很久、就绪了界面也不变。这里改为：只要内核保持连接就持续等待
+                // （上限 TUNNEL_WATCH_MAX_MS），期间界面保持"连接中"，就绪立即点亮。
+                tunnelWatchJob?.cancel()
+                tunnelWatchJob =
                     viewModelScope.launch {
-                        kernelProxy.runAutoSpeedTest()
+                        _data.update { it.copy(isConnecting = true, errorMessageRes = null) }
+                        var ready = false
+                        // 上限 ≈ MAX_POLLS × (就绪探测窗口 + 轮询间隔)；生产环境约 5 分钟。
+                        // 与 awaitTunnelReady 一样用 delay 表达超时，虚拟时钟测试不热旋。
+                        repeat(TUNNEL_WATCH_MAX_POLLS) {
+                            if (!kernelManager.connected.value) return@launch
+                            if (kernelProxy.awaitTunnelReady(timeoutMs = TUNNEL_WATCH_POLL_MS)) {
+                                ready = true
+                                return@repeat
+                            }
+                            delay(TUNNEL_WATCH_POLL_MS)
+                        }
+                        if (!ready) {
+                            if (kernelManager.connected.value) {
+                                AppLog.w("Polaris-Main", "连接看门狗：隧道 ${TUNNEL_WATCH_MAX_POLLS} 轮未就绪")
+                                _data.update {
+                                    it.copy(
+                                        isConnecting = false,
+                                        errorMessageRes = R.string.error_vpn_kernel_unavailable,
+                                    )
+                                }
+                            }
+                            return@launch
+                        }
+
+                        _data.update { it.copy(isConnected = true, isConnecting = false) }
+                        fallbackDns.clearCache()
+                        if (!autoTested) {
+                            autoTested = true
+                            kernelProxy.runAutoSpeedTest()
+                        }
                         refreshKernelInfo()
                     }
-                } else {
-                    refreshKernelInfo()
-                }
             }
         }
     }
@@ -209,7 +243,6 @@ constructor(
                         return@launch
                     }
                     kernelManager.startVpn()
-                    watchConnectTimeout()
                 } catch (e: Exception) {
                     AppLog.w("Polaris-Main", "toggleConnection: 启动失败 ${sanitizeLog(e.message ?: "Unknown")}")
                     _data.update {
@@ -247,22 +280,11 @@ constructor(
         }
     }
 
-    /**
-     * 连接看门狗：TunService 若始终不发状态广播，界面会永远停在"连接中"。
-     */
-    private fun watchConnectTimeout() {
-        viewModelScope.launch {
-            delay(CONNECT_WATCHDOG_MS)
-            if (_data.value.isConnecting) {
-                AppLog.w("Polaris-Main", "连接看门狗触发：${CONNECT_WATCHDOG_MS}ms 内未完成连接")
-                _data.update {
-                    it.copy(isConnecting = false, errorMessageRes = R.string.error_vpn_kernel_unavailable)
-                }
-            }
-        }
-    }
-
     private companion object {
-        const val CONNECT_WATCHDOG_MS = 20_000L
+        /** 隧道就绪等待轮数：30 轮 × 10s ≈ 5 分钟上限（大订阅首连可能耗时数分钟） */
+        const val TUNNEL_WATCH_MAX_POLLS = 30
+
+        /** 每轮就绪探测窗口（awaitTunnelReady 内部 300ms 轮询）+ 轮间间隔 */
+        const val TUNNEL_WATCH_POLL_MS = 5_000L
     }
 }

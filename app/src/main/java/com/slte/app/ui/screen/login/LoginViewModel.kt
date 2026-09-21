@@ -109,14 +109,16 @@ constructor(
 
     /**
      * 判断面板地址是否需要用户确认：
-     * - 与已保存的地址不同（包括首次设置）
-     * - 指向私有/保留地址时加强提示
+     * 仅在**替换已保存的地址**时确认（防误改/SSRF）。
+     * 首次设置（无已保存地址）不弹确认——地址是用户刚输入的，再确认一次纯属打扰。
      */
     private fun needsPanelUrlConfirmation(rawUrl: String): Pair<String, Boolean>? {
         val normalized = ConfigValidation.normalizePanelUrl(rawUrl) ?: return null
         val saved = apiUrlStore.currentUrl
-        // 已保存且与当前输入一致（忽略尾部斜杠），无需确认
-        if (saved != null && normalized == saved.trimEnd('/')) return null
+        // 无已保存地址（首次设置）：不确认
+        if (saved.isNullOrBlank()) return null
+        // 与已保存地址一致（忽略尾部斜杠），无需确认
+        if (normalized == saved.trimEnd('/')) return null
         val host = normalized.toHttpUrlOrNull()?.host ?: return null
         val isPrivate = ConfigValidation.isPrivateOrReservedHost(host)
         return normalized to isPrivate
@@ -165,13 +167,6 @@ constructor(
         _uiState.value = f.copy(panelUrl = value)
         // 仅用户手动选择过才保持手动值，否则自动探测
         probeBackendType(value)
-    }
-
-    fun onBackendTypeChange(type: String) {
-        val f = currentForm()
-        _uiState.value = f.copy(backendType = type)
-        // 用户手动选择了后端类型，取消任何探测
-        probeJob?.cancel()
     }
 
     fun toggleRememberMe() {

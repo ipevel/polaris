@@ -5,6 +5,10 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -84,7 +88,7 @@ jobs:
 
           if rg -n 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
                app/src/main/java --glob '!**/ui/theme/SlteIcons.kt'; then
-            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（UI-GUIDELINES §3.4）"
+            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（SlteIcons 统一图标规范）"
             exit 1
           fi
 

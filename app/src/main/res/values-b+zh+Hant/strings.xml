@@ -14,7 +14,6 @@
     <string name="login_url_hint">面板地址</string>
     <string name="login_url_required">請輸入面板地址</string>
     <string name="login_url_invalid">面板地址無效，範例：https://panel.example.com</string>
-    <string name="login_backend_auto_hint">根據面板地址自動識別，可手動切換</string>
     <string name="panel_url_confirm_title">確認面板地址</string>
     <string name="panel_url_confirm_private_title">安全風險：內部地址</string>
     <string name="panel_url_confirm_message">即將連接到以下面板地址，您的登入憑證將發送至此伺服器：</string>

@@ -5,6 +5,7 @@ import com.slte.app.data.local.ThemeMode
 import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
+import com.slte.app.domain.model.SessionState
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
@@ -16,6 +17,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -41,6 +43,7 @@ class MainViewModelTest {
         connected: Boolean = false,
         ready: Boolean = false,
     ): MainViewModel {
+        stubAuthSession()
         kernelProxy.stubKernelBridge(ready)
         every { kernelManager.connected } returns MutableStateFlow(connected)
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
@@ -51,6 +54,14 @@ class MainViewModelTest {
         }
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
         return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, themePreference)
+    }
+
+    /**
+     * relaxed mock 的 StateFlow.collect 契约返回 Nothing，未打桩时 mockk 返回 null
+     * 会抛 KotlinNothingValueException；显式给一个恒定状态流。
+     */
+    private fun stubAuthSession(state: SessionState = SessionState.LoggedOut) {
+        every { authRepository.sessionState } returns MutableStateFlow(state) as StateFlow<SessionState>
     }
 
     @Test
@@ -138,6 +149,7 @@ class MainViewModelTest {
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
+        stubAuthSession()
         val vm =
             MainViewModel(
                 mainRule.dispatcher,
@@ -167,6 +179,7 @@ class MainViewModelTest {
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
+        stubAuthSession()
         val vm =
             MainViewModel(
                 mainRule.dispatcher,
