@@ -63,6 +63,7 @@ fun LoginScreen(
             is LoginUiState.CheckingRegisterConfig -> s.form
             is LoginUiState.LoginSuccess -> s.form
             is LoginUiState.RegisterConfigReady -> s.form
+            is LoginUiState.ConfirmPanelUrl -> s.form
             is LoginUiState.Error -> s.form
         }
 
@@ -242,8 +243,11 @@ private fun PanelUrlConfirmDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (isPrivateHost) stringResource(R.string.panel_url_confirm_private_title)
-                else stringResource(R.string.panel_url_confirm_title),
+                if (isPrivateHost) {
+                    stringResource(R.string.panel_url_confirm_private_title)
+                } else {
+                    stringResource(R.string.panel_url_confirm_title)
+                },
             )
         },
         text = {

@@ -1,14 +1,14 @@
 {
   "schemaVersion": "mimosa-hook-status/v1",
-  "recordedAt": "2026-09-21T15:58:08.887Z",
+  "recordedAt": "2026-09-21T16:31:33.744Z",
   "sessionId": "sess_87f5562f-e4aa-4078-a395-7fa94830c101",
   "event": "PostToolUse",
-  "toolName": "Edit",
-  "file": "app/src/main/java/com/slte/app/data/local/ThemePreference.kt",
+  "toolName": "Write",
+  "file": "config/remote.json",
   "outcome": "clear",
   "coverage": "complete",
   "findingCount": 0,
-  "durationMs": 18,
+  "durationMs": 6,
   "hostState": "hook_complete",
   "reportHint": ".mimosa/reports/"
 }

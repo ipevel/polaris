@@ -29,13 +29,13 @@ constructor(
     val mode: StateFlow<ThemeMode> = _mode.asStateFlow()
 
     /** Backward-compatible dark flow: true when effective theme is dark. */
-    val dark: StateFlow<Boolean> get() = _darkFlow
-    private val _darkFlow = MutableStateFlow(computeDark(_mode.value))
+    val dark: StateFlow<Boolean> get() = _dark
+    private val _dark = MutableStateFlow(computeDark(_mode.value))
 
     fun setMode(mode: ThemeMode) {
         prefs.edit { putString(KEY_MODE, mode.name) }
         _mode.value = mode
-        _darkFlow.value = computeDark(mode)
+        _dark.value = computeDark(mode)
     }
 
     /** Legacy API used by existing UI — maps to setMode. */

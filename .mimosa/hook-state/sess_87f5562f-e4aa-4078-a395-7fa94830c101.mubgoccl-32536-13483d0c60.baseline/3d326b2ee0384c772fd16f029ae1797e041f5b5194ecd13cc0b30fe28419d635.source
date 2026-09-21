@@ -18,13 +18,13 @@ internal object ConfigValidation {
         if (parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 }) {
             val octets = parts.map { it.toInt() }
             return when {
-                octets[0] == 127 -> true                                  // 127.0.0.0/8  loopback
-                octets[0] == 10 -> true                                   // 10.0.0.0/8   RFC 1918
-                octets[0] == 172 && octets[1] in 16..31 -> true           // 172.16.0.0/12 RFC 1918
-                octets[0] == 192 && octets[1] == 168 -> true              // 192.168.0.0/16 RFC 1918
-                octets[0] == 169 && octets[1] == 254 -> true              // 169.254.0.0/16 link-local
-                octets[0] == 0 -> true                                    // 0.0.0.0/8    current network
-                octets[0] == 100 && octets[1] in 64..127 -> true          // 100.64.0.0/10 carrier-grade NAT
+                octets[0] == 127 -> true // 127.0.0.0/8  loopback
+                octets[0] == 10 -> true // 10.0.0.0/8   RFC 1918
+                octets[0] == 172 && octets[1] in 16..31 -> true // 172.16.0.0/12 RFC 1918
+                octets[0] == 192 && octets[1] == 168 -> true // 192.168.0.0/16 RFC 1918
+                octets[0] == 169 && octets[1] == 254 -> true // 169.254.0.0/16 link-local
+                octets[0] == 0 -> true // 0.0.0.0/8    current network
+                octets[0] == 100 && octets[1] in 64..127 -> true // 100.64.0.0/10 carrier-grade NAT
                 else -> false
             }
         }
