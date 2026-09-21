@@ -129,6 +129,7 @@ class MainViewModelTest {
     @Test
     fun `内核连接状态同步到首页并清空 DNS 缓存`() = runTest(mainRule.dispatcher) {
         kernelProxy.stubKernelBridge(ready = true)
+        coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
@@ -155,6 +156,7 @@ class MainViewModelTest {
     @Test
     fun `内核未就绪时不判定为已连接`() = runTest(mainRule.dispatcher) {
         kernelProxy.stubKernelBridge(ready = false)
+        coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
         val connected = MutableStateFlow(false)
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)

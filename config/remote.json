@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.2.0",
-  "update_changelog_title": "新版可用",
-  "update_changelog": "🎁 新增：礼品卡兑换（个人中心）\n🔗 新增：登录页自定义面板地址，App 不再内置任何面板地址\n✨ 全新品牌：北辰 Polaris + 全新图标\n📱 优化：代理模式与当前 IP 并排一行\n🛠 修复：流量明细列表闪退",
+  "update_version": "1.4.0",
+  "update_changelog_title": "Polaris 1.4.0 — Backend Auto-Detect & More",
+  "update_changelog": "🔄 后端自动识别：输入面板地址后自动判断 xiaov2b/xboard\n🖼 代理模式配色统一主题色，与当前IP卡等高\n📝 策略组去文件夹图标，组名加大\n📊 流量明细无套餐不再显示「暂无套餐」\n📡 站点信息动态拉取 + 关于页/首页显示\n🔗 双后端运行时支持，登录页切换即时生效\n🔧 修复 values-en 三处 plurals 编码损坏",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.2.0/Polaris-1.2.0.apk"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.0/Polaris-1.4.0.apk"
 }

@@ -13,6 +13,7 @@
     <string name="login_url_hint">面板地址</string>
     <string name="login_url_required">請輸入面板地址</string>
     <string name="login_url_invalid">面板地址無效，範例：https://panel.example.com</string>
+    <string name="login_backend_auto_hint">根據面板地址自動識別，可手動切換</string>
 
     <!-- Register -->
     <string name="register_title">建立帳號</string>
