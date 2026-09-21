@@ -99,18 +99,11 @@ internal fun ProxyGroupCard(
                     .padding(horizontal = Dimens.gap.xl, vertical = Dimens.gap.lg),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = SlteIcons.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(if (expanded) Dimens.icon.lg else Dimens.icon.md),
-                )
-                Spacer(modifier = Modifier.width(Dimens.gap.lg))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = group.name,
-                        style = SlteType.body,
-                        fontWeight = FontWeight.Medium,
+                        style = SlteType.title,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

@@ -22,13 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
+import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
@@ -56,11 +56,7 @@ fun ProxyModeCard(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF4A90D9), Color(0xFF7B5EE0)),
-                            ),
-                        ),
+                        .background(SlteColors.current.accentInteractive),
                 )
                 Spacer(modifier = Modifier.width(Dimens.gap.sm))
                 Text(
@@ -92,7 +88,7 @@ fun ProxyModeCard(
                                 modifier = Modifier
                                     .size(18.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF4A90D9)),
+                                    .background(SlteColors.current.accentInteractive),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
@@ -120,7 +116,7 @@ fun ProxyModeCard(
                                 FontWeight.Normal
                             },
                             color = if (selected) {
-                                Color(0xFF4A90D9)
+                                SlteColors.current.accentInteractive
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },

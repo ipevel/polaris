@@ -109,12 +109,10 @@ private fun TrafficContent(
             vertical = Dimens.gap.lg,
         ),
     ) {
-        // 用量总览卡片
+        // 用量总览卡片（有套餐才显示）
         item {
             if (data.hasPlan) {
                 TrafficUsageCard(data = data, onRenew = onRenew)
-            } else {
-                NoPlanCard(onRenew = onRenew)
             }
         }
 
@@ -244,32 +242,6 @@ private fun TrafficUsageCard(
             Spacer(modifier = Modifier.height(Dimens.gap.lg))
             SlteButton(
                 text = stringResource(R.string.plan_renew_button),
-                onClick = onRenew,
-                style = SlteButtonStyle.Medium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun NoPlanCard(onRenew: () -> Unit) {
-    SlteCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = stringResource(R.string.plan_empty),
-                style = SlteType.title,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(modifier = Modifier.height(Dimens.gap.md))
-            SlteButton(
-                text = stringResource(R.string.plan_buy_button),
                 onClick = onRenew,
                 style = SlteButtonStyle.Medium,
             )

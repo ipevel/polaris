@@ -87,16 +87,14 @@ fun AboutScreen(
                         )
                         Spacer(modifier = Modifier.height(Dimens.gap.md))
                         Text(
-                            text = siteInfo?.appName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.app_name),
+                            text = siteInfo?.appName.orEmpty(),
                             style = SlteType.title,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(modifier = Modifier.height(Dimens.gap.sm))
                         Text(
-                            text =
-                            siteInfo?.appDescription?.takeIf { it.isNotBlank() }
-                                ?: stringResource(R.string.about_app_desc),
+                            text = siteInfo?.appDescription.orEmpty(),
                             style = SlteType.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,

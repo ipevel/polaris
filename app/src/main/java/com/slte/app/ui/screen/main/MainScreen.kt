@@ -82,7 +82,7 @@ internal fun MainScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = stringResource(R.string.app_name),
+                            text = data.siteName.ifBlank { stringResource(R.string.app_name) },
                             style = SlteType.title,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -202,14 +202,6 @@ internal fun DashboardContent(
                 vertical = if (compact) Dimens.dashboardScreenPaddingVCompact else Dimens.dashboardScreenPaddingV,
             ),
         ) {
-            if (data.siteName.isNotBlank() || data.siteDescription.isNotBlank()) {
-                item {
-                    SiteInfoCard(
-                        siteName = data.siteName,
-                        siteDescription = data.siteDescription,
-                    )
-                }
-            }
             item {
                 UsageCard(
                     planName = data.planName,
