@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.ui.component.FlagPlaceholder
 import com.slte.app.ui.component.rememberToast
+import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Constants
 import com.slte.app.utils.Dimens
@@ -77,7 +78,7 @@ fun CurrentIpCard(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(if (isOnline) Color(0xFF4BCB1C) else Color(0xFFE53935)),
+                        .background(if (isOnline) SlteColors.current.statusSuccess else SlteColors.current.statusDanger),
                 )
                 Spacer(modifier = Modifier.width(Dimens.gap.sm))
                 Text(

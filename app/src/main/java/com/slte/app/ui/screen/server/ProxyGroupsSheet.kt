@@ -322,9 +322,10 @@ internal fun proxyGroupTypeLabelRes(type: String): Int = when (type.lowercase())
     else -> R.string.proxy_group_type_unknown
 }
 
-/** Anywhere 风格延迟分级着色：绿 <300ms / 黄 300-499ms / 红 ≥500ms */
+/** Anywhere 风格延迟分级着色：绿 <300ms / 黄 300-499ms / 红 ≥500ms，暗色主题自动适配 */
+@Composable
 private fun latencyColor(ms: Int): Color = when {
-    ms < 300 -> Color(0xFF4CAF50)
-    ms < 500 -> Color(0xFFFFC107)
-    else -> Color(0xFFF44336)
+    ms < 300 -> SlteColors.current.statusSuccess
+    ms < 500 -> SlteColors.current.statusSlow
+    else -> SlteColors.current.statusDanger
 }
