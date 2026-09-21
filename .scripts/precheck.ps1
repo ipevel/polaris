@@ -8,7 +8,7 @@
 # class of CI failure that ever happens.
 # =============================================================================
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # 0. Environment (same as CI)
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
@@ -20,7 +20,7 @@ $env:POLARIS_RELEASE_STORE_FILE = $kp
 $env:POLARIS_RELEASE_STORE_PASSWORD = 'build-throwaway'
 $env:POLARIS_RELEASE_KEY_ALIAS = 'build-throwaway'
 $env:POLARIS_RELEASE_KEY_PASSWORD = 'build-throwaway'
-$env:POLARIS_USE_MIRROR = 'false'
+$env:POLARIS_USE_MIRROR = 'true'
 
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -31,7 +31,7 @@ Write-Host "=== Polaris pre-check @ $(Get-Date -Format 'yyyy-MM-dd HH:mm') ===" 
 # 0.5 throwaway keystore (CI static-check step generates it too)
 Write-Host "`n[0/7] generate throwaway keystore ..." -ForegroundColor Cyan
 Remove-Item $kp -ErrorAction SilentlyContinue
-& keytool -genkeypair -keystore $kp -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 -storepass build-throwaway -keypass build-throwaway -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN" 2>&1 | Out-Null
+$null = & keytool -genkeypair -keystore $kp -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 -storepass build-throwaway -keypass build-throwaway -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN" 2>$null
 if ($LASTEXITCODE -ne 0) { $failures.Add("keystore gen failed") }
 
 # 1. Unit tests (history: Dispatchers.IO leak / missing stub mock / ctor params)
