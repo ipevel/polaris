@@ -3,12 +3,14 @@ package com.slte.app.data.remote
 import com.slte.app.BuildConfig
 import com.slte.app.data.local.InMemoryPreferences
 import com.slte.app.data.local.SessionStore
+import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.data.remote.config.RemoteConfigData
 import com.slte.app.support.FakeAuthApi
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import okhttp3.Headers
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
@@ -16,12 +18,14 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import retrofit2.Response
 
 class SubscribeSourceImplTest {
     private val sessionStore = SessionStore(InMemoryPreferences())
     private val remoteConfig = mockk<RemoteConfig>()
     private val authApi = CapturingAuthApi()
-    private val source = SubscribeSourceImpl(sessionStore, authApi, remoteConfig)
+    private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
+    private val source = SubscribeSourceImpl(sessionStore, authApi, remoteConfig, siteInfoStore)
 
     @Test
     fun `http订阅地址被拒且不发起请求`() = runTest {
@@ -111,7 +115,7 @@ class SubscribeSourceImplTest {
         every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
 
         val api = FailingHostAuthApi(failHost = "dead.example.com")
-        val source = SubscribeSourceImpl(sessionStore, api, remoteConfig)
+        val source = SubscribeSourceImpl(sessionStore, api, remoteConfig, siteInfoStore)
 
         assertNotNull(source.fetchSubscribeYaml())
         assertEquals(
@@ -131,7 +135,7 @@ class SubscribeSourceImplTest {
         every { remoteConfig.apiBaseUrl } returns "https://api.example.com"
 
         val api = AlwaysFailingAuthApi()
-        val source = SubscribeSourceImpl(sessionStore, api, remoteConfig)
+        val source = SubscribeSourceImpl(sessionStore, api, remoteConfig, siteInfoStore)
 
         assertNull(source.fetchSubscribeYaml())
         assertEquals("两个候选都应被尝试", 2, api.requestedUrls.size)
@@ -152,6 +156,44 @@ class SubscribeSourceImplTest {
     }
 
     @Test
+    fun `订阅头profile-title驱动站点名并持久化`() = runTest {
+        sessionStore.saveSubscribeUrl("https://api.example.com/sub?token=x")
+        val encoded = java.util.Base64.getEncoder().encodeToString("我的站点".toByteArray(Charsets.UTF_8))
+        val headers =
+            Headers
+                .Builder()
+                .add("profile-title", "base64,$encoded")
+                .add("profile-web-page-url", "https://mysite.example.com")
+                .build()
+        val api =
+            object : FakeAuthApi() {
+                override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? = Response.success("proxies: []".toResponseBody(), headers)
+            }
+        val store = SiteInfoStore(InMemoryPreferences())
+        val target = SubscribeSourceImpl(sessionStore, api, remoteConfig, store)
+
+        assertNotNull(target.fetchSubscribeYaml())
+
+        assertEquals("我的站点", store.siteInfo.value.appName)
+        assertEquals("https://mysite.example.com", store.siteInfo.value.appUrl)
+    }
+
+    @Test
+    fun `非base64的profile-title原样采用`() = runTest {
+        sessionStore.saveSubscribeUrl("https://api.example.com/sub?token=x")
+        val headers = Headers.Builder().add("profile-title", "Plain Site").build()
+        val api =
+            object : FakeAuthApi() {
+                override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? = Response.success("proxies: []".toResponseBody(), headers)
+            }
+        val store = SiteInfoStore(InMemoryPreferences())
+        val target = SubscribeSourceImpl(sessionStore, api, remoteConfig, store)
+
+        assertNotNull(target.fetchSubscribeYaml())
+        assertEquals("Plain Site", store.siteInfo.value.appName)
+    }
+
+    @Test
     fun `getEmail直接读取会话邮箱`() {
         sessionStore.save(authData = "auth", email = "user@example.com", subscribeToken = "tok-123")
 
@@ -168,9 +210,9 @@ class SubscribeSourceImplTest {
     private class CapturingAuthApi : FakeAuthApi() {
         val requestedUrls = mutableListOf<String>()
 
-        override suspend fun fetchSubscribeYaml(url: String): ResponseBody? {
+        override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? {
             requestedUrls += url
-            return "proxies: []".toResponseBody()
+            return Response.success("proxies: []".toResponseBody())
         }
     }
 
@@ -179,17 +221,17 @@ class SubscribeSourceImplTest {
     ) : FakeAuthApi() {
         val requestedUrls = mutableListOf<String>()
 
-        override suspend fun fetchSubscribeYaml(url: String): ResponseBody? {
+        override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? {
             requestedUrls += url
             if (url.contains(failHost)) throw java.io.IOException("host unreachable")
-            return "proxies: []".toResponseBody()
+            return Response.success("proxies: []".toResponseBody())
         }
     }
 
     private class AlwaysFailingAuthApi : FakeAuthApi() {
         val requestedUrls = mutableListOf<String>()
 
-        override suspend fun fetchSubscribeYaml(url: String): ResponseBody? {
+        override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? {
             requestedUrls += url
             throw java.io.IOException("host unreachable")
         }

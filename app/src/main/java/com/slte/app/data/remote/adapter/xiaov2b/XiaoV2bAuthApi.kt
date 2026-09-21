@@ -30,6 +30,7 @@ import com.slte.app.domain.model.parseHostnameForSiteName
 import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
+import retrofit2.Response
 
 class XiaoV2bAuthApi(
     private val authApi: XiaoV2bAuthRetrofit,
@@ -342,7 +343,7 @@ class XiaoV2bAuthApi(
         return response.data.orEmptyLogged("fetchServers").map { it.toServerNode() }
     }
 
-    override suspend fun fetchSubscribeYaml(url: String): okhttp3.ResponseBody? = userApi.fetchSubscribeYaml(url)
+    override suspend fun fetchSubscribeYaml(url: String): Response<okhttp3.ResponseBody>? = userApi.fetchSubscribeYaml(url)
 
     override suspend fun fetchTickets(): List<Ticket> {
         val response = AdapterExecute.typed { userApi.fetchTickets() }

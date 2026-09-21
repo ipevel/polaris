@@ -6,6 +6,7 @@ import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.service.util.sendBroadcastSelf
 import com.slte.app.BuildConfig
+import com.slte.app.di.IoDispatcher
 import com.slte.app.utils.AppLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
@@ -13,8 +14,10 @@ import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 internal fun profileNameFor(email: String?): String {
     if (email.isNullOrBlank()) return "Polaris"
@@ -36,6 +39,7 @@ constructor(
     private val manager: KernelManager,
     private val subscribeSource: SubscribeSource,
     private val remoteConfig: AppRemoteConfig,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
 ) {
 
@@ -50,39 +54,47 @@ constructor(
 
     suspend fun ensureProfile(): UUID? = profileMutex.withLock { ensureProfileLocked() }
 
-    private suspend fun ensureProfileLocked(): UUID? = safe(null, "ensureProfileLocked") {
-        cleanupStalePending()
-        val profiles = manager.profile() ?: return@safe null
-        val subscribeUrl = subscribeUrl() ?: return@safe null
-        val expectedName = profileName()
+    /**
+     * 订阅下载 + 行级清洗是 CPU 密集操作（数 MB 配置可达数秒）。调用方
+     * （toggleConnection / warmUp）运行在主线程 viewModelScope 上，若就地执行
+     * 会冻结 UI 并占住 profileMutex，表现为"连接卡死、按钮关不掉"。
+     * 全程切到 IO 线程执行。
+     */
+    private suspend fun ensureProfileLocked(): UUID? = withContext(ioDispatcher) {
+        safe(null, "ensureProfileLocked") {
+            cleanupStalePending()
+            val profiles = manager.profile() ?: return@safe null
+            val subscribeUrl = subscribeUrl() ?: return@safe null
+            val expectedName = profileName()
 
-        val byName = profiles.queryAll().filter { it.name == expectedName }
-        val current = byName.firstOrNull { it.source == subscribeUrl }
-        byName.filter { it != current }.forEach { profiles.delete(it.uuid) }
-        profiles
-            .queryAll()
-            .filter { it.source == subscribeUrl && it.name != expectedName }
-            .forEach { profiles.delete(it.uuid) }
+            val byName = profiles.queryAll().filter { it.name == expectedName }
+            val current = byName.firstOrNull { it.source == subscribeUrl }
+            byName.filter { it != current }.forEach { profiles.delete(it.uuid) }
+            profiles
+                .queryAll()
+                .filter { it.source == subscribeUrl && it.name != expectedName }
+                .forEach { profiles.delete(it.uuid) }
 
-        val uuid = current?.uuid ?: profiles.create(Profile.Type.Url, expectedName, subscribeUrl)
+            val uuid = current?.uuid ?: profiles.create(Profile.Type.Url, expectedName, subscribeUrl)
 
-        if (current == null || !current.imported) {
-            if (!downloadSubscribeToPending(uuid)) return@safe null
-            profiles.commit(uuid)
+            if (current == null || !current.imported) {
+                if (!downloadSubscribeToPending(uuid)) return@safe null
+                profiles.commit(uuid)
+            }
+            val profile = profiles.queryByUUID(uuid) ?: return@safe null
+            val activeChanged = profiles.queryActive()?.uuid != uuid
+            if (activeChanged) {
+                profiles.setActive(profile)
+            }
+
+            if (activeChanged || injectDirectRule(uuid)) {
+                context.sendBroadcastSelf(
+                    Intent(Intents.ACTION_PROFILE_CHANGED)
+                        .putExtra(Intents.EXTRA_UUID, uuid.toString()),
+                )
+            }
+            uuid
         }
-        val profile = profiles.queryByUUID(uuid) ?: return@safe null
-        val activeChanged = profiles.queryActive()?.uuid != uuid
-        if (activeChanged) {
-            profiles.setActive(profile)
-        }
-
-        if (activeChanged || injectDirectRule(uuid)) {
-            context.sendBroadcastSelf(
-                Intent(Intents.ACTION_PROFILE_CHANGED)
-                    .putExtra(Intents.EXTRA_UUID, uuid.toString()),
-            )
-        }
-        uuid
     }
 
     private suspend fun downloadSubscribeToPending(uuid: UUID): Boolean {
@@ -96,43 +108,45 @@ constructor(
         return true
     }
 
-    suspend fun updateProfile(): ProfileUpdateResult = safe(ProfileUpdateResult.FAILED, "updateProfile") {
-        profileMutex.withLock {
-            val profiles = manager.profile() ?: return@withLock ProfileUpdateResult.FAILED
-            val subscribeUrl = subscribeUrl() ?: return@withLock ProfileUpdateResult.FAILED
-            val expectedName = profileName()
-            val profile =
-                profiles.queryAll().firstOrNull {
-                    it.name == expectedName && it.source == subscribeUrl && it.imported
+    suspend fun updateProfile(): ProfileUpdateResult = withContext(ioDispatcher) {
+        safe(ProfileUpdateResult.FAILED, "updateProfile") {
+            profileMutex.withLock {
+                val profiles = manager.profile() ?: return@withLock ProfileUpdateResult.FAILED
+                val subscribeUrl = subscribeUrl() ?: return@withLock ProfileUpdateResult.FAILED
+                val expectedName = profileName()
+                val profile =
+                    profiles.queryAll().firstOrNull {
+                        it.name == expectedName && it.source == subscribeUrl && it.imported
+                    }
+                if (profile == null) {
+                    AppLog.i("Polaris-Kernel", "updateProfile: 配置不存在，先重新导入")
+                    val uuid = ensureProfileLocked() ?: return@withLock ProfileUpdateResult.FAILED
+                    subscribeSource.saveSubscriptionUpdatedAt()
+                    return@withLock ProfileUpdateResult.UPDATED
                 }
-            if (profile == null) {
-                AppLog.i("Polaris-Kernel", "updateProfile: 配置不存在，先重新导入")
-                val uuid = ensureProfileLocked() ?: return@withLock ProfileUpdateResult.FAILED
-                subscribeSource.saveSubscriptionUpdatedAt()
-                return@withLock ProfileUpdateResult.UPDATED
-            }
 
-            AppLog.d("Polaris-Kernel", "updateProfile: downloading subscription")
-            val yaml = readSubscribeYaml() ?: return@withLock ProfileUpdateResult.FAILED
-            AppLog.d("Polaris-Kernel", "updateProfile: yaml size=${yaml.length}")
+                AppLog.d("Polaris-Kernel", "updateProfile: downloading subscription")
+                val yaml = readSubscribeYaml() ?: return@withLock ProfileUpdateResult.FAILED
+                AppLog.d("Polaris-Kernel", "updateProfile: yaml size=${yaml.length}")
 
-            // 直连域名为空时降级：跳过直连规则注入，订阅更新照常完成，不整体失败
-            val domains = directDomains()
-            val cleaned = sanitizeOrNull(yaml, domains) ?: return@withLock ProfileUpdateResult.FAILED
-            val file = context.filesDir.resolve("imported/${profile.uuid}/config.yaml")
-            if (file.exists() && file.readText() == cleaned) {
-                AppLog.d("Polaris-Kernel", "updateProfile: 订阅内容未变化，跳过内核重载")
+                // 直连域名为空时降级：跳过直连规则注入，订阅更新照常完成，不整体失败
+                val domains = directDomains()
+                val cleaned = sanitizeOrNull(yaml, domains) ?: return@withLock ProfileUpdateResult.FAILED
+                val file = context.filesDir.resolve("imported/${profile.uuid}/config.yaml")
+                if (file.exists() && file.readText() == cleaned) {
+                    AppLog.d("Polaris-Kernel", "updateProfile: 订阅内容未变化，跳过内核重载")
+                    subscribeSource.saveSubscriptionUpdatedAt()
+                    return@withLock ProfileUpdateResult.UNCHANGED
+                }
+                file.parentFile?.mkdirs()
+                atomicWrite(file, cleaned)
+                context.sendBroadcastSelf(
+                    Intent(Intents.ACTION_PROFILE_CHANGED)
+                        .putExtra(Intents.EXTRA_UUID, profile.uuid.toString()),
+                )
                 subscribeSource.saveSubscriptionUpdatedAt()
-                return@withLock ProfileUpdateResult.UNCHANGED
+                ProfileUpdateResult.UPDATED
             }
-            file.parentFile?.mkdirs()
-            atomicWrite(file, cleaned)
-            context.sendBroadcastSelf(
-                Intent(Intents.ACTION_PROFILE_CHANGED)
-                    .putExtra(Intents.EXTRA_UUID, profile.uuid.toString()),
-            )
-            subscribeSource.saveSubscriptionUpdatedAt()
-            ProfileUpdateResult.UPDATED
         }
     }
 

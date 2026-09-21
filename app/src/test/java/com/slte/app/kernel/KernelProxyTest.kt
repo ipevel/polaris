@@ -49,17 +49,38 @@ class KernelProxyTest {
     fun `代理模式映射为界面常量`() = runTest(mainRule.dispatcher) {
         val proxy = proxy()
 
+        // proxyMode 以内核真实隧道状态为准（override 只是期望值）
+        val cases =
+            listOf(
+                TunnelState.Mode.Global to Constants.PROXY_MODE_GLOBAL,
+                TunnelState.Mode.Direct to Constants.PROXY_MODE_DIRECT,
+                TunnelState.Mode.Script to Constants.PROXY_MODE_SCRIPT,
+                TunnelState.Mode.Rule to Constants.DEFAULT_PROXY_MODE,
+            )
+        cases.forEach { (mode, expected) ->
+            every { clash.queryTunnelState() } returns TunnelState(mode = mode)
+            every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(mode)
+            assertEquals(expected, proxy.proxyMode())
+        }
+    }
+
+    @Test
+    fun `隧道状态与覆盖不一致时以真实隧道为准`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        // 不一致时不许用 override 掩盖实际生效模式（历史"全局不生效"的遮蔽源）
+        every { clash.queryTunnelState() } returns TunnelState(mode = TunnelState.Mode.Rule)
         every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Global)
-        assertEquals(Constants.PROXY_MODE_GLOBAL, proxy.proxyMode())
 
-        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Direct)
-        assertEquals(Constants.PROXY_MODE_DIRECT, proxy.proxyMode())
-
-        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Script)
-        assertEquals(Constants.PROXY_MODE_SCRIPT, proxy.proxyMode())
-
-        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Rule)
         assertEquals(Constants.DEFAULT_PROXY_MODE, proxy.proxyMode())
+    }
+
+    @Test
+    fun `隧道状态不可读时回落到覆盖模式`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        every { clash.queryTunnelState() } throws IllegalStateException("tunnel unavailable")
+        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Global)
+
+        assertEquals(Constants.PROXY_MODE_GLOBAL, proxy.proxyMode())
     }
 
     @Test
@@ -104,6 +125,33 @@ class KernelProxyTest {
     @Test
     fun `无持久化记录时不同步模式`() = runTest(mainRule.dispatcher) {
         val proxy = proxy()
+
+        proxy.ensurePersistedMode()
+        advanceUntilIdle()
+
+        verify(exactly = 0) { clash.patchOverride(any(), any()) }
+    }
+
+    @Test
+    fun `持久化记录与覆盖不一致时补写`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        prefs.edit().putString("proxy_mode", "全局").commit()
+        every { clash.queryTunnelState() } returns TunnelState(mode = TunnelState.Mode.Global)
+        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Rule)
+
+        proxy.ensurePersistedMode()
+        advanceUntilIdle()
+
+        verify { clash.patchOverride(Clash.OverrideSlot.Persist, match { it.mode == TunnelState.Mode.Global }) }
+    }
+
+    @Test
+    fun `覆盖已正确时不重复补写`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        prefs.edit().putString("proxy_mode", "全局").commit()
+        // override 与隧道都已全局：不应再 patchOverride（避免多余重载）
+        every { clash.queryTunnelState() } returns TunnelState(mode = TunnelState.Mode.Global)
+        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(TunnelState.Mode.Global)
 
         proxy.ensurePersistedMode()
         advanceUntilIdle()

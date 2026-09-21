@@ -21,6 +21,7 @@ import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
+import retrofit2.Response
 
 /**
  * 双后端运行时代理：同时持有 XiaoV2b 与 Xboard 两套 [AuthApi] 适配器，
@@ -136,7 +137,7 @@ class DualBackendAuthApi(
 
     override suspend fun fetchServers(): List<ServerNode> = active().fetchServers()
 
-    override suspend fun fetchSubscribeYaml(url: String): okhttp3.ResponseBody? = active().fetchSubscribeYaml(url)
+    override suspend fun fetchSubscribeYaml(url: String): Response<okhttp3.ResponseBody>? = active().fetchSubscribeYaml(url)
 
     override suspend fun fetchTickets(): List<Ticket> = active().fetchTickets()
 

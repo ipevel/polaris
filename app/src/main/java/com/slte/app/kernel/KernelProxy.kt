@@ -60,14 +60,18 @@ constructor(
     suspend fun proxyMode(): String? = safe(null, "proxyMode") {
         val clash = manager.clash() ?: return@safe null
 
+        // 优先读内核真实隧道模式：override 只是"期望值"，reload 竞态/失败时
+        // 两者会不一致——若 override 优先，UI 显示用户所选而内核仍是旧模式，
+        // 表现为"全局不生效"却无任何感知
         val mode =
-            clash.queryOverride(Clash.OverrideSlot.Persist).mode
-                ?: clash.queryTunnelState().mode
+            runCatching { clash.queryTunnelState().mode }.getOrNull()
+                ?: clash.queryOverride(Clash.OverrideSlot.Persist).mode
         when (mode) {
             TunnelState.Mode.Global -> Constants.PROXY_MODE_GLOBAL
             TunnelState.Mode.Rule -> Constants.DEFAULT_PROXY_MODE
             TunnelState.Mode.Direct -> Constants.PROXY_MODE_DIRECT
             TunnelState.Mode.Script -> Constants.PROXY_MODE_SCRIPT
+            null -> null
         }
     }
 
@@ -95,15 +99,22 @@ constructor(
         val clash = manager.clash() ?: return@safe
         val saved = modePrefs.getString(KEY_PROXY_MODE, null) ?: return@safe
         val target = tunnelModeOf(saved)
-        val current = clash.queryOverride(Clash.OverrideSlot.Persist).mode
-        if (current != target) {
-            val override =
-                clash.queryOverride(Clash.OverrideSlot.Persist).apply {
-                    this.mode = target
-                }
-            clash.patchOverride(Clash.OverrideSlot.Persist, override)
+        val overrideNow = clash.queryOverride(Clash.OverrideSlot.Persist)
+        if (overrideNow.mode != target) {
+            // override 落后于用户选择（首连/竞态）：补写并触发重载
+            clash.patchOverride(Clash.OverrideSlot.Persist, overrideNow.apply { mode = target })
+            AppLog.d("Polaris-Kernel", "ensurePersistedMode: override synced $saved")
+        }
+        // 核验真实隧道模式：override 已正确但隧道未跟上（reload 失败/竞态）
+        // 时重发一次变更广播触发重载。没有这一步，用户切到全局后内核可能
+        // 永远停在规则模式且 UI 无感知（历史"全局代理不生效"）。
+        val tunnel = runCatching { clash.queryTunnelState().mode }.getOrNull()
+        if (tunnel != null && tunnel != target) {
+            AppLog.w(
+                "Polaris-Kernel",
+                "ensurePersistedMode: tunnel=$tunnel != target=$target，重发 override 变更触发重载",
+            )
             context.sendBroadcastSelf(Intent(Intents.ACTION_OVERRIDE_CHANGED))
-            AppLog.d("Polaris-Kernel", "ensurePersistedMode: synced $saved")
         }
     }
 

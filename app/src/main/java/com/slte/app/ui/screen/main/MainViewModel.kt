@@ -4,12 +4,12 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.local.ThemeMode
 import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
-import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
@@ -48,6 +48,7 @@ constructor(
     private val subscriptionUpdater: SubscriptionUpdater,
     private val dataWriter: DashboardDataWriter,
     private val authRepository: AuthRepository,
+    private val siteInfoStore: SiteInfoStore,
     private val themePreference: ThemePreference,
 ) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
@@ -72,20 +73,10 @@ constructor(
         observeProfileLoaded()
         viewModelScope.launch { subscriptionUpdater.maybeSilentUpdate(_data, viewModelScope) }
 
+        // 站点名称/描述与订阅生命周期挂钩：订阅头（profile-title）+ 面板
+        // comm/config 在每次订阅拉取时更新 SiteInfoStore，这里只观察回放
         viewModelScope.launch {
-            val info = authRepository.fetchSiteInfo(force = true)
-            applySiteInfo(info)
-        }
-
-        // 登录成功后面板地址/凭据才可用，此时强制重新拉取站点名称与描述，
-        // 保证顶栏与关于页显示的是面板下发的动态站点信息而非缓存/默认值
-        viewModelScope.launch {
-            authRepository.sessionState.collect { state ->
-                if (state is SessionState.LoggedIn) {
-                    val info = authRepository.fetchSiteInfo(force = true)
-                    applySiteInfo(info)
-                }
-            }
+            siteInfoStore.siteInfo.collect { applySiteInfo(it) }
         }
 
         viewModelScope.launch {
@@ -220,7 +211,17 @@ constructor(
 
     fun toggleConnection() {
         val current = _data.value
-        if (current.isConnecting) return
+        if (current.isConnecting) {
+            // 连接中再点 = 取消连接。否则按钮在整个等待窗口内是死的，
+            // 隧道起不来时用户只能杀 App（历史反馈："连不上也关不掉"）
+            AppLog.i("Polaris-Main", "toggleConnection: 用户取消连接中")
+            tunnelWatchJob?.cancel()
+            kernelManager.stopVpn()
+            _data.update {
+                it.copy(isConnecting = false, isConnected = false, errorMessageRes = null)
+            }
+            return
+        }
 
         if (!current.hasPlan) return
 
@@ -262,6 +263,15 @@ constructor(
         _data.update { it.copy(proxyMode = mode) }
         viewModelScope.launch {
             kernelProxy.setProxyMode(mode)
+            if (mode == Constants.PROXY_MODE_GLOBAL) {
+                // reload 完成后确保 GLOBAL 组选到业务策略组（否则全局模式下
+                // GLOBAL 可能停在 DIRECT，表现同"全局不生效"）
+                kernelProxy.ensureGlobalSelection()
+            }
+            // 稍等重载窗口后跑一次自愈核验（ensurePersistedMode 会比对真实
+            // 隧道模式，不一致时自动重发变更）；profileLoaded 也会再触发
+            delay(RELOAD_SETTLE_MS)
+            refreshKernelInfo()
         }
     }
 
@@ -286,5 +296,8 @@ constructor(
 
         /** 每轮就绪探测窗口（awaitTunnelReady 内部 300ms 轮询）+ 轮间间隔 */
         const val TUNNEL_WATCH_POLL_MS = 5_000L
+
+        /** 代理模式切换后等待内核 reload 完成的窗口，过后跑自愈核验 */
+        const val RELOAD_SETTLE_MS = 3_000L
     }
 }

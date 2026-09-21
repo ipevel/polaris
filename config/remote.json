@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.3",
-  "update_changelog_title": "Polaris 1.4.3 — 登录与连接体验修复",
-  "update_changelog": "- fix: 首次登录被面板地址确认框阻塞，现首次设置不再弹确认\n- fix: 连接后隧道就绪持续监听（大订阅首连不再卡在\"连接中\"）\n- fix: 登录成功后强制刷新面板站点名称/描述\n- fix: 登录页移除冗余的后端类型切换器（保留自动识别）\n- fix: 应用内更新管线修复（SHA-256 校验落地 + 更新源白名单默认值）\n- fix: 应用图标更新为深色版北极星\n- chore: 版本号升到 1.4.3 (versionCode 17)",
+  "update_version": "1.4.4",
+  "update_changelog_title": "Polaris 1.4.4 — 连接卡死与全局模式修复",
+  "update_changelog": "- fix: 订阅下载/清洗移出主线程（面板可达时点连接卡死、按钮关不掉的根因）\n- fix: 连接中再点连接按钮=取消连接，不再死锁\n- fix: 代理模式以内核真实状态为准显示，切换全局后自愈核验（全局不生效老bug）\n- fix: 应用名改回英文 Polaris\n- chore: 版本号升到 1.4.4 (versionCode 18)",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.3/Polaris-1.4.3.apk",
-  "update_apk_sha256": "6375dc4d38823245e4f67cea4b2cdf4f72ff6498409fe51bd44fb54df131555c"
+  "update_apk_url": "",
+  "update_apk_sha256": ""
 }

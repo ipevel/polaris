@@ -35,6 +35,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import retrofit2.Response
 
 class XboardAuthApi(
     private val authApi: XboardAuthRetrofit,
@@ -359,7 +360,7 @@ class XboardAuthApi(
         return response.data.orEmptyLogged("fetchServers").map { it.toServerNode() }
     }
 
-    override suspend fun fetchSubscribeYaml(url: String): okhttp3.ResponseBody? = userApi.fetchSubscribeYaml(url)
+    override suspend fun fetchSubscribeYaml(url: String): Response<okhttp3.ResponseBody>? = userApi.fetchSubscribeYaml(url)
 
     override suspend fun fetchTickets(): List<Ticket> {
         val response = AdapterExecute.typed { userApi.fetchTickets() }

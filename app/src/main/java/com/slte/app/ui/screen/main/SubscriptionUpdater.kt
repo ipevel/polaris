@@ -1,6 +1,8 @@
 package com.slte.app.ui.screen.main
 
 import com.slte.app.R
+import com.slte.app.data.local.SiteInfoStore
+import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.OrderRepository
 import com.slte.app.data.repository.ServerRepository
 import com.slte.app.data.repository.SubscribeRepository
@@ -30,6 +32,8 @@ class SubscriptionUpdater
 @Inject
 constructor(
     private val subscribeRepository: SubscribeRepository,
+    private val authRepository: AuthRepository,
+    private val siteInfoStore: SiteInfoStore,
     private val kernelConfig: KernelConfig,
     private val serverRepository: ServerRepository,
     private val kernelProxy: KernelProxy,
@@ -57,6 +61,7 @@ constructor(
                     val kernelResult = updateProfileWithFreshLink()
                     val kernelOk = kernelResult != ProfileUpdateResult.FAILED
                     if (kernelOk) {
+                        refreshSiteInfoFromPanel()
                         serverRepository.invalidateCache()
                         dataWriter.loadServers(scope, data)
 
@@ -103,6 +108,7 @@ constructor(
                     if (!info.hasPlan) return@fold
                     val result = kernelConfig.updateProfile()
                     if (result != ProfileUpdateResult.FAILED) {
+                        refreshSiteInfoFromPanel()
                         serverRepository.invalidateCache()
                         dataWriter.loadServers(scope, data)
                         scope.launch { autoSpeedTestAfterUpdate(configChanged = true) }
@@ -182,6 +188,7 @@ constructor(
                 },
             )
             if (hasPlan && kernelResult != ProfileUpdateResult.FAILED) {
+                refreshSiteInfoFromPanel()
                 scope.launch { autoSpeedTestAfterUpdate(configChanged = kernelResult == ProfileUpdateResult.UPDATED) }
             }
         }
@@ -203,6 +210,16 @@ constructor(
                 }
             },
         )
+    }
+
+    /**
+     * 订阅更新成功后刷新站点描述/官网（面板 guest/comm/config）。
+     * 站点名以订阅响应头为准（SubscribeSourceImpl 已随拉取更新），
+     * 这里只补 headers 携带不了的描述字段，写入 SiteInfoStore 持久化。
+     */
+    private suspend fun refreshSiteInfoFromPanel() {
+        val info = authRepository.fetchSiteInfo(force = true)
+        siteInfoStore.updateFromPanelConfig(description = info.appDescription, url = info.appUrl)
     }
 
     private suspend fun autoSpeedTestAfterUpdate(configChanged: Boolean) {

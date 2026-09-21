@@ -63,7 +63,7 @@ class KernelConfigTest {
         every { remoteConfig.apiBaseUrl } returns baseUrl
         every { remoteConfig.directDomains } returns domains
         every { subscribeSource.getEmail() } returns email
-        return KernelConfig(reporter, manager, subscribeSource, remoteConfig, context)
+        return KernelConfig(reporter, manager, subscribeSource, remoteConfig, mainRule.dispatcher, context)
     }
 
     private fun profile(

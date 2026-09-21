@@ -1,6 +1,9 @@
 package com.slte.app.ui.screen.main
 
 import com.slte.app.R
+import com.slte.app.data.local.InMemoryPreferences
+import com.slte.app.data.local.SiteInfoStore
+import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.OrderRepository
 import com.slte.app.data.repository.ServerRepository
 import com.slte.app.data.repository.SubscribeRepository
@@ -43,6 +46,8 @@ class SubscriptionUpdaterTest {
     val mainRule = MainDispatcherRule()
 
     private val subscribeRepository = mockk<SubscribeRepository>(relaxed = true)
+    private val authRepository = mockk<AuthRepository>(relaxed = true)
+    private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
     private val kernelConfig = mockk<KernelConfig>(relaxed = true)
     private val serverRepository = mockk<ServerRepository>(relaxed = true)
     private val kernelProxy = mockk<KernelProxy>(relaxed = true)
@@ -61,6 +66,8 @@ class SubscriptionUpdaterTest {
 
     private fun updater() = SubscriptionUpdater(
         subscribeRepository = subscribeRepository,
+        authRepository = authRepository,
+        siteInfoStore = siteInfoStore,
         kernelConfig = kernelConfig,
         serverRepository = serverRepository,
         kernelProxy = kernelProxy,

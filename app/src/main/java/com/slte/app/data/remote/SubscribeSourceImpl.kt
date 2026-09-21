@@ -1,6 +1,7 @@
 package com.slte.app.data.remote
 
 import com.slte.app.data.local.SessionStore
+import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.api.AuthApi
 import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.kernel.SubscribeSource
@@ -11,6 +12,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.ResponseBody
+import retrofit2.Response
 
 @Singleton
 class SubscribeSourceImpl
@@ -19,6 +21,7 @@ constructor(
     private val sessionStore: SessionStore,
     private val authApi: AuthApi,
     private val remoteConfig: RemoteConfig,
+    private val siteInfoStore: SiteInfoStore,
 ) : SubscribeSource {
     override fun getEmail(): String? = sessionStore.getEmail()
 
@@ -30,7 +33,13 @@ constructor(
         }
         for (url in candidates) {
             try {
-                return authApi.fetchSubscribeYaml(url)
+                val response = authApi.fetchSubscribeYaml(url) ?: continue
+                if (!response.isSuccessful) {
+                    AppLog.w(TAG, "订阅下载失败 host=${hostOf(url)} code=${response.code()}，尝试下一个候选地址")
+                    continue
+                }
+                captureSiteInfoFromHeaders(response)
+                return response.body()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -42,6 +51,34 @@ constructor(
         }
         AppLog.w(TAG, "全部 ${candidates.size} 个候选订阅地址均失败")
         return null
+    }
+
+    /**
+     * 从订阅响应头提取站点品牌信息（Clash 客户端通用约定）：
+     * - `profile-title`：站点名，`base64,<b64>` 前缀表示 base64 编码
+     * - `profile-web-page-url`：站点官网
+     * 首次订阅登录时拉取并记住，之后每次重新拉取订阅时随响应更新。
+     */
+    private fun captureSiteInfoFromHeaders(response: Response<ResponseBody>) {
+        val title = runCatching { response.headers()["profile-title"] }.getOrNull()
+        val name = parseProfileTitle(title)
+        val webPageUrl = runCatching { response.headers()["profile-web-page-url"] }.getOrNull()
+        if (name == null && webPageUrl.isNullOrBlank()) return
+        siteInfoStore.updateFromSubscription(name = name, url = webPageUrl)
+        AppLog.d(TAG, "captureSiteInfo: name=${sanitizeLog(name ?: "-")} url=${sanitizeLog(webPageUrl ?: "-")}")
+    }
+
+    private fun parseProfileTitle(raw: String?): String? {
+        val value = raw?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+        val decoded =
+            if (value.startsWith("base64:", ignoreCase = true) || value.startsWith("base64,", ignoreCase = true)) {
+                runCatching {
+                    String(java.util.Base64.getMimeDecoder().decode(value.substring(7).trim()), Charsets.UTF_8)
+                }.getOrNull() ?: return null
+            } else {
+                value
+            }
+        return decoded.trim().takeIf { it.isNotEmpty() && it.length <= 128 }
     }
 
     /**

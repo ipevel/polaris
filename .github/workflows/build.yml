@@ -16,7 +16,7 @@ on:
       appName:
         description: 应用名称（桌面显示名）
         required: true
-        default: 北辰
+        default: Polaris
       applicationId:
         description: 包名
         required: true

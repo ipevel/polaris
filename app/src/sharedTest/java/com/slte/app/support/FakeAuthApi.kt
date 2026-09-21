@@ -20,6 +20,7 @@ import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
 import okhttp3.ResponseBody
+import retrofit2.Response
 
 open class FakeAuthApi : AuthApi {
     var couponResult: CouponCheckResultDto? = null
@@ -174,7 +175,7 @@ open class FakeAuthApi : AuthApi {
         pageSize: Int,
     ): List<Notice> = unsupported()
 
-    override suspend fun fetchSubscribeYaml(url: String): ResponseBody? = unsupported()
+    override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? = unsupported()
 
     override suspend fun fetchTrafficLog(): List<TrafficLogRecord> = emptyList()
 

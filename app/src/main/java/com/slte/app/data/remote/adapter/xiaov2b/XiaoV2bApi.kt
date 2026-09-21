@@ -2,6 +2,7 @@ package com.slte.app.data.remote.adapter.xiaov2b
 
 import com.slte.app.data.remote.api.ApiHeaders
 import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -135,7 +136,7 @@ interface XiaoV2bUserRetrofit {
     )
     suspend fun fetchSubscribeYaml(
         @Url url: String,
-    ): ResponseBody
+    ): Response<ResponseBody>
 
     @POST("user/update")
     suspend fun updateUserSettings(

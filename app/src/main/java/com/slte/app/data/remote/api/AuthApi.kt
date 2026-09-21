@@ -19,6 +19,7 @@ import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
+import retrofit2.Response
 
 interface AuthApi {
     suspend fun login(
@@ -121,7 +122,8 @@ interface AuthApi {
 
     suspend fun fetchServers(): List<ServerNode>
 
-    suspend fun fetchSubscribeYaml(url: String): okhttp3.ResponseBody?
+    /** 返回 Response 以暴露订阅响应头（profile-title / profile-web-page-url 驱动站点信息） */
+    suspend fun fetchSubscribeYaml(url: String): Response<okhttp3.ResponseBody>?
 
     suspend fun fetchTickets(): List<Ticket>
 

@@ -6,8 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.BuildConfig
 import com.slte.app.R
+import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.config.RemoteConfig
-import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelProxy
@@ -91,7 +91,7 @@ constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val remoteConfig: RemoteConfig,
     private val kernelProxy: KernelProxy,
-    private val authRepository: AuthRepository,
+    private val siteInfoStore: SiteInfoStore,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
@@ -130,10 +130,10 @@ constructor(
             }
         }
 
+        // 站点名/描述由订阅生命周期维护（订阅头 + comm/config 写入 SiteInfoStore），
+        // 关于页只观察回放
         viewModelScope.launch {
-            // 关于页展示的是面板下发的动态站点名/描述；force=true 确保每次进入
-            // 都取最新（登录切换面板后缓存里的旧站点信息不能再用）
-            _siteInfo.value = authRepository.fetchSiteInfo(force = true)
+            siteInfoStore.siteInfo.collect { _siteInfo.value = it }
         }
     }
 

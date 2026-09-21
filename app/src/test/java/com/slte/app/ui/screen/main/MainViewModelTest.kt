@@ -1,6 +1,8 @@
 package com.slte.app.ui.screen.main
 
 import com.slte.app.R
+import com.slte.app.data.local.InMemoryPreferences
+import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.local.ThemeMode
 import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +39,7 @@ class MainViewModelTest {
     private val subscriptionUpdater = mockk<SubscriptionUpdater>(relaxed = true)
     private val dataWriter = mockk<DashboardDataWriter>(relaxed = true)
     private val authRepository = mockk<AuthRepository>(relaxed = true)
+    private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
     private val themePreference = mockk<ThemePreference>(relaxed = true)
 
     private fun viewModel(
@@ -53,7 +57,7 @@ class MainViewModelTest {
                 DashboardData(hasPlan = hasPlan, isConnected = connected)
         }
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, themePreference)
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, siteInfoStore, themePreference)
     }
 
     /**
@@ -126,11 +130,16 @@ class MainViewModelTest {
         vm.toggleConnection()
         advanceUntilIdle()
 
+        // 连接中再点 = 取消：只发一次 startVpn，且随后 stopVpn
         verify(exactly = 1) { kernelManager.startVpn() }
+        verify { kernelManager.stopVpn() }
+        assertFalse(vm.data.value.isConnecting)
     }
 
     @Test
     fun `切换代理模式写入状态并通知内核`() = runTest(mainRule.dispatcher) {
+        // refreshKernelInfo 会回读内核模式（relaxed mock 对 String 返回空串），显式打桩
+        coEvery { kernelProxy.proxyMode() } returns "global"
         val vm = viewModel()
         advanceUntilIdle()
 
@@ -160,6 +169,7 @@ class MainViewModelTest {
                 subscriptionUpdater,
                 dataWriter,
                 authRepository,
+                siteInfoStore,
                 themePreference,
             )
         advanceUntilIdle()
@@ -190,6 +200,7 @@ class MainViewModelTest {
                 subscriptionUpdater,
                 dataWriter,
                 authRepository,
+                siteInfoStore,
                 themePreference,
             )
         advanceUntilIdle()
