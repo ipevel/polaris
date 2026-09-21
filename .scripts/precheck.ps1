@@ -97,7 +97,7 @@ Write-Host "`n[5/7] 裸 Icons.* 引用检查 ..." -ForegroundColor Cyan
 $files = Get-ChildItem -Path 'app\src\main\java' -Recurse -Include *.kt | Where-Object { $_.Name -ne 'SlteIcons.kt' }
 $bare = @()
 foreach ($f in $files) {
-    $m = Select-String -Path $f.FullName -Pattern 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.'
+    $m = Select-String -Path $f.FullName -CaseSensitive -Pattern 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.'
     if ($m) { $bare += $m }
 }
 if ($bare.Count -gt 0) {
