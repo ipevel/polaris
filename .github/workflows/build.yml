@@ -203,9 +203,11 @@ jobs:
           POLARIS_USE_MIRROR: 'false'
 
           POLARIS_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
-          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}
-          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}
-          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.POLARIS_RELEASE_KEY_PASSWORD }}
+          # 注意：GitHub Secrets 值不可读复制，secret 名保留 SLTE_ 前缀（与仓库实际配置一致），
+          # 仅 env 变量名使用 POLARIS_ 前缀传入 Gradle。
+          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}
+          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.SLTE_RELEASE_KEY_ALIAS }}
+          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.SLTE_RELEASE_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
 
