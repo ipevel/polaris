@@ -3,10 +3,12 @@ package com.slte.app.ui.screen.main
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,7 +42,7 @@ fun ProxyModeCard(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().fillMaxHeight(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = Dimens.cardElevation,
@@ -49,6 +51,7 @@ fun ProxyModeCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
+            verticalArrangement = Arrangement.Center,
         ) {
             // 行1：渐变圆点 + 标题（与当前IP卡的状态点视觉统一）
             Row(verticalAlignment = Alignment.CenterVertically) {

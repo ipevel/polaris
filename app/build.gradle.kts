@@ -40,7 +40,7 @@ fun slteHost(url: String): String? = url
     .takeIf { it.isNotEmpty() }
     ?.lowercase()
 
-val slteAppName = slteValue("POLARIS_APP_NAME") ?: "北辰"
+val slteAppName = slteValue("POLARIS_APP_NAME") ?: "Polaris"
 val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
 val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 1
 val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.0.0"

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">北辰</string>
+    <string name="app_name">Polaris</string>
 
     <!-- Login -->
     <string name="login_welcome">歡迎登入</string>

@@ -109,14 +109,21 @@ fun XboardLoginData.toDomainLoginResponse() = LoginResponseDto(
 @Serializable
 data class XboardSiteConfig(
     @SerialName("app_name")
-    val appName: String? = null,
+    private val _appName: String? = null,
+    @SerialName("title")
+    private val _title: String? = null,
+    @SerialName("site_name")
+    private val _siteName: String? = null,
     @SerialName("app_description")
     val appDescription: String? = null,
     @SerialName("app_url")
     val appUrl: String? = null,
     val is_email_verify: Int? = 0,
     val is_invite_force: Int? = 0,
-)
+) {
+    /** V2Board/Xboard 不返回 app_name，但部分 fork 会返回 title/site_name */
+    val appName: String? get() = _appName ?: _title ?: _siteName
+}
 
 @Serializable
 data class XboardUserInfoData(

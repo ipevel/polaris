@@ -2,10 +2,12 @@ package com.slte.app.ui.screen.main
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -50,7 +52,7 @@ fun CurrentIpCard(
     val isOnline = currentIp.isNotBlank() && currentIp != Constants.PLACEHOLDER_DASH
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().fillMaxHeight(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = Dimens.cardElevation,
@@ -67,6 +69,7 @@ fun CurrentIpCard(
                     },
                 )
                 .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
+            verticalArrangement = Arrangement.Center,
         ) {
             // 行1：状态点 + 标题 + 旗帜
             Row(verticalAlignment = Alignment.CenterVertically) {

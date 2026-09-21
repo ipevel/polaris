@@ -8,8 +8,8 @@
 # =====================================================================
 
 # ---------------- 应用信息 ----------------
-# 应用显示名（桌面图标下的名称，覆盖默认 "北辰"；图标需自行替换 res/mipmap 下的启动图标）
-POLARIS_APP_NAME=北辰
+# 应用显示名（桌面图标下的名称，覆盖默认 "Polaris"；图标需自行替换 res/mipmap 下的启动图标）
+POLARIS_APP_NAME=Polaris
 # 应用包名（applicationId，默认 com.polaris.app；源码 namespace 保持 com.slte.app 不变）
 POLARIS_APPLICATION_ID=com.polaris.app
 # 版本号（versionCode 整数 / versionName 显示版本，如 1.0.0）

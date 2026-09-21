@@ -26,6 +26,7 @@ import com.slte.app.domain.model.SiteInfo
 import com.slte.app.domain.model.Ticket
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.domain.model.TrafficLogRecord
+import com.slte.app.domain.model.parseHostnameForSiteName
 import com.slte.app.utils.ApiErrors
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.CancellationException
@@ -83,8 +84,10 @@ class XiaoV2bAuthApi(
             return SiteInfo()
         }
         val data = response.data ?: return SiteInfo()
+        val appName = data.appName?.takeIf { it.isNotBlank() }
+            ?: data.appUrl.parseHostnameForSiteName()
         return SiteInfo(
-            appName = data.appName?.takeIf { it.isNotBlank() },
+            appName = appName,
             appDescription = data.appDescription?.takeIf { it.isNotBlank() },
             appUrl = data.appUrl?.takeIf { it.isNotBlank() },
         )

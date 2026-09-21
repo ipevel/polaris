@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">北辰</string>
+    <string name="app_name">Polaris</string>
 
     <!-- Login -->
     <string name="login_welcome">欢迎登录</string>
@@ -213,7 +213,7 @@
 
     <!-- About (关于软件) -->
     <string name="about_title">关于软件</string>
-    <string name="about_app_desc">北辰（Polaris）是一款基于 mihomo 内核的轻量代理客户端，如北极星般稳定可靠，为你指引网络航向</string>
+    <string name="about_app_desc">Polaris — a lightweight mihomo (Clash) based proxy client.</string>
     <string name="about_app_version">应用版本</string>
     <string name="about_kernel_version">内核版本</string>
     <string name="about_check_update">检查更新</string>
