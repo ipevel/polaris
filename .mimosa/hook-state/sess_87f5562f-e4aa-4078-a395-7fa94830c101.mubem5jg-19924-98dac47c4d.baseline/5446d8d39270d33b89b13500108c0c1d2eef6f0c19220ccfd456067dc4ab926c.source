@@ -1,0 +1,17 @@
+package cc.polaris.desktop.panel.remote
+
+/**
+ * 桌面版编译期环境常量（R2）：替代安卓 `com.slte.app.BuildConfig` 在面板网络栈里的三个取值。
+ *
+ * - [DEBUG] 固定 false（发布语义）；安卓对应 BuildConfig.DEBUG；
+ * - [SUBSCRIBE_PATH] 对应 BuildConfig.SUBSCRIBE_PATH；
+ * - [USER_AGENT] 对应 BuildConfig.USER_AGENT（与批1 ApiHeaders.USER_AGENT_VALUE 保持同值）。
+ */
+object DeskEnv {
+
+    const val DEBUG = false
+
+    const val SUBSCRIBE_PATH = "/api/v1/client/subscribe"
+
+    const val USER_AGENT = "ClashMetaForAndroid/2.11.32"
+}

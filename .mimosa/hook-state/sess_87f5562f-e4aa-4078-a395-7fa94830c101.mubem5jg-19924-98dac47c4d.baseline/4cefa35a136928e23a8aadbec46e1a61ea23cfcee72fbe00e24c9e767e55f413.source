@@ -1,0 +1,250 @@
+package cc.polaris.desktop.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import cc.polaris.desktop.panel.PanelGraph
+import cc.polaris.desktop.panel.domain.model.Notice
+import cc.polaris.desktop.panel.domain.model.OrderInfo
+import cc.polaris.desktop.panel.domain.model.Ticket
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private fun fmtDate(epochSeconds: Long): String =
+    if (epochSeconds <= 0) "" else DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        .format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()))
+
+/**
+ * 面板服务区（T15i，只读骨架）：公告 / 工单 / 订单。
+ * 挂在 MoreScreen；购买流、工单回复等交互项为后续增强。
+ */
+@Composable
+fun PanelServicesSection() {
+    var showNotices by remember { mutableStateOf(false) }
+    var showTickets by remember { mutableStateOf(false) }
+    var showOrders by remember { mutableStateOf(false) }
+
+    CommonCard(Modifier.fillMaxWidth()) {
+        CardHeader("面板服务")
+        Spacer(Modifier.height(6.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ServiceEntry(
+                title = "公告",
+                subtitle = "面板通知与维护公告",
+                badge = "公",
+                color = BettboxColors.accent,
+                onClick = { showNotices = true },
+            )
+            ServiceEntry(
+                title = "工单",
+                subtitle = "问题反馈与客服对话",
+                badge = "工",
+                color = BettboxColors.downColor,
+                onClick = { showTickets = true },
+            )
+            ServiceEntry(
+                title = "订单",
+                subtitle = "购买记录与订单状态",
+                badge = "订",
+                color = BettboxColors.upColor,
+                onClick = { showOrders = true },
+            )
+        }
+    }
+
+    if (showNotices) {
+        SimpleListDialog(
+            title = "公告",
+            onDismiss = { showNotices = false },
+            loader = { withContext(Dispatchers.IO) { PanelGraph.subscribeRepository.fetchNotices() } },
+        ) { notices ->
+            items(notices, key = { it.id }) { notice ->
+                NoticeRow(notice)
+            }
+        }
+    }
+
+    if (showTickets) {
+        SimpleListDialog(
+            title = "工单",
+            onDismiss = { showTickets = false },
+            loader = { withContext(Dispatchers.IO) { PanelGraph.ticketRepository.fetchTickets() } },
+        ) { tickets ->
+            items(tickets, key = { it.id }) { ticket ->
+                TicketRow(ticket)
+            }
+        }
+    }
+
+    if (showOrders) {
+        SimpleListDialog(
+            title = "订单",
+            onDismiss = { showOrders = false },
+            loader = { withContext(Dispatchers.IO) { PanelGraph.orderRepository.fetchOrders() } },
+        ) { orders ->
+            items(orders, key = { it.id }) { order ->
+                OrderRow(order)
+            }
+        }
+    }
+}
+
+/** 服务入口行：色块图标 + 标题 + 副题 + 箭头（可点击进弹窗）。 */
+@Composable
+private fun ServiceEntry(title: String, subtitle: String, badge: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.width(36.dp).height(36.dp).background(color.copy(alpha = 0.14f), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(badge, color = color, style = MaterialTheme.typography.labelLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        }
+        Text("›", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** 通用列表对话框：加载态/错误态/空态统一。 */
+@Composable
+private fun <T> SimpleListDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    loader: suspend () -> Result<List<T>>,
+    content: androidx.compose.foundation.lazy.LazyListScope.((List<T>)) -> Unit,
+) {
+    var state by remember { mutableStateOf<Result<List<T>>?>(null) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        state = runCatching { loader() }.getOrElse { Result.failure(it) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        title = { Text(title) },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        text = {
+            val s = state
+            when {
+                s == null -> Column(Modifier.width(420.dp).height(320.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("加载中…", style = MaterialTheme.typography.bodyMedium)
+                }
+
+                s.isFailure -> Column(Modifier.width(420.dp).height(320.dp), verticalArrangement = Arrangement.Center) {
+                    Text(
+                        "加载失败：${s.exceptionOrNull()?.message ?: "未知错误"}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+
+                s.getOrNull().isNullOrEmpty() -> Column(Modifier.width(420.dp).height(320.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("暂无内容", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                }
+
+                else -> LazyColumn(Modifier.width(520.dp).height(420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    content(s.getOrDefault(emptyList()))
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun NoticeRow(notice: Notice) {
+    CommonCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(notice.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(fmtDate(notice.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            notice.body.replace(Regex("<[^>]+>"), "").take(120),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun TicketRow(ticket: Ticket) {
+    CommonCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(ticket.subject, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(fmtDate(ticket.createdAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+            when (ticket.status) {
+                0 -> Badge("开放", BettboxColors.accent)
+                1 -> Badge("已回复", BettboxColors.upColor)
+                2 -> Badge("已关闭", MaterialTheme.colorScheme.outline)
+                else -> Badge("状态 ${ticket.status}", MaterialTheme.colorScheme.outline)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OrderRow(order: OrderInfo) {
+    CommonCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(order.planName.ifBlank { order.tradeNo }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${order.period} · ${fmtDate(order.createdAt)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("¥%.2f".format(order.totalAmount / 100.0), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(2.dp))
+                when (order.statusClass.name) {
+                    "PENDING" -> Badge("待支付", BettboxColors.warning)
+                    "COMPLETED" -> Badge("已完成", BettboxColors.upColor)
+                    "CANCELLED" -> Badge("已取消", MaterialTheme.colorScheme.outline)
+                    else -> Badge("异常", MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}

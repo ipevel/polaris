@@ -1,0 +1,6 @@
+package cc.polaris.desktop.panel.domain.model
+
+enum class EmailCodePurpose {
+    REGISTER,
+    FORGOT_PASSWORD,
+}

@@ -8,6 +8,34 @@ internal object ConfigValidation {
         allowedSuffixes: List<String>,
     ): Boolean = allowedSuffixes.any { host == it || host.endsWith(".$it") }
 
+    /**
+     * 检查主机名是否指向私有/保留地址（RFC 1918、环回、链路本地等）。
+     * 用于面板地址安全确认，防止 SSRF。
+     */
+    fun isPrivateOrReservedHost(host: String): Boolean {
+        // 纯 IP 地址检测
+        val parts = host.split(".")
+        if (parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 }) {
+            val octets = parts.map { it.toInt() }
+            return when {
+                octets[0] == 127 -> true // 127.0.0.0/8  loopback
+                octets[0] == 10 -> true // 10.0.0.0/8   RFC 1918
+                octets[0] == 172 && octets[1] in 16..31 -> true // 172.16.0.0/12 RFC 1918
+                octets[0] == 192 && octets[1] == 168 -> true // 192.168.0.0/16 RFC 1918
+                octets[0] == 169 && octets[1] == 254 -> true // 169.254.0.0/16 link-local
+                octets[0] == 0 -> true // 0.0.0.0/8    current network
+                octets[0] == 100 && octets[1] in 64..127 -> true // 100.64.0.0/10 carrier-grade NAT
+                else -> false
+            }
+        }
+        // 域名检测：localhost 及 .local / .internal 等
+        val lower = host.lowercase()
+        return lower == "localhost" ||
+            lower.endsWith(".local") ||
+            lower.endsWith(".internal") ||
+            lower.endsWith(".localhost")
+    }
+
     fun isValidApiUrl(
         value: String,
         allowedSuffixes: List<String>,

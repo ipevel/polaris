@@ -1,0 +1,423 @@
+name: 北辰 Polaris Build
+
+# 打包并（可选）发布到 GitHub Releases。
+#
+# 用法：Actions → Polaris Build → Run workflow，填参数后运行。
+#   - buildType=release 需要仓库 Secrets 四件套：
+#       SLTE_RELEASE_STORE_B64 / POLARIS_RELEASE_STORE_PASSWORD
+#       POLARIS_RELEASE_KEY_ALIAS / POLARIS_RELEASE_KEY_PASSWORD
+#   - publishRelease=true 时，构建成功后自动创建/更新 Release 并附上 APK、
+#     SHA256SUMS.txt 与签名证书指纹（SIGNING.txt）。
+#   - 重复运行同一标签（releaseTag 相同）会更新既有 Release 的资产与说明，不会失败。
+
+on:
+  workflow_dispatch:
+    inputs:
+      appName:
+        description: 应用名称（桌面显示名）
+        required: true
+        default: 北辰
+      applicationId:
+        description: 包名
+        required: true
+        default: com.polaris.app
+      versionName:
+        description: 版本号
+        required: true
+        default: 1.0.0
+      versionCode:
+        description: versionCode（留空自动生成）
+        required: false
+        default: ''
+      apiBaseUrl:
+        description: 面板 API 地址
+        required: true
+      apiType:
+        description: 面板版本
+        type: choice
+        options:
+          - xiaov2b
+          - xboard
+        default: xiaov2b
+      remoteConfigUrls:
+        description: 远程动态地址（逗号分隔，最多 3 个）
+        required: false
+        default: ''
+      allowedDomains:
+        description: 追加白名单域名（逗号分隔）
+        required: false
+        default: ''
+      notificationTitle:
+        description: 通知栏标题（留空跟随应用名）
+        required: false
+        default: ''
+      notificationTraffic:
+        description: 通知栏流量显示
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
+      telegramGroupUrl:
+        description: Telegram 讨论组链接（留空则个人页不显示该入口）
+        required: false
+        default: ''
+      buildType:
+        description: 构建类型（release 需仓库 Secrets 签名四件套）
+        type: choice
+        options:
+          - debug
+          - release
+        default: release
+      publishRelease:
+        description: 是否创建 GitHub Release（仅 buildType=release 时生效）
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
+      releaseTag:
+        description: Release 标签名（留空自动使用 v<版本号>）
+        required: false
+        default: ''
+      releaseNotes:
+        description: Release 变更说明（留空自动从 git log 生成）
+        required: false
+        default: ''
+      iconB64:
+        description: 自定义启动图标（PNG 的 base64，≤36KB；留空使用仓库默认图标）
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安装 Android SDK / NDK
+        run: |
+          set -e
+          SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT）"; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          "$SDKMANAGER" "cmake;3.22.1" || echo "::warning::cmake 预装失败，交由 AGP 自动下载"
+          ls "$ANDROID_SDK_ROOT/cmake" 2>/dev/null || echo "SDK 内暂无可用的 cmake"
+
+      - name: 还原发布签名
+        if: inputs.buildType == 'release'
+        env:
+          STORE_B64: ${{ secrets.SLTE_RELEASE_STORE_B64 }}
+        run: |
+          test -n "$STORE_B64" || { echo "::error::缺少 Secret SLTE_RELEASE_STORE_B64（release 构建必需，见网站签名面板）"; exit 1; }
+          echo "$STORE_B64" | base64 -d > release.keystore
+
+      - name: 应用自定义图标
+        if: inputs.iconB64 != '' || hashFiles('app/icon-source.png') != ''
+        env:
+          ICON_B64: ${{ inputs.iconB64 }}
+        run: |
+          set -e
+          if [ -n "$ICON_B64" ]; then
+            echo "$ICON_B64" | base64 -d > app/icon-source.png
+          fi
+          test -f app/icon-source.png || { echo "无图标源，跳过"; exit 0; }
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          fi
+
+          SS=4
+          VISIBLE=288
+          CANVAS=432
+          RADIUS_PCT=22
+
+          mask_squircle() {
+            local s=$1 out=$2 r=$(( $1 * RADIUS_PCT * SS / 100 ))
+            convert -size "$((s * SS))x$((s * SS))" xc:none -fill white \
+              -draw "roundrectangle 0,0,$((s * SS - 1)),$((s * SS - 1)),${r},${r}" \
+              -resize "${s}x${s}" "$out"
+          }
+          mask_circle() {
+            local s=$1 out=$2 c=$((s * SS / 2))
+            convert -size "$((s * SS))x$((s * SS))" xc:none -fill white \
+              -draw "circle ${c},${c} ${c},1" -resize "${s}x${s}" "$out"
+          }
+
+          mkdir -p app/src/main/res/drawable-nodpi
+          convert app/icon-source.png -resize "${VISIBLE}x${VISIBLE}^" -gravity center \
+            -extent "${VISIBLE}x${VISIBLE}" /tmp/_fg.png
+          mask_squircle "$VISIBLE" /tmp/_fg_mask.png
+          convert /tmp/_fg.png /tmp/_fg_mask.png -alpha off -compose CopyOpacity -composite /tmp/_fg_cut.png
+          convert -size "${CANVAS}x${CANVAS}" xc:none /tmp/_fg_cut.png \
+            -geometry "+$(( (CANVAS - VISIBLE) / 2 ))+$(( (CANVAS - VISIBLE) / 2 ))" -composite \
+            app/src/main/res/drawable-nodpi/ic_launcher_foreground.png
+
+          for entry in "mdpi 48" "hdpi 72" "xhdpi 96" "xxhdpi 144" "xxxhdpi 192"; do
+            set -- $entry
+            density=$1
+            size=$2
+            dir="app/src/main/res/mipmap-$density"
+            mkdir -p "$dir"
+            convert app/icon-source.png -resize "${size}x${size}^" -gravity center \
+              -extent "${size}x${size}" "$dir/_base.png"
+            mask_squircle "$size" "$dir/_mask_sq.png"
+            mask_circle "$size" "$dir/_mask_round.png"
+            convert "$dir/_base.png" "$dir/_mask_sq.png" -alpha off \
+              -compose CopyOpacity -composite "$dir/ic_launcher.png"
+            convert "$dir/_base.png" "$dir/_mask_round.png" -alpha off \
+              -compose CopyOpacity -composite "$dir/ic_launcher_round.png"
+            rm -f "$dir/_base.png" "$dir/_mask_sq.png" "$dir/_mask_round.png"
+          done
+          rm -f /tmp/_fg.png /tmp/_fg_mask.png /tmp/_fg_cut.png
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: 单元测试 + 编译
+        env:
+          POLARIS_APP_NAME: ${{ inputs.appName }}
+          POLARIS_APPLICATION_ID: ${{ inputs.applicationId }}
+          POLARIS_API_BASE_URL: ${{ inputs.apiBaseUrl }}
+          POLARIS_API_TYPE: ${{ inputs.apiType }}
+          POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls }}
+          POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
+          POLARIS_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
+          POLARIS_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
+          POLARIS_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
+
+          POLARIS_VERSION_NAME: ${{ inputs.versionName }}
+          POLARIS_VERSION_CODE: ${{ inputs.versionCode }}
+          POLARIS_BUILD_TYPE: ${{ inputs.buildType }}
+
+          POLARIS_USE_MIRROR: 'false'
+
+          POLARIS_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
+          # 注意：GitHub Secrets 值不可读复制，secret 名保留 SLTE_ 前缀（与仓库实际配置一致），
+          # 仅 env 变量名使用 POLARIS_ 前缀传入 Gradle。
+          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}
+          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.SLTE_RELEASE_KEY_ALIAS }}
+          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.SLTE_RELEASE_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+
+          VC="$POLARIS_VERSION_CODE"
+          if [ -z "$VC" ]; then VC=$(( $(date +%s) / 60 )); fi
+          export POLARIS_VERSION_CODE="$VC"
+          ./gradlew :app:testDebugUnitTest ":app:assemble$POLARIS_BUILD_TYPE"
+
+      - name: 代码风格与静态检查（ktlint + Android Lint + R8 存活校验）
+        env:
+          POLARIS_USE_MIRROR: 'false'
+          POLARIS_RELEASE_STORE_FILE: ${{ runner.temp }}/build-throwaway.keystore
+          POLARIS_RELEASE_STORE_PASSWORD: build-throwaway
+          POLARIS_RELEASE_KEY_ALIAS: build-throwaway
+          POLARIS_RELEASE_KEY_PASSWORD: build-throwaway
+        run: |
+          set -e
+          keytool -genkeypair -v \
+            -keystore "$POLARIS_RELEASE_STORE_FILE" \
+            -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 \
+            -storepass build-throwaway -keypass build-throwaway \
+            -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN"
+          ./gradlew :app:ktlintCheck :app:lintDebug
+
+          ./gradlew :app:verifyReleaseApiSurvivors
+
+          if rg -n 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
+               app/src/main/java --glob '!**/ui/theme/SlteIcons.kt'; then
+            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（UI-GUIDELINES §3.4）"
+            exit 1
+          fi
+
+      - name: 生成校验文件（SHA-256 + 签名证书指纹）
+        if: inputs.buildType == 'release'
+        run: |
+          set -e
+          APK="app/build/outputs/apk/release/Polaris-${{ inputs.versionName }}.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::未找到 APK：$APK"
+            ls -R app/build/outputs/apk || true
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$APK" dist/
+          ( cd dist && sha256sum ./*.apk > SHA256SUMS.txt )
+          APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner"
+          if [ -x "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" > dist/SIGNING.txt 2>&1 || true
+          else
+            keytool -list -v -keystore release.keystore \
+              -alias "${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}" \
+              -storepass "${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || true
+          fi
+          echo "--- SHA256SUMS.txt ---"
+          cat dist/SHA256SUMS.txt
+          echo "--- 签名证书 ---"
+          grep -iE "certificate (SHA-256|SHA-1) digest|Signer #1" dist/SIGNING.txt | head -10 || true
+
+      - name: 上传检查报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Polaris-reports-${{ inputs.versionName }}
+          path: |
+            app/build/reports/ktlint/**
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: Polaris-${{ inputs.versionName }}
+          path: |
+            app/build/outputs/apk/*/Polaris-*.apk
+            dist/SHA256SUMS.txt
+            dist/SIGNING.txt
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    needs: build
+    if: inputs.buildType == 'release' && inputs.publishRelease == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Polaris-${{ inputs.versionName }}
+          path: incoming
+
+      - name: 整理发布资产
+        run: |
+          set -e
+          mkdir -p out
+          find incoming -name 'Polaris-*.apk' -exec cp -v {} out/ \;
+          for f in SHA256SUMS.txt SIGNING.txt; do
+            src=$(find incoming -name "$f" -print -quit)
+            if [ -n "$src" ]; then cp "$src" out/; fi
+          done
+          ls -la out
+          ls out/*.apk >/dev/null 2>&1 || { echo "::error::未从产物中取到 APK"; exit 1; }
+
+      - name: 组装 Release 说明
+        env:
+          VERSION: ${{ inputs.versionName }}
+          API_TYPE: ${{ inputs.apiType }}
+          NOTES: ${{ inputs.releaseNotes }}
+        run: |
+          set -e
+          {
+            echo "## Polaris ${VERSION}"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| 版本 | \`${VERSION}\` |"
+            echo "| 后端类型 | \`${API_TYPE}\` |"
+            echo "| 提交 | \`${GITHUB_SHA:0:7}\` |"
+            echo "| 构建时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+            echo ""
+            if [ -n "$NOTES" ] && [ "$NOTES" != "auto" ]; then
+              echo "### 变更说明"
+              echo ""
+              echo "$NOTES"
+            elif [ "$NOTES" = "auto" ]; then
+              echo "### 变更说明"
+              echo ""
+              echo '> 见 git log'
+            fi
+            echo ""
+            echo "### 文件校验（SHA-256）"
+            echo ""
+            echo '```'
+            cat out/SHA256SUMS.txt 2>/dev/null || echo "见附件 SHA256SUMS.txt"
+            echo '```'
+            echo ""
+            echo "### 签名证书指纹"
+            echo ""
+            echo '```'
+            grep -iE "certificate (SHA-256|SHA-1) digest" out/SIGNING.txt 2>/dev/null \
+              || echo "见附件 SIGNING.txt"
+            echo '```'
+            echo ""
+            echo "> 安装前请核对上述 SHA-256，确认安装包未被篡改。"
+          } > notes.md
+          cat notes.md
+
+      - name: 创建或更新 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.versionName }}
+          TAG_INPUT: ${{ inputs.releaseTag }}
+        run: |
+          set -e
+          TAG="${TAG_INPUT:-v${VERSION}}"
+          echo "目标标签：$TAG"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::Release $TAG 已存在，更新资产与说明"
+            gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" \
+              --title "Polaris $VERSION" \
+              --notes-file notes.md \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" out/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Polaris $VERSION" \
+              --notes-file notes.md \
+              --latest
+          fi
+          echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+
+      - name: 更新 config/remote.json（app 内更新自动生效）
+        env:
+          VERSION: ${{ inputs.versionName }}
+          NOTES: ${{ inputs.releaseNotes }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
+          cd polaris-updater
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Polaris-${VERSION}.apk"
+          python3 -c "
+          import json, os
+          version = os.environ['VERSION']
+          notes = os.environ.get('NOTES', '').strip()
+          apk = os.environ.get('APK_URL', '')
+          with open('config/remote.json', 'r') as f:
+              cfg = json.load(f)
+          cfg['update_version'] = version
+          cfg['update_apk_url'] = apk
+          if notes and notes != 'auto':
+              cfg['update_changelog'] = notes
+          with open('config/remote.json', 'w') as f:
+              json.dump(cfg, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          print('remote.json 已更新')
+          "
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config/remote.json
+          if git diff --cached --quiet; then
+            echo "无变更，跳过 push"
+          else
+            git commit -m "chore: 自动更新 remote.json → ${VERSION}"
+            git push
+            echo "已推送 remote.json 更新"
+          fi

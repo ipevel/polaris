@@ -1,0 +1,200 @@
+package main
+
+// helper 冒烟测试：进程内起管道服务，验证
+//  1. HMAC 认证（错误密钥拒绝 / 正确密钥放行）
+//  2. start_core 白名单 fail-closed（未配置白名单一律拒绝）
+//  3. status / unknown op
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Microsoft/go-winio"
+)
+
+func TestHelperPipeSmoke(t *testing.T) {
+	const testKey = "0123456789abcdef0123456789abcdef"
+	identity = "Polaris.Helper.selftest"
+	t.Setenv(authEnvVar, testKey)
+	coreSHA256 = "" // 未配置白名单 → start_core 必须 fail closed
+
+	stop := make(chan struct{})
+	go servePipe(stop)
+	defer close(stop)
+
+	var conn net.Conn
+	for i := 0; i < 50; i++ {
+		c, err := winio.DialPipe(pipeName(), nil)
+		if err == nil {
+			conn = c
+
+			break
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+	if conn == nil {
+		t.Fatalf("pipe not ready: %s", pipeName())
+	}
+	defer conn.Close()
+
+	call := func(op string, params any, key string) helperResponse {
+		raw, _ := json.Marshal(params)
+		ts := time.Now().Unix()
+		mac := hmac.New(sha256.New, []byte(key))
+		_, _ = fmt.Fprintf(mac, "%d:%s:%s", ts, op, string(raw))
+
+		req, _ := json.Marshal(helperRequest{
+			Op:     op,
+			TS:     ts,
+			Params: raw,
+			Hmac:   hex.EncodeToString(mac.Sum(nil)),
+		})
+
+		if err := writeFrame(conn, req); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+
+		data, err := readFrame(conn)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+
+		var resp helperResponse
+		if err := json.Unmarshal(data, &resp); err != nil {
+			t.Fatalf("decode resp: %v", err)
+		}
+
+		return resp
+	}
+
+	// 1. 正确密钥 → status OK
+	if resp := call("status", map[string]any{}, testKey); !resp.Ok {
+		t.Fatalf("status should succeed: %s", resp.Error)
+	}
+
+	// 2. 错误密钥 → unauthorized
+	if resp := call("status", map[string]any{}, "wrong-key"); resp.Ok || resp.Error != "unauthorized" {
+		t.Fatalf("bad key should be rejected, got ok=%v err=%q", resp.Ok, resp.Error)
+	}
+
+	// 3. 未配置白名单 → start_core fail closed
+	if resp := call("start_core", map[string]any{"exePath": "whatever.exe", "port": 12345}, testKey); resp.Ok {
+		t.Fatalf("start_core without whitelist must fail closed")
+	}
+
+	// 4. unknown op
+	if resp := call("no.suchOp", map[string]any{}, testKey); resp.Ok {
+		t.Fatalf("unknown op should fail")
+	}
+}
+
+// TestStartCoreWhitelist 验证 start_core 的哈希白名单语义（不拉起真实 core）：
+// 命中白名单 → 拉起成功（用 cmd.exe 当无害对象，立即退出）；
+// 未命中 → 明确拒绝。
+func TestStartCoreWhitelist(t *testing.T) {
+	identity = "Polaris.Helper.selftest2"
+	t.Setenv(authEnvVar, "fedcba9876543210fedcba9876543210")
+
+	stop := make(chan struct{})
+	go servePipe(stop)
+	defer close(stop)
+
+	var conn net.Conn
+	for i := 0; i < 50; i++ {
+		c, err := winio.DialPipe(pipeName(), nil)
+		if err == nil {
+			conn = c
+
+			break
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+	if conn == nil {
+		t.Fatalf("pipe not ready")
+	}
+	defer conn.Close()
+
+	call := func(op string, params any) helperResponse {
+		raw, _ := json.Marshal(params)
+		ts := time.Now().Unix()
+		mac := hmac.New(sha256.New, []byte("fedcba9876543210fedcba9876543210"))
+		_, _ = fmt.Fprintf(mac, "%d:%s:%s", ts, op, string(raw))
+
+		req, _ := json.Marshal(helperRequest{
+			Op:     op,
+			TS:     ts,
+			Params: raw,
+			Hmac:   hex.EncodeToString(mac.Sum(nil)),
+		})
+
+		if err := writeFrame(conn, req); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+
+		_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+
+		data, err := readFrame(conn)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+
+		var resp helperResponse
+		if err := json.Unmarshal(data, &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		return resp
+	}
+
+	// 未配置白名单 → fail closed
+	if resp := call("start_core", map[string]any{"exePath": `C:\Windows\System32\cmd.exe`, "port": 1}); resp.Ok {
+		t.Fatalf("empty whitelist must reject")
+	}
+
+	// 命中白名单 → 拉起成功
+	cmdHash := hashFile(t, `C:\Windows\System32\cmd.exe`)
+	coreSHA256 = cmdHash
+
+	resp := call("start_core", map[string]any{"exePath": `C:\Windows\System32\cmd.exe`, "port": 1})
+	if !resp.Ok {
+		t.Fatalf("whitelisted start_core should succeed: %s", resp.Error)
+	}
+
+	var started struct {
+		Pid int `json:"pid"`
+	}
+	rawData, _ := json.Marshal(resp.Data)
+	if err := json.Unmarshal(rawData, &started); err != nil || started.Pid == 0 {
+		t.Fatalf("bad start_core data: %v", err)
+	}
+
+	// 哈希不匹配 → 拒绝
+	coreSHA256 = strings.Repeat("ab", 32)
+	if resp := call("start_core", map[string]any{"exePath": `C:\Windows\System32\cmd.exe`, "port": 1}); resp.Ok {
+		t.Fatalf("mismatched hash must reject")
+	}
+	coreSHA256 = cmdHash
+}
+
+func hashFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	sum := sha256.Sum256(data)
+
+	return hex.EncodeToString(sum[:])
+}

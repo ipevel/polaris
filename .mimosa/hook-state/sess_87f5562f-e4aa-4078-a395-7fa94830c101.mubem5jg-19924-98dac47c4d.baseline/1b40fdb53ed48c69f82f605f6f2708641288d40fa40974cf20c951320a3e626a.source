@@ -1,0 +1,66 @@
+package cc.polaris.desktop.panel.remote
+
+/**
+ * 桌面版 API 错误文案表（R3）：替代安卓 `com.slte.app.utils.ApiErrors`（其常量是 R.string 资源 ID）。
+ *
+ * 桌面无 Android 资源系统，常量直接存中文字符串，文案逐条抄自
+ * `app/src/main/res/values/strings.xml`（默认 values 即中文）同名资源。
+ *
+ * 配套衔接点：桌面 [ApiException.stringResId] 为 `String?`（批1原为 `Int?`，
+ * 是安卓资源 ID 的占位；本批把它改为错误文案承载，见该文件的衔接点注释）。
+ *
+ * 差异记录：
+ * - 安卓 `api_error_unsupported_backend` 资源为带 %s 占位的模板
+ *   （"不支持的后端类型: %s"）；桌面版常量只保留固定部分，
+ *   具体后端类型由调用方拼进 message（与安卓调用处行为一致）。
+ */
+object ApiErrors {
+
+    /** R.string.api_error_empty_data */
+    const val EMPTY_DATA = "服务器返回数据为空"
+
+    /** R.string.api_error_register_config */
+    const val REGISTER_CONFIG = "获取注册配置失败"
+
+    /** R.string.api_error_user_info */
+    const val USER_INFO = "获取用户信息失败"
+
+    /** R.string.api_error_invite_info */
+    const val INVITE_INFO = "获取邀请信息失败"
+
+    /** R.string.api_error_create_order */
+    const val CREATE_ORDER = "创建订单失败"
+
+    /** R.string.api_error_order_detail */
+    const val ORDER_DETAIL = "获取订单详情失败"
+
+    /** R.string.error_coupon_invalid */
+    const val COUPON_INVALID = "优惠券无效或已过期"
+
+    /** R.string.error_gift_card_generic */
+    const val GIFT_CARD = "兑换失败，请稍后重试"
+
+    /** R.string.api_error_checkout */
+    const val CHECKOUT = "结算失败"
+
+    /** R.string.error_network */
+    const val NETWORK = "请求失败"
+
+    /** R.string.api_error_bad_response */
+    const val SERIALIZATION = "服务器响应格式异常"
+
+    /** R.string.api_error_unsupported_backend（源资源含 %s 占位，此处去占位，类型由调用方拼接） */
+    const val UNSUPPORTED_BACKEND = "不支持的后端类型"
+
+    /** HTTP 失败应答不是面板 JSON 时（拦截页 / 网关错误页）的可定位文案 */
+    fun forHttpStatus(code: Int): String = when {
+        code == 403 -> "请求被面板的安全策略拦截（HTTP 403），可更换网络后重试"
+        code == 429 -> "请求过于频繁，请稍后重试"
+        code in 500..599 -> "服务器暂时不可用，请稍后重试"
+        else -> NETWORK
+    }
+
+    /** 给用户看的失败描述：保留状态码，便于把「请求失败」这类模糊报错定位到具体环节 */
+    fun httpFailureMessage(code: Int): String =
+        "服务器返回 HTTP $code，且响应不是面板 JSON（疑似 CDN/WAF 拦截或网关错误）"
+}

@@ -1,0 +1,119 @@
+//go:build windows
+
+// PolarisCore —— 北辰 Polaris Windows 桌面端内核进程入口。
+//
+// 与 Android 端（native/，cgo 编译为 libclash.so）共享同一份 vendored mihomo
+// 与补丁链（cfa/native/config 等），以「独立 sidecar 进程 + 回环 TCP 帧协议」
+// 方式被桌面端宿主（或提权服务 helper）拉起：
+//
+//	宿主先监听 127.0.0.1:<随机端口> → 以 --port 启动本进程 → 本进程反向拨回；
+//	随后双向按「4 字节小端长度前缀 + JSON 帧」通信（协议见 rpc.go 头注释）。
+//
+// 生命周期：连接断开或收到 core.shutdown 即退出（退出码 0），由宿主/服务负责重启；
+// 本进程不监听任何入站端口（external-controller 等由补丁链清空）。
+
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"net"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/metacubex/mihomo/log"
+)
+
+var activeConn *hostConn
+
+type hostConn struct {
+	conn    net.Conn
+	writeMu sync.Mutex
+}
+
+func (h *hostConn) send(v any) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		log.Errorln("[APP] marshal outbound frame: %v", err)
+
+		return
+	}
+
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
+
+	if err := writeFrame(h.conn, data); err != nil {
+		log.Errorln("[APP] write frame: %v", err)
+	}
+}
+
+func pushEvent(v Event) {
+	if activeConn != nil {
+		activeConn.send(v)
+	}
+}
+
+func main() {
+	port := flag.Int("port", 0, "宿主监听的反向连接端口（必填）")
+	logLevel := flag.String("log-level", "info", "内核日志级别 silent|debug|info|warning|error")
+	flag.Parse()
+
+	if *port <= 0 || *port > 65535 {
+		fmt.Fprintln(os.Stderr, "PolarisCore: --port 为必填参数且取值 1-65535")
+
+		os.Exit(2)
+	}
+
+	if level, ok := parseLogLevel(*logLevel); ok {
+		log.SetLevel(level)
+	}
+
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisCore: 反向连接宿主失败: %v\n", err)
+
+		os.Exit(1)
+	}
+
+	hc := &hostConn{conn: conn}
+	activeConn = hc
+
+	log.Infoln("[APP] PolarisCore started, reverse-connected to 127.0.0.1:%d", *port)
+
+	startLogPump()
+	startTrafficPump()
+
+	for {
+		data, err := readFrame(conn)
+		if err != nil {
+			// 宿主退出/崩溃：原样退出，交由宿主或服务决定是否重启
+			log.Infoln("[APP] host connection closed: %v", err)
+
+			os.Exit(0)
+		}
+
+		var req Request
+		if err := json.Unmarshal(data, &req); err != nil {
+			log.Warnln("[APP] discard malformed frame: %v", err)
+
+			continue
+		}
+
+		go handle(hc, &req)
+	}
+}
+
+func handle(hc *hostConn, req *Request) {
+	resp := dispatch(req)
+
+	if req.Method == "core.shutdown" && resp.Ok {
+		hc.send(resp)
+		time.Sleep(100 * time.Millisecond) // 等待响应帧落盘
+
+		os.Exit(0)
+	}
+
+	hc.send(resp)
+}

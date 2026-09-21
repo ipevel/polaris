@@ -1,0 +1,61 @@
+package cc.polaris.desktop.ui
+
+import java.awt.MenuItem
+import java.awt.PopupMenu
+import java.awt.SystemTray
+import java.awt.TrayIcon
+import javax.imageio.ImageIO
+import javax.swing.SwingUtilities
+
+/**
+ * 系统托盘（java.awt.SystemTray 实现）。
+ * 说明：CMP 1.7.3 的 ui-desktop 已不含 androidx.compose.ui.window.Tray 组合项
+ * （仅存 TrayState），为避免引入额外依赖改用 AWT SystemTray（进程级、零新依赖）。
+ */
+object SystemTrayHost {
+
+    private var trayIcon: TrayIcon? = null
+
+    fun install(onShow: () -> Unit, onExit: () -> Unit) {
+        if (!SystemTray.isSupported() || trayIcon != null) {
+            return
+        }
+
+        SwingUtilities.invokeLater {
+            try {
+                val image = ImageIO.read(SystemTrayHost::class.java.classLoader.getResource("icon.png"))
+
+                val popup = PopupMenu().apply {
+                    add(
+                        MenuItem("显示主窗口").apply {
+                            addActionListener { SwingUtilities.invokeLater(onShow) }
+                        },
+                    )
+                    add(
+                        MenuItem("退出").apply {
+                            addActionListener { SwingUtilities.invokeLater(onExit) }
+                        },
+                    )
+                }
+
+                trayIcon = TrayIcon(image, "北辰 Polaris", popup).apply {
+                    isImageAutoSize = true
+                    addActionListener { SwingUtilities.invokeLater(onShow) }
+                    SystemTray.getSystemTray().add(this)
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun remove() {
+        trayIcon?.let {
+            try {
+                SystemTray.getSystemTray().remove(it)
+            } catch (_: Exception) {
+            }
+        }
+
+        trayIcon = null
+    }
+}

@@ -11,6 +11,7 @@ import com.slte.app.utils.Constants
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import java.io.File
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -79,15 +80,25 @@ class KernelProxyTest {
     }
 
     @Test
-    fun `内核不可用时切换只落本地不广播`() = runTest(mainRule.dispatcher) {
+    fun `内核不可用时切换写磁盘并落本地`() = runTest(mainRule.dispatcher) {
         val proxy = proxy()
         every { manager.clash() } returns null
 
-        proxy.setProxyMode(Constants.PROXY_MODE_DIRECT)
+        // 准备临时 filesDir 让 writePersistOverrideModeToDisk 可以写入
+        val tmpDir = createTempDir("slte_test")
+        every { context.filesDir } returns tmpDir
+
+        proxy.setProxyMode(Constants.PROXY_MODE_GLOBAL)
         advanceUntilIdle()
 
-        assertEquals(Constants.PROXY_MODE_DIRECT, prefs.getString("proxy_mode", null))
-        verify(exactly = 0) { context.sendBroadcast(any(), any()) }
+        assertEquals(Constants.PROXY_MODE_GLOBAL, prefs.getString("proxy_mode", null))
+        // 验证 override.json 已写入磁盘，包含正确的 mode
+        val overrideFile = File(tmpDir, "clash/override.json")
+        assertTrue("override.json should exist", overrideFile.exists())
+        val content = overrideFile.readText()
+        assertTrue("override.json should contain mode=global", content.contains("\"mode\":\"global\""))
+
+        tmpDir.deleteRecursively()
     }
 
     @Test
@@ -98,6 +109,18 @@ class KernelProxyTest {
         advanceUntilIdle()
 
         verify(exactly = 0) { clash.patchOverride(any(), any()) }
+    }
+
+    @Test
+    fun `Script 模式写入时降级为 Rule`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        every { clash.queryOverride(Clash.OverrideSlot.Persist) } returns overrideWith(null)
+
+        proxy.setProxyMode(Constants.PROXY_MODE_SCRIPT)
+        advanceUntilIdle()
+
+        // Go 内核不支持 script 模式，tunnelModeOf 应降级为 Rule
+        verify { clash.patchOverride(Clash.OverrideSlot.Persist, match { it.mode == TunnelState.Mode.Rule }) }
     }
 
     @Test

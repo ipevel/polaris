@@ -1,0 +1,192 @@
+//go:build windows
+
+package main
+
+// 端到端冒烟自测：测试进程扮演桌面宿主，监听 127.0.0.1 随机端口，
+// 拉起真实 PolarisCore.exe 子进程（POLARIS_CORE_EXE 环境变量指定），
+// 验证反向连接与核心 RPC 链路。不启用 TUN（无需管理员权限）。
+//
+// 运行方式（T4 开发期验证，非 T14 正式编译）：
+//
+//	go build -tags with_gvisor -o <tmp>/PolarisCore.exe ./polariswin
+//	POLARIS_CORE_EXE=<tmp>/PolarisCore.exe go test -tags with_gvisor -run TestPolarisCoreSelfTest -v ./polariswin
+
+import (
+	"encoding/json"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestPolarisCoreSelfTest(t *testing.T) {
+	exe := os.Getenv("POLARIS_CORE_EXE")
+	if exe == "" {
+		t.Skip("POLARIS_CORE_EXE not set; build the core exe first")
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("host listen: %v", err)
+	}
+	defer ln.Close()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	if tcp, ok := ln.(*net.TCPListener); ok {
+		_ = tcp.SetDeadline(time.Now().Add(15 * time.Second))
+	}
+
+	home := t.TempDir()
+	profileDir := filepath.Join(home, "profiles", "selftest")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatalf("mkdir profile: %v", err)
+	}
+
+	// 最小合法配置：validConfig 要求 proxies/proxy-providers 非空
+	profile := "proxies:\n  - name: selftest-direct\n    type: direct\n"
+	if err := os.WriteFile(filepath.Join(profileDir, "config.yaml"), []byte(profile), 0o644); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+
+	cmd := exec.Command(exe, "--port", strconv.Itoa(port), "--log-level", "debug")
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start core: %v", err)
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	}()
+
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatalf("core did not reverse-connect: %v", err)
+	}
+	defer conn.Close()
+
+	var nextId uint64
+
+	rpc := func(method string, params any) *Response {
+		nextId++
+		raw, err := json.Marshal(params)
+		if err != nil {
+			t.Fatalf("marshal params: %v", err)
+		}
+
+		frame, err := json.Marshal(Request{Id: nextId, Method: method, Params: raw})
+		if err != nil {
+			t.Fatalf("marshal request: %v", err)
+		}
+
+		_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+		if err := writeFrame(conn, frame); err != nil {
+			t.Fatalf("write request: %v", err)
+		}
+
+		for {
+			data, err := readFrame(conn)
+			if err != nil {
+				t.Fatalf("read frame: %v", err)
+			}
+
+			var probe struct {
+				Id    uint64 `json:"id"`
+				Event string `json:"event"`
+			}
+			if err := json.Unmarshal(data, &probe); err != nil {
+				continue
+			}
+
+			if probe.Event != "" {
+				continue // 事件帧（如 log）与请求-响应无关，跳过
+			}
+
+			var resp Response
+			if err := json.Unmarshal(data, &resp); err != nil {
+				continue
+			}
+
+			if resp.Id == nextId {
+				return &resp
+			}
+		}
+	}
+
+	requireOK := func(resp *Response) {
+		t.Helper()
+		if !resp.Ok {
+			t.Fatalf("rpc failed: %s", resp.Error)
+		}
+	}
+
+	// 1. core.init
+	resp := rpc("core.init", map[string]any{
+		"home":            home,
+		"versionName":     "selftest",
+		"gitVersion":      "selftest_0000000_20260921",
+		"platformVersion": 30,
+	})
+	requireOK(resp)
+
+	// 2. core.queryVersion
+	resp = rpc("core.queryVersion", map[string]any{})
+	requireOK(resp)
+
+	// 3. config.load（不开 TUN；起本地代理验证监听回读）
+	resp = rpc("config.load", map[string]any{
+		"path":        profileDir,
+		"proxyListen": "127.0.0.1:0",
+	})
+	requireOK(resp)
+
+	var loaded configLoadResult
+	if b, err := json.Marshal(resp.Data); err != nil {
+		t.Fatalf("re-marshal data: %v", err)
+	} else if err := json.Unmarshal(b, &loaded); err != nil {
+		t.Fatalf("decode config.load result: %v", err)
+	} else if loaded.TunEnabled {
+		t.Fatalf("tun should be disabled")
+	} else if !strings.HasPrefix(loaded.ProxyListen, "127.0.0.1:") {
+		t.Fatalf("unexpected proxy listen: %q", loaded.ProxyListen)
+	}
+
+	// 4. tunnel.queryGroupNames
+	resp = rpc("tunnel.queryGroupNames", map[string]any{"excludeNotSelectable": false})
+	requireOK(resp)
+
+	// 5. tunnel.queryNow / queryTotal
+	requireOK(rpc("tunnel.queryNow", map[string]any{}))
+	requireOK(rpc("tunnel.queryTotal", map[string]any{}))
+
+	// 6. unknown method 必须得到干净错误（不崩进程）
+	resp = rpc("no.suchMethod", map[string]any{})
+	if resp.Ok {
+		t.Fatalf("unknown method should fail")
+	}
+	if !strings.Contains(resp.Error, "unknown method") {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+
+	// 7. core.reset
+	requireOK(rpc("core.reset", map[string]any{}))
+
+	// 8. core.shutdown → 进程以 0 退出
+	requireOK(rpc("core.shutdown", map[string]any{}))
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("core exit: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("core did not exit after shutdown")
+	}
+}

@@ -1,0 +1,172 @@
+//go:build windows
+
+package main
+
+// core.* 生命周期方法 + tunnel.* 统计查询。
+// 方法语义与 Android 端 JNI 导出面（native/main.go、native/tunnel.go）一一对应。
+
+import (
+	"encoding/json"
+	"runtime"
+	"runtime/debug"
+
+	"cfa/native/config"
+	"cfa/native/delegate"
+	"cfa/native/tunnel"
+
+	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
+)
+
+type coreInitParams struct {
+	Home            string `json:"home"`
+	VersionName     string `json:"versionName"`
+	GitVersion      string `json:"gitVersion"`
+	PlatformVersion int    `json:"platformVersion"`
+}
+
+type versionInfo struct {
+	Version   string `json:"version"`
+	BuildTime string `json:"buildTime"`
+	GoVersion string `json:"goVersion"`
+}
+
+type tunnelState struct {
+	Mode string `json:"mode"`
+}
+
+type trafficNow struct {
+	Up   int64 `json:"up"`
+	Down int64 `json:"down"`
+}
+
+type setLogLevelParams struct {
+	Level string `json:"level"`
+}
+
+func init() {
+	register("core.init", coreInit)
+	register("core.queryVersion", coreQueryVersion)
+	register("core.reset", coreReset)
+	register("core.forceGc", coreForceGc)
+	register("core.setLogLevel", coreSetLogLevel)
+	register("core.shutdown", coreShutdown)
+
+	register("tunnel.queryState", tunnelQueryState)
+	register("tunnel.queryNow", tunnelQueryNow)
+	register("tunnel.queryTotal", tunnelQueryTotal)
+}
+
+// coreInit 对齐 Android 端 coreInit + reset 的组合语义：
+// 初始化代理回调/目录/版本，随后加载空配置并清零统计。
+func coreInit(params json.RawMessage) (any, error) {
+	var p coreInitParams
+	if err := decodeParams(params, &p); err != nil {
+		return nil, err
+	}
+
+	delegate.Init(p.Home, p.VersionName, p.GitVersion, p.PlatformVersion)
+
+	config.LoadDefault()
+	tunnel.ResetStatistic()
+	tunnel.CloseAllConnections()
+
+	runtime.GC()
+	debug.FreeOSMemory()
+
+	return versionInfo{
+		Version:   constant.Version,
+		BuildTime: constant.BuildTime,
+		GoVersion: runtime.Version(),
+	}, nil
+}
+
+func coreQueryVersion(_ json.RawMessage) (any, error) {
+	return versionInfo{
+		Version:   constant.Version,
+		BuildTime: constant.BuildTime,
+		GoVersion: runtime.Version(),
+	}, nil
+}
+
+func coreReset(_ json.RawMessage) (any, error) {
+	// 桌面端本地代理监听随配置会话一并终止；与 config.load 互斥
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+
+	stopProxyListener()
+
+	config.LoadDefault()
+	tunnel.ResetStatistic()
+	tunnel.CloseAllConnections()
+
+	runtime.GC()
+	debug.FreeOSMemory()
+
+	return nil, nil
+}
+
+func coreForceGc(_ json.RawMessage) (any, error) {
+	go func() {
+		log.Infoln("[APP] request force GC")
+
+		runtime.GC()
+		debug.FreeOSMemory()
+	}()
+
+	return nil, nil
+}
+
+func coreSetLogLevel(params json.RawMessage) (any, error) {
+	var p setLogLevelParams
+	if err := decodeParams(params, &p); err != nil {
+		return nil, err
+	}
+
+	level, ok := parseLogLevel(p.Level)
+	if !ok {
+		return nil, errInvalid("unknown log level: " + p.Level)
+	}
+
+	log.SetLevel(level)
+
+	return nil, nil
+}
+
+func coreShutdown(_ json.RawMessage) (any, error) {
+	// 尽力清理本地监听；进程退出由 handle() 在响应发出后负责
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+
+	stopProxyListener()
+
+	return nil, nil
+}
+
+func tunnelQueryState(_ json.RawMessage) (any, error) {
+	return tunnelState{Mode: tunnel.QueryMode()}, nil
+}
+
+func tunnelQueryNow(_ json.RawMessage) (any, error) {
+	up, down := tunnel.Now()
+
+	return trafficNow{Up: up, Down: down}, nil
+}
+
+func tunnelQueryTotal(_ json.RawMessage) (any, error) {
+	up, down := tunnel.Total()
+
+	return trafficNow{Up: up, Down: down}, nil
+}
+
+type errInvalid string
+
+func (e errInvalid) Error() string { return string(e) }
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return err.Error()
+}

@@ -1,0 +1,47 @@
+//go:build windows
+
+package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"io"
+)
+
+// 帧协议：4 字节小端长度前缀 + JSON 载荷，单帧上限 10 MiB
+// （与 Bettbox core/server.go 的帧语义一致，独立实现以便按需演进）。
+
+const maxFrameSize = 10 * 1024 * 1024
+
+func errFrameTooLarge(n uint32) error {
+	return fmt.Errorf("frame too large: %d bytes (limit %d)", n, maxFrameSize)
+}
+
+func writeFrame(w io.Writer, data []byte) error {
+	frame := make([]byte, 4+len(data))
+	binary.LittleEndian.PutUint32(frame, uint32(len(data)))
+	copy(frame[4:], data)
+
+	_, err := w.Write(frame)
+
+	return err
+}
+
+func readFrame(r io.Reader) ([]byte, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return nil, err
+	}
+
+	length := binary.LittleEndian.Uint32(lenBuf)
+	if length > maxFrameSize {
+		return nil, errFrameTooLarge(length)
+	}
+
+	data := make([]byte, length)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}

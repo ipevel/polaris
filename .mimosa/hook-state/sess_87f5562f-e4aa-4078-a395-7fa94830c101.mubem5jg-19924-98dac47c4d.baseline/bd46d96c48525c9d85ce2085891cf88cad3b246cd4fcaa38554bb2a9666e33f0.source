@@ -1,0 +1,65 @@
+package com.slte.app.ui.theme
+
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+
+data class ExtendedColors(
+
+    val accentInteractive: Color,
+    val accentInteractiveBg: Color,
+
+    val textSelectionBg: Color,
+
+    val statusSuccess: Color,
+    val statusSuccessBg: Color,
+    val statusWarning: Color,
+    val statusWarningBg: Color,
+    val statusDanger: Color,
+    val statusDangerBg: Color,
+    val statusNeutral: Color,
+    val statusNeutralBg: Color,
+
+    val statusInfo: Color,
+    val statusSlow: Color,
+)
+
+private val BrandGreenLight = Color(0xFF4BCB1C)
+private val BrandGreenDark = Color(0xFF6DC26D)
+
+private val BrandBlueDark = Color(0xFF6CB2F1)
+
+val LightExtendedColors =
+    ExtendedColors(
+        accentInteractive = md_light_primary,
+        accentInteractiveBg = Color(0x1A229AF0),
+        textSelectionBg = Color(0x66229AF0),
+        statusSuccess = BrandGreenLight,
+        statusSuccessBg = Color(0x1A4BCB1C),
+        statusWarning = Color(0xFFFFAB40),
+        statusWarningBg = Color(0x1AFFAB40),
+        statusDanger = md_light_error,
+        statusDangerBg = md_light_errorContainer,
+        statusNeutral = Color(0xFF999999),
+        statusNeutralBg = Color(0x14999999),
+        statusInfo = Color(0xFF2196F3),
+        statusSlow = Color(0xFFFFC107),
+    )
+
+val DarkExtendedColors =
+    ExtendedColors(
+        accentInteractive = BrandBlueDark,
+        accentInteractiveBg = Color(0x1A6CB2F1),
+        textSelectionBg = Color(0x666CB2F1),
+        statusSuccess = BrandGreenDark,
+        statusSuccessBg = Color(0x1A6DC26D),
+        statusWarning = Color(0xFFFFCC80),
+        statusWarningBg = Color(0x1AFFCC80),
+        statusDanger = md_dark_error,
+        statusDangerBg = md_dark_errorContainer,
+        statusNeutral = md_dark_onSurfaceVariant,
+        statusNeutralBg = Color(0x14A8A8A8),
+        statusInfo = Color(0xFF64B5F6),
+        statusSlow = Color(0xFFFFD54F),
+    )
+
+val LocalExtendedColors = staticCompositionLocalOf { LightExtendedColors }

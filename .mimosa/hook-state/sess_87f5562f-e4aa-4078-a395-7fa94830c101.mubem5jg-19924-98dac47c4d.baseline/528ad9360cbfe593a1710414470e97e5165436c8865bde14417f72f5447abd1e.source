@@ -1,0 +1,64 @@
+//go:build windows
+
+package main
+
+// app.* 方法：宿主环境通知。语义与 Android 端 native/app.go 的 //export 函数一致。
+// installedApps 为 Android 分应用代理专用（uid→包名），桌面端传空即可。
+
+import (
+	"encoding/json"
+
+	"cfa/native/app"
+)
+
+type notifyDnsParams struct {
+	DNS string `json:"dns"` // 逗号分隔
+}
+
+type notifyAppsParams struct {
+	Uids string `json:"uids"` // "uid:pkg,uid:pkg"
+}
+
+type notifyTimeZoneParams struct {
+	Name   string `json:"name"`
+	Offset int    `json:"offset"` // 秒
+}
+
+func appNotifyDnsChanged(params json.RawMessage) (any, error) {
+	var p notifyDnsParams
+	if err := decodeParams(params, &p); err != nil {
+		return nil, err
+	}
+
+	app.NotifyDnsChanged(p.DNS)
+
+	return nil, nil
+}
+
+func appNotifyInstalledAppsChanged(params json.RawMessage) (any, error) {
+	var p notifyAppsParams
+	if err := decodeParams(params, &p); err != nil {
+		return nil, err
+	}
+
+	app.NotifyInstallAppsChanged(p.Uids)
+
+	return nil, nil
+}
+
+func appNotifyTimeZoneChanged(params json.RawMessage) (any, error) {
+	var p notifyTimeZoneParams
+	if err := decodeParams(params, &p); err != nil {
+		return nil, err
+	}
+
+	app.NotifyTimeZoneChanged(p.Name, p.Offset)
+
+	return nil, nil
+}
+
+func init() {
+	register("app.notifyDnsChanged", appNotifyDnsChanged)
+	register("app.notifyInstalledAppsChanged", appNotifyInstalledAppsChanged)
+	register("app.notifyTimeZoneChanged", appNotifyTimeZoneChanged)
+}

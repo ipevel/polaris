@@ -1,0 +1,17 @@
+package cc.polaris.desktop.panel.repository
+
+import cc.polaris.desktop.panel.remote.api.AuthApi
+
+/**
+ * 礼品卡 Repository（批3）：移植自安卓 `data/repository/GiftCardRepository.kt`。
+ * 桌面适配：`@Singleton class + @Inject 构造` → 去注解 class，构造参数显式传入；
+ * 其余逐行照抄。
+ */
+class GiftCardRepository(
+    private val authApi: AuthApi,
+) {
+    /** 兑换礼品卡：成功静默返回；失败抛带后端文案的 ApiException（RepositoryUtils.runApi 包装为 Result）。 */
+    suspend fun redeem(code: String): Result<Unit> = runApi {
+        authApi.redeemGiftCard(code.trim())
+    }
+}

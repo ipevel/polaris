@@ -1,0 +1,137 @@
+package com.slte.app.ui.screen.profile
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.slte.app.data.local.SessionManager
+import com.slte.app.data.repository.AuthRepository
+import com.slte.app.data.repository.SubscribeRepository
+import com.slte.app.domain.model.SubscribeInfo
+import com.slte.app.domain.usecase.DaysUntilExpiryUseCase
+import com.slte.app.utils.AppLog
+import com.slte.app.utils.ErrorMessages
+import com.slte.app.utils.sanitizeLog
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class ProfileData(
+    val subscribeInfo: SubscribeInfo? = null,
+    val isLoading: Boolean = true,
+    val email: String = "",
+    val balance: String = "0.00",
+
+    val daysUntilExpired: Int? = null,
+
+    /** 用户信息拉取失败：用于在个人中心展示错误卡片（复用 R.string.notice_error） */
+    val userInfoError: Boolean = false,
+
+    /** 面板后台配置的 Telegram 讨论组链接（未配置为 null，个人页隐藏入口） */
+    val telegramDiscussLink: String? = null,
+)
+
+@HiltViewModel
+class ProfileViewModel
+@Inject
+constructor(
+    private val subscribeRepository: SubscribeRepository,
+    private val sessionManager: SessionManager,
+    private val authRepository: AuthRepository,
+    private val expiryUseCase: DaysUntilExpiryUseCase,
+) : ViewModel() {
+    private val _data = MutableStateFlow(ProfileData())
+    val data: StateFlow<ProfileData> = _data.asStateFlow()
+
+    private val _errorMessageRes = MutableStateFlow<Int?>(null)
+    val errorMessageRes: StateFlow<Int?> = _errorMessageRes.asStateFlow()
+
+    private var loading = false
+
+    init {
+
+        val cachedUser = subscribeRepository.getCachedUserInfo()
+        val cachedSubscribe = subscribeRepository.subscribeInfo.value
+        val email =
+            cachedUser?.email
+                ?: (sessionManager.sessionState.value as? com.slte.app.domain.model.SessionState.LoggedIn)?.user?.email
+                ?: ""
+        if (cachedUser != null || cachedSubscribe != null) {
+            _data.update {
+                it.copy(
+                    subscribeInfo = cachedSubscribe,
+                    email = email,
+                    balance = cachedUser?.balance ?: "0.00",
+                    daysUntilExpired = expiryDays(cachedSubscribe),
+                    isLoading = false,
+                )
+            }
+        }
+        viewModelScope.launch {
+            subscribeRepository.subscribeInfo.collect(::applySubscribeInfo)
+        }
+    }
+
+    fun refresh() {
+        loadProfile()
+    }
+
+    fun retry() {
+        loadProfile()
+    }
+
+    fun logout() {
+        authRepository.logout()
+    }
+
+    private fun loadProfile() {
+        if (loading) return
+        loading = true
+        _errorMessageRes.value = null
+        viewModelScope.launch {
+            if (_data.value.subscribeInfo == null) {
+                _data.update { it.copy(isLoading = true) }
+            }
+            val userResult = async { subscribeRepository.fetchUserInfo() }
+            val subscribeResult = async { subscribeRepository.fetchSubscribeInfo() }
+            val telegramResult = async { authRepository.fetchTelegramDiscussLink() }
+
+            userResult.await().fold(
+                onSuccess = { user ->
+                    _data.update {
+                        it.copy(email = user.email, balance = user.balance, userInfoError = false)
+                    }
+                },
+                onFailure = { throwable ->
+                    AppLog.w("Polaris-Profile", "fetchUserInfo 失败: ${sanitizeLog(throwable.message ?: "Unknown")}")
+                    _data.update { it.copy(userInfoError = true) }
+                },
+            )
+            subscribeResult.await().onFailure { throwable ->
+                _data.update { it.copy(isLoading = false) }
+                if (_data.value.subscribeInfo == null) {
+                    _errorMessageRes.value = ErrorMessages.forSubscribe(throwable)
+                }
+            }
+            telegramResult.await()?.let { link ->
+                _data.update { it.copy(telegramDiscussLink = link) }
+            }
+            loading = false
+        }
+    }
+
+    private fun applySubscribeInfo(info: SubscribeInfo?) {
+        _data.update {
+            it.copy(
+                subscribeInfo = info,
+                daysUntilExpired = expiryDays(info),
+                isLoading = if (info == null) it.isLoading else false,
+            )
+        }
+    }
+
+    private fun expiryDays(info: SubscribeInfo?): Int? = info?.expiredAt?.takeIf { it > 0L }?.let { expiryUseCase(it) }
+}

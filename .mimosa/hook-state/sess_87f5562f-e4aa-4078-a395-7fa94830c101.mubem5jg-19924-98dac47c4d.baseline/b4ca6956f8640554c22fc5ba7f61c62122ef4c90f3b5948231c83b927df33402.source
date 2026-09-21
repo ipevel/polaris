@@ -1,0 +1,26 @@
+rootProject.name = "PolarisDesktop"
+
+pluginManagement {
+    repositories {
+        if (System.getenv("POLARIS_USE_MIRROR")?.toBoolean() != false) {
+            maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+            maven { url = uri("https://maven.aliyun.com/repository/central") }
+        }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    // Gradle 8 要求仓库声明单一来源；镜像开关与仓库根 settings 保持一致。
+    // 注意：Compose Desktop 运行时传递依赖 androidx.lifecycle:*（JVM 变体）在 Google Maven。
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        if (System.getenv("POLARIS_USE_MIRROR")?.toBoolean() != false) {
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/central") }
+        }
+        google()
+        mavenCentral()
+    }
+}

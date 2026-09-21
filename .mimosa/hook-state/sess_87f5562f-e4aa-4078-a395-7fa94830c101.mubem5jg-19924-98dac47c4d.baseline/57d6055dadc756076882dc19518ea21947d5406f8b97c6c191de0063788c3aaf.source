@@ -1,0 +1,62 @@
+package cc.polaris.desktop.panel.data.local
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+/**
+ * 桌面版凭据存储（批2 A 项）：替代安卓 `data/local/CredentialStore.kt`。
+ *
+ * 与安卓语义一致：仅保存「记住我」用的 email/password，提供 save / clear / clearPassword /
+ * getSavedEmail / getSavedPassword。key 照抄安卓 prefs（`email` / `password`），
+ * 落盘到 `%APPDATA%/Polaris/panel/credential.json`。
+ *
+ * ⚠ TODO(T11 DPAPI)：当前为**明文存储**（任务批2指定），与安卓 EncryptedSharedPreferences 不同。
+ *   密码字段（password）待桌面工程 DPAPI 收口统一加密（同 Main.kt helper.json 的 T11 计划），
+ *   收口时只需替换本文件的读写实现，key 与对外方法保持不变。
+ */
+object CredentialStore {
+
+    /** credential.json 结构；字段名即安卓 prefs key（email / password） */
+    @Serializable
+    private data class Persisted(
+        val email: String? = null,
+        val password: String? = null,
+    )
+
+    private const val FILE_NAME = "credential.json"
+
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
+
+    fun save(
+        email: String,
+        password: String,
+    ) {
+        updatePersisted { it.copy(email = email, password = password) }
+    }
+
+    fun clear() {
+        updatePersisted { it.copy(email = null, password = null) }
+    }
+
+    fun clearPassword() {
+        updatePersisted { it.copy(password = null) }
+    }
+
+    fun getSavedEmail(): String? = loadPersisted().email
+
+    fun getSavedPassword(): String? = loadPersisted().password
+
+    private fun loadPersisted(): Persisted =
+        PanelStorage.readText(FILE_NAME)
+            ?.let { runCatching { json.decodeFromString<Persisted>(it) }.getOrNull() }
+            ?: Persisted()
+
+    private fun updatePersisted(update: (Persisted) -> Persisted) {
+        val next = update(loadPersisted())
+        PanelStorage.writeTextAtomic(FILE_NAME, json.encodeToString(Persisted.serializer(), next))
+    }
+}

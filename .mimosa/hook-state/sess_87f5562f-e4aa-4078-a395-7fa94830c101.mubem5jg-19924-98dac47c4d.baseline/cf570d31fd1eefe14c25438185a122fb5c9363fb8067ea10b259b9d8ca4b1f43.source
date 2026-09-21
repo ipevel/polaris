@@ -1,0 +1,23 @@
+package cc.polaris.desktop.panel.remote.config
+
+/**
+ * 主机白名单（R8 移植，源：data/remote/config/AllowedHosts.kt）。
+ *
+ * 桌面适配：安卓版从 BuildConfig.ALLOWED_DOMAINS 追加编译期注入的白名单域名；
+ * 桌面版没有编译期注入常量（DeskEnv 仅含 DEBUG/SUBSCRIBE_PATH/USER_AGENT），
+ * 追加段为空集。自定义面板主机的放行不经过本表——AuthInterceptor 会用
+ * ApiUrlStore.isCurrentHost 把用户配置的主机并入 token 注入白名单，语义不变。
+ */
+internal object AllowedHosts {
+
+    val SUFFIXES: List<String> =
+        buildList {
+
+            add("example.com")
+            // 桌面版：无 BuildConfig.ALLOWED_DOMAINS（编译期注入白名单），此处保持空追加
+        }
+
+    fun isAllowedHost(host: String?): Boolean = !host.isNullOrBlank() && ConfigValidation.isHostAllowed(host.lowercase(), SUFFIXES)
+
+    fun isAllowedUrl(url: String?): Boolean = !url.isNullOrBlank() && ConfigValidation.isValidApiUrl(url, SUFFIXES)
+}

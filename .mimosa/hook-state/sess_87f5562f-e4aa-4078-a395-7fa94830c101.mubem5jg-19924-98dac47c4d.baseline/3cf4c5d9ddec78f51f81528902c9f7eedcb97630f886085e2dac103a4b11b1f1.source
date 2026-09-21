@@ -1,0 +1,200 @@
+package main
+
+// 服务安装 / 卸载（需管理员权限，由安装器或宿主经 UAC 调用）。
+//
+// 安全要点（T13 评审修复）：
+//   - 认证密钥必须写入 Services\<name>\Environment 子键（SCM 只注入该子键）；
+//   - 子键 DACL 收紧为 SYSTEM/BA 全控 + 安装用户读取，防止其他本地用户
+//     读取密钥伪造 HMAC（评审 P0：注册表服务键默认 Users 可读）；
+//   - 重装/卸载前先停止旧服务，避免 marked-for-delete。
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
+)
+
+func install() {
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: resolve exe: %v\n", err)
+		os.Exit(1)
+	}
+
+	m, err := mgr.Connect()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: SCM connect (需要管理员): %v\n", err)
+		os.Exit(1)
+	}
+	defer m.Disconnect()
+
+	// 幂等：存在旧服务先停止再删除
+	if s, err := m.OpenService(serviceName()); err == nil {
+		stopWithTimeout(s, 10*time.Second)
+		_ = s.Delete()
+		s.Close()
+		time.Sleep(500 * time.Millisecond) // 等待 SCM 完成 marked-for-delete
+	}
+
+	// 非默认身份时把 identity 固化进服务 ImagePath 参数
+	var svcArgs []string
+	if identity != "Polaris.Helper" {
+		svcArgs = []string{"--identity", identity}
+	}
+
+	s, err := m.CreateService(serviceName(), exe, mgr.Config{
+		StartType:   mgr.StartAutomatic,
+		DisplayName: "Polaris Helper (" + identity + ")",
+		Description: "北辰 Polaris 提权服务：以 SYSTEM 拉起经哈希白名单校验的 PolarisCore.exe（TUN 需要）",
+	}, svcArgs...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: create service: %v\n", err)
+		os.Exit(1)
+	}
+	defer s.Close()
+
+	// 认证密钥：32 字节随机 → Services\<name>\Environment 子键（SCM 注入的唯一位置）
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: gen key: %v\n", err)
+		os.Exit(1)
+	}
+
+	hexKey := hex.EncodeToString(key)
+	envKeyPath := `SYSTEM\CurrentControlSet\Services\` + serviceName() + `\Environment`
+	ek, _, err := registry.CreateKey(registry.LOCAL_MACHINE, envKeyPath, registry.SET_VALUE|registry.QUERY_VALUE)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: open service environment: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := ek.SetStringValue(authEnvVar, hexKey); err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: set auth key: %v\n", err)
+		os.Exit(1)
+	}
+	ek.Close()
+
+	// DACL 收紧：SYSTEM/BA 全控 + 当前安装用户读取（其他 Users 不可读）
+	if userSID := currentUserSID(); userSID != "" {
+		sddl := "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;" + userSID + ")"
+		if dacl := toDaclOrNil(sddl); dacl != nil {
+			if err := windows.SetNamedSecurityInfo(envKeyPath, windows.SE_REGISTRY_KEY,
+				windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+				nil, nil, dacl, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "PolarisHelper: tighten env key ACL: %v\n", err)
+			}
+		}
+	}
+
+	if err := s.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: start service: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(hexKey)
+}
+
+func uninstall() {
+	m, err := mgr.Connect()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: SCM connect (需要管理员): %v\n", err)
+		os.Exit(1)
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(serviceName())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: open service: %v\n", err)
+		os.Exit(1)
+	}
+	defer s.Close()
+
+	stopWithTimeout(s, 10*time.Second)
+
+	if err := s.Delete(); err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: delete service: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("removed")
+}
+
+// stopWithTimeout 尽力停止服务并轮询状态（Stop 是异步请求）
+func stopWithTimeout(s *mgr.Service, timeout time.Duration) {
+	status, err := s.Query()
+	if err != nil || status.State == svc.Stopped {
+		return
+	}
+
+	_, _ = s.Control(svc.Stop)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if st, err := s.Query(); err != nil || st.State == svc.Stopped {
+			return
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// currentUserSID 返回当前进程用户 SID 字符串；失败返回空串
+func currentUserSID() string {
+	tok, err := windows.OpenCurrentProcessToken()
+	if err != nil {
+		return ""
+	}
+	defer tok.Close()
+
+	user, err := tok.GetTokenUser()
+	if err != nil {
+		return ""
+	}
+
+	var sidStr *uint16
+	if err := windows.ConvertSidToStringSid(user.User.Sid, &sidStr); err != nil {
+		return ""
+	}
+
+	return strings.Trim(utf16PtrToString(sidStr), "\x00")
+}
+
+func utf16PtrToString(p *uint16) string {
+	if p == nil {
+		return ""
+	}
+
+	n := 0
+	for ptr := unsafe.Pointer(p); *(*uint16)(ptr) != 0; n++ {
+		ptr = unsafe.Pointer(uintptr(ptr) + 2)
+	}
+
+	return strings.Trim(windows.UTF16ToString(unsafe.Slice(p, n)), "\x00")
+}
+
+// toDaclOrNil 将 SDDL 解析为 DACL；失败返回 nil（保持默认 DACL 并输出原因）
+func toDaclOrNil(sddl string) *windows.ACL {
+	sd, err := windows.SecurityDescriptorFromString(sddl)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: SDDL parse: %v\n", err)
+
+		return nil
+	}
+
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: SDDL dacl: %v\n", err)
+
+		return nil
+	}
+
+	return dacl
+}

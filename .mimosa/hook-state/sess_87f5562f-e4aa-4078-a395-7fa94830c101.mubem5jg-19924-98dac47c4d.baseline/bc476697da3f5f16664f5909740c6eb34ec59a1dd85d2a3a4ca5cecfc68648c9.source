@@ -1,0 +1,153 @@
+package cc.polaris.desktop.panel.data.local
+
+import cc.polaris.desktop.panel.domain.model.SessionState
+import cc.polaris.desktop.panel.domain.model.User
+import cc.polaris.desktop.panel.remote.AuthInterceptor
+import cc.polaris.desktop.panel.remote.FallbackDns
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/**
+ * 桌面版会话管理器（批3 A 项）：移植自安卓 `data/local/SessionManager.kt`。
+ *
+ * 公开方法面与安卓版一致：[sessionState] / [logoutEvents] / [sessionExpiredEvents] /
+ * [setLoggedIn] / [updateUser] / [clearSession]。restoreSession 的恢复与降级逻辑逐行照抄。
+ *
+ * 桌面适配差异：
+ * - 安卓为 `@Singleton class` + Hilt 构造注入（SessionStore/AuthInterceptor/CrispManager/
+ *   KernelManager/KernelConfig/FallbackDns）；桌面为 `object`，[SessionStore] 直接引用，
+ *   其余运行时依赖经 [install] 注册（AuthInterceptor 与 FallbackDns 是桌面组装处创建的
+ *   实例，object 无法构造注入）；未 install 时行为与安卓一致（仅无 401 监听与 DNS 清理）；
+ * - 内核调用（KernelConfig.deleteAccountProfiles / KernelManager.stopVpn）抽成
+ *   [DesktopKernelHooks] 钩子，默认 no-op，由 [install] 注入（内核后续批次接线）；
+ * - 安卓 `crispManager.clearUser()`（Crisp 客服）桌面无客服组件，调用删除；
+ * - scope：安卓 `Dispatchers.Main.immediate` → 桌面 `Dispatchers.Default`
+ *   （桌面无 Android 主线程，restoreSession 仍为同步执行，与安卓 init 时序一致）；
+ *   clearSession 的内核/缓存清理照抄安卓在协程内执行。
+ *
+ * UI 不在本批（安卓消费方 ViewModel 属后续批次）。
+ */
+object SessionManager {
+
+    private const val TAG = "Polaris-Session"
+
+    private val _sessionState = MutableStateFlow<SessionState>(SessionState.Loading)
+    val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
+
+    private val _logoutEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val logoutEvents: SharedFlow<Unit> = _logoutEvents.asSharedFlow()
+
+    private val _sessionExpiredEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val sessionExpiredEvents: SharedFlow<Unit> = _sessionExpiredEvents.asSharedFlow()
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile
+    private var fallbackDns: FallbackDns? = null
+
+    @Volatile
+    var kernelHooks: DesktopKernelHooks = DesktopKernelHooks.NONE
+        private set
+
+    private var authErrorCollectJob: Job? = null
+
+    init {
+        restoreSession()
+    }
+
+    /**
+     * 注册运行时依赖（替代安卓 Hilt 构造注入；组装处调用一次）。
+     * - [authInterceptor]：订阅其 [AuthInterceptor.authErrorEvents]（401/403 会话失效）→
+     *   语义同安卓 `observeAuthErrors()`，收到事件即 `clearSession(expired = true)`；
+     * - [fallbackDns]：注销时清 DNS 缓存（安卓 `fallbackDns.clearCache()`）；
+     * - [kernelHooks]：内核钩子，缺省保持 [DesktopKernelHooks.NONE]（no-op）。
+     * 重复调用会先取消旧的 401 监听再重建，保证同一时刻至多一个监听者。
+     */
+    fun install(
+        authInterceptor: AuthInterceptor? = null,
+        fallbackDns: FallbackDns? = null,
+        kernelHooks: DesktopKernelHooks? = null,
+    ) {
+        if (fallbackDns != null) {
+            this.fallbackDns = fallbackDns
+        }
+        // 仅显式传参才覆盖（T15 评审：默认参数曾会静默抹掉已接线的内核钩子）
+        if (kernelHooks != null) {
+            this.kernelHooks = kernelHooks
+        }
+        if (authInterceptor != null) {
+            authErrorCollectJob?.cancel()
+            observeAuthErrors(authInterceptor.authErrorEvents)
+        }
+    }
+
+    private fun restoreSession() {
+        if (SessionStore.hasSession()) {
+            val authData = SessionStore.getAuthData()
+            val email = SessionStore.getEmail()
+            val subscribeToken = SessionStore.getSubscribeToken()
+            if (authData != null && email != null && subscribeToken != null) {
+                val user =
+                    SessionStore.getUserInfo()?.takeIf { it.subscribeToken == subscribeToken }
+                        ?: User(
+                            id = subscribeToken,
+                            displayName = email,
+                            email = email,
+                            authData = authData,
+                            subscribeToken = subscribeToken,
+                        )
+                _sessionState.value = SessionState.LoggedIn(user)
+            } else {
+                SessionStore.clear()
+                _sessionState.value = SessionState.LoggedOut
+            }
+        } else {
+            SessionStore.clear()
+            _sessionState.value = SessionState.LoggedOut
+        }
+    }
+
+    /** 安卓 `observeAuthErrors()`：collect 认证失败事件 → 会话过期清理 */
+    private fun observeAuthErrors(authErrorEvents: SharedFlow<Unit>) {
+        authErrorCollectJob =
+            scope.launch {
+                authErrorEvents.collect {
+                    clearSession(expired = true)
+                }
+            }
+    }
+
+    fun setLoggedIn(user: User) {
+        _sessionState.value = SessionState.LoggedIn(user)
+        SessionStore.save(user.authData, user.email, user.subscribeToken)
+        SessionStore.saveUserInfo(user)
+    }
+
+    fun updateUser(user: User) {
+        if (_sessionState.value is SessionState.LoggedIn) {
+            _sessionState.value = SessionState.LoggedIn(user)
+        }
+    }
+
+    fun clearSession(expired: Boolean = false) {
+        val email = SessionStore.getEmail()
+        scope.launch {
+            kernelHooks.deleteAccountProfiles(email)
+            kernelHooks.stopVpn()
+            fallbackDns?.clearCache()
+        }
+        _sessionState.value = SessionState.LoggedOut
+        SessionStore.clear()
+        _logoutEvents.tryEmit(Unit)
+        if (expired) _sessionExpiredEvents.tryEmit(Unit)
+    }
+}

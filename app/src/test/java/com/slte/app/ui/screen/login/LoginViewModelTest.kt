@@ -31,11 +31,12 @@ class LoginViewModelTest {
     private fun viewModel(
         savedEmail: String? = null,
         savedPassword: String? = null,
+        currentPanelUrl: String? = null,
     ): LoginViewModel {
         every { authRepository.sessionState } returns MutableStateFlow(SessionState.LoggedOut)
         every { authRepository.savedEmail() } returns savedEmail
         every { authRepository.savedPassword() } returns savedPassword
-        every { apiUrlStore.currentUrl } returns null
+        every { apiUrlStore.currentUrl } returns currentPanelUrl
         return LoginViewModel(mainRule.dispatcher, authRepository, apiUrlStore)
     }
 
@@ -64,7 +65,7 @@ class LoginViewModelTest {
     @Test
     fun `登录成功且勾选记住密码时保存凭证`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
-        val vm = viewModel()
+        val vm = viewModel(currentPanelUrl = "https://panel.example.com")
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
@@ -80,7 +81,7 @@ class LoginViewModelTest {
     @Test
     fun `未勾选记住密码时清除本地凭证`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
-        val vm = viewModel()
+        val vm = viewModel(currentPanelUrl = "https://panel.example.com")
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
@@ -95,7 +96,7 @@ class LoginViewModelTest {
     @Test
     fun `登录失败保留表单并提示`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.login(any(), any()) } returns Result.failure(java.io.IOException("boom"))
-        val vm = viewModel()
+        val vm = viewModel(currentPanelUrl = "https://panel.example.com")
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
@@ -123,7 +124,7 @@ class LoginViewModelTest {
     fun `创建账号前拉取注册配置`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.fetchRegisterConfig() } returns
             Result.success(RegisterConfig(emailVerifyEnabled = true, inviteForceEnabled = false))
-        val vm = viewModel()
+        val vm = viewModel(currentPanelUrl = "https://panel.example.com")
 
         vm.onPanelUrlChange("https://panel.example.com")
         vm.checkRegisterConfig()
@@ -136,7 +137,7 @@ class LoginViewModelTest {
     @Test
     fun `登录中重复点击只发一次请求`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.login(any(), any()) } returns Result.success(User(id = "1", displayName = "测试"))
-        val vm = viewModel()
+        val vm = viewModel(currentPanelUrl = "https://panel.example.com")
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
@@ -182,7 +183,7 @@ class LoginViewModelTest {
     @Test
     fun `登录时保存规范化后的面板地址`() = runTest(mainRule.dispatcher) {
         coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
-        val vm = viewModel()
+        val vm = viewModel(currentPanelUrl = "https://my.panel.dev")
 
         vm.onAccountChange("a@b.c")
         vm.onPasswordChange("pw123456")
@@ -192,5 +193,43 @@ class LoginViewModelTest {
 
         assertTrue(vm.uiState.value is LoginUiState.LoginSuccess)
         coVerify { apiUrlStore.setUrl("https://my.panel.dev") }
+    }
+
+    @Test
+    fun `面板地址变更时需确认再登录`() = runTest(mainRule.dispatcher) {
+        coEvery { authRepository.login("a@b.c", "pw123456") } returns Result.success(User(id = "1", displayName = "测试"))
+        // currentUrl 为 null，输入新地址应触发确认
+        val vm = viewModel()
+
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://new.panel.com")
+        vm.login()
+        advanceUntilIdle()
+
+        // 应停在 ConfirmPanelUrl 状态，尚未调用 login API
+        assertTrue(vm.uiState.value is LoginUiState.ConfirmPanelUrl)
+        coVerify(exactly = 0) { authRepository.login(any(), any()) }
+
+        // 用户确认后才真正登录
+        vm.confirmPanelUrl()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value is LoginUiState.LoginSuccess)
+        coVerify(exactly = 1) { authRepository.login(any(), any()) }
+    }
+
+    @Test
+    fun `私有地址确认对话框标记风险`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+
+        vm.onPanelUrlChange("https://192.168.1.1")
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw")
+        vm.login()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value as LoginUiState.ConfirmPanelUrl
+        assertTrue("私有地址应标记为风险", state.isPrivateHost)
     }
 }

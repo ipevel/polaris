@@ -1,0 +1,6 @@
+package cc.polaris.desktop.panel.remote.api.dto
+
+data class LoginResponseDto(
+    val token: String,
+    val authData: String,
+)

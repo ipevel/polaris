@@ -1,0 +1,32 @@
+package cc.polaris.desktop.rpc
+
+import java.io.DataInputStream
+import java.io.OutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+/** 帧上限：与 Go 内核 / helper 一致（10 MiB）。 */
+const val MAX_FRAME_SIZE: Int = 10 * 1024 * 1024
+
+/** 写一帧：4 字节小端长度前缀 + JSON 载荷。 */
+fun writeFrame(output: OutputStream, data: ByteArray) {
+    val header = ByteArray(4)
+    ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).putInt(data.size)
+    output.write(header)
+    output.write(data)
+    output.flush()
+}
+
+/** 读一帧；流关闭时抛 EOFException。 */
+fun readFrame(input: DataInputStream): ByteArray {
+    val header = ByteArray(4)
+    input.readFully(header)
+
+    val length = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).int
+    require(length in 1..MAX_FRAME_SIZE) { "非法帧长度: $length" }
+
+    val data = ByteArray(length)
+    input.readFully(data)
+
+    return data
+}

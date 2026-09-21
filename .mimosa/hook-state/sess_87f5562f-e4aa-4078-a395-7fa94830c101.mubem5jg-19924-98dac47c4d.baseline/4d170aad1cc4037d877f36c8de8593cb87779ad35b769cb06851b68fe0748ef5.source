@@ -1,0 +1,37 @@
+package cc.polaris.desktop.panel.remote.config
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+
+/**
+ * 配置源竞速（R8 移植，源：data/remote/config/ConfigRace.kt，逐行照抄）。
+ * RemoteConfig/RemoteConfigStore 不移植（R7），本件仅作为 ConfigValidation.pickBest
+ * 的配套数据结构被一起保留，供后续批次复用。
+ */
+internal data class FetchedConfig(
+    val url: String,
+    val raw: String,
+    val version: String,
+    val latencyMs: Long,
+    val notModified: Boolean = false,
+)
+
+internal data class RaceResult(
+    val chosen: FetchedConfig?,
+)
+
+internal object ConfigRace {
+    suspend fun race(
+        urls: List<String>,
+        fetch: suspend (String) -> FetchedConfig?,
+    ): RaceResult {
+        if (urls.isEmpty()) return RaceResult(null)
+        return coroutineScope {
+            val results = urls.map { url -> async { url to fetch(url) } }.awaitAll()
+            val valid = results.mapNotNull { (url, cfg) -> cfg?.copy(url = url) }
+            val chosen = ConfigValidation.pickBest(valid)
+            RaceResult(chosen = chosen)
+        }
+    }
+}

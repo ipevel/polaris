@@ -1,0 +1,76 @@
+package main
+
+// 更新通道安全语义（对照评审报告 P0-1「更新通道零校验」教训）：
+//
+//  1. 源域白名单：allowedUpdateHosts 编译期经 ldflags 注入（-X main.allowedUpdateHosts=
+//     "updates.example.com,dl.example.org"）；空白名单 fail closed，任何更新一律拒绝；
+//  2. 完整性校验：宿主下载更新包后计算 SHA-256 并随请求传入，helper 拉起前重新
+//     计算比对（防宿主侧文件被替换后的 TOCTOU 窗口，本地复核兜底）；
+//  3. 静默安装：服务以 SYSTEM 在会话 0 启动安装器（Inno /VERYSILENT 可无头运行），
+//     安装器负责停止/替换/重装服务（见 T11 Inno 模板）。
+
+import (
+	"encoding/json"
+	"fmt"
+	"os/exec"
+	"strings"
+	"syscall"
+)
+
+// 编译期注入的合法更新源域名（逗号分隔小写）；空 = 未配置 = 全部拒绝。
+var allowedUpdateHosts string
+
+type runInstallerParams struct {
+	ExePath        string   `json:"exePath"`        // 已下载到本地的安装器
+	ExpectedSha256 string   `json:"expectedSha256"` // 宿主对下载包计算的哈希（小写 hex）
+	SourceHost     string   `json:"sourceHost"`     // 更新源域名（宿主从更新 URL 提取）
+	Args           []string `json:"args,omitempty"` // 额外安装参数（如 /VERYSILENT /DIR=...）
+}
+
+func runUpdateInstaller(raw json.RawMessage) (any, error) {
+	var p runInstallerParams
+	if err := jsonUnmarshal(raw, &p); err != nil {
+		return nil, err
+	}
+
+	hosts := allowedHostSet()
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("update host whitelist not configured (build with -X main.allowedUpdateHosts=<hosts>)")
+	}
+
+	if !hosts[strings.ToLower(strings.TrimSpace(p.SourceHost))] {
+		return nil, fmt.Errorf("update host not allowed: %s", p.SourceHost)
+	}
+
+	sum, err := fileSHA256(p.ExePath)
+	if err != nil {
+		return nil, fmt.Errorf("hash installer: %w", err)
+	}
+
+	if !strings.EqualFold(sum, strings.TrimSpace(p.ExpectedSha256)) {
+		return nil, fmt.Errorf("installer hash mismatch: %s", sum[:16])
+	}
+
+	// SYSTEM 会话 0 静默安装；安装器负责处理服务的停止/替换/重装
+	cmd := exec.Command(p.ExePath, p.Args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("run installer: %w", err)
+	}
+
+	return map[string]any{"pid": cmd.Process.Pid, "sha256": sum}, nil
+}
+
+func allowedHostSet() map[string]bool {
+	set := map[string]bool{}
+
+	for _, h := range strings.Split(allowedUpdateHosts, ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" {
+			set[h] = true
+		}
+	}
+
+	return set
+}

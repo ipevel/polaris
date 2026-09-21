@@ -1,0 +1,197 @@
+package cc.polaris.desktop.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import cc.polaris.desktop.panel.PanelGraph
+import cc.polaris.desktop.panel.data.local.ApiUrlStore
+import cc.polaris.desktop.panel.remote.config.ConfigValidation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * 登录页（T15d）：面板地址 + 后端类型 + 账号密码 + 记住我。
+ * 语义对齐安卓 LoginViewModel：提交时先持久化面板地址/后端，再 login。
+ */
+@Composable
+fun LoginScreen() {
+    var panelUrl by remember { mutableStateOf("") }
+    var backend by remember { mutableStateOf("xiaov2b") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var rememberMe by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    // 回填已保存面板地址（T15 评审 P2-4：登出重登不重输 URL）
+    LaunchedEffect(Unit) {
+        ApiUrlStore.currentUrl?.let { panelUrl = it }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // 品牌区：青绿圆标 + 应用名
+        Box(
+            Modifier.size(56.dp).background(BettboxColors.accent, androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("北", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("北辰 Polaris", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Spacer(Modifier.height(24.dp))
+
+        CommonCard(Modifier.width(420.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("登录面板", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Text("连接 XiaoV2b / Xboard 面板", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+
+                OutlinedTextField(
+                    value = panelUrl,
+                    onValueChange = { panelUrl = it },
+                    label = { Text("面板地址（https://…）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                )
+
+                // 后端类型：分段选择（替代两个 RadioButton 行）
+                Row(
+                    Modifier.fillMaxWidth().background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    ).padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    listOf("xiaov2b" to "XiaoV2b", "xboard" to "Xboard").forEach { (value, label) ->
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .background(
+                                    if (backend == value) BettboxColors.accent else androidx.compose.ui.graphics.Color.Transparent,
+                                    androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                )
+                                .clickable { backend = value }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (backend == value) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("邮箱") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("密码") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = rememberMe, onCheckedChange = { rememberMe = it })
+                    Text("记住密码", style = MaterialTheme.typography.bodyMedium)
+                }
+
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Button(
+                    onClick = {
+                        scope.launch {
+                            error = null
+                            val normalized = ConfigValidation.normalizePanelUrl(panelUrl)
+                            if (normalized == null) {
+                                error = "面板地址无效：需 https:// 开头的合法地址"
+                                return@launch
+                            }
+                            if (email.isBlank() || password.isBlank()) {
+                                error = "请填写邮箱与密码"
+                                return@launch
+                            }
+
+                            busy = true
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    // 语义对齐安卓：先持久化面板地址/后端，再登录
+                                    ApiUrlStore.setUrl(normalized)
+                                    ApiUrlStore.setBackendType(backend)
+                                    PanelGraph.authRepository.login(email, password)
+                                }.onSuccess { user ->
+                                    if (rememberMe) {
+                                        PanelGraph.authRepository.saveCredentials(email, password)
+                                    } else {
+                                        PanelGraph.authRepository.clearSavedPassword()
+                                    }
+                                }.onFailure { e ->
+                                    error = e.message ?: "登录失败"
+                                }
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                    enabled = !busy && panelUrl.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(Modifier.height(18.dp).width(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(if (busy) "登录中…" else "登录")
+                }
+            }
+        }
+    }
+}

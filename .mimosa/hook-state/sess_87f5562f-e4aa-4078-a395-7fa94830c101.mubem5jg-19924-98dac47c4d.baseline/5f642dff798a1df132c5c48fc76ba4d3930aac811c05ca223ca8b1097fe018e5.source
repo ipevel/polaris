@@ -1,0 +1,48 @@
+package cc.polaris.desktop.ui
+
+import cc.polaris.desktop.core.ConnState
+import cc.polaris.desktop.core.CoreManager
+import cc.polaris.desktop.panel.PanelGraph
+import java.nio.file.Files
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+private val bootstrapMutex = Mutex()
+
+/**
+ * 订阅自动链路（登录后 / 连接前兜底共用）：
+ * 拉订阅信息 → 内核未起则拉起（无配置也可起）→ 配置缺失或 force 时 fetchAndValid 生效 → 回读端口。
+ * 返回 null = 就绪；否则为面向用户的错误文案。
+ */
+suspend fun ensureSubscriptionApplied(manager: CoreManager, force: Boolean = false): String? =
+    bootstrapMutex.withLock {
+        try {
+            val url = withContext(Dispatchers.IO) {
+                PanelGraph.subscribeRepository.fetchSubscribeInfo(force).getOrNull()?.subscribeUrl
+            }
+
+            if (url.isNullOrBlank()) {
+                return@withLock "面板未下发订阅地址（请检查套餐是否有效）"
+            }
+
+            val needFetch = force || !Files.exists(manager.defaultProfileDir.resolve("config.yaml"))
+
+            if (manager.status.value.state != ConnState.CONNECTED) {
+                manager.start(manager.defaultProfileDir)
+                if (manager.status.value.state != ConnState.CONNECTED) {
+                    return@withLock (manager.status.value.error ?: "内核连接失败")
+                }
+            }
+
+            if (needFetch) {
+                manager.fetchAndValid(manager.defaultProfileDir, url, true)
+                manager.reloadConfig(manager.defaultProfileDir)
+            }
+
+            null
+        } catch (e: Exception) {
+            e.message ?: "订阅同步失败"
+        }
+    }

@@ -30,3 +30,7 @@
 -keepclassmembers class com.maxmind.db.** {
     <init>(...);
 }
+
+# Tink (via EncryptedSharedPreferences) 引用了 error-prone 注解，
+# 但该注解仅在编译期使用，R8 混淆时找不到类会导致构建失败
+-dontwarn com.google.errorprone.annotations.**

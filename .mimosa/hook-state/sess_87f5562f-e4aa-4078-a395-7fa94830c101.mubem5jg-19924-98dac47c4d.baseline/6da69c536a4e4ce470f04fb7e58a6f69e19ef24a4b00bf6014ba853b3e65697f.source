@@ -1,0 +1,118 @@
+package cc.polaris.desktop.panel.remote
+
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+/**
+ * 桌面版日志门面（R1）：替代安卓 `com.slte.app.utils.AppLog`。
+ *
+ * - `d` / `i` / `w` 仅当 [DeskEnv.DEBUG] 时输出到 stderr；
+ * - `e` 始终输出到 stderr（错误必须留痕），可附 [Throwable]；
+ * - 所有输出先过 [sanitize]（清洗正则照抄安卓 AppLog.sanitize，
+ *   token / Bearer / key=value / URL 凭据 / 邮箱 / 主机 一律打码）。
+ *
+ * 与安卓差异：
+ * - 无 Logcat 与内存环形缓冲（MAX_ENTRIES/dump/export 不移植，桌面日志由调用方落盘）；
+ * - [i] 为移植需要新增（安卓 AppLog.i 的对应方法），语义与 d 同级（仅 DEBUG 输出）；
+ * - 安卓版 SENSITIVE_HOST_PATTERNS 会注入 BuildConfig.API_BASE_URL /
+ *   REMOTE_CONFIG_URLS / ALLOWED_DOMAINS 的主机白名单，桌面版无编译期注入常量，
+ *   主机白名单为空集，主机脱敏仅依赖 [URL_HOST_PATTERN] 的通配规则。
+ */
+object DeskLog {
+
+    private val timeFormat = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS", Locale.US)
+
+    private fun now(): String = LocalDateTime.now().format(timeFormat)
+
+    fun d(
+        tag: String,
+        msg: String,
+    ) {
+        if (DeskEnv.DEBUG) emit("D", tag, msg)
+    }
+
+    fun i(
+        tag: String,
+        msg: String,
+    ) {
+        if (DeskEnv.DEBUG) emit("I", tag, msg)
+    }
+
+    fun w(
+        tag: String,
+        msg: String,
+    ) {
+        if (DeskEnv.DEBUG) emit("W", tag, msg)
+    }
+
+    fun e(
+        tag: String,
+        msg: String,
+        tr: Throwable? = null,
+    ) {
+        val text =
+            buildString {
+                append(msg)
+                tr?.let {
+                    append('\n')
+                    append(it.stackTraceToString())
+                }
+            }
+        emit("E", tag, text)
+    }
+
+    private fun emit(
+        level: String,
+        tag: String,
+        raw: String,
+    ) {
+        System.err.println("${now()} $level $tag: ${sanitize(raw)}")
+    }
+
+    /** 清洗语义照抄安卓 AppLog.sanitize（utils/AppLog.kt），逐条正则保持一致。 */
+    fun sanitize(text: String): String = text
+        .replace(TOKEN_QUERY_PATTERN, "token=***")
+        .replace(BEARER_PATTERN, "Bearer ***")
+        .replace(KEY_VALUE_PATTERN) { m ->
+            val quote = m.groupValues[2]
+            val masked = if (m.groups[2] != null) quote + "***" + quote else "***"
+            m.groupValues[1] + masked
+        }
+        .replace(URL_CREDENTIALS_PATTERN, "$1***@")
+        .replace(EMAIL_PATTERN) { m ->
+            val value = m.value
+            val at = value.indexOf('@')
+            value.take(1) + "***" + value.substring(at)
+        }
+        .let { out ->
+            SENSITIVE_HOST_PATTERNS.fold(out) { acc, pattern -> acc.replace(pattern, "***") }
+        }
+        .replace(URL_HOST_PATTERN, "$1***")
+
+    private const val SENSITIVE_KEYS =
+        "subscribe_token|access_token|refresh_token|auth_data|authorization|token|password|passwd|pwd"
+
+    private val TOKEN_QUERY_PATTERN = Regex("(?i)token=\\s*[^&\\s\"'}\\]]+")
+
+    private val BEARER_PATTERN = Regex("(?i)bearer\\s+[A-Za-z0-9._\\-]+")
+
+    private val KEY_VALUE_PATTERN =
+        Regex(
+            "(?i)((?:$SENSITIVE_KEYS)\\s*[\"']?\\s*[=:]\\s*)" +
+                "(?:Bearer\\s+|Basic\\s+)?(?:([\"'])(.*?)\\2|([^\\s\"',;&{}\\]]+))",
+        )
+
+    private val URL_CREDENTIALS_PATTERN = Regex("(?i)\\b([a-z][a-z0-9+.\\-]*://)([^\\s/]+)@")
+
+    private val EMAIL_PATTERN = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+
+    private val URL_HOST_PATTERN = Regex("(?i)((?:https?|wss?)://)([^/\\s\"'<>]+)")
+
+    /**
+     * 安卓版来源：BuildConfig.API_BASE_URL / REMOTE_CONFIG_URLS / ALLOWED_DOMAINS
+     * 解析出的主机集合（小写、含转义）。桌面版没有编译期注入的域名常量，
+     * 这里保持空集；后续若桌面引入等价配置，可在此处按相同语义追加。
+     */
+    private val SENSITIVE_HOST_PATTERNS: List<Regex> = emptyList()
+}

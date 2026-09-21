@@ -1,0 +1,212 @@
+package cc.polaris.desktop.panel.data.local
+
+import cc.polaris.desktop.panel.domain.model.ServerNode
+import cc.polaris.desktop.panel.domain.model.SubscribeInfo
+import cc.polaris.desktop.panel.domain.model.User
+import cc.polaris.desktop.panel.remote.DeskLog
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+
+/**
+ * 桌面版会话存储（批2 A 项）：替代安卓 `data/local/SessionStore.kt`。
+ *
+ * key 全部照抄安卓 `polaris_session` prefs（`auth_data` / `email` / `subscribe_token` /
+ * `subscribe_url` / `subscribe_info` / `subscription_updated_at` / `user_info` /
+ * `server_nodes` / `server_nodes_fetched_at` / `speed_results`），落盘到
+ * `%APPDATA%/Polaris/panel/session.json`。与安卓一致：`subscribe_info` / `user_info` /
+ * `server_nodes` / `speed_results` 存的是 kotlinx.serialization JSON 原文
+ * （安卓即 `Json.encodeToString` 后写入 prefs），文件里的值与安卓 prefs 值同构。
+ *
+ * 桌面适配差异：
+ * - 安卓为 `@Singleton class` + Hilt 注入 + EncryptedSharedPreferences；桌面为 `object`（R5）
+ *   + JSON 文件 + [PanelStorage] 原子写；
+ * - 以不可变 [Snapshot] 为单位的 StateFlow 暴露（任务要求 object+StateFlow）；
+ * - 安卓实现 `kernel/SpeedResultStore` 接口；桌面无内核测速组件，接口不移植，
+ *   保留同名方法（saveSpeedResults / getSpeedResults）承载同一 key 的语义；
+ * - 缓存解析失败的处置照抄安卓：打日志（AppLog→DeskLog）并移除该 key。
+ */
+object SessionStore {
+
+    /** session.json 结构；字段名即安卓 prefs 的 key（snake_case 照抄，避免两套命名） */
+    @Serializable
+    data class Snapshot(
+        val auth_data: String? = null,
+        val email: String? = null,
+        val subscribe_token: String? = null,
+        val subscribe_url: String? = null,
+        val subscribe_info: String? = null,
+        val user_info: String? = null,
+        val server_nodes: String? = null,
+        val server_nodes_fetched_at: Long = 0L,
+        val subscription_updated_at: Long = 0L,
+        val speed_results: String? = null,
+    )
+
+    private const val FILE_NAME = "session.json"
+
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+        }
+
+    private val lock = Any()
+
+    private val _state = MutableStateFlow(loadPersisted())
+
+    /** 全量会话快照流（不可变快照；字段名与安卓 prefs key 一致） */
+    val state: StateFlow<Snapshot> = _state.asStateFlow()
+
+    private fun loadPersisted(): Snapshot =
+        PanelStorage.readText(FILE_NAME)
+            ?.let { raw ->
+                runCatching { json.decodeFromString<Snapshot>(raw) }
+                    .onFailure {
+                        DeskLog.w(
+                            "Polaris-Session",
+                            "SessionStore: 会话文件解析失败，按空会话处理: ${DeskLog.sanitize(it.message ?: "Unknown")}",
+                        )
+                    }
+                    .getOrNull()
+            }
+            ?: Snapshot()
+
+    private fun persist(update: (Snapshot) -> Snapshot) {
+        synchronized(lock) {
+            val next = update(_state.value)
+            PanelStorage.writeTextAtomic(FILE_NAME, json.encodeToString(Snapshot.serializer(), next))
+            _state.value = next
+        }
+    }
+
+    fun hasSession(): Boolean = _state.value.auth_data != null && _state.value.subscribe_token != null
+
+    fun getAuthData(): String? = _state.value.auth_data
+
+    fun getEmail(): String? = _state.value.email
+
+    fun getSubscribeToken(): String? = _state.value.subscribe_token
+
+    fun getSubscribeUrl(): String? = _state.value.subscribe_url
+
+    fun saveSubscribeUrl(url: String) {
+        persist { it.copy(subscribe_url = url) }
+    }
+
+    fun save(
+        authData: String,
+        email: String,
+        subscribeToken: String,
+    ) {
+        persist { it.copy(auth_data = authData, email = email, subscribe_token = subscribeToken) }
+    }
+
+    private inline fun <reified T> readCached(
+        key: String,
+        decode: (String) -> T,
+    ): T? {
+        val raw = rawOf(key) ?: return null
+        return try {
+            decode(raw)
+        } catch (e: Exception) {
+            DeskLog.w("Polaris-Session", "SessionStore: 缓存解析失败 key=$key: ${DeskLog.sanitize(e.message ?: "Unknown")}")
+            removeKey(key)
+            null
+        }
+    }
+
+    private fun rawOf(key: String): String? = when (key) {
+        KEY_SUBSCRIBE_INFO -> _state.value.subscribe_info
+        KEY_USER_INFO -> _state.value.user_info
+        KEY_SERVER_NODES -> _state.value.server_nodes
+        KEY_SPEED_RESULTS -> _state.value.speed_results
+        else -> null
+    }
+
+    private fun removeKey(key: String) {
+        persist { s ->
+            when (key) {
+                KEY_SUBSCRIBE_INFO -> s.copy(subscribe_info = null)
+                KEY_USER_INFO -> s.copy(user_info = null)
+                KEY_SERVER_NODES -> s.copy(server_nodes = null, server_nodes_fetched_at = 0L)
+                KEY_SPEED_RESULTS -> s.copy(speed_results = null)
+                else -> s
+            }
+        }
+    }
+
+    fun saveSubscribeInfo(info: SubscribeInfo) {
+        persist { it.copy(subscribe_info = json.encodeToString(info)) }
+    }
+
+    fun getSubscribeInfo(): SubscribeInfo? =
+        readCached(KEY_SUBSCRIBE_INFO) { json.decodeFromString<SubscribeInfo>(it) }
+
+    fun saveUserInfo(user: User) {
+        persist { it.copy(user_info = json.encodeToString(user)) }
+    }
+
+    fun getUserInfo(): User? = readCached(KEY_USER_INFO) { json.decodeFromString<User>(it) }
+
+    fun saveSubscriptionUpdatedAt(timestamp: Long = System.currentTimeMillis()) {
+        persist { it.copy(subscription_updated_at = timestamp) }
+    }
+
+    fun getSubscriptionUpdatedAt(): Long = _state.value.subscription_updated_at
+
+    fun getServerNodesFetchedAt(): Long = _state.value.server_nodes_fetched_at
+
+    fun saveServerNodes(nodes: List<ServerNode>) {
+        persist {
+            it.copy(
+                server_nodes = json.encodeToString(nodes),
+                server_nodes_fetched_at = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    fun getServerNodes(): List<ServerNode>? =
+        readCached(KEY_SERVER_NODES) { json.decodeFromString<List<ServerNode>>(it) }
+
+    fun clearServerNodes() {
+        persist { it.copy(server_nodes = null, server_nodes_fetched_at = 0L) }
+    }
+
+    /** 安卓 SpeedResultStore 接口语义的桌面承接（接口本身不移植，见类注释） */
+    fun saveSpeedResults(results: Map<String, Int>) {
+        persist { it.copy(speed_results = json.encodeToString(results)) }
+    }
+
+    fun getSpeedResults(): Map<String, Int>? =
+        readCached(KEY_SPEED_RESULTS) { json.decodeFromString<Map<String, Int>>(it) }
+
+    fun clear() {
+        // 安卓 clear() 移除全部会话 key（含 subscription_updated_at / speed_results），桌面同义：整份快照清零
+        persist { Snapshot() }
+    }
+
+    fun clearDataCache() {
+        persist {
+            it.copy(
+                subscribe_url = null,
+                subscribe_info = null,
+                subscription_updated_at = 0L,
+                user_info = null,
+                server_nodes = null,
+                server_nodes_fetched_at = 0L,
+                speed_results = null,
+            )
+        }
+    }
+
+    private const val KEY_SUBSCRIBE_INFO = "subscribe_info"
+    private const val KEY_USER_INFO = "user_info"
+    private const val KEY_SERVER_NODES = "server_nodes"
+    private const val KEY_SPEED_RESULTS = "speed_results"
+}

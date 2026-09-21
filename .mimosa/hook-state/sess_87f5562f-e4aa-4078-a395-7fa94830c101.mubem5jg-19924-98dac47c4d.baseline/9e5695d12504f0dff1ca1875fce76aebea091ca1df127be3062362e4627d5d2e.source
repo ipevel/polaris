@@ -1,0 +1,88 @@
+package cc.polaris.desktop.panel.remote
+
+import cc.polaris.desktop.panel.data.local.SessionStore
+import cc.polaris.desktop.panel.remote.api.AuthApi
+import kotlinx.coroutines.CancellationException
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.ResponseBody
+
+/**
+ * 订阅源实现（批3）：移植自安卓 `data/remote/SubscribeSourceImpl.kt`（任务清单点名的
+ * SubscribeSourceImpl，源码实际位于 data/remote 而非 data/repository）。
+ *
+ * 桌面适配：
+ * - `@Singleton class + @Inject 构造` → 去注解 class，构造参数显式传入；
+ * - 安卓实现内核接口 `com.slte.app.kernel.SubscribeSource`（getEmail/fetchSubscribeYaml/
+ *   saveSubscriptionUpdatedAt）→ 桌面无内核包，**不实现接口**，保留同签名公开方法承载同一
+ *   语义（后续桌面内核接线时再决定接口归属）；
+ * - `RemoteConfig` → `DeskRemoteConfig`（R7，apiBaseUrl 转发 ApiUrlStore，语义一致）；
+ * - `subscribeFetchUrl` 复用本包 [BackendAdapterFactory] 的 internal 顶层函数（同安卓出处）；
+ * - AppLog/sanitizeLog → DeskLog/DeskLog.sanitize（R1）；
+ * - 其余（候选订阅地址优先级、https 校验、逐候选回退）逐行照抄。
+ */
+class SubscribeSourceImpl(
+    private val sessionStore: SessionStore,
+    private val authApi: AuthApi,
+    private val remoteConfig: DeskRemoteConfig,
+) {
+    fun getEmail(): String? = sessionStore.getEmail()
+
+    suspend fun fetchSubscribeYaml(): ResponseBody? {
+        val candidates = candidateSubscribeUrls()
+        if (candidates.isEmpty()) {
+            DeskLog.w(TAG, "无可用订阅地址（既无账号下发地址，也无订阅令牌）")
+            return null
+        }
+        for (url in candidates) {
+            try {
+                return authApi.fetchSubscribeYaml(url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                DeskLog.w(
+                    TAG,
+                    "订阅下载失败 host=${hostOf(url)}，尝试下一个候选地址: ${DeskLog.sanitize(e.message ?: "Unknown")}",
+                )
+            }
+        }
+        DeskLog.w(TAG, "全部 ${candidates.size} 个候选订阅地址均失败")
+        return null
+    }
+
+    /**
+     * 候选订阅地址，按优先级：
+     * 1) 账号下发的 subscribe_url（须 https）
+     * 2) 兜底：apiBaseUrl + SUBSCRIBE_PATH + ?token=xxx
+     *
+     * 任一候选失败都会继续尝试下一个。此前只取单个地址，导致面板下发的
+     * 地址一旦失效（换域名后旧域名停用）就永远拿不到订阅，且不会回退。
+     */
+    private fun candidateSubscribeUrls(): List<String> {
+        val out = mutableListOf<String>()
+        accountSubscribeUrl()?.let { out.add(it) }
+        sessionStore.getSubscribeToken()?.let { token ->
+            // 用 DeskRemoteConfig.apiBaseUrl（运行时面板地址，含用户自定义）而非 data 缓存字段
+            subscribeFetchUrl(remoteConfig.apiBaseUrl, token)?.let { fallback ->
+                if (fallback !in out) out.add(fallback)
+            }
+        }
+        return out
+    }
+
+    private fun accountSubscribeUrl(): String? {
+        val raw = sessionStore.getSubscribeUrl()?.trim().orEmpty()
+        if (raw.startsWith("https://")) return raw
+        if (raw.isNotEmpty()) {
+            DeskLog.w(TAG, "订阅地址被拒（须 https）: ${DeskLog.sanitize(raw)}")
+        }
+        return null
+    }
+
+    private fun hostOf(url: String): String? = url.toHttpUrlOrNull()?.host?.lowercase()
+
+    fun saveSubscriptionUpdatedAt() = sessionStore.saveSubscriptionUpdatedAt()
+
+    private companion object {
+        const val TAG = "Polaris-Subscribe"
+    }
+}

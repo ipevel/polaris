@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,6 +63,7 @@ fun LoginScreen(
             is LoginUiState.CheckingRegisterConfig -> s.form
             is LoginUiState.LoginSuccess -> s.form
             is LoginUiState.RegisterConfigReady -> s.form
+            is LoginUiState.ConfirmPanelUrl -> s.form
             is LoginUiState.Error -> s.form
         }
 
@@ -216,6 +218,70 @@ fun LoginScreen(
     ToastTip(
         message = errorMessageRes?.let { stringResource(it) },
         onDismiss = viewModel::dismissError,
+    )
+
+    // 面板地址确认对话框
+    val confirmState = state as? LoginUiState.ConfirmPanelUrl
+    if (confirmState != null) {
+        PanelUrlConfirmDialog(
+            url = confirmState.normalizedUrl,
+            isPrivateHost = confirmState.isPrivateHost,
+            onConfirm = viewModel::confirmPanelUrl,
+            onDismiss = viewModel::cancelConfirmPanelUrl,
+        )
+    }
+}
+
+@Composable
+private fun PanelUrlConfirmDialog(
+    url: String,
+    isPrivateHost: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (isPrivateHost) {
+                    stringResource(R.string.panel_url_confirm_private_title)
+                } else {
+                    stringResource(R.string.panel_url_confirm_title)
+                },
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.panel_url_confirm_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(Dimens.gap.sm))
+                Text(
+                    url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (isPrivateHost) {
+                    Spacer(modifier = Modifier.height(Dimens.gap.sm))
+                    Text(
+                        stringResource(R.string.panel_url_confirm_private_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.panel_url_confirm_connect))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.panel_url_confirm_cancel))
+            }
+        },
     )
 }
 

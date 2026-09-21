@@ -1,0 +1,290 @@
+
+interface Finding {
+  domain: string;
+  severity: "P0" | "P1" | "P2";
+  location: string;
+  title: string;
+  body: string;
+  evidence: string;
+}
+
+interface ExpertReport {
+  expert: string;
+  domain: string;
+  scope: string;
+  findings: Finding[];
+  positives: string[];
+}
+
+// ─── Expert 1: 最新变更回归评审 ───
+phase("最新变更回归评审");
+const regressionExpert = agent("变更回归评审员", {
+  system: "你是一位 Android 高级开发工程师，专精变更影响分析与回归测试。你审查最近代码修改是否引入新 bug、是否与现有代码正确交互、是否有遗漏的清理。每条发现必须引用具体 file:line 作为证据。中文输出。"
+});
+const regressionReport = regressionExpert.ask<ExpertReport>(`评审 SLTE 安卓端最近 5 次提交的变更是否引入问题。
+
+变更背景：
+1. 暗色模式从设置页移到顶栏，ThemePreference 注入点从 SettingsViewModel 迁到 MainViewModel
+2. 硬编码绿色改为主题色（ConnectToggleCard、CurrentIpCard、ProxyGroupsSheet）
+3. 移除 Crisp 客服入口（onSupport 回调链全删除）
+4. 版本号升到 1.4.1
+5. 图标前景改 PNG 替代矢量
+
+你必须逐一读完以下文件（读完再出结论），重点看变更是否与现有代码正确衔接：
+
+1. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/MainViewModel.kt — ThemePreference 新注入
+2. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/MainScreen.kt — 顶栏暗色模式按钮
+3. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/ConnectToggleCard.kt — 主题色替换
+4. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/CurrentIpCard.kt — 主题色替换
+5. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/server/ProxyGroupsSheet.kt — 延迟着色主题化
+6. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/settings/SettingsScreen.kt — 移除暗色模式开关
+7. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/settings/SettingsViewModel.kt — 移除 ThemePreference
+8. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/navigation/SlteApp.kt — 移除 onSupport
+9. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/navigation/LoggedInApp.kt — 移除 onSupport
+10. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/navigation/LoggedInPages.kt — 移除 onSupport
+11. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/ThemePreference.kt — 理解暗色模式实现
+12. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/theme/Theme.kt — 主题系统
+13. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/theme/Color.kt — 颜色定义
+14. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/theme/ExtendedColors.kt — 扩展颜色
+15. E:/AI/Github/slte/app/src/main/java/com/slte/app/di/AppModule.kt — DI 绑定是否正确
+16. E:/AI/Github/slte/app/src/test/java/com/slte/app/ui/screen/main/MainViewModelTest.kt — 测试是否覆盖新注入
+17. E:/AI/Github/slte/app/src/test/java/com/slte/app/ui/screen/settings/SettingsViewModelTest.kt — 测试是否适配移除
+18. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/CrispManager.kt — Crisp 是否残留引用
+19. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/CrispConfig.kt — Crisp 配置是否残留
+20. E:/AI/Github/slte/app/build.gradle.kts — 依赖是否清理 Crisp
+
+评审维度：
+- 注入变更：MainViewModel 新增 ThemePreference 后，Hilt 图是否完整？所有构造点是否更新？测试是否跟上？
+- 移除 Crisp：onSupport 回调链是否彻底清除？CrispManager/CrispConfig 是否还残留在依赖图/代码/gradle 中？
+- 主题色替换：SlteColors.current 在 Composable 外使用是否正确？ConnectToggleCard 的 linearGradient 用两个同色模拟纯色是否合理？latencyColor 加 @Composable 是否影响非 Composable 调用方？
+- 暗色模式位置迁移：从设置页移到顶栏后，暗色状态切换是否仍正确驱动 Theme.kt 的 isSystemInDarkTheme()？用户心智模型是否合理（顶栏按钮 vs 设置页开关）？
+- 图标变更：PNG 替代矢量后的适配器密度覆盖是否完整？自适应图标是否仍正确？
+- 测试覆盖：新增/移除的依赖在测试中是否正确 mock？
+
+返回 ExpertReport 格式。`);
+
+// ─── Expert 2: 安卓架构深度评审 ───
+phase("安卓架构深度评审");
+const archExpert = agent("安卓架构评审员", {
+  system: "你是一位 Android 架构师，精通 Clean Architecture、Hilt DI、协程安全、状态管理。评审风格：关注依赖方向、生命周期感知、并发安全、代码重复。每条发现带 file:line 证据。中文输出。"
+});
+const archReport = archExpert.ask<ExpertReport>(`深度评审 SLTE 安卓端（app/ 模块）的整体架构质量。
+
+必须读完的核心文件：
+1. E:/AI/Github/slte/app/build.gradle.kts
+2. E:/AI/Github/slte/app/src/main/java/com/slte/app/di/AppModule.kt
+3. E:/AI/Github/slte/app/src/main/java/com/slte/app/di/StorageModule.kt
+4. E:/AI/Github/slte/app/src/main/java/com/slte/app/SlteApplication.kt
+5. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/DualBackendAuthApi.kt
+6. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/BackendAdapterFactory.kt
+7. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/RemoteConfig.kt
+8. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/FailoverConfig.kt
+9. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/AllowedHosts.kt
+10. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/EndpointSelector.kt
+11. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/ConfigRace.kt
+12. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/repository/AuthRepository.kt
+13. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/repository/SubscribeRepository.kt
+14. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/repository/ServerRepository.kt
+15. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/repository/TrafficRepository.kt
+16. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelManager.kt
+17. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelConfig.kt
+18. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/SessionManager.kt
+19. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/ApiUrlStore.kt
+20. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/ThemePreference.kt
+21. E:/AI/Github/slte/app/ui/navigation/SlteApp.kt
+22. E:/AI/Github/slte/app/ui/screen/main/MainViewModel.kt
+23. E:/AI/Github/slte/app/ui/screen/main/DashboardDataWriter.kt
+24. E:/AI/Github/slte/app/ui/screen/main/DashboardModels.kt
+25. E:/AI/Github/slte/app/kernel/AppRemoteConfig.kt
+26. E:/AI/Github/slte/app/kernel/KernelReadiness.kt
+
+评审维度：
+- 分层：data/domain/ui 边界是否清晰，有无反向依赖
+- DI：Hilt scope/单例/依赖方向，是否有绕过 DI 图的手动构造
+- 协程：scope 正确性、取消传播、withContext 调度器、Job 追踪
+- Repository：模式一致性、错误处理统一性
+- 状态管理：ViewModel StateFlow 单源、LiveData 混用
+- 代码复用/重复
+- 异常处理策略
+
+返回 ExpertReport 格式。`);
+
+// ─── Expert 3: 安卓安全性评审 ───
+phase("安卓安全性评审");
+const secExpert = agent("安卓安全评审员", {
+  system: "你是一位 Android 安全专家，专精凭证存储、网络安全、配置投毒防护、更新安全。以攻击者视角审视，每条发现带代码证据。中文输出。"
+});
+const secReport = secExpert.ask<ExpertReport>(`评审 SLTE 安卓端的安全性。
+
+必须读完的核心文件：
+1. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/CredentialStore.kt
+2. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/SecurePreferences.kt
+3. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/ApiUrlStore.kt
+4. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/local/SessionManager.kt
+5. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/AuthInterceptor.kt
+6. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/AllowedHosts.kt
+7. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/DualBackendAuthApi.kt
+8. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/FallbackDns.kt
+9. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/FailoverConfig.kt
+10. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/EndpointHealth.kt
+11. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/RemoteConfigProber.kt
+12. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/ConfigValidation.kt
+13. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerInjector.kt
+14. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerRules.kt
+15. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerNeutralizer.kt
+16. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerYamlLines.kt
+17. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SubscriptionSanitizer.kt
+18. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/about/UpdateViewModel.kt
+19. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/about/UpdateSheet.kt
+20. E:/AI/Github/slte/app/src/main/java/com/slte/app/SlteFileProvider.kt
+21. E:/AI/Github/slte/app/src/main/java/com/slte/app/utils/LogSanitizer.kt
+22. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/RemoteConfig.kt
+23. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/AppRemoteConfig.kt
+24. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/SubscribeSourceImpl.kt
+25. E:/AI/Github/slte/app/src/main/res/xml/file_paths.xml
+26. E:/AI/Github/slte/app/src/main/res/xml/network_security_config.xml
+27. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/CrispConfig.kt
+28. E:/AI/Github/slte/app/src/main/java/com/slte/app/data/remote/config/CrispManager.kt
+
+评审维度：
+- 凭证安全：密码/token 存储加密、EncryptedSharedPreferences 降级风险
+- 网络安全：TLS、证书固定、token 传输
+- 白名单：AllowedHosts 绕过可能
+- 更新安全：APK 下载校验
+- Sanitizer：YAML 清洗是否完备
+- 数据泄露：日志、FileProvider、备份规则
+- Crisp 残留：移除客服入口后相关代码/依赖是否清理
+- 远程配置投毒防护
+
+返回 ExpertReport 格式。`);
+
+// ─── Expert 4: 安卓 UI/功能完整度 ───
+phase("安卓 UI 与功能评审");
+const uiExpert = agent("安卓 UI 评审员", {
+  system: "你是一位 Android UI/UX 专家和 Compose 工程师，精通 Material 3、无障碍、国际化。评审风格：从用户视角审视功能闭环与交互质量，同时关注 Compose 性能最佳实践。中文输出。"
+});
+const uiReport = uiExpert.ask<ExpertReport>(`评审 SLTE 安卓端的 UI 质量与功能完整度。
+
+必须读完的核心文件：
+1. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/navigation/SlteApp.kt
+2. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/navigation/LoggedInApp.kt
+3. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/MainScreen.kt
+4. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/MainViewModel.kt
+5. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/ConnectToggleCard.kt
+6. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/CurrentIpCard.kt
+7. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/DashboardModels.kt
+8. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/DashboardDataWriter.kt
+9. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/main/ProxyModeCard.kt
+10. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/server/ServerScreen.kt
+11. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/server/ServerViewModel.kt
+12. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/server/ProxyGroupsSheet.kt
+13. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/traffic/TrafficScreen.kt
+14. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/traffic/TrafficViewModel.kt
+15. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/settings/SettingsScreen.kt
+16. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/login/LoginScreen.kt
+17. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/about/AboutScreen.kt
+18. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/screen/about/UpdateSheet.kt
+19. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/theme/Theme.kt
+20. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/theme/Color.kt
+21. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/theme/ExtendedColors.kt
+22. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/component/SlteCard.kt
+23. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/component/UsageCard.kt
+24. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/component/SlteScaffold.kt
+25. E:/AI/Github/slte/app/src/main/java/com/slte/app/ui/component/SlteSwitch.kt
+26. E:/AI/Github/slte/app/src/main/java/com/slte/app/utils/FormatUtils.kt
+27. E:/AI/Github/slte/app/src/main/java/com/slte/app/utils/NodeCountry.kt
+28. E:/AI/Github/slte/app/src/main/java/com/slte/app/utils/ErrorMessages.kt
+29. E:/AI/Github/slte/app/src/main/res/values/strings.xml
+30. E:/AI/Github/slte/app/src/main/res/values-en/strings.xml
+31. E:/AI/Github/slte/app/src/main/res/values-b+zh+Hant/strings.xml
+
+评审维度：
+- 功能闭环：登录→连接→代理→用量→订阅→工单→登出，移除 Crisp 后工单入口是否仍在？
+- Compose 最佳实践：重组控制、状态提升、副作用、remember key
+- 主题色变更：硬编码色改 SlteColors 后暗色模式表现、单色 linearGradient 是否该直接用 Color
+- 国际化：硬编码字符串、三语言包一致性
+- 无障碍：语义标签、toggleable vs clickable
+- 错误/空/加载状态
+- 动效与 Compose 性能
+
+返回 ExpertReport 格式。`);
+
+// ─── Expert 5: 安卓内核层评审 ───
+phase("安卓内核层评审");
+const kernelExpert = agent("安卓内核评审员", {
+  system: "你是一位 Android 系统编程专家，精通 VPN Service、内核进程管理、Go-Kotlin FFI/AIDL 交互。评审风格：关注内核生命周期、配置安全补丁链、进程边界安全。中文输出。"
+});
+const kernelReport = kernelExpert.ask<ExpertReport>(`评审 SLTE 安卓端的内核层（kernel-* 模块 + app/kernel/ 交互）。
+
+必须读完的核心文件：
+1. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelManager.kt
+2. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelConfig.kt
+3. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelProxy.kt
+4. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelProxyGroup.kt
+5. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelProxyIp.kt
+6. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelProxySpeed.kt
+7. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelReadiness.kt
+8. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/KernelFaultReporter.kt
+9. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/AppRemoteConfig.kt
+10. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/GeoIpResolver.kt
+11. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SpeedResultStore.kt
+12. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SubscribeSource.kt
+13. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerInjector.kt
+14. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerRules.kt
+15. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SanitizerNeutralizer.kt
+16. E:/AI/Github/slte/app/src/main/java/com/slte/app/kernel/SubscriptionSanitizer.kt
+17. E:/AI/Github/slte/kernel-core/src/main/golang/native/config/process.go
+18. E:/AI/Github/slte/kernel-core/src/main/golang/native/config/load.go
+19. E:/AI/Github/slte/kernel-core/src/main/golang/native/config/fetch.go
+20. E:/AI/Github/slte/kernel-core/src/main/golang/native/config/override.go
+21. E:/AI/Github/slte/kernel-service/src/main/java/com/metallic/cherry/clash/service/ClashService.kt
+22. E:/AI/Github/slte/kernel-common/src/main/java/com/metallic/cherry/clash/Constants.kt
+23. E:/AI/Github/slte/kernel-common/src/main/java/com/metallic/cherry/clash/Components.kt
+
+评审维度：
+- 内核生命周期：start/stop/restart 状态机是否健壮
+- 配置安全补丁链：process.go 的清空/兜底/白名单是否完备
+- Sanitizer 纵深防御：多层清洗是否有遗漏
+- 内核-宿主交互：AIDL 接口、回调、错误传播
+- VPN Service：连接状态机、资源清理
+- 进程边界：cgo 共享库模式下的安全约束
+- 并发安全：内核层全局变量/锁
+
+返回 ExpertReport 格式。`);
+
+// ─── 汇总 ───
+phase("汇总安卓端评审发现");
+
+const allReports = await Promise.all([
+  regressionReport, archReport, secReport, uiReport, kernelReport
+]);
+
+const aggregator = agent("评审汇总员", {
+  system: "你是一位资深技术评审主席，擅长将多位专家意见汇总为结构化报告。按严重程度排序，跨域去重合并，标注交叉验证，给出总体评级和关键建议。用中文输出。"
+});
+
+const finalReport = await aggregator.ask<string>(`你是评审主席，将以下五位安卓端专家的评审报告汇总为一份综合评审报告。
+
+五位专家的报告：
+${JSON.stringify(allReports, null, 2)}
+
+输出要求：
+1. 总体评级（优秀/良好/需改进/不合格），附理由
+2. 最新变更专项（变更回归评审员的发现单独成节）
+3. P0 发现汇总表（按安全 > 功能 > 架构排序）
+4. P1 发现汇总表
+5. P2 发现汇总表
+6. 各域亮点
+7. 跨域交叉验证（多专家独立发现 = 高确信度）
+8. 关键建议（Top 5 优先行动项）
+9. 遗留风险清单
+
+格式：纯 Markdown，表格清晰。`);
+
+await artifact.markdown("slte-android-review", finalReport, {
+  title: "SLTE 安卓端 v1.4.1 专家评审报告",
+  description: "五域专家团队对安卓端最新版的综合评审，含变更回归分析",
+  primary: true
+});
+
+return finalReport;

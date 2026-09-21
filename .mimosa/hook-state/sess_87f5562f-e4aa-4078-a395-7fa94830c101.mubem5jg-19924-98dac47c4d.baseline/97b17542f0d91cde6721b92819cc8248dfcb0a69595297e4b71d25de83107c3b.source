@@ -1,0 +1,108 @@
+package cc.polaris.desktop.panel.remote.adapter
+
+import cc.polaris.desktop.panel.remote.ApiErrors
+import cc.polaris.desktop.panel.remote.ApiException
+import cc.polaris.desktop.panel.remote.DeskEnv
+import cc.polaris.desktop.panel.remote.DeskLog
+import cc.polaris.desktop.panel.remote.api.ApiResponse
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import retrofit2.HttpException
+
+/**
+ * 适配器统一执行/错误翻译（批2 C 项）：移植自安卓 `data/remote/adapter/AdapterExecute.kt`。
+ * 桌面适配：BuildConfig.DEBUG→DeskEnv.DEBUG（R2）、AppLog→DeskLog / sanitizeLog→DeskLog.sanitize（R1）、
+ * ApiErrors→remote 包新件（R3），其余逐行照抄。
+ */
+internal object AdapterExecute {
+    suspend fun <R> raw(block: suspend () -> R): R = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ApiException) {
+        throw e
+    } catch (e: HttpException) {
+        val errorBody = e.response()?.errorBody()?.string()
+        DeskLog.w(
+            "Polaris-Api",
+            "execute HttpException: code=${e.code()}, body=${DeskLog.sanitize(errorBody?.take(500) ?: "")}",
+        )
+        val serverMessage = extractServerMessage(errorBody)
+        if (serverMessage != null) {
+            throw ApiException(serverMessage)
+        }
+        // 拿不到面板消息（HTML 拦截页 / 网关错误页）：按状态码给出可定位的文案，
+        // 不再一律显示「请求失败」——那是 2026-09-20 事故里最贵的排查成本。
+        throw ApiException(ApiErrors.httpFailureMessage(e.code()), ApiErrors.forHttpStatus(e.code()))
+    } catch (e: SerializationException) {
+        DeskLog.e(
+            "Polaris-Api",
+            "响应解析失败（后端字段类型可能与客户端不一致）: ${e.javaClass.simpleName}: ${DeskLog.sanitize(e.message ?: "Unknown")}",
+        )
+        throw ApiException("服务器响应格式异常，请稍后重试", ApiErrors.SERIALIZATION)
+    } catch (e: IOException) {
+        DeskLog.w("Polaris-Api", "execute IOException: ${DeskLog.sanitize(e.message ?: "Unknown")}")
+        throw ApiException("请求失败，请检查网络连接", ApiErrors.NETWORK)
+    } catch (e: Exception) {
+        DeskLog.w("Polaris-Api", "execute unexpected ${e.javaClass.simpleName}: ${DeskLog.sanitize(e.message ?: "Unknown")}")
+        throw ApiException("服务器响应异常", ApiErrors.NETWORK)
+    }
+
+    suspend fun <T> typed(block: suspend () -> ApiResponse<T>): ApiResponse<T> {
+        val response = raw(block)
+        val message = response.message
+        if (response.data == null && message != null) {
+            if (DeskEnv.DEBUG) {
+                DeskLog.w("Polaris-Api", "execute: data=null, message=${DeskLog.sanitize(message)}")
+            }
+            throw ApiException(message)
+        }
+        return response
+    }
+
+    fun extractServerMessage(errorBody: String?): String? {
+        if (errorBody.isNullOrBlank()) return null
+        val root =
+            try {
+                Json.parseToJsonElement(errorBody) as? JsonObject
+            } catch (_: Exception) {
+                return null
+            } ?: return null
+
+        val validationMessage = root["errors"]?.let { detailText(it) }
+        if (!validationMessage.isNullOrBlank()) return validationMessage.trim()
+
+        val genericMessage = (root["message"] as? JsonPrimitive)?.content
+        return genericMessage?.takeIf { it.isNotBlank() }?.trim()
+    }
+
+    private fun detailText(value: JsonElement): String? = when (value) {
+        is JsonPrimitive -> value.content.takeIf { it.isNotBlank() }
+        is JsonArray -> value.firstNotNullOfOrNull { detailText(it) }
+        is JsonObject -> value.values.firstNotNullOfOrNull { detailText(it) }
+        else -> null
+    }
+}
+
+internal fun <T> List<T>?.orEmptyLogged(what: String): List<T> {
+    if (this != null) return this
+    DeskLog.w("Polaris-Api", "$what: 响应 data 为空且无 message，按空结果处理")
+    return emptyList()
+}
+
+internal fun Boolean?.orFalseLogged(what: String): Boolean {
+    if (this != null) return this
+    DeskLog.w("Polaris-Api", "$what: 响应 data 为空且无 message，按 false 处理")
+    return false
+}
+
+internal fun <T : Any> T?.orNullLogged(what: String): T? {
+    if (this == null) DeskLog.w("Polaris-Api", "$what: 响应 data 为空且无 message，按空对象处理")
+    return this
+}

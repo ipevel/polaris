@@ -1,0 +1,15 @@
+package cc.polaris.desktop.panel.repository
+
+import kotlinx.coroutines.CancellationException
+
+/**
+ * Repository 通用包装（批3）：移植自安卓 `data/repository/RepositoryUtils.kt`，逐行照抄
+ * （仅包名映射 data.repository → repository）。为同包各 Repository 的 `runApi` 扩展。
+ */
+internal suspend fun <T> runApi(block: suspend () -> T): Result<T> = try {
+    Result.success(block())
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Result.failure(e)
+}

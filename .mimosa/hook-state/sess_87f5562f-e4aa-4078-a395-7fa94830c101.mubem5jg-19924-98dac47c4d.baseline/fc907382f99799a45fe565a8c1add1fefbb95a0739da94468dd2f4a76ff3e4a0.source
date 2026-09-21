@@ -1,0 +1,206 @@
+package cc.polaris.desktop.panel.repository
+
+import cc.polaris.desktop.panel.data.local.SessionManager
+import cc.polaris.desktop.panel.data.local.SessionStore
+import cc.polaris.desktop.panel.domain.model.Notice
+import cc.polaris.desktop.panel.domain.model.SessionState
+import cc.polaris.desktop.panel.domain.model.SubscribeInfo
+import cc.polaris.desktop.panel.domain.model.User
+import cc.polaris.desktop.panel.remote.DeskLog
+import cc.polaris.desktop.panel.remote.api.AuthApi
+import cc.polaris.desktop.panel.remote.api.dto.SubscribeInfoDto as ApiSubscribeInfo
+import cc.polaris.desktop.panel.utils.FormatUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+
+/**
+ * 订阅 Repository（批3）：移植自安卓 `data/repository/SubscribeRepository.kt`。
+ *
+ * 桌面适配：
+ * - `@Singleton class + @Inject 构造` → 去注解 class，构造参数显式传入；
+ * - AppLog → DeskLog（R1）；FormatUtils（批2 F）同签名；
+ * - init 订阅 `sessionManager.logoutEvents` 的 scope：安卓
+ *   `Dispatchers.Main.immediate` → 桌面 `Dispatchers.Default`（无 Android 主线程）；
+ * - 其余（双检缓存/Mutex/会话一致性校验/主机变更日志）逐行照抄。
+ */
+class SubscribeRepository(
+    private val authApi: AuthApi,
+    private val sessionStore: SessionStore,
+    private val sessionManager: SessionManager,
+) {
+
+    private val _subscribeInfo = MutableStateFlow(sessionStore.getSubscribeInfo())
+
+    val subscribeInfo: StateFlow<SubscribeInfo?> = _subscribeInfo.asStateFlow()
+
+    @Volatile
+    private var cachedSubscribeInfo: SubscribeInfo? = null
+
+    @Volatile
+    private var subscribeInfoTimestamp: Long = 0L
+
+    @Volatile
+    private var cachedUserInfo: User? = null
+
+    @Volatile
+    private var userInfoTimestamp: Long = 0L
+
+    private val subscribeMutex = Mutex()
+    private val userMutex = Mutex()
+
+    init {
+        sessionManager.logoutEvents
+            .onEach { invalidateCache() }
+            .launchIn(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    }
+
+    suspend fun fetchSubscribeInfo(force: Boolean = false): Result<SubscribeInfo> {
+        if (sessionManager.sessionState.value !is SessionState.LoggedIn) {
+            return Result.failure(IllegalStateException("未登录"))
+        }
+        val now = System.currentTimeMillis()
+        val cached = cachedSubscribeInfo
+        if (!force && cached != null && CachePolicy.isFresh(subscribeInfoTimestamp, now, CachePolicy.SUBSCRIBE_INFO_TTL_MS)) {
+            return Result.success(cached)
+        }
+        return subscribeMutex.withLock {
+            val recheckCached = cachedSubscribeInfo
+            if (!force && recheckCached != null && CachePolicy.isFresh(subscribeInfoTimestamp, System.currentTimeMillis(), CachePolicy.SUBSCRIBE_INFO_TTL_MS)) {
+                return@withLock Result.success(recheckCached)
+            }
+            val result =
+                runApi {
+                    val session =
+                        sessionManager.sessionState.value as? SessionState.LoggedIn
+                            ?: error("会话已失效")
+                    val info = authApi.fetchSubscribeInfo().toDomainSubscribeInfo()
+                    val current =
+                        sessionManager.sessionState.value as? SessionState.LoggedIn
+                            ?: error("会话已失效")
+                    check(current.user.authData == session.user.authData) { "会话已切换" }
+                    cachedSubscribeInfo = info
+                    subscribeInfoTimestamp = System.currentTimeMillis()
+                    sessionStore.saveSubscribeInfo(info)
+                    _subscribeInfo.value = info
+                    info.subscribeUrl?.takeIf { it.isNotBlank() }?.let { fresh ->
+                        logSubscribeHostChange(sessionStore.getSubscribeUrl(), fresh)
+                        sessionStore.saveSubscribeUrl(fresh)
+                    }
+                    info
+                }
+            if (result.isSuccess) {
+                result
+            } else if (force) {
+                result
+            } else {
+                sessionStore.getSubscribeInfo()?.let { Result.success(it) } ?: result
+            }
+        }
+    }
+
+    fun getCachedSubscribeInfo(): SubscribeInfo? = sessionStore.getSubscribeInfo()
+
+    fun getSubscriptionUpdatedAt(): Long = sessionStore.getSubscriptionUpdatedAt()
+
+    suspend fun fetchUserInfo(force: Boolean = false): Result<User> {
+        if (sessionManager.sessionState.value !is SessionState.LoggedIn) {
+            return Result.failure(IllegalStateException("未登录"))
+        }
+        val now = System.currentTimeMillis()
+        val cached = cachedUserInfo
+        if (!force && cached != null && CachePolicy.isFresh(userInfoTimestamp, now, CachePolicy.USER_INFO_TTL_MS)) {
+            return Result.success(cached)
+        }
+        return userMutex.withLock {
+            val recheckCached = cachedUserInfo
+            if (!force && recheckCached != null && CachePolicy.isFresh(userInfoTimestamp, System.currentTimeMillis(), CachePolicy.USER_INFO_TTL_MS)) {
+                return@withLock Result.success(recheckCached)
+            }
+            val result =
+                runApi {
+                    val session =
+                        sessionManager.sessionState.value as? SessionState.LoggedIn
+                            ?: error("会话已失效")
+                    val info = authApi.fetchUserInfo()
+                    val current =
+                        sessionManager.sessionState.value as? SessionState.LoggedIn
+                            ?: error("会话已失效")
+                    check(current.user.authData == session.user.authData) { "会话已切换" }
+                    val user =
+                        session.user.copy(
+                            email = info.email,
+                            balance = FormatUtils.balance(info.balance),
+                            remindExpire = info.remindExpire,
+                            remindTraffic = info.remindTraffic,
+                        )
+                    cachedUserInfo = user
+                    userInfoTimestamp = System.currentTimeMillis()
+                    sessionStore.saveUserInfo(user)
+                    sessionManager.updateUser(user)
+                    user
+                }
+            if (result.isSuccess || force) {
+                result
+            } else {
+                sessionStore.getUserInfo()?.let { Result.success(it) } ?: result
+            }
+        }
+    }
+
+    fun getCachedUserInfo(): User? = sessionStore.getUserInfo()
+
+    fun updateCachedUserInfo(user: User) {
+        cachedUserInfo = user
+        sessionStore.saveUserInfo(user)
+    }
+
+    suspend fun fetchNotices(): Result<List<Notice>> {
+        if (sessionManager.sessionState.value !is SessionState.LoggedIn) {
+            return Result.failure(IllegalStateException("未登录"))
+        }
+        return runApi {
+            authApi.fetchNotices()
+        }
+    }
+
+    internal fun invalidateCache() {
+        cachedSubscribeInfo = null
+        subscribeInfoTimestamp = 0L
+        cachedUserInfo = null
+        userInfoTimestamp = 0L
+        sessionStore.clearDataCache()
+        _subscribeInfo.value = null
+    }
+
+    private fun ApiSubscribeInfo.toDomainSubscribeInfo() = SubscribeInfo(
+        planName = planName,
+        planId = planId,
+        transferEnable = transferEnable,
+        usedTraffic = upload + download,
+        expiredAt = expiredAt,
+        resetDay = resetDay,
+        subscribeUrl = subscribeUrl,
+    )
+}
+
+internal fun subscribeHostOf(url: String?): String? = url?.trim()?.toHttpUrlOrNull()?.host?.lowercase()
+
+private fun logSubscribeHostChange(
+    previous: String?,
+    current: String,
+) {
+    val oldHost = subscribeHostOf(previous) ?: return
+    val newHost = subscribeHostOf(current) ?: return
+    if (oldHost != newHost) {
+        DeskLog.w("Polaris-Subscribe", "订阅地址主机变更: $oldHost -> $newHost")
+    }
+}

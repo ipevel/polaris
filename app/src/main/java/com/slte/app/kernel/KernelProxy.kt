@@ -9,10 +9,15 @@ import com.github.kr328.clash.core.model.TunnelState
 import com.github.kr328.clash.service.util.sendBroadcastSelf
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Constants
+import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import okhttp3.OkHttpClient
 
 enum class SelectionType { AUTO, FALLBACK, MANUAL }
@@ -72,7 +77,10 @@ constructor(
         modePrefs.edit { putString(KEY_PROXY_MODE, mode) }
         val clash = manager.clash()
         if (clash == null) {
-            AppLog.d("Polaris-Kernel", "setProxyMode: clash=null，已本地保存，待内核就绪后同步")
+            // 内核未运行时直接写 override.json 到磁盘，
+            // 保证 VPN 连接后首次 Clash.load() 即能读到用户选择的模式
+            writePersistOverrideModeToDisk(tunnelModeOf(mode))
+            AppLog.d("Polaris-Kernel", "setProxyMode: clash=null，override.json 已写磁盘，待内核就绪后生效")
             return@safe
         }
         val override =
@@ -81,7 +89,6 @@ constructor(
             }
         clash.patchOverride(Clash.OverrideSlot.Persist, override)
         AppLog.d("Polaris-Kernel", "setProxyMode: override written, sending broadcast")
-        context.sendBroadcastSelf(Intent(Intents.ACTION_OVERRIDE_CHANGED))
     }
 
     suspend fun ensurePersistedMode() = safe(Unit, "ensurePersistedMode") {
@@ -103,7 +110,12 @@ constructor(
     private fun tunnelModeOf(mode: String): TunnelState.Mode = when (mode) {
         Constants.PROXY_MODE_GLOBAL -> TunnelState.Mode.Global
         Constants.PROXY_MODE_DIRECT -> TunnelState.Mode.Direct
-        Constants.PROXY_MODE_SCRIPT -> TunnelState.Mode.Script
+        Constants.PROXY_MODE_SCRIPT -> {
+            // Go 内核 ModeMapping 不含 "script"，若写入会导致 patchOverride
+            // 解析失败并静默丢弃整个 override 文件；降级为 Rule
+            AppLog.w("Polaris-Kernel", "tunnelModeOf: Go 内核不支持 script 模式，降级为 rule")
+            TunnelState.Mode.Rule
+        }
         else -> TunnelState.Mode.Rule
     }
 
@@ -128,6 +140,39 @@ constructor(
         clash.setTunStackMode(normalized)
         AppLog.d("Polaris-Kernel", "setTunStack: $normalized")
     }
+
+    /**
+     * 将 Persist override 的 mode 字段直接写入磁盘文件。
+     * 用于内核未运行时（clash==null）也能确保 VPN 连接后首次 Clash.load()
+     * 读到用户选择的代理模式，避免回退到 Rule。
+     */
+    private fun writePersistOverrideModeToDisk(mode: TunnelState.Mode) {
+        try {
+            val file = overrideJsonFile
+            val existing = if (file.exists()) {
+                runCatching {
+                    kotlinx.serialization.json.Json.parseToJsonElement(file.readText()).jsonObject
+                }.getOrNull() ?: JsonObject(emptyMap())
+            } else {
+                JsonObject(emptyMap())
+            }
+            val modeSerialName = when (mode) {
+                TunnelState.Mode.Global -> "global"
+                TunnelState.Mode.Rule -> "rule"
+                TunnelState.Mode.Direct -> "direct"
+                // Script 已在 tunnelModeOf 中降级，此处不会出现
+                else -> "rule"
+            }
+            val updated = JsonObject(existing + ("mode" to JsonPrimitive(modeSerialName)))
+            file.parentFile?.mkdirs()
+            file.writeText(updated.toString())
+        } catch (e: Exception) {
+            AppLog.w("Polaris-Kernel", "writePersistOverrideModeToDisk: 写入失败: ${sanitizeLog(e.message ?: "Unknown")}")
+        }
+    }
+
+    private val overrideJsonFile: File
+        get() = File(context.filesDir, "clash/override.json")
 
     internal val ipClient: OkHttpClient by lazy {
         OkHttpClient

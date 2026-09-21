@@ -1,0 +1,204 @@
+package main
+
+// 命名管道服务器：SDDL 限定本地 + 帧协议 + 每请求 HMAC-SHA256 认证。
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Microsoft/go-winio"
+)
+
+const (
+	authEnvVar   = "POLARIS_HELPER_AUTH_KEY"
+	maxFrameSize = 10 * 1024 * 1024
+	replayWindow = 60 * time.Second
+)
+
+// DACL：仅本地 SYSTEM / Administrators / Users 可连接（命名管道本身不跨机器），
+// 身份认证由每请求 HMAC 承担；密钥只在服务环境变量与宿主本地各持一份。
+const pipeSDDL = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;BU)"
+
+func pipeName() string { return `\\.\pipe\` + identity }
+
+func authKey() []byte {
+	return []byte(os.Getenv(authEnvVar))
+}
+
+// 并发连接上限
+const maxHelperConns = 16
+
+var activeConns int32
+
+func servePipe(stop <-chan struct{}) {
+	wgAdd()
+	defer wgDone()
+
+	ln, err := winio.ListenPipe(pipeName(), &winio.PipeConfig{
+		SecurityDescriptor: pipeSDDL,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PolarisHelper: listen pipe %s: %v\n", pipeName(), err)
+
+		return
+	}
+
+	go func() {
+		<-stop
+		_ = ln.Close()
+	}()
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+
+		go handleHelperConn(conn)
+	}
+}
+
+// ---- 帧协议（与 PolarisCore 一致：4 字节小端长度 + JSON）----
+
+func writeFrame(w io.Writer, data []byte) error {
+	frame := make([]byte, 4+len(data))
+	binary.LittleEndian.PutUint32(frame, uint32(len(data)))
+	copy(frame[4:], data)
+
+	_, err := w.Write(frame)
+
+	return err
+}
+
+func readFrame(r io.Reader) ([]byte, error) {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return nil, err
+	}
+
+	length := binary.LittleEndian.Uint32(lenBuf)
+	if length > maxFrameSize {
+		return nil, fmt.Errorf("frame too large: %d", length)
+	}
+
+	data := make([]byte, length)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+// ---- 请求/响应与认证 ----
+
+type helperRequest struct {
+	Op     string          `json:"op"`
+	TS     int64           `json:"ts"`
+	Params json.RawMessage `json:"params,omitempty"`
+	Hmac   string          `json:"hmac"` // hex(HMAC-SHA256(key, "<ts>:<op>:<params>"))
+}
+
+type helperResponse struct {
+	Ok    bool   `json:"ok"`
+	Data  any    `json:"data,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+func handleHelperConn(conn net.Conn) {
+	// 并发连接上限（防连接洪泛耗尽资源）
+	if n := atomic.AddInt32(&activeConns, 1); n > maxHelperConns {
+		atomic.AddInt32(&activeConns, -1)
+		_ = conn.Close()
+
+		return
+	}
+
+	wgAdd()
+	defer wgDone()
+	defer atomic.AddInt32(&activeConns, -1)
+	defer conn.Close()
+
+	for {
+		// 每帧 60s 截止：慢速/挂起连接不再永久占用资源
+		_ = conn.SetDeadline(time.Now().Add(60 * time.Second))
+
+		data, err := readFrame(conn)
+		if err != nil {
+			return
+		}
+
+		var req helperRequest
+		if err := json.Unmarshal(data, &req); err != nil {
+			_ = writeResp(conn, false, nil, "bad request")
+
+			continue
+		}
+
+		if !verifyAuth(&req) {
+			_ = writeResp(conn, false, nil, "unauthorized")
+
+			continue
+		}
+
+		result, err := dispatchOp(&req)
+		_ = writeResp(conn, err == nil, result, errString(err))
+	}
+}
+
+func writeResp(conn net.Conn, ok bool, data any, errMsg string) error {
+	resp, err := json.Marshal(helperResponse{Ok: ok, Data: data, Error: errMsg})
+	if err != nil {
+		return err
+	}
+
+	return writeFrame(conn, resp)
+}
+
+func verifyAuth(req *helperRequest) bool {
+	key := authKey()
+	if len(key) == 0 {
+		return false // fail closed：未配置密钥一律拒绝
+	}
+
+	ts := time.Unix(req.TS, 0)
+	if req.TS <= 0 || time.Since(ts) > replayWindow || ts.Sub(time.Now()) > replayWindow {
+		return false // 防重放
+	}
+
+	// 签名输入绑定 op（T13 评审：防止空 params 签名跨 op 重放）
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(fmt.Sprintf("%d:%s:%s", req.TS, req.Op, string(req.Params))))
+
+	want, err := hex.DecodeString(req.Hmac)
+	if err != nil {
+		return false
+	}
+
+	return hmac.Equal(want, mac.Sum(nil))
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return err.Error()
+}
+
+// ---- 与 service.go 共享的等待原语 ----
+
+var pipeWg sync.WaitGroup
+
+func wgAdd()  { pipeWg.Add(1) }
+func wgDone() { pipeWg.Done() }
+func wgWait() { pipeWg.Wait() }

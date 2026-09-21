@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Polaris</string>
+    <string name="secure_prefs_degraded_warning">⚠ 安全存储异常：部分数据仅存于内存，重启后将丢失。请尝试清除应用数据后重新登录。</string>
 
     <!-- Login -->
     <string name="login_welcome">欢迎登录</string>
@@ -14,6 +15,12 @@
     <string name="login_url_required">请输入面板地址</string>
     <string name="login_url_invalid">面板地址无效，示例：https://panel.example.com</string>
     <string name="login_backend_auto_hint">根据面板地址自动识别，可手动切换</string>
+    <string name="panel_url_confirm_title">确认面板地址</string>
+    <string name="panel_url_confirm_private_title">安全风险：内部地址</string>
+    <string name="panel_url_confirm_message">即将连接到以下面板地址，您的登录凭据将发送至此服务器：</string>
+    <string name="panel_url_confirm_private_warning">该地址指向内部/本地网络，可能存在安全风险，请确认您信任此地址。</string>
+    <string name="panel_url_confirm_connect">连接</string>
+    <string name="panel_url_confirm_cancel">取消</string>
 
     <!-- Register -->
     <string name="register_title">创建账号</string>

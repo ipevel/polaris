@@ -1,0 +1,173 @@
+package main
+
+// 核心进程管理：start_core（哈希白名单校验后以 SYSTEM 拉起）/ stop_core / status。
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+)
+
+func jsonUnmarshal(raw json.RawMessage, v any) error {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	return json.Unmarshal(raw, v)
+}
+
+type startCoreParams struct {
+	ExePath string `json:"exePath"`
+	Port    int    `json:"port"` // 宿主监听的反向连接端口
+}
+
+type stopCoreParams struct {
+	Pid int `json:"pid"`
+}
+
+var (
+	coreMu    sync.Mutex
+	coreProcs = map[int]*exec.Cmd{}
+)
+
+func allowedCoreHashes() map[string]bool {
+	set := map[string]bool{}
+
+	for _, h := range strings.Split(coreSHA256, ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if len(h) == 64 {
+			set[h] = true
+		}
+	}
+
+	return set
+}
+
+func startCore(p startCoreParams) (any, error) {
+	hashes := allowedCoreHashes()
+	if len(hashes) == 0 {
+		// fail closed：未配置白名单（未用 -ldflags 注入）一律拒绝拉起
+		return nil, fmt.Errorf("core hash whitelist not configured (build with -X main.coreSHA256=<sha256>)")
+	}
+
+	sum, err := fileSHA256(p.ExePath)
+	if err != nil {
+		return nil, fmt.Errorf("hash core: %w", err)
+	}
+
+	if !hashes[sum] {
+		return nil, fmt.Errorf("core hash mismatch: %s", sum[:16])
+	}
+
+	if p.Port <= 0 || p.Port > 65535 {
+		return nil, fmt.Errorf("invalid port: %d", p.Port)
+	}
+
+	cmd := exec.Command(p.ExePath, "--port", strconv.Itoa(p.Port))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start core: %w", err)
+	}
+
+	pid := cmd.Process.Pid
+
+	coreMu.Lock()
+	coreProcs[pid] = cmd
+	coreMu.Unlock()
+
+	// 回收退出的 core，避免表内残留
+	go func() {
+		_ = cmd.Wait()
+
+		coreMu.Lock()
+		delete(coreProcs, pid)
+		coreMu.Unlock()
+	}()
+
+	return map[string]any{"pid": pid, "sha256": sum}, nil
+}
+
+func stopCore(p stopCoreParams) error {
+	coreMu.Lock()
+	cmd, ok := coreProcs[p.Pid]
+	coreMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("pid %d not tracked", p.Pid)
+	}
+
+	return cmd.Process.Kill()
+}
+
+func killAllCores() {
+	coreMu.Lock()
+	procs := make([]*exec.Cmd, 0, len(coreProcs))
+	for _, c := range coreProcs {
+		procs = append(procs, c)
+	}
+	coreProcs = map[int]*exec.Cmd{}
+	coreMu.Unlock()
+
+	for _, c := range procs {
+		_ = c.Process.Kill()
+	}
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func dispatchOp(req *helperRequest) (any, error) {
+	switch req.Op {
+	case "status":
+		coreMu.Lock()
+		pids := make([]int, 0, len(coreProcs))
+		for pid := range coreProcs {
+			pids = append(pids, pid)
+		}
+		coreMu.Unlock()
+
+		return map[string]any{
+			"identity": identity,
+			"cores":    pids,
+		}, nil
+	case "start_core":
+		var p startCoreParams
+		if err := jsonUnmarshal(req.Params, &p); err != nil {
+			return nil, err
+		}
+
+		return startCore(p)
+	case "stop_core":
+		var p stopCoreParams
+		if err := jsonUnmarshal(req.Params, &p); err != nil {
+			return nil, err
+		}
+
+		return nil, stopCore(p)
+	case "run_update_installer":
+		return runUpdateInstaller(req.Params)
+	default:
+		return nil, fmt.Errorf("unknown op: %s", req.Op)
+	}
+}

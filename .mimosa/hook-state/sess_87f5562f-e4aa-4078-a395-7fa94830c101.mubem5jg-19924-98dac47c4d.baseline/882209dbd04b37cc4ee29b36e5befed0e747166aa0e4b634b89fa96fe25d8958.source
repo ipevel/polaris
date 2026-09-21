@@ -1,0 +1,185 @@
+package cc.polaris.desktop.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import cc.polaris.desktop.core.ConnState
+import cc.polaris.desktop.core.CoreManager
+import cc.polaris.desktop.platform.AutoStart
+import cc.polaris.desktop.platform.SystemProxy
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@Composable
+fun SettingsScreen(manager: CoreManager) {
+    var subscriptionUrl by remember { mutableStateOf("") }
+    var tunEnabled by remember { mutableStateOf(manager.tunConfig.enable) }
+    var sysProxy by remember { mutableStateOf(false) }
+    var autoStart by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    // 初值异步加载：不在组合期 spawn reg/schtasks 子进程（T13 评审 P1）
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            sysProxy = SystemProxy.currentLocalPort() != null
+            autoStart = AutoStart.enabled()
+        }
+    }
+
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("设置", style = MaterialTheme.typography.titleLarge)
+
+        OutlinedTextField(
+            value = subscriptionUrl,
+            onValueChange = { subscriptionUrl = it },
+            label = { Text("订阅 URL") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        feedback = try {
+                            // 订阅拉取在内核侧执行：未连接时自动先连接（T14 后 UX 修复）
+                            if (manager.status.value.state != ConnState.CONNECTED) {
+                                feedback = "正在连接内核…"
+                                manager.start(manager.appHome.resolve("profiles/default"))
+                                val st = manager.status.value
+                                if (st.state != ConnState.CONNECTED) {
+                                    feedback = "内核连接失败：${st.error ?: "未知错误"}，请到仪表盘查看"
+                                    return@launch
+                                }
+                            }
+
+                            manager.fetchAndValid(manager.appHome.resolve("profiles/default"), subscriptionUrl, true)
+                            "订阅拉取完成"
+                        } catch (e: Exception) {
+                            "订阅拉取失败：${e.message}"
+                        }
+                    }
+                },
+                enabled = subscriptionUrl.isNotBlank(),
+            ) {
+                Text("更新订阅")
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Switch(
+                checked = tunEnabled,
+                onCheckedChange = { checked ->
+                    tunEnabled = checked
+                    manager.tunConfig = manager.tunConfig.copy(enable = checked)
+                },
+            )
+            Text("TUN 模式（需提权服务）")
+        }
+
+        val status by manager.status.collectAsState()
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Switch(
+                checked = sysProxy,
+                onCheckedChange = { checked ->
+                    sysProxy = checked
+                    scope.launch {
+                        feedback = withContext(Dispatchers.IO) {
+                            if (checked) {
+                                val port = status.proxyListen?.substringAfterLast(':')?.toIntOrNull()
+                                if (port != null && SystemProxy.enable(port)) {
+                                    "系统代理已开启（127.0.0.1:$port）"
+                                } else {
+                                    "系统代理开启失败"
+                                }
+                            } else {
+                                if (SystemProxy.disable()) "系统代理已关闭" else "系统代理关闭失败"
+                            }
+                        }
+                    }
+                },
+            )
+            Text("系统代理（WinINet）")
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Switch(
+                checked = autoStart,
+                onCheckedChange = { checked ->
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            if (checked) {
+                                AutoStart.enable(currentLauncherPath())
+                            } else {
+                                AutoStart.disable()
+                            }
+                        }
+
+                        autoStart = if (checked) ok else !ok
+                        feedback = if (autoStart) "开机自启已开启" else "开机自启已关闭"
+                    }
+                },
+            )
+            Text("开机自启（schtasks）")
+        }
+
+        var updateUrl by remember { mutableStateOf("") }
+        OutlinedTextField(
+            value = updateUrl,
+            onValueChange = { updateUrl = it },
+            label = { Text("更新清单 URL（manifest.json）") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        feedback = try {
+                            manager.checkForUpdate(updateUrl.trim())
+                        } catch (e: Exception) {
+                            "更新检查失败：${e.message}"
+                        }
+                    }
+                },
+                enabled = updateUrl.isNotBlank(),
+            ) {
+                Text("检查更新")
+            }
+        }
+
+        feedback?.let {
+            Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(480.dp))
+        }
+    }
+}
+
+/** 当前启动器路径（打包后为 exe；开发模式回落主 classpath 首段）。 */
+private fun currentLauncherPath(): String =
+    ProcessHandle.current().info().command().orElseGet {
+        System.getProperty("java.class.path")?.split(';')?.firstOrNull() ?: "PolarisDesktop.exe"
+    }
