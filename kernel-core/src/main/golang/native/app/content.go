@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"os"
-	"syscall"
 )
 
 var openContentImpl = func(url string) (int, error) {
@@ -17,7 +16,7 @@ func OpenContent(url string) (*os.File, error) {
 		return nil, err
 	}
 
-	_ = syscall.SetNonblock(fd, true)
+	_ = setNonblock(fd)
 
 	return os.NewFile(uintptr(fd), "fd"), nil
 }
