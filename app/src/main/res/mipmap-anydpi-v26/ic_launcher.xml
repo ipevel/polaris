@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应启动图标（Android 8.0+ 使用）：
-  - 108dp 画布，系统按厂商掩膜裁切（可见区 72dp、安全区 66dp）；
-  - 前景字形已按安全区缩放，见 drawable-nodpi/ic_launcher_foreground.png
-    （Polaris Builder 注入自定义图标时会覆盖同名文件）；
-  - 背景为品牌渐变 drawable/ic_launcher_background.xml。
+   自适应启动图标（Android 8.0+ 使用）：
+   - 背景：Polaris 深空色 #0A1024
+   - 前景：亮色北极星
+   - 单色层：纯黑（Android 13+ 主题图标）
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <!-- Android 13+ 主题图标（单色层）：字形为白色，可直接复用前景 -->
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>

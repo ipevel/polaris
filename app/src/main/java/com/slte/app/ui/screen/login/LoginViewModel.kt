@@ -7,6 +7,7 @@ import com.slte.app.data.local.ApiUrlStore
 import com.slte.app.data.remote.config.ConfigValidation
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.domain.model.RegisterConfig
+import com.slte.app.di.IoDispatcher
 import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
 import com.slte.app.utils.ErrorMessages
@@ -14,7 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.inject.Inject
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +63,7 @@ sealed interface LoginUiState {
 class LoginViewModel
 @Inject
 constructor(
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val authRepository: AuthRepository,
     private val apiUrlStore: ApiUrlStore,
 ) : ViewModel() {
@@ -303,7 +305,7 @@ constructor(
         probeJob =
             viewModelScope.launch {
                 delay(500) // 防抖，避免每次输入都请求
-                val detected = withContext(Dispatchers.IO) {
+                val detected = withContext(ioDispatcher) {
                     detectBackendType(normalized)
                 }
                 if (detected != null) {

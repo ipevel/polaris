@@ -36,7 +36,7 @@ class LoginViewModelTest {
         every { authRepository.savedEmail() } returns savedEmail
         every { authRepository.savedPassword() } returns savedPassword
         every { apiUrlStore.currentUrl } returns null
-        return LoginViewModel(authRepository, apiUrlStore)
+        return LoginViewModel(mainRule.dispatcher, authRepository, apiUrlStore)
     }
 
     @Test
