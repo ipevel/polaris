@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.1.11",
+  "update_version": "1.1.12",
   "update_changelog_title": "新版可用",
-  "update_changelog": "",
+  "update_changelog": "🛡 修复流量明细无法获取（接口路径纠正）\n📊 更新下载进度条\n🎨 代理模式 / 当前IP 卡片化",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/slte/releases/download/v1.1.11/SLTE-1.1.11.apk"
+  "update_apk_url": "https://github.com/ipevel/slte/releases/download/v1.1.12/SLTE-1.1.12.apk"
 }

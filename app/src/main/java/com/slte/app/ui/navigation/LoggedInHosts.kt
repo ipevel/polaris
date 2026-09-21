@@ -48,7 +48,7 @@ internal fun UpdateHost(
     updateViewModel: UpdateViewModel,
 ) {
     if (updateState is UpdateUiState.Downloading) {
-        UpdateDownloadingDialog()
+        UpdateDownloadingDialog(progress = updateState.progress)
         return
     }
     val available = updateState as? UpdateUiState.Available ?: return

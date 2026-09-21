@@ -21,8 +21,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +50,6 @@ internal fun MainScreen(
     onRenew: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    var showProxySheet by remember { mutableStateOf(false) }
     val vpnPermissionLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult(),
@@ -138,7 +135,7 @@ internal fun MainScreen(
                     }
                 }
             },
-            onProxyClick = { showProxySheet = true },
+            onSelectProxyMode = mainViewModel::setProxyMode,
             onUpdateSubscription = {
                 if (data.hasPlan) {
                     mainViewModel.updateSubscription()
@@ -153,14 +150,6 @@ internal fun MainScreen(
             Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-        )
-    }
-
-    if (showProxySheet) {
-        ProxyModeSheet(
-            currentMode = data.proxyMode,
-            onDismiss = { showProxySheet = false },
-            onSelect = mainViewModel::setProxyMode,
         )
     }
 }
@@ -181,7 +170,7 @@ private fun requestNotificationPermission(
 internal fun DashboardContent(
     data: DashboardData,
     onToggleConnection: () -> Unit,
-    onProxyClick: () -> Unit,
+    onSelectProxyMode: (String) -> Unit,
     onUpdateSubscription: () -> Unit,
     onTraffic: () -> Unit,
     onRenew: () -> Unit,
@@ -230,13 +219,14 @@ internal fun DashboardContent(
             item {
                 ProxyModeCard(
                     proxyMode = data.proxyMode,
-                    onClick = onProxyClick,
+                    onSelectMode = onSelectProxyMode,
                 )
             }
             item {
                 CurrentIpCard(
                     currentIp = data.currentIp,
                     ipCountryCode = data.ipCountryCode,
+                    onSettingsClick = onServer,
                 )
             }
             item {

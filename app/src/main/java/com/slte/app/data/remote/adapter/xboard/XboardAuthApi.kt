@@ -418,26 +418,13 @@ class XboardAuthApi(
     private fun parseTrafficLog(array: JsonArray): List<TrafficLogRecord> {
         return array.mapNotNull { element ->
             val obj = element as? JsonObject ?: return@mapNotNull null
-            val dPrimitive = obj["d"] as? JsonPrimitive
-            val dIsString = dPrimitive?.isString == true
             TrafficLogRecord(
-                date =
-                obj.stringField("record_at", "date", "log_date", "created_at")
-                    .ifEmpty { if (dIsString) dPrimitive.content else "" },
-                uploadBytes = obj.longField("u", "upload"),
-                downloadBytes =
-                if (dIsString) obj.longField("download") else obj.longField("d", "download"),
+                date = obj.longField("record_at").toDateString(),
+                uploadBytes = obj.longField("u"),
+                downloadBytes = obj.longField("d"),
             )
         }
     }
-}
-
-private fun JsonObject.stringField(vararg keys: String): String {
-    for (k in keys) {
-        val p = this[k] as? JsonPrimitive ?: continue
-        if (p.isString) return p.content
-    }
-    return ""
 }
 
 private fun JsonObject.longField(vararg keys: String): Long {
@@ -447,4 +434,15 @@ private fun JsonObject.longField(vararg keys: String): Long {
         if (v != null) return v
     }
     return 0L
+}
+
+/** Unix 时间戳（秒）转换成 yyyy-MM-dd 字符串，0 返回空。 */
+private fun Long.toDateString(): String {
+    if (this <= 0L) return ""
+    return try {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        sdf.format(java.util.Date(this * 1000))
+    } catch (_: Exception) {
+        ""
+    }
 }

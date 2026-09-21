@@ -1,11 +1,13 @@
 package com.slte.app.ui.screen.about
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -97,7 +99,7 @@ fun UpdateSheet(
 }
 
 @Composable
-fun UpdateDownloadingDialog() {
+fun UpdateDownloadingDialog(progress: Int) {
     LocaleAwareAlertDialog(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
@@ -122,16 +124,29 @@ fun UpdateDownloadingDialog() {
                 textAlign = TextAlign.Center,
             )
         },
-        confirmButton = {
-            SlteButton(
-                text = stringResource(R.string.update_downloading),
-                onClick = {},
-                enabled = false,
-                loading = true,
+        text = {
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                style = SlteButtonStyle.Primary,
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                LinearProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(Dimens.gap.sm),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(Dimens.gap.sm))
+                Text(
+                    text = "$progress%",
+                    style = SlteType.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         },
+        confirmButton = {},
     )
 }
 

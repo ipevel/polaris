@@ -64,7 +64,9 @@ sealed interface UpdateUiState {
         val force: Boolean,
     ) : UpdateUiState
 
-    data object Downloading : UpdateUiState
+    data class Downloading(
+        val progress: Int = 0,
+    ) : UpdateUiState
 
     data class DownloadFailed(
         val messageRes: Int,
@@ -177,11 +179,11 @@ constructor(
         }
         if (_state.value is UpdateUiState.Downloading) return
 
-        _state.value = UpdateUiState.Downloading
+        _state.value = UpdateUiState.Downloading(progress = 0)
         viewModelScope.launch {
             val result =
                 withContext(ioDispatcher) {
-                    runCatching { downloadApk(url) }
+                    runCatching { downloadApk(url) { pct -> _state.value = UpdateUiState.Downloading(progress = pct) } }
                 }
             result.onSuccess { apkFile ->
                 AppLog.i("SLTE-Update", "APK 下载完成: ${apkFile.name} size=${apkFile.length()}")
@@ -194,7 +196,10 @@ constructor(
         }
     }
 
-    private fun downloadApk(url: String): java.io.File {
+    private fun downloadApk(
+        url: String,
+        onProgress: (Int) -> Unit,
+    ): java.io.File {
         val dir =
             context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
                 ?: context.filesDir
@@ -203,9 +208,23 @@ constructor(
         downloadClient.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
             val body = resp.body ?: throw java.io.IOException("empty body")
+            val total = body.contentLength()
+            var readBytes = 0L
             body.byteStream().use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        output.write(buffer, 0, n)
+                        readBytes += n
+                        if (total > 0L) {
+                            onProgress(((readBytes * 100L) / total).toInt().coerceIn(0, 100))
+                        }
+                    }
+                }
             }
+            onProgress(100)
         }
         return target
     }
@@ -245,5 +264,7 @@ constructor(
         const val REFRESH_TIMEOUT_MS = 6_000L
 
         const val DOWNLOAD_TIMEOUT_SECONDS = 60L
+
+        const val DOWNLOAD_BUFFER_SIZE = 8 * 1024
     }
 }
