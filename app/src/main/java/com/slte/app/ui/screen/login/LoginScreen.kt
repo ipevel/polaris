@@ -157,6 +157,12 @@ fun LoginScreen(
                 enabled = !isLoading,
                 onSelect = viewModel::onBackendTypeChange,
             )
+            Text(
+                text = stringResource(R.string.login_backend_auto_hint),
+                style = SlteType.label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Dimens.gap.xs),
+            )
 
             Spacer(modifier = Modifier.height(Dimens.gap.lg))
             SlteButton(

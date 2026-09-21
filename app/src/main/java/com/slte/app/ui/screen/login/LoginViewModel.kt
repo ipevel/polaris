@@ -11,12 +11,18 @@ import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
 import com.slte.app.utils.ErrorMessages
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.net.HttpURLConnection
+import java.net.URL
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 sealed interface LoginUiState {
     data class Form(
@@ -64,6 +70,7 @@ constructor(
 
     private var loginJob: Job? = null
     private var registerConfigJob: Job? = null
+    private var probeJob: Job? = null
 
     /** 面板地址初始值：仅回显已保存的用户地址，App 不预填任何内置地址 */
     private fun initialForm() = LoginUiState.Form(
@@ -126,11 +133,15 @@ constructor(
     fun onPanelUrlChange(value: String) {
         val f = currentForm()
         _uiState.value = f.copy(panelUrl = value)
+        // 仅用户手动选择过才保持手动值，否则自动探测
+        probeBackendType(value)
     }
 
     fun onBackendTypeChange(type: String) {
         val f = currentForm()
         _uiState.value = f.copy(backendType = type)
+        // 用户手动选择了后端类型，取消任何探测
+        probeJob?.cancel()
     }
 
     fun toggleRememberMe() {
@@ -278,5 +289,59 @@ constructor(
                 panelUrl = f.panelUrl,
                 backendType = f.backendType,
             )
+    }
+
+    /**
+     * 探测面板的 `guest/comm/config` 接口，根据响应字段自动识别后端类型：
+     * - xboard 特有字段：is_captcha / captcha_type / turnstile_site_key
+     * - 否则视为 xiaov2b（V2Board 系）
+     * 探测失败或 URL 非法时不改动用户当前选择。
+     */
+    private fun probeBackendType(rawUrl: String) {
+        probeJob?.cancel()
+        val normalized = ConfigValidation.normalizePanelUrl(rawUrl) ?: return
+        probeJob =
+            viewModelScope.launch {
+                delay(500) // 防抖，避免每次输入都请求
+                val detected = withContext(Dispatchers.IO) {
+                    detectBackendType(normalized)
+                }
+                if (detected != null) {
+                    val f = currentForm()
+                    if (f.panelUrl == rawUrl) {
+                        _uiState.value = f.copy(backendType = detected)
+                    }
+                }
+            }
+    }
+
+    /** 返回 "xboard" 或 "xiaov2b"；网络/解析失败返回 null（不改动选择）。 */
+    private fun detectBackendType(panelUrl: String): String? {
+        val conn = try {
+            val base = panelUrl.trimEnd('/')
+            (URL("$base/api/v1/guest/comm/config").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 5000
+                readTimeout = 5000
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json")
+            }
+        } catch (_: Exception) {
+            return null
+        }
+        return try {
+            val code = conn.responseCode
+            if (code !in 200..299) return null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val data = JSONObject(body).optJSONObject("data") ?: return null
+            val isXboard = data.has("is_captcha") ||
+                data.has("captcha_type") ||
+                data.has("turnstile_site_key") ||
+                data.has("recaptcha_v3_site_key")
+            if (isXboard) "xboard" else "xiaov2b"
+        } catch (_: Exception) {
+            null
+        } finally {
+            conn.disconnect()
+        }
     }
 }

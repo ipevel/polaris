@@ -80,6 +80,10 @@ on:
         description: Release 标签名（留空自动使用 v<版本号>）
         required: false
         default: ''
+      releaseNotes:
+        description: Release 变更说明（留空自动从 git log 生成）
+        required: false
+        default: ''
       iconB64:
         description: 自定义启动图标（PNG 的 base64，≤36KB；留空使用仓库默认图标）
         required: false
@@ -316,6 +320,7 @@ jobs:
         env:
           VERSION: ${{ inputs.versionName }}
           API_TYPE: ${{ inputs.apiType }}
+          NOTES: ${{ inputs.releaseNotes }}
         run: |
           set -e
           {
@@ -327,6 +332,16 @@ jobs:
             echo "| 后端类型 | \`${API_TYPE}\` |"
             echo "| 提交 | \`${GITHUB_SHA:0:7}\` |"
             echo "| 构建时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+            echo ""
+            if [ -n "$NOTES" ] && [ "$NOTES" != "auto" ]; then
+              echo "### 变更说明"
+              echo ""
+              echo "$NOTES"
+            elif [ "$NOTES" = "auto" ]; then
+              echo "### 变更说明"
+              echo ""
+              echo '> 见 git log'
+            fi
             echo ""
             echo "### 文件校验（SHA-256）"
             echo ""
