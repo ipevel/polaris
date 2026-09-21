@@ -384,3 +384,40 @@ jobs:
               --latest
           fi
           echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+
+      - name: 更新 config/remote.json（app 内更新自动生效）
+        env:
+          VERSION: ${{ inputs.versionName }}
+          NOTES: ${{ inputs.releaseNotes }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
+          cd polaris-updater
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Polaris-${VERSION}.apk"
+          python3 -c "
+          import json, os
+          version = os.environ['VERSION']
+          notes = os.environ.get('NOTES', '').strip()
+          apk = os.environ.get('APK_URL', '')
+          with open('config/remote.json', 'r') as f:
+              cfg = json.load(f)
+          cfg['update_version'] = version
+          cfg['update_apk_url'] = apk
+          if notes and notes != 'auto':
+              cfg['update_changelog'] = notes
+          with open('config/remote.json', 'w') as f:
+              json.dump(cfg, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          print('remote.json 已更新')
+          "
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config/remote.json
+          if git diff --cached --quiet; then
+            echo "无变更，跳过 push"
+          else
+            git commit -m "chore: 自动更新 remote.json → ${VERSION}"
+            git push
+            echo "已推送 remote.json 更新"
+          fi
