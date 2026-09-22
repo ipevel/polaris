@@ -225,7 +225,7 @@
 
     <!-- About (关于软件) -->
     <string name="about_title">About</string>
-    <string name="about_app_desc">Lightweight mihomo-based proxy client</string>
+    <string name="about_app_desc">Lightweight mihomo-based proxy client · Rule / Global / Direct</string>
     <string name="about_app_version">App version</string>
     <string name="about_kernel_version">Core version</string>
     <string name="about_check_update">Check updates</string>

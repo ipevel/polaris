@@ -222,7 +222,7 @@
 
     <!-- About (关于软件) -->
     <string name="about_title">關於軟體</string>
-    <string name="about_app_desc">北辰（Polaris）是一款基於 mihomo 內核的輕量代理用戶端，如北極星般穩定可靠，為你指引網絡航向</string>
+    <string name="about_app_desc">基於 mihomo 內核的輕量代理用戶端｜規則·全局·直連</string>
     <string name="about_app_version">應用版本</string>
     <string name="about_kernel_version">核心版本</string>
     <string name="about_check_update">檢查更新</string>
