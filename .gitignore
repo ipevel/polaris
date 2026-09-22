@@ -18,11 +18,6 @@ app/gradle.properties
 AGENTS.md
 .vscode/
 
-# Go 构建产物
-desktop/helper/polaris-helper.exe
-desktop/helper/polaris-helper
-desktop/packaging/exe/dist/
-
 # 扫描工具会话状态（不入库）
 .mimosa/
 

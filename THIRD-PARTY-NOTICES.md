@@ -44,10 +44,6 @@
 
 `libclash.so` 内嵌 mihomo 的 Go 传递依赖（metacubex fork 系、sing-* 系、quic-go、tailscale、zerotier 等）。逐库许可清单与再分发兼容性核验见仓库审计记录；GPL-3.0 §6 要求的完整对应源码已随 vendored 源码树提供。重点 fork（metacubex/quic-go、metacubex/tailscale、metacubex/zerotier-go）相对上游的许可变更请以各自仓库声明为准。
 
-## 5. 桌面分发运行时
-
-桌面安装器捆绑 Eclipse Temurin JRE（GPLv2 with Classpath Exception，`runtime/legal/` 随包保留）与 [wintun.dll](https://www.wintun.net/)（随包分发条款见 wintun.net）。
-
 ---
 
 GPL-3.0 要求：任何基于本项目及上述 GPL 组件构建的分发物必须开源、保留版权声明，并按 GPL-3.0 提供完整源代码。

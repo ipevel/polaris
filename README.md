@@ -4,7 +4,6 @@
 
 [![许可证](https://img.shields.io/badge/许可证-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-28--36-green?style=flat-square)](README.md)
-[![Windows](https://img.shields.io/badge/Windows-Desktop-blue?style=flat-square)](desktop/README.md)
 [![内核](https://img.shields.io/badge/内核-mihomo-9cf?style=flat-square)](https://github.com/MetaCubeX/mihomo)
 
 **基于 mihomo 内核的轻量级代理客户端，支持 XiaoV2b / Xboard 面板**
@@ -31,13 +30,6 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 - 深色 / 浅色 / 跟随系统主题
 - 安全白名单：凭据只发往白名单内域名，防配置投毒
 
-### Windows Desktop
-
-- Compose Multiplatform Desktop 独立工程，与 Android 按目录隔离
-- 同面板后端：XiaoV2b / Xboard
-- 系统代理、开机自启、托盘图标
-- 独立更新通道
-
 ## 上游仓库
 
 本仓库的基础代码来自上游项目 **[shgnx/slte](https://github.com/shgnx/slte)**，在此致谢上游作者的开源贡献。本仓库在上游基础上进行定制化开发与独立发布（品牌、面板适配、功能增强等），如需上游原版请移步上游仓库。
@@ -47,7 +39,6 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
 | Android | 1.4.5 | 19 |
-| Windows Desktop | 预览版 | — |
 
 > 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）
 
