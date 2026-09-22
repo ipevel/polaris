@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.4.5 — 全局模式修复",
   "update_changelog": "- fix: 全局模式失效——面板只有 Selector 策略组时 GLOBAL 组停在 DIRECT 全部直连，现自动挂载到首个策略组\n- fix: 站点名称回归——面板后台「网站名称」重新作为权威来源显示\n- chore: 版本号升到 1.4.5 (versionCode 19)",
   "update_force": false,
-  "update_apk_url": "",
-  "update_apk_sha256": ""
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.5/Polaris-1.4.5.apk",
+  "update_apk_sha256": "918ba41171cd2c60c55a33b307c058ae8f04407726fd49c13e00d79244665f31"
 }
