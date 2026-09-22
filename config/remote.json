@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.5",
+  "update_version": "1.4.6",
   "update_changelog_title": "Polaris 1.4.6 — 合规加固与品牌统一",
   "update_changelog": "- chore: 三轮合规审计修复——476 个源文件补全 GPL-3.0 版权头，新增 SECURITY/CONTRIBUTING/CODE_OF_CONDUCT/SUPPORT 社区文件\n- fix: 日志脱敏规则扩展（Bearer / 敏感键值 / URL 凭据 / 邮箱），防敏感信息泄露\n- ci: GitHub Actions 全部固定到 commit SHA，发布构建串行化\n- build: release 签名空密码前置校验，杜绝静默签名发布\n- style: ktlint android_studio 代码风格全量统一 + .editorconfig 覆盖全仓文件类型\n- refactor: 品牌统一为 Polaris；移除 Windows 桌面端（Android 端无功能影响）\n- chore: 版本号升到 1.4.6 (versionCode 20)",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.5/Polaris-1.4.5.apk",
-  "update_apk_sha256": "918ba41171cd2c60c55a33b307c058ae8f04407726fd49c13e00d79244665f31"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.6/Polaris-1.4.6.apk",
+  "update_apk_sha256": "30c7ff6cdf30e8f95f09f85013f2f007ad37bd214de234c5bfc785467d5671d6"
 }
