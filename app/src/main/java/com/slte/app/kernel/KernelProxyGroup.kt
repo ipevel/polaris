@@ -182,9 +182,14 @@ suspend fun KernelProxy.ensureGlobalSelection() = safe(Unit, "ensureGlobalSelect
     val now = clash.queryProxyGroup("GLOBAL", ProxySort.Default).now
     AppLog.d("Polaris-Kernel", "ensureGlobalSelection: GLOBAL now=$now")
     if (now.isBlank() || now == "DIRECT" || now == "REJECT") {
-        val target = autoGroupName() ?: return@safe
+        val target = autoGroupName() ?: run {
+            AppLog.w("Polaris-Kernel", "ensureGlobalSelection: 未找到可挂载的策略组，GLOBAL 保持 $now（全局模式将直连）")
+            return@safe
+        }
         val result = clash.patchSelector("GLOBAL", target)
-        AppLog.d("Polaris-Kernel", "ensureGlobalSelection: GLOBAL -> $target result=$result")
+        // 回读核验：patch 失败时全局模式会静默保持直连
+        val after = clash.queryProxyGroup("GLOBAL", ProxySort.Default).now
+        AppLog.d("Polaris-Kernel", "ensureGlobalSelection: GLOBAL $now -> $target result=$result after=$after")
     }
 }
 
@@ -234,7 +239,15 @@ internal suspend fun KernelProxy.patchGlobalIfGlobal(target: String) {
     AppLog.d("Polaris-Kernel", "patchGlobalIfGlobal: GLOBAL -> $target result=$result")
 }
 
-internal suspend fun KernelProxy.autoGroupName(): String? = queryGroupByTypeName("URLTest") ?: nameMatch("自动", "auto", "url")
+/**
+ * 全局模式下挂载到 GLOBAL 组的目标策略组。
+ * 优先 URLTest / 名称含「自动」的组；V2Board/Xboard 面板常见配置只有
+ * Selector 组（如「节点选择」），此时回落到首个 Selector/URLTest 组——
+ * 缺了这一层兜底，此类面板全局模式下 GLOBAL 停在 DIRECT，全部流量直连。
+ */
+internal suspend fun KernelProxy.autoGroupName(): String? = queryGroupByTypeName("URLTest")
+    ?: nameMatch("自动", "auto", "url")
+    ?: selectorGroup()
 
 internal suspend fun KernelProxy.fallbackGroupName(): String? = queryGroupByTypeName("Fallback") ?: nameMatch("故障", "fallback")
 

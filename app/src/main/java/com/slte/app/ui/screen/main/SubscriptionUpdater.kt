@@ -213,13 +213,16 @@ constructor(
     }
 
     /**
-     * 订阅更新成功后刷新站点描述/官网（面板 guest/comm/config）。
-     * 站点名以订阅响应头为准（SubscribeSourceImpl 已随拉取更新），
-     * 这里只补 headers 携带不了的描述字段，写入 SiteInfoStore 持久化。
+     * 订阅更新成功后从面板 guest/comm/config 刷新站点名称/描述/官网，
+     * 写入 SiteInfoStore 持久化（名称/描述以面板后台设置为准）。
      */
     private suspend fun refreshSiteInfoFromPanel() {
         val info = authRepository.fetchSiteInfo(force = true)
-        siteInfoStore.updateFromPanelConfig(description = info.appDescription, url = info.appUrl)
+        siteInfoStore.updateFromPanelConfig(
+            name = info.appName,
+            description = info.appDescription,
+            url = info.appUrl,
+        )
     }
 
     private suspend fun autoSpeedTestAfterUpdate(configChanged: Boolean) {

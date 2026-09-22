@@ -19,9 +19,10 @@ annotation class SiteInfoPrefs
  * 面板站点名称/描述的持久化存储。
  *
  * 数据来源与生命周期（与订阅挂钩）：
- * - 站点名称：订阅响应头 `profile-title`（Clash 客户端通用约定，支持 base64 前缀），
+ * - 站点名称/描述/官网：面板 `guest/comm/config`（后台「网站名称/描述」设置），
+ *   由订阅更新成功后的刷新写入；
+ * - 站点名称另有订阅响应头 `profile-title` 兜底（Clash 客户端通用约定），
  *   由 [com.slte.app.data.remote.SubscribeSourceImpl] 在每次订阅拉取成功时写入；
- * - 描述/官网：面板 `guest/comm/config`，在订阅更新成功后随拉取刷新；
  * - 首次登录订阅时拉取并记住，之后每次重新拉取订阅时更新。
  */
 @Singleton
@@ -51,15 +52,20 @@ constructor(
         _siteInfo.value = next
     }
 
-    /** 面板 comm/config 的描述（订阅更新成功后刷新），名称以订阅头为准不覆盖 */
+    /**
+     * 面板 comm/config 拉取成功后写入。面板后台的「网站名称/描述」是权威
+     * 来源（订阅响应头 profile-title 多数面板不返回，仅作无配置时的先行兜底）。
+     */
     fun updateFromPanelConfig(
-        description: String?,
+        name: String? = null,
+        description: String? = null,
         url: String? = null,
     ) {
-        if (description.isNullOrBlank() && url.isNullOrBlank()) return
+        if (name.isNullOrBlank() && description.isNullOrBlank() && url.isNullOrBlank()) return
         val current = _siteInfo.value
         val next =
             current.copy(
+                appName = name?.takeIf { it.isNotBlank() } ?: current.appName,
                 appDescription = description?.takeIf { it.isNotBlank() } ?: current.appDescription,
                 appUrl = url?.takeIf { it.isNotBlank() } ?: current.appUrl,
             )

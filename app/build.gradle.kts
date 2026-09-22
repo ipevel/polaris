@@ -42,8 +42,8 @@ fun slteHost(url: String): String? = url
 
 val slteAppName = slteValue("POLARIS_APP_NAME") ?: "Polaris"
 val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
-val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 18
-val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.4.4"
+val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 19
+val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.4.5"
 
 val slteApiBaseUrl = slteValue("POLARIS_API_BASE_URL")?.let(::slteHttps) ?: "https://api.example.com"
 val slteApiType = slteValue("POLARIS_API_TYPE") ?: "xiaov2b"
