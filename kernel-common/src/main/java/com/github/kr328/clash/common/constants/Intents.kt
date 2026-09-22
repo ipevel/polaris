@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：跨模块 Action 常量定义，Intent 通信契约
 
 package com.github.kr328.clash.common.constants
 

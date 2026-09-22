@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：SharedPreferences 属性委托，内核层 KV 存储基础
 
 package com.github.kr328.clash.common.store
 

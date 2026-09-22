@@ -25,3 +25,15 @@ indent_size = 2
 
 [*.xml]
 indent_size = 4
+
+[*.{toml,properties,conf,pro}]
+indent_size = 2
+
+[*.go]
+indent_style = tab
+
+[*.{c,h,s}]
+indent_size = 4
+
+[*.sh]
+indent_style = tab

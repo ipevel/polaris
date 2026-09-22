@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：屏幕亮灭时 suspend/resume 内核，省电策略
 
 package com.github.kr328.clash.service.clash.module
 

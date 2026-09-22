@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：PendingIntent flags 版本兼容（FLAG_MUTABLE 等）
 
 package com.github.kr328.clash.common.compat
 

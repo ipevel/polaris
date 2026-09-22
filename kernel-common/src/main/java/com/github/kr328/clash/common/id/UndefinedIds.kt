@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：通知 ID 分配器，避免多模块通知 ID 冲突
 
 package com.github.kr328.clash.common.id
 

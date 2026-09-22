@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：监听 ACTION_CLASH_REQUEST_STOP 广播，发起关闭事件
 
 package com.github.kr328.clash.service.clash.module
 

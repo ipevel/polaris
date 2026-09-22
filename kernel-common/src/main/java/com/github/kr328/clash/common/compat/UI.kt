@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：Window/系统栏 API 版本兼容扩展，minSdk 28 起 diff 各版本差异
 
 @file:Suppress("DEPRECATION")
 

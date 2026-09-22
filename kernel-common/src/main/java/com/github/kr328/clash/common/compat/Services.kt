@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：前台服务启动兼容（startForegroundService + 类型映射）
 
 package com.github.kr328.clash.common.compat
 

@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：HTML 解析版本兼容扩展（Html.fromHtml）
 
 @file:Suppress("DEPRECATION")
 

@@ -4,6 +4,7 @@
 //
 // Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
 // Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+// CMA 上游组件：Intent UUID/文件名/权限扩展，Profile 传递用
 
 package com.github.kr328.clash.common.util
 
