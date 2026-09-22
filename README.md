@@ -5,6 +5,7 @@
 [![许可证](https://img.shields.io/badge/许可证-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-28--36-green?style=flat-square)](README.md)
 [![内核](https://img.shields.io/badge/内核-mihomo-9cf?style=flat-square)](https://github.com/MetaCubeX/mihomo)
+[![CI](https://github.com/ipevel/polaris/actions/workflows/ci.yml/badge.svg)](https://github.com/ipevel/polaris/actions/workflows/ci.yml)
 
 **基于 mihomo 内核的轻量级代理客户端，支持 XiaoV2b / Xboard 面板**
 
@@ -29,6 +30,16 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 - 多语言：简体中文 / 繁體中文 / English
 - 深色 / 浅色 / 跟随系统主题
 - 安全白名单：凭据只发往白名单内域名，防配置投毒
+
+## 下载与安装
+
+1. 从 [Releases](https://github.com/ipevel/polaris/releases) 下载最新版 APK（`Polaris-<版本号>.apk`，arm64-v8a）
+2. **校验完整性**：下载页附有 `SHA256SUMS.txt` 与签名证书指纹，安装前比对 SHA-256（Windows：`certutil -hashfile <APK> SHA256`；Linux/macOS：`sha256sum <APK>`）；不一致请勿安装
+3. 按系统提示允许「安装未知应用」后完成安装（需 Android 8.0 / API 28 及以上）
+4. 首次启动在登录页填写**你自己的面板网址**（App 不内置任何面板地址）
+5. 升级走 App 内更新（下载后自动校验 SHA-256），也可手动下载新版覆盖安装（数据保留）
+
+> 本项目仅通过 GitHub Releases 分发；其他渠道的安装包无法保证来源与完整性。
 
 ## 上游仓库
 
@@ -105,6 +116,12 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 - [ClashMetaForAndroid](https://github.com/MetaCubeX/ClashMetaForAndroid) - 内核栈（`kernel-*` 模块）派生自该项目，第三方声明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
 - [V2Board (xiaov2b)](https://github.com/wyx2685/v2board/tree/master) - 兼容的机场面板后端（`xiaov2b` API，master 分支）
 - [Xboard](https://github.com/cedar2025/Xboard/tree/master) - 兼容的机场面板后端（`xboard` API，master 分支）
+
+## 社区
+
+- [安全政策](SECURITY.md) —— 漏洞请走私有渠道报告，勿开公开 Issue
+- [贡献指南](CONTRIBUTING.md) ｜ [行为准则](CODE_OF_CONDUCT.md)
+- [支持与求助](SUPPORT.md)
 
 ## 许可证
 

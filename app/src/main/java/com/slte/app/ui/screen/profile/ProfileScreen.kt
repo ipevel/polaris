@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Polaris Contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
 package com.slte.app.ui.screen.profile
 
 import android.content.Intent

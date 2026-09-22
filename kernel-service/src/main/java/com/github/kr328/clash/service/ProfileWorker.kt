@@ -1,3 +1,10 @@
+// SPDX-FileCopyrightText: The Clash Meta for Android Authors
+// SPDX-FileCopyrightText: 2026 Polaris Contributors (modifications)
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
+// Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+
 package com.github.kr328.clash.service
 
 import android.app.PendingIntent
@@ -95,10 +102,38 @@ class ProfileWorker : BaseService() {
         }
     }
 
+    // 静态脱敏规则与 app 端 AppLog.sanitize 对齐：app 依赖本模块、不能反向复用，故本地维护等价镜像，
+    // 两处需同步演进；AppLog 中依赖 BuildConfig 的裸域名规则因模块依赖方向无法在此镜像（残余风险）
+    private val bearerPattern = Regex("(?i)bearer\\s+[A-Za-z0-9._\\-]+")
+
+    private val keyValuePattern =
+        Regex(
+            "(?i)((?:subscribe_token|access_token|refresh_token|auth_data|authorization|token|password|passwd|pwd)\\s*[\"']?\\s*[=:]\\s*)" +
+                "(?:Bearer\\s+|Basic\\s+)?(?:([\"'])(.*?)\\2|([^\\s\"',;&{}\\]]+))",
+        )
+
+    private val urlCredentialsPattern = Regex("(?i)\\b([a-z][a-z0-9+.\\-]*://)([^\\s/]+)@")
+
+    private val emailPattern = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+
+    private val urlHostPattern = Regex("(?i)((?:https?|wss?)://)([^/\\s\"'<>]+)")
+
     private fun sanitize(message: String): String =
         message
-            .replace(Regex("token=[^&\\s\"']+", RegexOption.IGNORE_CASE), "token=***")
-            .replace(Regex("token%3D[^&\\s\"']+", RegexOption.IGNORE_CASE), "token%3D***")
+            .replace(Regex("(?i)token=\\s*[^&\\s\"'}\\]]+"), "token=***")
+            .replace(Regex("(?i)token%3D[^&\\s\"']+"), "token%3D***")
+            .replace(bearerPattern, "Bearer ***")
+            .replace(keyValuePattern) { m ->
+                val quote = m.groupValues[2]
+                val masked = if (m.groups[2] != null) quote + "***" + quote else "***"
+                m.groupValues[1] + masked
+            }
+            .replace(urlCredentialsPattern, "$1***@")
+            .replace(emailPattern) { m ->
+                val at = m.value.indexOf('@')
+                m.value.take(1) + "***" + m.value.substring(at)
+            }
+            .replace(urlHostPattern, "$1***")
 
     private fun createChannels() {
         NotificationManagerCompat.from(this).createNotificationChannelsCompat(

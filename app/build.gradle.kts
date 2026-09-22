@@ -109,12 +109,16 @@ android {
         buildConfigField("String", "TELEGRAM_GROUP_URL", "\"$slteTelegramGroupUrl\"")
     }
 
+    // 先提取密码供 buildTypes 做缺参前置校验，避免空密码静默进入签名配置
+    val releaseStorePassword = slteValue("POLARIS_RELEASE_STORE_PASSWORD").orEmpty()
+    val releaseKeyPassword = slteValue("POLARIS_RELEASE_KEY_PASSWORD").orEmpty()
+
     signingConfigs {
         create("release") {
             storeFile = rootProject.file(slteReleaseStoreFile ?: "release.keystore")
-            storePassword = slteValue("POLARIS_RELEASE_STORE_PASSWORD").orEmpty()
+            storePassword = releaseStorePassword
             keyAlias = slteValue("POLARIS_RELEASE_KEY_ALIAS") ?: "slte"
-            keyPassword = slteValue("POLARIS_RELEASE_KEY_PASSWORD").orEmpty()
+            keyPassword = releaseKeyPassword
         }
     }
 
@@ -145,6 +149,15 @@ android {
             val hasReleaseKey = slteReleaseStoreFile != null
             if (hasReleaseKey) {
                 signingConfig = signingConfigs.getByName("release")
+                gradle.taskGraph.whenReady {
+                    val signingRelease = allTasks.any { it.name.contains("Release") }
+                    if (signingRelease && (releaseStorePassword.isBlank() || releaseKeyPassword.isBlank())) {
+                        throw GradleException(
+                            "已提供 keystore 文件但缺少 POLARIS_RELEASE_STORE_PASSWORD/POLARIS_RELEASE_KEY_PASSWORD，" +
+                                "禁止以空密码签名发布（本地调试请用 assembleDebug）",
+                        )
+                    }
+                }
             } else {
 
                 gradle.taskGraph.whenReady {
