@@ -1,8 +1,8 @@
 {
   "config_version": "1",
   "update_version": "1.4.5",
-  "update_changelog_title": "Polaris 1.4.5 — 全局模式修复",
-  "update_changelog": "- fix: 全局模式失效——面板只有 Selector 策略组时 GLOBAL 组停在 DIRECT 全部直连，现自动挂载到首个策略组\n- fix: 站点名称回归——面板后台「网站名称」重新作为权威来源显示\n- chore: 版本号升到 1.4.5 (versionCode 19)",
+  "update_changelog_title": "Polaris 1.4.7 — 界面与功能与 1.4.5 完全一致",
+  "update_changelog": "- fix: 撤回 1.4.6 界面改动，首页布局恢复至 1.4.5（电源卡回底部、顶栏恢复站点名称、去除状态卡背景色）\n- chore: 合规修复——补全 476 个源文件 GPL-3.0 版权头，新增 SECURITY/CONTRIBUTING/CODE_OF_CONDUCT/SUPPORT 社区文件（不可见，不影响使用）\n- ci: GitHub Actions 固定到 commit SHA，发布构建串行化\n- security: release 签名空密码前置校验；日志脱敏规则扩展（Bearer / 敏感键值 / URL 凭据 / 邮箱）\n- style: ktlint 代码风格统一 + .editorconfig 覆盖全仓文件类型\n- chore: 版本号升到 1.4.7 (versionCode 21)",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.5/Polaris-1.4.5.apk",
   "update_apk_sha256": "918ba41171cd2c60c55a33b307c058ae8f04407726fd49c13e00d79244665f31"
