@@ -64,7 +64,7 @@ object Dimens {
 
     val topBarActionBgSize = 36.dp
 
-    val cardElevation = 0.dp
+    val cardElevation = 1.dp
 
     val planStatusPaddingV = 4.dp
     val planStatusChipCornerRadius = 50
@@ -76,8 +76,8 @@ object Dimens {
     val disabledAlpha = 0.4f
 
     val dashboardScreenPaddingH = gap.lg
-    val dashboardScreenPaddingV = 10.dp
-    val dashboardCardSpacing = 10.dp
+    val dashboardScreenPaddingV = 14.dp
+    val dashboardCardSpacing = 14.dp
 
     val dashboardCompactBreakpoint = 840.dp
     val dashboardScreenPaddingVCompact = 6.dp
