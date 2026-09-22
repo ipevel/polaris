@@ -15,13 +15,13 @@ description: 北辰 Polaris（E:/AI/Github/slte 仓库，远端 ipevel/polaris�
 
 ### 1.1 GitHub 合规
 
-- **Secrets 零泄露**：`git add -A` 前执行 `git diff --cached -- '*.kt' '*.kts' '*.xml' '*.properties' '*.json' '*.yaml' '*.yml'`，逐行扫视确认无硬编码 API key、OAuth token、签名密钥密码、数据库凭证等敏感值；`.gitignore` 已覆盖 `*.keystore`/`*.pem`，但新增文件可能遗漏
+- **Secrets 零泄露**：`git add -A` **之后**执行（add 前新文件不在暂存区，扫不到） `git diff --cached -- '*.kt' '*.kts' '*.xml' '*.properties' '*.json' '*.yaml' '*.yml'`，逐行扫视确认无硬编码 API key、OAuth token、签名密钥密码、数据库凭证等敏感值；`.gitignore` 已覆盖 `*.keystore`/`*.pem`，但新增文件可能遗漏
 - **Workflow 安全**：修改 `.github/workflows/*.yml` 后，确认 pull_request 触发的 job 没有写入 secrets 或使用 `pull_request_target` 暴露仓库权限；`build.yml` 的 `workflow_dispatch` 输入不直接拼入 shell 命令（防注入）
 - **Branch 保护**：main 分支应保持 `required_status_check`，勿在 CI 配置中绕过
 
 ### 1.2 安全合规
 
-- **依赖安全**：新增第三方依赖时，运行 `./gradlew dependencyInsight --configuration releaseRuntimeClasspath --dependency <group>` 确认传递链无已知高危 CVE；有疑虑时查阅 [GitHub Advisory Database](https://github.com/advisories)
+- **依赖安全**：新增第三方依赖时，运行 `./gradlew :app:dependencyInsight --configuration releaseRuntimeClasspath --dependency <组名>` 确认传递链无已知高危 CVE；有疑虑时查阅 [GitHub Advisory Database](https://github.com/advisories)
 - **R8/ProGuard 保留规则**：新增 `-keep` 或 `-dontwarn` 时必须注释说明对应类/库及原因，禁止无注释的 keep 规则
 - **权限最小化**：修改 `AndroidManifest.xml` 权限声明时，确认新权限为功能必需且无更少权限的替代方案；`QUERY_ALL_PACKAGES` 等敏感权限必须标注使用场景
 - **网络传输**：新增网络请求必须走 HTTPS；禁止明文 HTTP（`android:usesCleartextTraffic` 保持 `false`）
@@ -35,9 +35,9 @@ description: 北辰 Polaris（E:/AI/Github/slte 仓库，远端 ipevel/polaris�
 
 ### 1.4 开源合规
 
-- **License 兼容性**：新增依赖的 License 必须与本项目 License（Apache-2.0）兼容；以下 License 类型禁止引入：AGPL-3.0/SSPL/BSL/CC-BY-NC 系列
-- **NOTICES 维护**：新增或升级第三方依赖后，运行 `./gradlew :app:licenseDebugReport`（需 `com.jaredsburrows.license` 插件），将输出与 `NOTICES` 文件比对，确认版权声明和 License 全文已收录
-- **源文件头**：本项目核心源文件保持统一版权头（如 `SPDX-License-Identifier: Apache-2.0`）；新增文件需补齐
+- **License 兼容性**：新增依赖的 License 必须与本项目 License（**GPL-3.0**，见根目录 LICENSE）兼容；以下 License 类型禁止未经核验引入：SSPL/BSL/CC-BY-NC 系列，AGPL-3.0 系须先核验与 GPL-3.0 分发物的兼容性（审计 OS-4 项）
+- **NOTICES 维护**：新增或升级第三方依赖后，把组件名+License 补进 `THIRD-PARTY-NOTICES.md`（本仓声明文件，2026-09 已重写覆盖全部组件）。`licenseDebugReport` 自动生成需 `com.jaredsburrows.license` 插件——当前未安装，引入后再用
+- **源文件头**：新增源文件补 GPL-3.0 版权头（`SPDX-License-Identifier: GPL-3.0-only`）；存量 424 文件补头是既定暂缓项（审计 OS-1），不在日常提交中顺手做
 - **代码来源标注**：从 Stack Overflow、博客、其他开源项目复制超过 10 行的代码段时，在注释中标注出处 URL 及原始 License
 
 合规检查通过后进入第 2 步。
@@ -107,7 +107,7 @@ Release 由手动触发的 `北辰 Polaris Build`（build.yml，workflow_dispatc
 
 ```bash
 gh workflow run build.yml \
-  -f appName=北辰 \
+  -f appName=Polaris \
   -f applicationId=com.polaris.app \
   -f versionName=<版本> \
   -f versionCode=<code> \
