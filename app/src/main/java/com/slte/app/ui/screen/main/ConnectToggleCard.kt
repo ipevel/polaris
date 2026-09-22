@@ -61,12 +61,6 @@ fun ConnectToggleCard(
             isConnected -> SlteColors.current.statusSuccess
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
-    val cardTint: Color =
-        when {
-            isConnected -> SlteColors.current.statusSuccessBg
-            isConnecting -> SlteColors.current.statusWarningBg
-            else -> MaterialTheme.colorScheme.surface
-        }
 
     SlteCard(
         modifier =
@@ -74,7 +68,6 @@ fun ConnectToggleCard(
             .fillMaxWidth()
             .heightIn(min = minHeight),
         shape = RoundedCornerShape(24.dp),
-        containerColor = cardTint,
     ) {
         Box(
             modifier =

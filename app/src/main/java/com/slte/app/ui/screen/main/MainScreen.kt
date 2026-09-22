@@ -10,13 +10,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -34,12 +37,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.data.local.SecurePreferences
 import com.slte.app.data.local.ThemeMode
 import com.slte.app.ui.component.CircleIconButton
+import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
@@ -84,7 +89,7 @@ internal fun MainScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = stringResource(R.string.app_name),
+                            text = data.siteName.ifBlank { stringResource(R.string.app_name) },
                             style = SlteType.title,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -229,19 +234,6 @@ internal fun DashboardContent(
             ),
         ) {
             item {
-                ConnectToggleCard(
-                    isConnected = data.isConnected,
-                    isConnecting = data.isConnecting,
-                    onToggle = onToggleConnection,
-                    minHeight =
-                    if (compact) {
-                        Dimens.dashboardToggleCardMinHeightCompact
-                    } else {
-                        Dimens.dashboardToggleCardMinHeight
-                    },
-                )
-            }
-            item {
                 UsageCard(
                     planName = data.planName,
                     usedBytes = data.usedBytes,
@@ -287,6 +279,49 @@ internal fun DashboardContent(
                     hasPlan = data.hasPlan,
                     onTraffic = onTraffic,
                     onServer = onServer,
+                )
+            }
+            item {
+                ConnectToggleCard(
+                    isConnected = data.isConnected,
+                    isConnecting = data.isConnecting,
+                    onToggle = onToggleConnection,
+                    minHeight =
+                    if (compact) {
+                        Dimens.dashboardToggleCardMinHeightCompact
+                    } else {
+                        Dimens.dashboardToggleCardMinHeight
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SiteInfoCard(
+    siteName: String,
+    siteDescription: String,
+) {
+    SlteCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(Dimens.gap.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = siteName,
+                style = SlteType.title,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (siteDescription.isNotBlank()) {
+                Spacer(modifier = Modifier.height(Dimens.gap.xs))
+                Text(
+                    text = siteDescription,
+                    style = SlteType.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
             }
         }

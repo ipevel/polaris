@@ -14,7 +14,7 @@
     <string name="notification_action_stop">Отключить</string>
     <string name="notification_proxying">Прокси подключён</string>
     <string name="loading">Загружается</string>
-    <string name="clash_meta_for_android">Polaris</string>
+    <string name="clash_meta_for_android">北辰</string>
     <string name="profiles_and_providers">Профили и провайдеры</string>
     <string name="configuration_yaml">Configuration.yaml</string>
     <string name="provider_files">Файлы провайдера</string>

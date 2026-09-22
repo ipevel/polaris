@@ -222,7 +222,7 @@
 
     <!-- About (关于软件) -->
     <string name="about_title">关于软件</string>
-    <string name="about_app_desc">基于 mihomo 内核的轻量级代理客户端｜规则·全局·直连</string>
+    <string name="about_app_desc">Polaris — a lightweight mihomo (Clash) based proxy client.</string>
     <string name="about_app_version">应用版本</string>
     <string name="about_kernel_version">内核版本</string>
     <string name="about_check_update">检查更新</string>

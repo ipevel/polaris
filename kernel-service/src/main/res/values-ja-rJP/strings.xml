@@ -12,7 +12,7 @@
     <string name="notification_action_stop">切断</string>
     <string name="notification_proxying">プロキシ接続中</string>
     <string name="loading">読み込み中</string>
-    <string name="clash_meta_for_android">Polaris</string>
+    <string name="clash_meta_for_android">北辰</string>
     <string name="profiles_and_providers">プロファイルと外部リソース</string>
     <string name="configuration_yaml">コンフィグ.yaml</string>
     <string name="provider_files">外部リソースファイル</string>
