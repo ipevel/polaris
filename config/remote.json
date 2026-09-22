@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.4.4 — 连接卡死与全局模式修复",
   "update_changelog": "- fix: 订阅下载/清洗移出主线程（面板可达时点连接卡死、按钮关不掉的根因）\n- fix: 连接中再点连接按钮=取消连接，不再死锁\n- fix: 代理模式以内核真实状态为准显示，切换全局后自愈核验（全局不生效老bug）\n- fix: 应用名改回英文 Polaris\n- chore: 版本号升到 1.4.4 (versionCode 18)",
   "update_force": false,
-  "update_apk_url": "",
-  "update_apk_sha256": ""
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.4/Polaris-1.4.4.apk",
+  "update_apk_sha256": "7a0c61466b470e5bf4c60a345d118b507189fa8d3bd4f04e072e18ada9854ab4"
 }
