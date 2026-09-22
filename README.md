@@ -1,6 +1,6 @@
 <div align="center">
 
-# 北辰 Polaris
+# Polaris
 
 [![许可证](https://img.shields.io/badge/许可证-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-28--36-green?style=flat-square)](README.md)
@@ -15,7 +15,7 @@
 
 ## 简介
 
-北辰（Polaris）是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核构建的代理客户端。如北极星般稳定可靠，为你指引网络航向。
+Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核构建的代理客户端，稳定可靠，为你指引网络航向。
 
 ### Android
 
@@ -97,7 +97,7 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `POLARIS_APP_NAME` | `北辰` | 应用显示名 |
+| `POLARIS_APP_NAME` | `Polaris` | 应用显示名 |
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 应用包名 |
 | `POLARIS_API_TYPE` | `xiaov2b` | 后端类型（`xiaov2b` / `xboard`） |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用 |
@@ -106,19 +106,6 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 > **安全白名单**：为防配置投毒导致凭据外泄，API 地址与远程配置中的直连域名只允许在域名白名单内切换。白名单 = `POLARIS_ALLOWED_DOMAINS` 追加项 + API 地址域名 + 远程配置源域名，构建期自动并入（详见 [CONFIG.md](CONFIG.md)），**无需修改代码**。仓库内置占位符 `example.com`，部署前请通过环境变量或 `app/gradle.properties` 注入你的域名。
 >
 > **内核直连兜底**：内核侧补丁链（`kernel-core/src/main/golang/native/config/process.go`）含独立的直连域名占位（与构建注入互不影响），自持域名需在此同步，并在修改后重新交叉编译 `libclash.so`（`GOOS=linux GOARCH=arm64 go build -tags "android cmfa with_gvisor" ./native/config/`，无需 NDK）。
-
-## 安全扫描
-
-本项目使用 Mimosa 进行静态安全扫描。最近一次扫描（2026-09-22）结果摘要：
-
-| 类别 | 数量 | 说明 |
-|------|------|------|
-| 弱加密算法 | 17 | 均位于 `kernel-core/src/foss/golang/clash/` vendored 内核代码，属上游 mihomo 协议实现（shadowsocks/vmess/SSR），非本仓库控制范围 |
-| 命令注入 | 7 | 2 个位于 desktop helper（Windows 限定），5 个位于 vendored 内核；均为内核/桌面端内部调用，不接受外部输入 |
-| 硬编码凭据 | 3 | **误报**：`FORGOT_PASSWORD` 为 Lottie 贴纸资源路径，`private_key` 为 WireGuard 协议结构体字段名，均非真实凭据 |
-| 跨文件污点 / Path-Traversal | 5 | 位于 vendored 内核命令行参数入口，Android 平台不暴露命令行接口 |
-
-> **结论**：41 项发现中，3 项为误报，其余均位于 vendored 的 mihomo 内核源码（`kernel-core/src/foss/golang/`）或 Windows desktop helper，属于上游协议实现或平台限定路径，不影响 Android App 安全性。
 
 ## 相关项目
 
@@ -136,6 +123,6 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 
 <div align="center">
 
-**© 2026 北辰 Polaris**
+**© 2026 Polaris**
 
 </div>

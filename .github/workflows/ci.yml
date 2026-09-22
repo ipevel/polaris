@@ -1,4 +1,4 @@
-name: 北辰 Polaris CI
+name: Polaris CI
 
 on:
   push:

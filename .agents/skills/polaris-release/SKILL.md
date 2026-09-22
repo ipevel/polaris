@@ -1,6 +1,6 @@
 ---
 name: polaris-release
-description: 北辰 Polaris（E:/AI/Github/slte 仓库，远端 ipevel/polaris）的标准提交与发版流程。凡是在该仓库做 git commit、push、发 Release、升版本号、触发 GitHub Actions 构建打包，都必须先走本技能的"合规检查"与"本地全量 CI 门禁"，禁止未经合规审查和本地验证直接推送。触发词：提交、推送、发版、发布、release、升版本、打 tag、编译验证、合规。
+description: Polaris（E:/AI/Github/slte 仓库，远端 ipevel/polaris）的标准提交与发版流程。凡是在该仓库做 git commit、push、发 Release、升版本号、触发 GitHub Actions 构建打包，都必须先走本技能的"合规检查"与"本地全量 CI 门禁"，禁止未经合规审查和本地验证直接推送。触发词：提交、推送、发版、发布、release、升版本、打 tag、编译验证、合规。
 ---
 
 # Polaris 提交与发版标准流程
@@ -103,7 +103,7 @@ push 后关注 `gh run list --limit 1` 的 CI 结果；失败则本地复现修�
 
 ## 第 6 步：发 Release（需用户要求发布时）
 
-Release 由手动触发的 `北辰 Polaris Build`（build.yml，workflow_dispatch）完成，CI 全绿**不会**自动发版。注意：**每次修改 build.yml 后，触发前先 commit+push，workflow 用的是 main 上的最新文件。**
+Release 由手动触发的 `Polaris Build`（build.yml，workflow_dispatch）完成，CI 全绿**不会**自动发版。注意：**每次修改 build.yml 后，触发前先 commit+push，workflow 用的是 main 上的最新文件。**
 
 ```bash
 gh workflow run build.yml \
