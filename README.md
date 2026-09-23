@@ -19,17 +19,19 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 ### Android
 
-- 双面板后端支持：XiaoV2b / Xboard
+- 双面板后端支持：XiaoV2b / Xboard（`xiaov2b` API 握手，Xboard 兼容复用同一适配器）
 - 面板地址完全由用户掌控：登录页填写自己的面板网址，App 不内置任何面板地址
-- 仪表盘：用量、套餐、代理模式、当前 IP（国旗地区码）、连接开关
-- 策略组选择与延迟测试、流量明细（按日汇总）
-- 礼品卡兑换、邀请返利、工单、公告
+- 首页仪表盘：连接开关（点击起即计时长）、流量统计与网速方形大卡、当前 IP（国旗地区码）、用量与套餐等高对齐信息密度布局
+- 四栏底部导航：主页 / 节点 / 流量 / 我的，切换与页面预加载更流畅
+- 策略组选择与延迟测试、节点名归一化显示、流量明细（按日环形总图 + 上行/下行/合计）
+- 订阅卡片一键更新订阅、礼品卡兑换、邀请返利、工单、公告
 - 应用内更新（远程配置多源容灾 + 下载进度条 + SHA-256 校验）
 - 三种代理模式：规则 / 全局 / 直连
 - TUN 堆栈可选：System / Gvisor / Mixed
 - 多语言：简体中文 / 繁體中文 / English
 - 深色 / 浅色 / 跟随系统主题
 - 安全白名单：凭据只发往白名单内域名，防配置投毒
+- 日志脱敏：路径型 token（`/s/xxx` 等）统一打码，凭据与敏感值不入日志
 
 ## 下载与安装
 
@@ -49,7 +51,7 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.4.5 | 19 |
+| Android | 1.4.8 | 22 |
 
 > 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）
 
@@ -58,6 +60,7 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 - [shgnx/slte](https://github.com/shgnx/slte) - 上游项目作者，本仓库基础代码来源
 - **DeepSeek** - AI 结对编程（架构设计、功能实现与代码审查）
 - **智谱 GLM** - AI 结对编程（功能移植、全局重构与发布工程）
+- **github-actions[bot]** - CI/CD 发布自动化（Release 构建、APK 上传与 `config/remote.json` 版本信息/checksum 自动回写）
 
 ## 开发环境
 
