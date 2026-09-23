@@ -23,6 +23,7 @@ import com.slte.app.kernel.ensureGlobalSelection
 import com.slte.app.kernel.fetchPublicIp
 import com.slte.app.kernel.runAutoSpeedTest
 import com.slte.app.kernel.serverInfo
+import com.slte.app.kernel.trafficNow
 import com.slte.app.kernel.trafficTotal
 import com.slte.app.kernel.warmUp
 import com.slte.app.utils.AppLog
@@ -116,7 +117,6 @@ constructor(
         speedWatchJob?.cancel()
         speedWatchJob =
             viewModelScope.launch {
-                var last: Pair<Long, Long>? = null
                 // 会话流量基线：连接就绪后的第一次采样记录，之后以差值累加；
                 // 断开（observeKernelState）负责清零会话字段与历史缓冲
                 var baseline: Pair<Long, Long>? = null
@@ -124,23 +124,22 @@ constructor(
                 var tick = 0
                 while (isActive) {
                     val total = withContext(ioDispatcher) { kernelProxy.trafficTotal() }
-                    val prev = last
-                    if (total != null) {
+                    // 网速取内核 ticker 维护的秒级 blip，而非本端差分：
+                    // delay(1000) 的真实间隔含 AIDL 往返耗时（常为 1.0~1.2s），
+                    // 差分会系统性低估速度；blip 由内核 1s ticker 产生，与轮询相位无关
+                    val now = withContext(ioDispatcher) { kernelProxy.trafficNow() }
+                    if (total != null && now != null) {
                         val base = baseline ?: total.also { baseline = it }
-                        if (prev != null) {
-                            val upload = (total.first - prev.first).coerceAtLeast(0L)
-                            val download = (total.second - prev.second).coerceAtLeast(0L)
-                            history.addLast(upload to download)
-                            while (history.size > SPEED_HISTORY_MAX_POINTS) history.removeFirst()
-                            _data.update {
-                                it.copy(
-                                    uploadSpeedBps = upload,
-                                    downloadSpeedBps = download,
-                                    speedHistory = history.toList(),
-                                    sessionUploadBytes = (total.first - base.first).coerceAtLeast(0L),
-                                    sessionDownloadBytes = (total.second - base.second).coerceAtLeast(0L),
-                                )
-                            }
+                        history.addLast(now.first to now.second)
+                        while (history.size > SPEED_HISTORY_MAX_POINTS) history.removeFirst()
+                        _data.update {
+                            it.copy(
+                                uploadSpeedBps = now.first,
+                                downloadSpeedBps = now.second,
+                                speedHistory = history.toList(),
+                                sessionUploadBytes = (total.first - base.first).coerceAtLeast(0L),
+                                sessionDownloadBytes = (total.second - base.second).coerceAtLeast(0L),
+                            )
                         }
                         // 顺带周期刷新内存，避免为设备信息常驻第二条采样协程
                         tick++
@@ -151,7 +150,6 @@ constructor(
                             }
                         }
                     }
-                    last = total
                     delay(SPEED_WATCH_INTERVAL_MS)
                 }
             }
@@ -263,14 +261,14 @@ constructor(
                 kernelProxy.proxyMode()?.let { mode ->
                     _data.update { it.copy(proxyMode = mode) }
                 }
-                if (_data.value.hasPlan) {
-                    kernelProxy.fetchPublicIp()?.let { info ->
-                        _data.update {
-                            it.copy(
-                                currentIp = info.ip,
-                                ipCountryCode = info.countryCode,
-                            )
-                        }
+                // IP 刷新不依赖套餐状态：内核配置装载往往先于订阅数据返回，
+                // 若以 hasPlan 为条件会错过唯一的刷新时机，导致 IP/国旗停留在占位符
+                kernelProxy.fetchPublicIp()?.let { info ->
+                    _data.update {
+                        it.copy(
+                            currentIp = info.ip,
+                            ipCountryCode = info.countryCode,
+                        )
                     }
                 }
             }
@@ -390,7 +388,7 @@ constructor(
         /** 代理模式切换后等待内核 reload 完成的窗口，过后跑自愈核验 */
         const val RELOAD_SETTLE_MS = 3_000L
 
-        /** 实时网速采样间隔：每 1s 采一次累计流量差值 */
+        /** 实时网速采样间隔：每 1s 读一次内核 blip（秒级字节数）与累计流量 */
         const val SPEED_WATCH_INTERVAL_MS = 1_000L
 
         /** 速度历史缓冲上限：波形图采样点数（1 点/秒，约 1 分钟滚动窗口） */
