@@ -15,6 +15,9 @@ import com.github.kr328.kaidl.BinderInterface
 interface IClashManager {
     fun queryTunnelState(): TunnelState
     fun queryTrafficTotal(): Long
+
+    /** 最近 1 秒内核转发的字节数（内核 ticker 维护的 blip，编码同 queryTrafficTotal） */
+    fun queryTrafficNow(): Long
     fun coreVersion(): String
     fun queryProxyGroupNames(excludeNotSelectable: Boolean): List<String>
     fun queryProxyGroup(name: String, proxySort: ProxySort): ProxyGroup

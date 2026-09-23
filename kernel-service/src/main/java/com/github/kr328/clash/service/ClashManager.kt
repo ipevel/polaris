@@ -42,6 +42,10 @@ class ClashManager(private val context: Context) : IClashManager,
         return Clash.queryTrafficTotal()
     }
 
+    override fun queryTrafficNow(): Long {
+        return Clash.queryTrafficNow()
+    }
+
     override fun queryProxyGroupNames(excludeNotSelectable: Boolean): List<String> {
         return Clash.queryGroupNames(excludeNotSelectable)
     }

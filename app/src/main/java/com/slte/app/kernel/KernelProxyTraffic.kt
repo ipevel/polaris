@@ -15,6 +15,17 @@ suspend fun KernelProxy.trafficTotal(): Pair<Long, Long>? = safe(null, "trafficT
     decodeTraffic(raw ushr 32) to decodeTraffic(raw and 0xFFFFFFFF)
 }
 
+/**
+ * 读取内核最近 1 秒转发的字节数（上传, 下载）。
+ * 内核侧由 ticker 每秒 Swap 维护 blip（对齐 BETTBOX 的 NowTraffic 设计），
+ * UI 直接读快照即可得到网速，不受本端轮询间隔抖动影响。
+ */
+suspend fun KernelProxy.trafficNow(): Pair<Long, Long>? = safe(null, "trafficNow") {
+    val clash = manager.clash() ?: return@safe null
+    val raw = clash.queryTrafficNow()
+    decodeTraffic(raw ushr 32) to decodeTraffic(raw and 0xFFFFFFFF)
+}
+
 private fun decodeTraffic(value: Long): Long {
     val type = (value ushr 30) and 0x3
     val data = value and 0x3FFFFFFF

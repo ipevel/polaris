@@ -218,4 +218,32 @@ class KernelProxyTest {
         assertEquals("proxyMode", fault.await().operation)
         assertTrue(fault.await().cause is IllegalStateException)
     }
+
+    @Test
+    fun `累计流量解码内核压缩编码`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        // 高 32 位上传（type=1 → KB 段），低 32 位下载（type=2 → MB 段）
+        every { clash.queryTrafficTotal() } returns 0x40000002_80000003L
+
+        assertEquals(2048L to 3_145_728L, proxy.trafficTotal())
+    }
+
+    @Test
+    fun `秒级 blip 解码与累计同编码`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        // 高 32 位上传（type=0 → 原始字节），低 32 位下载（type=1 → KB 段）
+        // returns 也是中缀函数，须加括号避免与 shl/or 抢结合
+        every { clash.queryTrafficNow() } returns (1500L shl 32 or 0x40000005L)
+
+        assertEquals(1500L to 5120L, proxy.trafficNow())
+    }
+
+    @Test
+    fun `内核不可用时流量读取返回空`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        every { manager.clash() } returns null
+
+        assertNull(proxy.trafficTotal())
+        assertNull(proxy.trafficNow())
+    }
 }
