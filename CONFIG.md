@@ -20,7 +20,7 @@ Polaris 的配置分三层，按优先级从高到低：
 | `POLARIS_VERSION_CODE` | `1` | 版本号（整数） |
 | `POLARIS_VERSION_NAME` | `1.0.0` | 版本号（显示） |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 后端 API 主地址（https） |
-| `POLARIS_API_TYPE` | `xiaov2b` | 后端类型：`xiaov2b` / `xboard` |
+| `POLARIS_API_TYPE` | `—（遗留，不再作运行时默认）` | 遗留变量：后端类型已改为登录时自动识别，不再以此值兜底 |
 | `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅接口路径（与后端契约一致时勿动） |
 | `POLARIS_REMOTE_CONFIG_URLS` | 空 | 远程配置源 URL（逗号分隔多个，https） |
 | `POLARIS_ALLOWED_DOMAINS` | 空 | 追加 API 域名白名单（API 与配置源域名自动并入，一般无需填写） |
@@ -52,7 +52,7 @@ Polaris 的配置分三层，按优先级从高到低：
 | `api_base_urls` | string 或 array | 否 | 全部 API 候选（多地址容灾），支持 Base64 编码混用 |
 | `api` | string 或 array | 否 | 与 `api_base_urls` 等价的别名（兼容第三方托管格式），支持 Base64 编码混用 |
 | `direct_domains` | string 或 array | 否 | 直连域名（走直连不走节点），自动注入订阅 DIRECT 规则 + fake-ip 豁免 |
-| `api_type` | string | 否 | 后端类型；只认与构建期内置值一致的取值 |
+| `api_type` | string | 否 | 遗留字段：后端类型由登录时自动识别，本字段已不再作选型依据 |
 | `crisp_website_id` | string | 否 | Crisp 客服网站 ID（空 = 关闭客服） |
 | `crisp_enabled` | boolean | 否 | 是否启用 Crisp 客服 |
 | `config_version` | string | 否 | 配置版本号（多源择优依据），建议填写如 `"1"` |

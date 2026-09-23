@@ -62,7 +62,7 @@ internal object RemoteConfigParser {
             apiBaseUrl = primary,
             apiBaseUrls = candidates.ifEmpty { listOf(BuildConfig.API_BASE_URL) },
             directDomains = resolveDirectDomains(dto.directDomains),
-            apiType = dto.apiType?.trim()?.takeIf { it == BuildConfig.API_TYPE } ?: BuildConfig.API_TYPE,
+            apiType = dto.apiType?.trim().orEmpty(),
             updateVersion = dto.updateVersion?.trim() ?: "",
             updateChangelogTitle = dto.updateChangelogTitle?.trim() ?: "",
             updateChangelog = dto.updateChangelog ?: "",

@@ -36,7 +36,10 @@ data class RemoteConfigData(
     val apiBaseUrls: List<String> = emptyList(),
 
     val directDomains: List<String> = emptyList(),
-    val apiType: String = BuildConfig.API_TYPE,
+
+    // 遗留字段：后端类型已在登录时自动识别并按 ApiUrlStore.backendType 路由，
+    // 编译期不再默认固定某一后端类型（空串 = 未识别）。
+    val apiType: String = "",
 
     val updateVersion: String = "",
 

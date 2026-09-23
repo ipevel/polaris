@@ -104,7 +104,7 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 |------|--------|------|
 | `POLARIS_APP_NAME` | `Polaris` | 应用显示名 |
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 应用包名 |
-| `POLARIS_API_TYPE` | `xiaov2b` | 后端类型（`xiaov2b` / `xboard`） |
+| `POLARIS_API_TYPE` | `—（不再作运行时默认）` | 遗留变量：后端类型已改为登录时自动识别（`xiaov2b`/`xboard` 由面板接口探测），不再以此值兜底选型 |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用 |
 | `POLARIS_REMOTE_CONFIG_URLS` | 见 [config/remote.json](config/remote.json) 默认源 | 远程配置 URL，逗号分隔多源 |
 
