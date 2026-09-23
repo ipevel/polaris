@@ -35,13 +35,14 @@ class LoginViewModelTest {
         savedEmail: String? = null,
         savedPassword: String? = null,
         currentPanelUrl: String? = null,
+        backendType: String = "xiaov2b",
     ): LoginViewModel {
         every { authRepository.sessionState } returns MutableStateFlow(SessionState.LoggedOut)
         every { authRepository.savedEmail() } returns savedEmail
         every { authRepository.savedPassword() } returns savedPassword
         every { apiUrlStore.currentUrl } returns currentPanelUrl
         // 已持久化已知后端类型：登录走「复用已有类型」分支，避免单测触发真实的网络探测
-        every { apiUrlStore.backendType } returns "xiaov2b"
+        every { apiUrlStore.backendType } returns backendType
         return LoginViewModel(mainRule.dispatcher, authRepository, apiUrlStore)
     }
 
@@ -256,5 +257,22 @@ class LoginViewModelTest {
 
         val state = vm.uiState.value as LoginUiState.ConfirmPanelUrl
         assertTrue("私有地址应标记为风险", state.isPrivateHost)
+    }
+
+    @Test
+    fun `后端类型未识别且探测失败时阻止登录`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel(currentPanelUrl = null, backendType = "")
+
+        vm.onAccountChange("a@b.c")
+        vm.onPasswordChange("pw123456")
+        vm.onPanelUrlChange("https://localhost:1")
+        vm.login()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value as LoginUiState.Error
+        assertEquals(R.string.login_backend_probe_failed, state.messageRes)
+        coVerify(exactly = 0) { authRepository.login(any(), any()) }
+        coVerify(exactly = 0) { apiUrlStore.setUrl(any()) }
+        coVerify(exactly = 0) { apiUrlStore.setBackendType(any()) }
     }
 }
