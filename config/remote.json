@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.10",
+  "update_version": "1.4.11",
   "update_changelog_title": "Polaris 1.4.10 — 网速统计精准化",
   "update_changelog": "- perf(traffic): 网速改读内核秒级 blip，消除轮询间隔抖动导致的系统性低估，流量统计更准\n- fix(home): 修复当前 IP 国旗不显示——IP 刷新不再依赖套餐数据返回\n- refactor(ui): 流量页与节点页移除顶部套餐卡，用量信息统一在首页查看；节点页保留右上角「更新订阅 / 延迟测试」\n- chore: 版本号升到 1.4.10 (versionCode 24)",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.10/Polaris-1.4.10.apk",
-  "update_apk_sha256": "3342bb985ec1a5277c35b69057d129f687cc806483d2d8fe37f1ae5e0e0f59cc"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.11/Polaris-1.4.11.apk",
+  "update_apk_sha256": "1a4f0eebb485894f75e419281f33bf518e32a687ad66684042fa04d34700143c"
 }
