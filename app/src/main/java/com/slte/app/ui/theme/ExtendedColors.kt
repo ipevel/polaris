@@ -13,6 +13,10 @@ data class ExtendedColors(
 
     val textSelectionBg: Color,
 
+    /** 星辉金：品牌辅助色，用于四 Tab 激活指示等强调点。 */
+    val brandGold: Color,
+    val brandGoldBg: Color,
+
     val statusSuccess: Color,
     val statusSuccessBg: Color,
     val statusWarning: Color,
@@ -29,13 +33,15 @@ data class ExtendedColors(
 private val BrandGreenLight = Color(0xFF4BCB1C)
 private val BrandGreenDark = Color(0xFF6DC26D)
 
-private val BrandBlueDark = Color(0xFF6CB2F1)
+private val BrandBlueDark = Color(0xFF60A5FA)
 
 val LightExtendedColors =
     ExtendedColors(
         accentInteractive = md_light_primary,
-        accentInteractiveBg = Color(0x1A229AF0),
-        textSelectionBg = Color(0x66229AF0),
+        accentInteractiveBg = Color(0x1A1474C6),
+        textSelectionBg = Color(0x661474C6),
+        brandGold = Color(0xFFD97706),
+        brandGoldBg = Color(0xFFFEF3C7),
         statusSuccess = BrandGreenLight,
         statusSuccessBg = Color(0x1A4BCB1C),
         statusWarning = Color(0xFFFFAB40),
@@ -51,8 +57,10 @@ val LightExtendedColors =
 val DarkExtendedColors =
     ExtendedColors(
         accentInteractive = BrandBlueDark,
-        accentInteractiveBg = Color(0x1A6CB2F1),
-        textSelectionBg = Color(0x666CB2F1),
+        accentInteractiveBg = Color(0x1A60A5FA),
+        textSelectionBg = Color(0x6660A5FA),
+        brandGold = Color(0xFFFBBF24),
+        brandGoldBg = Color(0x1FFBBF24),
         statusSuccess = BrandGreenDark,
         statusSuccessBg = Color(0x1A6DC26D),
         statusWarning = Color(0xFFFFCC80),

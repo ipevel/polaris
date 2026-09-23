@@ -25,7 +25,6 @@ internal fun PurchaseCompletionHost(
         viewModels.orders.refresh()
         viewModels.profile.refresh()
         pageStack.clear()
-        pageStack.add(Page.Dashboard)
         viewModels.main.refreshAfterPurchase(tradeNo).join()
         viewModels.server.refreshNodesForPurchase()
         viewModels.main.finishPurchaseRefresh()

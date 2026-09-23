@@ -52,7 +52,6 @@
     <string name="topbar_light_mode">淺色模式</string>
     <string name="topbar_auto_mode">跟隨系統</string>
     <string name="topbar_notice">公告</string>
-    <string name="topbar_profile">我的</string>
 
     <!-- Plan card -->
     <string name="plan_status_expired">已過期</string>
@@ -67,7 +66,6 @@
     <string name="plan_empty">尚無方案</string>
     <string name="plan_renew_button">續費</string>
     <string name="plan_buy_button">購買</string>
-    <string name="dashboard_subscribe_buy">購買訂閱</string>
 
     <!-- Quick actions -->
     <string name="action_server">伺服器</string>
@@ -75,7 +73,6 @@
 
     <!-- Status -->
     <string name="status_disconnected">未連線</string>
-    <string name="dashboard_connect_switch">連線開關</string>
     <string name="status_connected">已連線</string>
     <string name="status_connecting">連線中…</string>
 
@@ -88,7 +85,6 @@
     <!-- Dashboard -->
     <string name="dashboard_usage_title">流量用量</string>
     <string name="dashboard_usage_valid">有效</string>
-    <string name="dashboard_expiry">有效期</string>
     <plurals name="dashboard_days">
         <item quantity="other">%d 天</item>
     </plurals>
@@ -98,6 +94,14 @@
     <string name="dashboard_proxy_global">全域</string>
     <string name="proxy_rule_desc">依規則轉發流量</string>
     <string name="proxy_global_desc">所有流量走代理</string>
+    <string name="proxy_direct_desc">所有流量不經代理直接連線</string>
+    <string name="dashboard_network_speed">網路速度</string>
+    <string name="dashboard_traffic_stats">流量統計</string>
+    <string name="dashboard_traffic_total">合計</string>
+    <string name="dashboard_lan_ip">內網 IP</string>
+    <string name="dashboard_memory">記憶體</string>
+    <string name="dashboard_power_switch">啟動開關</string>
+    <string name="service_ready">服務已就緒</string>
     <string name="dashboard_current_ip">目前 IP</string>
     <string name="dashboard_ip_copied">已複製 IP</string>
     <string name="dashboard_update_subscription">更新訂閱</string>
@@ -107,12 +111,7 @@
 
     <!-- Server -->
     <string name="server_title">節點選擇</string>
-    <string name="server_auto_now">URLTest（%1$s）</string>
     <string name="server_speed_test">測速</string>
-    <string name="server_nodes_empty">暫無節點</string>
-    <string name="server_auto">自動選擇</string>
-    <string name="server_fallback">故障轉移</string>
-    <string name="server_fallback_now">Fallback（%1$s）</string>
     <string name="server_timeout">逾時</string>
 
     <!-- Invite -->
@@ -141,7 +140,6 @@
     <string name="invite_withdraw_methods_failed">提現方式載入失敗，點擊重試</string>
     <string name="invite_withdraw_title">申請提現</string>
     <string name="invite_withdraw_subtitle">請確認提現帳號無誤，佣金將於 72 小時內到帳</string>
-    <string name="server_special_node">特殊節點</string>
     <string name="invite_withdraw_method">提現方式</string>
     <string name="invite_withdraw_account_hint">請輸入提現帳號</string>
     <string name="invite_withdraw_confirm">確認提現</string>
@@ -245,7 +243,6 @@
     <string name="update_apk_missing">更新位址缺失</string>
     <string name="update_download_failed">下載更新包失敗，請稍後重試</string>
     <string name="update_hash_mismatch">安裝包校驗失敗，檔案可能遭竄改</string>
-    <string name="update_hash_missing">安裝包缺少校驗資訊，無法驗證完整性</string>
     <string name="update_downloading">正在下載更新包…</string>
 
     <string name="profile_logout">登出</string>
@@ -380,13 +377,9 @@
     <string name="language_english">English</string>
 
     <string name="proxy_groups_title">策略組</string>
-    <string name="server_nodes_title">節點列表</string>
-    <string name="proxy_groups_subtitle">為每個分組指定出口節點</string>
     <string name="proxy_groups_empty">暫無策略組</string>
     <string name="proxy_groups_loading">正在讀取策略組</string>
-    <string name="proxy_group_now">目前：%1$s</string>
     <string name="proxy_group_test">測速</string>
-    <string name="proxy_group_testing">測速中</string>
     <string name="proxy_group_select_failed">切換失敗</string>
     <string name="proxy_group_type_select">手動選擇</string>
     <string name="proxy_group_type_auto">自動測速</string>
@@ -395,4 +388,10 @@
     <string name="proxy_group_type_relay">鏈式代理</string>
     <string name="proxy_group_type_unknown">其他</string>
     <string name="proxy_group_badge">分組</string>
+
+    <!-- Bottom navigation tabs -->
+    <string name="tab_home">首頁</string>
+    <string name="tab_server">節點</string>
+    <string name="tab_traffic">流量</string>
+    <string name="tab_profile">我的</string>
 </resources>

@@ -20,12 +20,14 @@ import com.slte.app.R
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 
+/** 统一顶部栏脚手架：返回键 + 标题 + 可选操作区，供各详情/设置页复用。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SlteScaffold(
     title: String,
-    onBack: () -> Unit,
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
+    showBack: Boolean = true,
     actions: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -41,12 +43,14 @@ fun SlteScaffold(
                     )
                 },
                 navigationIcon = {
-                    CircleIconButton(
-                        icon = SlteIcons.Back,
-                        description = stringResource(R.string.back),
-                        onClick = onBack,
-                        showBackground = false,
-                    )
+                    if (showBack) {
+                        CircleIconButton(
+                            icon = SlteIcons.Back,
+                            description = stringResource(R.string.back),
+                            onClick = onBack,
+                            showBackground = false,
+                        )
+                    }
                 },
                 actions = { actions() },
                 modifier = Modifier.background(MaterialTheme.colorScheme.surface),

@@ -27,7 +27,6 @@ internal fun rememberPreloadNavigation(
     val noticeData by viewModels.notice.uiState.collectAsStateWithLifecycle()
     val ordersData by viewModels.orders.data.collectAsStateWithLifecycle()
     val plansData by viewModels.plans.data.collectAsStateWithLifecycle()
-    val trafficData by viewModels.traffic.data.collectAsStateWithLifecycle()
 
     var pending by remember { mutableStateOf<PendingNav?>(null) }
 
@@ -38,7 +37,6 @@ internal fun rememberPreloadNavigation(
             PendingNav.Notice -> viewModels.notice.enterAndRefresh()
             PendingNav.Orders -> viewModels.orders.enterAndRefresh()
             PendingNav.Plans -> viewModels.plans.enterAndRefresh()
-            PendingNav.Traffic -> viewModels.traffic.load()
         }
     }
 
@@ -48,7 +46,6 @@ internal fun rememberPreloadNavigation(
             PendingNav.Notice -> !noticeData.isEntering
             PendingNav.Orders -> !ordersData.isEntering
             PendingNav.Plans -> !plansData.isEntering
-            PendingNav.Traffic -> !trafficData.isLoading
             null -> false
         }
 
@@ -56,7 +53,8 @@ internal fun rememberPreloadNavigation(
         val target = pending
         if (target != null && loaded) {
             pending = null
-            if (pageStack.last() != target.page) pageStack.add(target.page)
+            // pageStack 可能为空（首个叶子页进入前），用 lastOrNull 避免越界
+            if (pageStack.lastOrNull() != target.page) pageStack.add(target.page)
         }
     }
 

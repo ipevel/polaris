@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.utils.Dimens
 
+/** 圆形图标按钮：点击带触觉反馈（LongPress），可选背景底，供顶部栏操作区复用。 */
 @Composable
 fun CircleIconButton(
     icon: ImageVector,

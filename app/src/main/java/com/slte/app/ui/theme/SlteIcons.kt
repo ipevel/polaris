@@ -11,7 +11,10 @@ import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Check
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GroupAdd
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lan
@@ -66,6 +70,12 @@ object SlteIcons {
 
     val Profile: ImageVector = Icons.Rounded.Person
 
+    val Home: ImageVector = Icons.Outlined.Home
+
+    val Node: ImageVector = Icons.Outlined.Lan
+
+    val TrafficChart: ImageVector = Icons.Outlined.BarChart
+
     val SpeedTest: ImageVector = Icons.Rounded.Speed
 
     val SyncSubscription: ImageVector = Icons.Rounded.Sync
@@ -85,6 +95,10 @@ object SlteIcons {
     val Invite: ImageVector = Icons.Rounded.GroupAdd
 
     val Traffic: ImageVector = Icons.Outlined.DataUsage
+
+    val ArrowUp: ImageVector = Icons.Outlined.ArrowUpward
+
+    val ArrowDown: ImageVector = Icons.Outlined.ArrowDownward
 
     val Transfer: ImageVector = Icons.Rounded.SwapHoriz
 

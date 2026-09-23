@@ -52,7 +52,6 @@
     <string name="topbar_light_mode">Light Mode</string>
     <string name="topbar_auto_mode">Follow System</string>
     <string name="topbar_notice">Notice</string>
-    <string name="topbar_profile">Me</string>
 
     <!-- Plan card -->
     <string name="plan_status_expired">Expired</string>
@@ -68,7 +67,6 @@
     <string name="plan_empty">No plans yet</string>
     <string name="plan_renew_button">Renew</string>
     <string name="plan_buy_button">Buy</string>
-    <string name="dashboard_subscribe_buy">Buy plan</string>
 
     <!-- Quick actions -->
     <string name="action_server">Servers</string>
@@ -76,7 +74,6 @@
 
     <!-- Status -->
     <string name="status_disconnected">Disconnected</string>
-    <string name="dashboard_connect_switch">Connection switch</string>
     <string name="status_connected">Connected</string>
     <string name="status_connecting">Connecting…</string>
 
@@ -89,7 +86,6 @@
     <!-- Dashboard -->
     <string name="dashboard_usage_title">Usage</string>
     <string name="dashboard_usage_valid">Valid</string>
-    <string name="dashboard_expiry">Expiry</string>
     <plurals name="dashboard_days">
         <item quantity="one">%d day</item>
         <item quantity="other">%d days</item>
@@ -100,6 +96,14 @@
     <string name="dashboard_proxy_global">Global</string>
     <string name="proxy_rule_desc">Route by rules</string>
     <string name="proxy_global_desc">Route all via proxy</string>
+    <string name="proxy_direct_desc">Connect without proxy</string>
+    <string name="dashboard_network_speed">Network speed</string>
+    <string name="dashboard_traffic_stats">Traffic stats</string>
+    <string name="dashboard_traffic_total">Total</string>
+    <string name="dashboard_lan_ip">LAN IP</string>
+    <string name="dashboard_memory">Memory</string>
+    <string name="dashboard_power_switch">Power switch</string>
+    <string name="service_ready">Service ready</string>
     <string name="dashboard_current_ip">Current IP</string>
     <string name="dashboard_ip_copied">IP copied</string>
     <string name="dashboard_update_subscription">Update</string>
@@ -109,12 +113,7 @@
 
     <!-- Server -->
     <string name="server_title">Servers</string>
-    <string name="server_auto_now">URLTest (%1$s)</string>
     <string name="server_speed_test">Speed test</string>
-    <string name="server_nodes_empty">No servers</string>
-    <string name="server_auto">Auto select</string>
-    <string name="server_fallback">Fallback</string>
-    <string name="server_fallback_now">Fallback (%1$s)</string>
     <string name="server_timeout">Timeout</string>
 
     <!-- Invite -->
@@ -143,7 +142,6 @@
     <string name="invite_withdraw_methods_failed">Failed to load methods, tap to retry</string>
     <string name="invite_withdraw_title">Request withdrawal</string>
     <string name="invite_withdraw_subtitle">Please verify your account. Arrives within 72 hours.</string>
-    <string name="server_special_node">Special node</string>
     <string name="invite_withdraw_method">Method</string>
     <string name="invite_withdraw_account_hint">Account</string>
     <string name="invite_withdraw_confirm">Confirm</string>
@@ -248,7 +246,6 @@
     <string name="update_apk_missing">Update link missing</string>
     <string name="update_download_failed">Failed to download update, try again later</string>
     <string name="update_hash_mismatch">Update verification failed, file may be tampered</string>
-    <string name="update_hash_missing">Update missing integrity checksum, cannot verify</string>
     <string name="update_downloading">Downloading update…</string>
 
     <string name="profile_logout">Log out</string>
@@ -383,13 +380,9 @@
     <string name="language_english">English</string>
 
     <string name="proxy_groups_title">Proxy groups</string>
-    <string name="server_nodes_title">Nodes</string>
-    <string name="proxy_groups_subtitle">Pick an outbound for each group</string>
     <string name="proxy_groups_empty">No proxy groups</string>
     <string name="proxy_groups_loading">Loading proxy groups</string>
-    <string name="proxy_group_now">Now: %1$s</string>
     <string name="proxy_group_test">Test</string>
-    <string name="proxy_group_testing">Testing</string>
     <string name="proxy_group_select_failed">Failed to switch</string>
     <string name="proxy_group_type_select">Manual</string>
     <string name="proxy_group_type_auto">Auto</string>
@@ -398,4 +391,10 @@
     <string name="proxy_group_type_relay">Relay</string>
     <string name="proxy_group_type_unknown">Other</string>
     <string name="proxy_group_badge">Group</string>
+
+    <!-- Bottom navigation tabs -->
+    <string name="tab_home">Home</string>
+    <string name="tab_server">Nodes</string>
+    <string name="tab_traffic">Traffic</string>
+    <string name="tab_profile">Me</string>
 </resources>

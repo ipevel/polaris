@@ -123,6 +123,9 @@ object Dimens {
     val noticeTagPaddingH = 8.dp
     val noticeTagSpacing = 6.dp
     val noticeBodyMaxLines = 2
+
+    val bottomNavHeight = 64.dp
+    val bottomNavIndicatorSize = 4.dp
 }
 
 object VerificationCodeConfig {

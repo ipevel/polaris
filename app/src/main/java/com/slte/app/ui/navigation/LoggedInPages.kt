@@ -5,6 +5,7 @@ package com.slte.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.slte.app.data.local.ThemeMode
 import com.slte.app.ui.screen.about.AboutScreen
 import com.slte.app.ui.screen.invite.InviteScreen
 import com.slte.app.ui.screen.invite.InviteViewModel
@@ -77,19 +78,11 @@ internal fun OrdersPageContent(
 internal fun DashboardPageContent(
     mainViewModel: MainViewModel,
     mainData: DashboardData,
-    onTraffic: () -> Unit,
-    onServer: () -> Unit,
-    onNotice: () -> Unit,
-    onProfile: () -> Unit,
     onRenew: () -> Unit,
 ) {
     MainScreen(
         mainViewModel = mainViewModel,
         data = mainData,
-        onTraffic = onTraffic,
-        onServer = onServer,
-        onNotice = onNotice,
-        onProfile = onProfile,
         onRenew = onRenew,
     )
 }
@@ -97,7 +90,9 @@ internal fun DashboardPageContent(
 @Composable
 internal fun ProfilePageContent(
     profileViewModel: ProfileViewModel,
-    onBack: () -> Unit,
+    themeMode: ThemeMode,
+    onToggleTheme: () -> Unit,
+    onNotice: () -> Unit,
     onOrders: () -> Unit,
     onInvite: () -> Unit,
     onRenew: () -> Unit,
@@ -107,7 +102,9 @@ internal fun ProfilePageContent(
 ) {
     LaunchedEffect(Unit) { profileViewModel.refresh() }
     ProfileScreen(
-        onBack = onBack,
+        themeMode = themeMode,
+        onToggleTheme = onToggleTheme,
+        onNotice = onNotice,
         onOrders = onOrders,
         onInvite = onInvite,
         onRenew = onRenew,
@@ -122,12 +119,24 @@ internal fun ProfilePageContent(
 @Composable
 internal fun ServerPageContent(
     serverViewModel: ServerViewModel,
+    subscriptionName: String,
+    usedBytes: Long,
+    totalBytes: Long,
+    isValid: Boolean,
+    hasPlan: Boolean,
+    daysUntilExpired: Int,
+    expiredAt: Long,
     onUpdateSubscription: () -> Unit,
-    onBack: () -> Unit,
 ) {
     LaunchedEffect(Unit) { serverViewModel.loadNodes() }
     ServerScreen(
-        onBack = onBack,
+        subscriptionName = subscriptionName,
+        usedBytes = usedBytes,
+        totalBytes = totalBytes,
+        isValid = isValid,
+        hasPlan = hasPlan,
+        daysUntilExpired = daysUntilExpired,
+        expiredAt = expiredAt,
         onUpdateSubscription = onUpdateSubscription,
         viewModel = serverViewModel,
     )
@@ -195,11 +204,9 @@ internal fun AboutPageContent(onBack: () -> Unit) {
 @Composable
 internal fun TrafficPageContent(
     trafficViewModel: TrafficViewModel,
-    onBack: () -> Unit,
     onRenew: () -> Unit,
 ) {
     TrafficScreen(
-        onBack = onBack,
         onRenew = onRenew,
         viewModel = trafficViewModel,
     )

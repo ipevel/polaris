@@ -53,6 +53,8 @@ object FormatUtils {
         return String.format(Locale.US, "%.2f", v).trimEnd('0').trimEnd('.') + "KB"
     }
 
+    fun speed(bytesPerSecond: Long): String = "${traffic(bytesPerSecond)}/s"
+
     fun formatDate(epochSeconds: Long): String = formatEpochDate(epochSeconds, DateFormats.ISO)
 
     fun formatExpiryDate(epochSeconds: Long): String = formatEpochDate(epochSeconds, DateFormats.EXPIRY)

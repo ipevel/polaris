@@ -10,14 +10,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 
-enum class Page { Dashboard, Invite, Server, Notice, Orders, Plans, Profile, Settings, About, Ticket, Traffic }
+/** 底部四个根 Tab，代替原先的四个根页。 */
+enum class RootTab { Home, Server, Traffic, Profile }
+
+/** 二级叶子页（全屏 push，叠加在根 Tab 之上）。 */
+enum class Page { Invite, Notice, Orders, Plans, Settings, About, Ticket }
 
 internal enum class PendingNav {
     Invite,
     Notice,
     Orders,
     Plans,
-    Traffic,
     ;
 
     val page: Page
@@ -27,7 +30,6 @@ internal enum class PendingNav {
                 Notice -> Page.Notice
                 Orders -> Page.Orders
                 Plans -> Page.Plans
-                Traffic -> Page.Traffic
             }
 }
 
@@ -38,4 +40,4 @@ private val pageStackSaver =
     )
 
 @Composable
-internal fun rememberSaveablePageStack(): SnapshotStateList<Page> = rememberSaveable(saver = pageStackSaver) { mutableStateListOf(Page.Dashboard) }
+internal fun rememberSaveablePageStack(): SnapshotStateList<Page> = rememberSaveable(saver = pageStackSaver) { mutableStateListOf() }
