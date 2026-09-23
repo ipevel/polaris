@@ -106,7 +106,9 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 应用包名 |
 | `POLARIS_API_TYPE` | `xiaov2b` | 后端类型（`xiaov2b` / `xboard`） |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用 |
-| `POLARIS_REMOTE_CONFIG_URLS` | `https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json`（见 [config/remote.json](config/remote.json)） | 远程配置 URL，逗号分隔多源 |
+| `POLARIS_REMOTE_CONFIG_URLS` | 见 [config/remote.json](config/remote.json) 默认源 | 远程配置 URL，逗号分隔多源 |
+
+> `POLARIS_REMOTE_CONFIG_URLS` 的默认值为 `https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json`，详见 [CONFIG.md](CONFIG.md)。
 
 > **安全白名单**：为防配置投毒导致凭据外泄，API 地址与远程配置中的直连域名只允许在域名白名单内切换。白名单 = `POLARIS_ALLOWED_DOMAINS` 追加项 + API 地址域名 + 远程配置源域名，构建期自动并入（详见 [CONFIG.md](CONFIG.md)），**无需修改代码**。仓库内置占位符 `example.com`，部署前请通过环境变量或 `app/gradle.properties` 注入你的域名。
 >
