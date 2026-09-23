@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Polaris Contributors
-// SPDX-License-Identifier: GPL-3.0-only
-
 package com.slte.app.utils
 
 import android.util.Log
@@ -59,7 +56,7 @@ object AppLog {
     fun export(context: android.content.Context): java.io.File? {
         val header =
             buildString {
-                appendLine("Polaris 日志导出")
+                appendLine("SLTE 日志导出")
                 appendLine("时间: ${now()}")
                 appendLine("应用版本: ${com.slte.app.BuildConfig.VERSION_NAME} (${com.slte.app.BuildConfig.VERSION_CODE})")
                 appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
@@ -69,7 +66,7 @@ object AppLog {
         val content = sanitize(dump(header))
         return try {
             val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-            val file = java.io.File(dir, "polaris_log_${System.currentTimeMillis()}.txt")
+            val file = java.io.File(dir, "SLTE_log_${System.currentTimeMillis()}.txt")
             file.writeText(content)
             file
         } catch (e: Exception) {
@@ -97,6 +94,8 @@ object AppLog {
             m.groupValues[1] + masked
         }
         .replace(URL_CREDENTIALS_PATTERN, "$1***@")
+        .replace(PATH_TOKEN_PATTERN) { m -> "/" + m.groupValues[1] + "/***" }
+        .replace(PATH_LONG_SEGMENT_PATTERN) { m -> m.groupValues[1] + "/***" }
         .replace(EMAIL_PATTERN) { m ->
             val value = m.value
             val at = value.indexOf('@')
@@ -121,6 +120,12 @@ object AppLog {
         )
 
     private val URL_CREDENTIALS_PATTERN = Regex("(?i)\\b([a-z][a-z0-9+.\\-]*://)([^\\s/]+)@")
+
+    private val PATH_TOKEN_PATTERN =
+        Regex("(?i)/(s|sub|subs|subscribe|link|token|t)/([^/\\s\"'?#]{12,})")
+
+    private val PATH_LONG_SEGMENT_PATTERN =
+        Regex("(^|[^:/])/([^/\\s\"'?#.{}]{16,})(?=/|\\?|#|\\s|$)")
 
     private val EMAIL_PATTERN = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
 
