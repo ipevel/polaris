@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.4.7",
-  "update_changelog_title": "Polaris 1.4.7 — 界面与功能与 1.4.5 完全一致",
-  "update_changelog": "- fix: 撤回 1.4.6 界面改动，首页布局恢复至 1.4.5（电源卡回底部、顶栏恢复站点名称、去除状态卡背景色）\n- chore: 合规修复——补全 476 个源文件 GPL-3.0 版权头，新增 SECURITY/CONTRIBUTING/CODE_OF_CONDUCT/SUPPORT 社区文件（不可见，不影响使用）\n- ci: GitHub Actions 固定到 commit SHA，发布构建串行化\n- security: release 签名空密码前置校验；日志脱敏规则扩展（Bearer / 敏感键值 / URL 凭据 / 邮箱）\n- style: ktlint 代码风格统一 + .editorconfig 覆盖全仓文件类型\n- chore: 版本号升到 1.4.7 (versionCode 21)",
+  "update_version": "1.4.8",
+  "update_changelog_title": "Polaris 1.4.8 — 首页信息密度提升与流量明细优化",
+  "update_changelog": "- feat(dashboard): 首页仪表卡重构，统计/速度方形大卡等高对齐，首屏信息密度提升\n- feat(nav): 底部导航改为四栏布局，切换与页面预加载更流畅\n- feat(traffic): 流量明细按每日记录展示环形总图，合计流量醒目；续费按钮右对齐\n- feat(server): 复用订阅卡实现更新订阅入口，站点信息与生命周期挂钩\n- chore: 同步上游节点名归一化与国旗识别、路径型 token 日志脱敏加固\n- chore: 清理死字符串资源，补齐 KDoc，规范提交历史\n- fix: 启动开关计时从点击时刻起始，关闭时清零；修复我的页面空栈闪退\n- chore: 版本号升到 1.4.8 (versionCode 22)",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.7/Polaris-1.4.7.apk",
   "update_apk_sha256": "61beaecea34b57eaf3f85cda578f714911f9c0b6e62af749356140fe56072465"
