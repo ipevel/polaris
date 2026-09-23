@@ -49,8 +49,9 @@ constructor(
         get() = currentUrl?.takeIf { it.toHttpUrlOrNull() != null }.orEmpty()
 
     /**
-     * 运行时后端类型：`xiaov2b` / `xboard`。
-     * 优先读用户登录页选择并持久化的值，否则回退编译期 [com.slte.app.BuildConfig.API_TYPE]。
+     * 运行时后端类型：`xboard` / `xiaov2b`，空串表示尚未识别（未持久化、未探测）。
+     * 只读用户登录页选择并持久化的值，**不兜底任何编译期默认**——由登录流程保证
+     * 提交前已将实际类型写入，避免与面板后端错配。
      * 用 [cachedBackendType] 内存缓存，网络层每次请求读取不触发主线程加密存储解密。
      */
     val backendType: String
@@ -90,7 +91,7 @@ constructor(
 
     private fun readPersistedUrl(): String? = normalize(raw = prefs.getString(KEY_PANEL_URL, null))
 
-    private fun readPersistedBackendType() = prefs.getString(KEY_BACKEND_TYPE, null)?.takeIf { it.isNotBlank() } ?: com.slte.app.BuildConfig.API_TYPE
+    private fun readPersistedBackendType() = prefs.getString(KEY_BACKEND_TYPE, null)?.takeIf { it.isNotBlank() } ?: ""
 
     private fun normalize(raw: String?): String? = raw?.trim().orEmpty().trimEnd('/').takeIf { it.isNotEmpty() }
 

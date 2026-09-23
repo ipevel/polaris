@@ -20,7 +20,6 @@ import java.net.URL
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -87,7 +86,6 @@ constructor(
 
     private var loginJob: Job? = null
     private var registerConfigJob: Job? = null
-    private var probeJob: Job? = null
 
     /** 面板地址初始值：仅回显已保存的用户地址，App 不预填任何内置地址 */
     private fun initialForm() = LoginUiState.Form(
@@ -168,8 +166,6 @@ constructor(
     fun onPanelUrlChange(value: String) {
         val f = currentForm()
         _uiState.value = f.copy(panelUrl = value)
-        // 仅用户手动选择过才保持手动值，否则自动探测
-        probeBackendType(value)
     }
 
     fun toggleRememberMe() {
@@ -259,17 +255,28 @@ constructor(
         loginJob =
             viewModelScope.launch {
                 val f2 = currentForm()
-                persistPanelSettings(f2.panelUrl, f2.backendType)
-                val result = authRepository.login(f2.account.trim(), f2.password)
+                // 点登录时若后端类型未知，先同步探测，确保提交使用与实际面板匹配的类型
+                val backendType = resolveBackendType(f2)
+                val resolvedForm = f2.copy(backendType = backendType)
+                if (backendType.isBlank() || f2.panelUrl.isBlank()) {
+                    _uiState.value =
+                        LoginUiState.Error(
+                            resolvedForm,
+                            R.string.login_backend_probe_failed,
+                        )
+                    return@launch
+                }
+                persistPanelSettings(resolvedForm.panelUrl, backendType)
+                val result = authRepository.login(resolvedForm.account.trim(), resolvedForm.password)
                 result.fold(
                     onSuccess = { user ->
 
-                        if (f2.rememberMe) {
-                            authRepository.saveCredentials(f2.account.trim(), f2.password)
+                        if (resolvedForm.rememberMe) {
+                            authRepository.saveCredentials(resolvedForm.account.trim(), resolvedForm.password)
                         } else {
                             authRepository.clearCredentials()
                         }
-                        _uiState.value = LoginUiState.LoginSuccess(f2, user)
+                        _uiState.value = LoginUiState.LoginSuccess(resolvedForm, user)
                     },
                     onFailure = { e ->
                         val f3 = currentForm()
@@ -304,11 +311,22 @@ constructor(
         registerConfigJob =
             viewModelScope.launch {
                 val f2 = currentForm()
-                persistPanelSettings(f2.panelUrl, f2.backendType)
+                // 点「注册」时同样先确保后端类型已识别
+                val backendType = resolveBackendType(f2)
+                val resolvedForm = f2.copy(backendType = backendType)
+                if (backendType.isBlank() || f2.panelUrl.isBlank()) {
+                    _uiState.value =
+                        LoginUiState.Error(
+                            resolvedForm,
+                            R.string.login_backend_probe_failed,
+                        )
+                    return@launch
+                }
+                persistPanelSettings(resolvedForm.panelUrl, backendType)
                 val result = authRepository.fetchRegisterConfig()
                 result.fold(
                     onSuccess = { config ->
-                        _uiState.value = LoginUiState.RegisterConfigReady(f2, config)
+                        _uiState.value = LoginUiState.RegisterConfigReady(resolvedForm, config)
                     },
                     onFailure = { e ->
                         val f3 = currentForm()
@@ -362,35 +380,24 @@ constructor(
     }
 
     /**
-     * 探测面板的 `guest/comm/config` 接口，根据响应字段自动识别后端类型：
-     * - xboard 特有字段：is_captcha / captcha_type / turnstile_site_key
-     * - 否则视为 xiaov2b（V2Board 系）
-     * 探测失败或 URL 非法时不改动用户当前选择。
-     * 私有/保留地址跳过探测（防止 SSRF 风险）。
+     * 解析当前表单的后端类型：
+     * - 已持久化/已知的 `xboard` / `xiaov2b` 直接复用；
+     * - 未知（空串）时在 IO 线程探测面板的 `guest/comm/config` 接口，
+     *   根据响应字段自动识别，避免用户手动选择、也避免回退默认导致错配。
+     * 返回识别结果（空串 = 未知/探测失败）。
      */
-    private fun probeBackendType(rawUrl: String) {
-        probeJob?.cancel()
-        val normalized = ConfigValidation.normalizePanelUrl(rawUrl) ?: return
+    private suspend fun resolveBackendType(f: LoginUiState.Form): String {
+        val preset = f.backendType.trim().lowercase()
+        if (preset.isNotEmpty()) return preset
+        val normalized = ConfigValidation.normalizePanelUrl(f.panelUrl) ?: return ""
         // 私有/保留地址不自动探测，防止 SSRF
-        val host = normalized.toHttpUrlOrNull()?.host ?: return
-        if (ConfigValidation.isPrivateOrReservedHost(host)) return
-        probeJob =
-            viewModelScope.launch {
-                delay(500) // 防抖，避免每次输入都请求
-                val detected = withContext(ioDispatcher) {
-                    detectBackendType(normalized)
-                }
-                if (detected != null) {
-                    val f = currentForm()
-                    if (f.panelUrl == rawUrl) {
-                        _uiState.value = f.copy(backendType = detected)
-                    }
-                }
-            }
+        val host = normalized.toHttpUrlOrNull()?.host ?: return ""
+        if (ConfigValidation.isPrivateOrReservedHost(host)) return ""
+        return withContext(ioDispatcher) { detectBackendType(normalized) }
     }
 
-    /** 返回 "xboard" 或 "xiaov2b"；网络/解析失败返回 null（不改动选择）。 */
-    private fun detectBackendType(panelUrl: String): String? {
+    /** 返回 "xboard" 或 "xiaov2b"；网络/解析失败返回空串。 */
+    private fun detectBackendType(panelUrl: String): String {
         val conn = try {
             val base = panelUrl.trimEnd('/')
             (URL("$base/api/v1/guest/comm/config").openConnection() as HttpURLConnection).apply {
@@ -400,20 +407,20 @@ constructor(
                 setRequestProperty("Accept", "application/json")
             }
         } catch (_: Exception) {
-            return null
+            return ""
         }
         return try {
             val code = conn.responseCode
-            if (code !in 200..299) return null
+            if (code !in 200..299) return ""
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            val data = JSONObject(body).optJSONObject("data") ?: return null
+            val data = JSONObject(body).optJSONObject("data") ?: return ""
             val isXboard = data.has("is_captcha") ||
                 data.has("captcha_type") ||
                 data.has("turnstile_site_key") ||
                 data.has("recaptcha_v3_site_key")
             if (isXboard) "xboard" else "xiaov2b"
         } catch (_: Exception) {
-            null
+            ""
         } finally {
             conn.disconnect()
         }

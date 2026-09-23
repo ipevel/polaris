@@ -14,6 +14,7 @@
     <string name="login_url_hint">面板地址</string>
     <string name="login_url_required">请输入面板地址</string>
     <string name="login_url_invalid">面板地址无效，示例：https://panel.example.com</string>
+    <string name="login_backend_probe_failed">无法识别面板后端类型，请检查面板地址后重试</string>
     <string name="panel_url_confirm_title">确认面板地址</string>
     <string name="panel_url_confirm_private_title">安全风险：内部地址</string>
     <string name="panel_url_confirm_message">即将连接到以下面板地址，您的登录凭据将发送至此服务器：</string>

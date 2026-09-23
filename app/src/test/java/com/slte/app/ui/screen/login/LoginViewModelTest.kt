@@ -40,6 +40,8 @@ class LoginViewModelTest {
         every { authRepository.savedEmail() } returns savedEmail
         every { authRepository.savedPassword() } returns savedPassword
         every { apiUrlStore.currentUrl } returns currentPanelUrl
+        // 已持久化已知后端类型：登录走「复用已有类型」分支，避免单测触发真实的网络探测
+        every { apiUrlStore.backendType } returns "xiaov2b"
         return LoginViewModel(mainRule.dispatcher, authRepository, apiUrlStore)
     }
 
@@ -49,7 +51,10 @@ class LoginViewModelTest {
         vm.login()
         advanceUntilIdle()
 
-        assertEquals(LoginUiState.Error(LoginUiState.Form(), R.string.error_email_required), vm.uiState.value)
+        assertEquals(
+            LoginUiState.Error(LoginUiState.Form(backendType = "xiaov2b"), R.string.error_email_required),
+            vm.uiState.value,
+        )
         coVerify(exactly = 0) { authRepository.login(any(), any()) }
     }
 

@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.4.8",
-  "update_changelog_title": "Polaris 1.4.8 — 首页信息密度提升与流量明细优化",
-  "update_changelog": "- feat(dashboard): 首页仪表卡重构，统计/速度方形大卡等高对齐，首屏信息密度提升\n- feat(nav): 底部导航改为四栏布局，切换与页面预加载更流畅\n- feat(traffic): 流量明细按每日记录展示环形总图，合计流量醒目；续费按钮右对齐\n- feat(server): 复用订阅卡实现更新订阅入口，站点信息与生命周期挂钩\n- chore: 同步上游节点名归一化与国旗识别、路径型 token 日志脱敏加固\n- chore: 清理死字符串资源，补齐 KDoc，规范提交历史\n- fix: 启动开关计时从点击时刻起始，关闭时清零；修复我的页面空栈闪退\n- chore: 版本号升到 1.4.8 (versionCode 22)",
+  "update_version": "1.4.9",
+  "update_changelog_title": "Polaris 1.4.9 — 登录后端自识别修复",
+  "update_changelog": "- fix(login): 登录提交时同步探测面板后端类型，消除与用户点击的竞态；不再回退编译期默认值，杜绝后端错配导致订阅/套餐读取失败\n- refactor: 后端类型未识别时不再兜底 BuildConfig 默认，保持与面板地址一致的『不默认』策略\n- chore: 版本号升到 1.4.9 (versionCode 23)",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.8/Polaris-1.4.8.apk",
   "update_apk_sha256": "2cec70d8d85869908791ffddbac15ff3eb9bec58bdc41877c3daa186d8513dc2"
