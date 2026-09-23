@@ -10,6 +10,7 @@ import com.slte.app.kernel.KernelProxy
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 
 /**
  * 桩化 KernelProxy 的内核桥接。
@@ -32,6 +33,8 @@ fun KernelProxy.stubKernelBridge(ready: Boolean = false): KernelProxy {
     coEvery { safe<Any?>(any(), any(), any(), any()) } coAnswers {
         try {
             arg<suspend () -> Any?>(3).invoke()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             firstArg<Any?>()
         }

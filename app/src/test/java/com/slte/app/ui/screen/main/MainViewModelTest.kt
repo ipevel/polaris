@@ -24,6 +24,7 @@ import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,15 +45,17 @@ class MainViewModelTest {
     private val authRepository = mockk<AuthRepository>(relaxed = true)
     private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
     private val themePreference = mockk<ThemePreference>(relaxed = true)
+    private val deviceEnvironment = mockk<DeviceEnvironmentSource>(relaxed = true)
 
     private fun viewModel(
         hasPlan: Boolean = true,
         connected: Boolean = false,
         ready: Boolean = false,
+        connectedFlow: MutableStateFlow<Boolean>? = null,
     ): MainViewModel {
         stubAuthSession()
         kernelProxy.stubKernelBridge(ready)
-        every { kernelManager.connected } returns MutableStateFlow(connected)
+        every { kernelManager.connected } returns (connectedFlow ?: MutableStateFlow(connected))
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
         every { themePreference.mode } returns MutableStateFlow(ThemeMode.SYSTEM)
         every { dataWriter.applyCached(any()) } answers {
@@ -60,7 +63,9 @@ class MainViewModelTest {
                 DashboardData(hasPlan = hasPlan, isConnected = connected)
         }
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, siteInfoStore, themePreference)
+        every { deviceEnvironment.appMemoryUsageMb() } returns 0
+        every { deviceEnvironment.lanIpv4() } returns null
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, siteInfoStore, themePreference, deviceEnvironment)
     }
 
     /**
@@ -113,14 +118,21 @@ class MainViewModelTest {
     fun `已连接时点击断开`() = runTest(mainRule.dispatcher) {
         // ready=true：observeKernelState 会经 awaitTunnelReady 门控，
         // 未就绪时会把 isConnected 纠正回 false（假连接防护），断开路径走不到
-        val vm = viewModel(hasPlan = true, connected = true, ready = true)
-        advanceUntilIdle()
+        val connected = MutableStateFlow(true)
+        val vm = viewModel(hasPlan = true, connected = true, ready = true, connectedFlow = connected)
+        // 连接就绪会启动 startSpeedWatch（常驻 while(isActive){delay(1s)} 采样循环），
+        // advanceUntilIdle 永不空闲会热旋；只用 runCurrent 排空当前队列
+        runCurrent()
 
         vm.toggleConnection()
-        advanceUntilIdle()
+        runCurrent()
 
         verify { kernelManager.stopVpn() }
         verify(exactly = 0) { kernelManager.startVpn() }
+
+        // 断开后让 observeKernelState 取消采样循环，避免 runTest 收尾对常驻协程空转
+        connected.value = false
+        runCurrent()
     }
 
     @Test
@@ -162,6 +174,8 @@ class MainViewModelTest {
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
         stubAuthSession()
+        every { deviceEnvironment.appMemoryUsageMb() } returns 0
+        every { deviceEnvironment.lanIpv4() } returns null
         val vm =
             MainViewModel(
                 mainRule.dispatcher,
@@ -174,14 +188,20 @@ class MainViewModelTest {
                 authRepository,
                 siteInfoStore,
                 themePreference,
+                deviceEnvironment,
             )
         advanceUntilIdle()
 
         connected.value = true
-        advanceUntilIdle()
+        // startSpeedWatch 是常驻采样循环，runTest 收尾/advanceUntilIdle 会因错觉永远空转；
+        // 连接后只用 runCurrent 排空当前队列，结束时再把 connected 归 false 取消循环
+        runCurrent()
 
         verify { fallbackDns.clearCache() }
         assertTrue(vm.data.value.isConnected)
+
+        connected.value = false
+        advanceUntilIdle()
     }
 
     @Test
@@ -193,6 +213,8 @@ class MainViewModelTest {
         every { kernelManager.connected } returns connected
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
         stubAuthSession()
+        every { deviceEnvironment.appMemoryUsageMb() } returns 0
+        every { deviceEnvironment.lanIpv4() } returns null
         val vm =
             MainViewModel(
                 mainRule.dispatcher,
@@ -205,6 +227,7 @@ class MainViewModelTest {
                 authRepository,
                 siteInfoStore,
                 themePreference,
+                deviceEnvironment,
             )
         advanceUntilIdle()
 
