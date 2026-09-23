@@ -222,20 +222,23 @@ class KernelProxyTest {
     @Test
     fun `累计流量解码内核压缩编码`() = runTest(mainRule.dispatcher) {
         val proxy = proxy()
-        // 高 32 位上传（type=1 → KB 段），低 32 位下载（type=2 → MB 段）
-        every { clash.queryTrafficTotal() } returns 0x40000002_80000003L
+        // 高 32 位上传（type=1 → KB 段，data=102400），低 32 位下载（type=2 → MB 段，data=51200）
+        // C 编码存「真实值×100/1024ⁿ」：102400 → 1MiB、51200 → 512MiB，解码须 ÷100 还原
+        every { clash.queryTrafficTotal() } returns 0x4001_9000_8000_C800L
 
-        assertEquals(2048L to 3_145_728L, proxy.trafficTotal())
+        assertEquals(1_048_576L to 536_870_912L, proxy.trafficTotal())
     }
 
     @Test
-    fun `秒级 blip 解码与累计同编码`() = runTest(mainRule.dispatcher) {
+    fun `秒级 blip 解码不被放大 100 倍`() = runTest(mainRule.dispatcher) {
         val proxy = proxy()
         // 高 32 位上传（type=0 → 原始字节），低 32 位下载（type=1 → KB 段）
+        // data=99639 是真实 0.973MiB/s（1_020_307B/s）的 C 编码值：1020307×100/1024
+        // 回归用例：修复前该值被解码成 97.3MB/s（放大 100 倍）
         // returns 也是中缀函数，须加括号避免与 shl/or 抢结合
-        every { clash.queryTrafficNow() } returns (1500L shl 32 or 0x40000005L)
+        every { clash.queryTrafficNow() } returns (1500L shl 32 or 0x4001_8537L)
 
-        assertEquals(1500L to 5120L, proxy.trafficNow())
+        assertEquals(1500L to 1_020_303L, proxy.trafficNow())
     }
 
     @Test

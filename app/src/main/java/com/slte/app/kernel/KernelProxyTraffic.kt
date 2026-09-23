@@ -29,11 +29,14 @@ suspend fun KernelProxy.trafficNow(): Pair<Long, Long>? = safe(null, "trafficNow
 private fun decodeTraffic(value: Long): Long {
     val type = (value ushr 30) and 0x3
     val data = value and 0x3FFFFFFF
+    // C 侧 down_scale_traffic 编码时乘 100 保留两位小数精度（bridge_helper.c），
+    // 还原为原始字节数必须把该精度因子除回去；
+    // 与 core 模块 Traffic.kt 的显示语义一致（scaled / 100）。
     return when (type) {
         0L -> data
-        1L -> data * 1024
-        2L -> data * 1024 * 1024
-        3L -> data * 1024 * 1024 * 1024
+        1L -> data * 1024 / 100
+        2L -> data * 1024 * 1024 / 100
+        3L -> data * 1024 * 1024 * 1024 / 100
         else -> 0L
     }
 }
