@@ -1,0 +1,80 @@
+name: Feature request
+description: 提交功能建议 / Suggest an idea for this project
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: checkboxes
+    id: ensure
+    attributes:
+      label: 提交前确认 / Verify steps
+      description: |
+        在提交之前，请确认以下事项
+        Please verify that you've followed these steps
+      options:
+        - label: |
+            我已经在 [Issue Tracker](https://github.com/ipevel/polaris/issues) 中搜索过，没有找到相同或类似的功能请求
+            I have searched on the [issue tracker](https://github.com/ipevel/polaris/issues) for a related feature request.
+          required: true
+        - label: |
+            我已经仔细阅读过 [README](https://github.com/ipevel/polaris/blob/master/README.md)，确认该功能目前不存在
+            I have read the [README](https://github.com/ipevel/polaris/blob/master/README.md) and confirmed this feature does not exist yet.
+          required: true
+        - label: |
+            这个功能与 Polaris 的核心定位（轻量级代理客户端）一致
+            This feature aligns with Polaris's core focus as a lightweight proxy client.
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 功能类别 / Feature category
+      description: 该功能属于哪个类别
+      options:
+        - UI/UX 改进 / UI/UX improvement
+        - 新功能 / New feature
+        - 性能优化 / Performance optimization
+        - 面板适配 / Panel integration
+        - 内核相关 / Kernel related
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述 / Is your feature request related to a problem?
+      description: |
+        请描述你遇到的问题是什么。例如：我在使用 xxx 时总是感到困扰……
+        Please describe the problem you're facing. E.g., I'm always frustrated when [...]
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的解决方案 / Describe the solution you'd like
+      description: |
+        请清晰地描述你希望如何解决这个问题。
+        Please describe clearly how you'd like the problem to be solved.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案 / Describe alternatives you've considered
+      description: |
+        你考虑过的其他解决方案或功能实现方式。
+        Any alternative solutions or features you've considered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息 / Additional context
+      description: |
+        其他补充信息，例如截图、参考链接等。
+        Any other context, screenshots, or references here.
+    validations:
+      required: false

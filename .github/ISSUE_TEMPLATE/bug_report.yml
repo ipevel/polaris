@@ -1,0 +1,157 @@
+name: Bug report
+description: 提交 Bug 报告以帮助我们改进 / Create a report to help us improve
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: checkboxes
+    id: ensure
+    attributes:
+      label: 提交前确认 / Verify steps
+      description: |
+        在提交之前，请确认以下事项
+        Please verify that you've followed these steps
+      options:
+        - label: |
+            我使用的是**本仓库**最新发布的 Polaris 版本
+            I am using the latest Polaris release from **this repository**.
+          required: true
+        - label: |
+            我已经在 [Issue Tracker](https://github.com/ipevel/polaris/issues) 中搜索过，没有找到相同或类似的问题
+            I have searched on the [issue tracker](https://github.com/ipevel/polaris/issues) for a related issue.
+          required: true
+        - label: |
+            我已经仔细阅读过 [README](https://github.com/ipevel/polaris/blob/master/README.md) 和常见问题，无法自行解决
+            I have read the [README](https://github.com/ipevel/polaris/blob/master/README.md) and FAQ and was unable to solve the issue.
+          required: true
+        - label: |
+            这是 Polaris 应用本身的问题，而非我所使用的面板服务或节点的问题
+            This is an issue with the Polaris app itself, not with my panel service or proxy nodes.
+          required: true
+        - label: |
+            如果我能自行调试并修复，我会提交 PR
+            Is this something you can **debug and fix**? Send a pull request! Bug fixes and documentation fixes are welcome.
+          required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Polaris 版本 / Polaris version
+      description: 在「设置 - 关于」中查看 / Check in Settings → About
+    validations:
+      required: true
+
+  - type: dropdown
+    id: android_version
+    attributes:
+      label: Android 版本 / Android version
+      description: 你的设备运行的 Android 版本
+      options:
+        - Android 14 (API 34)
+        - Android 13 (API 33)
+        - Android 12 (API 31/32)
+        - Android 11 (API 30)
+        - Android 10 (API 29)
+        - Android 9 (API 28)
+        - Android 15+ (API 35+)
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 设备型号 / Device model
+      description: 例如：Pixel 8 Pro、小米 14 等 / e.g., Pixel 8 Pro, Xiaomi 14, etc.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: panel_type
+    attributes:
+      label: 面板类型 / Panel type
+      description: 你使用的面板后端
+      options:
+        - XiaoV2b
+        - Xboard
+        - 其他 / Other
+        - 不涉及 / Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: proxy_mode
+    attributes:
+      label: 代理模式 / Proxy mode
+      description: 出现问题时使用的代理模式
+      options:
+        - 规则模式 / Rule
+        - 全局模式 / Global
+        - 直连模式 / Direct
+        - 不涉及 / Not applicable
+    validations:
+      required: false
+
+  - type: dropdown
+    id: tun_stack
+    attributes:
+      label: TUN 堆栈 / TUN stack
+      description: 出现问题时使用的 TUN 模式
+      options:
+        - System VPN
+        - gVisor
+        - Mixed
+        - 不涉及 / Not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: |
+        请详细描述如何复现该问题
+        Please describe in detail how to reproduce the issue
+      placeholder: |
+        1. 打开 App
+        2. 点击 xxx
+        3. 出现错误
+        1. Open the app
+        2. Tap on xxx
+        3. Error occurs
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为 / Expected behavior
+      description: 你期望发生什么 / What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为 / Actual behavior
+      description: 实际发生了什么 / What actually happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / Logs
+      description: |
+        如有可能，请附上应用日志（设置 → 导出日志）。请确保日志中不含敏感信息。
+        If possible, attach app logs (Settings → Export logs). Please make sure logs contain no sensitive information.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息 / Additional context
+      description: 其他你认为有帮助的信息 / Any other context that might be helpful
+    validations:
+      required: false
