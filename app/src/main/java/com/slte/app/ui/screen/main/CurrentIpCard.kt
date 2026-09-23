@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,6 +38,7 @@ import com.slte.app.R
 import com.slte.app.ui.component.FlagPlaceholder
 import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.theme.SlteColors
+import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Constants
 import com.slte.app.utils.Dimens
@@ -48,6 +50,7 @@ fun CurrentIpCard(
     currentIp: String,
     modifier: Modifier = Modifier,
     ipCountryCode: String? = null,
+    titleRes: Int = R.string.dashboard_current_ip,
 ) {
     val context = LocalContext.current
     val toast = rememberToast()
@@ -72,10 +75,17 @@ fun CurrentIpCard(
                     },
                 )
                 .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.Top,
         ) {
-            // 行1：状态点 + 标题 + 旗帜
+            // 行1：图标 + 状态点 + 标题 + 旗帜
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = SlteIcons.CurrentIp,
+                    contentDescription = null,
+                    tint = SlteColors.current.accentInteractive,
+                    modifier = Modifier.size(Dimens.icon.sm),
+                )
+                Spacer(modifier = Modifier.width(Dimens.gap.xs))
                 Box(
                     modifier = Modifier
                         .size(8.dp)
@@ -84,26 +94,27 @@ fun CurrentIpCard(
                 )
                 Spacer(modifier = Modifier.width(Dimens.gap.sm))
                 Text(
-                    text = stringResource(R.string.dashboard_current_ip),
-                    style = SlteType.bodySmall,
+                    text = stringResource(titleRes),
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = SlteType.body,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.width(Dimens.gap.sm))
                 ipCountryCode?.let { code ->
                     FlagPlaceholder(countryCode = code, size = Dimens.icon.sm)
                 }
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.xs))
+            Spacer(modifier = Modifier.height(Dimens.gap.sm))
 
             // 行2：IP 地址（长按复制）
             Text(
                 text = FormatUtils.compactIp(currentIp),
                 fontFamily = FontFamily.Monospace,
-                style = SlteType.body,
+                style = SlteType.field,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,

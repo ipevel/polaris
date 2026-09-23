@@ -24,6 +24,11 @@ internal val PROXY_MODE_OPTIONS =
             R.string.dashboard_proxy_global,
             R.string.proxy_global_desc,
         ),
+        ProxyModeOption(
+            Constants.PROXY_MODE_DIRECT,
+            R.string.dashboard_proxy_direct,
+            R.string.proxy_direct_desc,
+        ),
     )
 
 internal fun proxyModeLabelRes(mode: String): Int? = when (mode) {

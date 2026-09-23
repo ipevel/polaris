@@ -4,6 +4,7 @@
 package com.slte.app.ui.screen.main
 
 import android.content.Intent
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
@@ -22,6 +23,7 @@ import com.slte.app.kernel.ensureGlobalSelection
 import com.slte.app.kernel.fetchPublicIp
 import com.slte.app.kernel.runAutoSpeedTest
 import com.slte.app.kernel.serverInfo
+import com.slte.app.kernel.trafficTotal
 import com.slte.app.kernel.warmUp
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Constants
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -53,6 +56,7 @@ constructor(
     private val authRepository: AuthRepository,
     private val siteInfoStore: SiteInfoStore,
     private val themePreference: ThemePreference,
+    private val deviceEnvironment: DeviceEnvironmentSource,
 ) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
@@ -65,6 +69,7 @@ constructor(
 
     private var autoTested = false
     private var tunnelWatchJob: Job? = null
+    private var speedWatchJob: Job? = null
 
     init {
 
@@ -74,6 +79,7 @@ constructor(
         dataWriter.loadServers(viewModelScope, _data)
         observeKernelState()
         observeProfileLoaded()
+        viewModelScope.launch { sampleDeviceEnvironment() }
         viewModelScope.launch { subscriptionUpdater.maybeSilentUpdate(_data, viewModelScope) }
 
         // 站点名称/描述与订阅生命周期挂钩：订阅头（profile-title）+ 面板
@@ -106,18 +112,84 @@ constructor(
         }
     }
 
+    private fun startSpeedWatch() {
+        speedWatchJob?.cancel()
+        speedWatchJob =
+            viewModelScope.launch {
+                var last: Pair<Long, Long>? = null
+                // 会话流量基线：连接就绪后的第一次采样记录，之后以差值累加；
+                // 断开（observeKernelState）负责清零会话字段与历史缓冲
+                var baseline: Pair<Long, Long>? = null
+                val history = ArrayDeque<Pair<Long, Long>>()
+                var tick = 0
+                while (isActive) {
+                    val total = withContext(ioDispatcher) { kernelProxy.trafficTotal() }
+                    val prev = last
+                    if (total != null) {
+                        val base = baseline ?: total.also { baseline = it }
+                        if (prev != null) {
+                            val upload = (total.first - prev.first).coerceAtLeast(0L)
+                            val download = (total.second - prev.second).coerceAtLeast(0L)
+                            history.addLast(upload to download)
+                            while (history.size > SPEED_HISTORY_MAX_POINTS) history.removeFirst()
+                            _data.update {
+                                it.copy(
+                                    uploadSpeedBps = upload,
+                                    downloadSpeedBps = download,
+                                    speedHistory = history.toList(),
+                                    sessionUploadBytes = (total.first - base.first).coerceAtLeast(0L),
+                                    sessionDownloadBytes = (total.second - base.second).coerceAtLeast(0L),
+                                )
+                            }
+                        }
+                        // 顺带周期刷新内存，避免为设备信息常驻第二条采样协程
+                        tick++
+                        if (tick % MEMORY_SAMPLE_EVERY == 0) {
+                            val appMemory = withContext(ioDispatcher) { deviceEnvironment.appMemoryUsageMb() }
+                            _data.update {
+                                it.copy(appMemoryUsedMb = appMemory)
+                            }
+                        }
+                    }
+                    last = total
+                    delay(SPEED_WATCH_INTERVAL_MS)
+                }
+            }
+    }
+
+    /** 采样设备内存与本机内网 IP（初始化与连接状态切换时调用）。 */
+    private suspend fun sampleDeviceEnvironment() {
+        val appMemory = withContext(ioDispatcher) { deviceEnvironment.appMemoryUsageMb() }
+        val lan = withContext(ioDispatcher) { deviceEnvironment.lanIpv4() }
+        _data.update {
+            it.copy(
+                appMemoryUsedMb = appMemory,
+                lanIp = lan?.takeIf { v -> v.isNotBlank() } ?: it.lanIp,
+            )
+        }
+    }
+
     private fun observeKernelState() {
         viewModelScope.launch {
             kernelManager.connected.collect { connected ->
                 if (!connected) {
                     tunnelWatchJob?.cancel()
+                    speedWatchJob?.cancel()
                     _data.update {
                         it.copy(
                             isConnected = false,
                             isConnecting = false,
                             currentIp = Constants.PLACEHOLDER_DASH,
+                            uploadSpeedBps = 0L,
+                            downloadSpeedBps = 0L,
+                            speedHistory = emptyList(),
+                            sessionUploadBytes = 0L,
+                            sessionDownloadBytes = 0L,
+                            connectedSinceElapsedMs = 0L,
                         )
                     }
+                    // 隧道关闭后网络接口集合变化（tun 消失），重查内网 IP
+                    sampleDeviceEnvironment()
                     return@collect
                 }
 
@@ -155,13 +227,20 @@ constructor(
                             return@launch
                         }
 
-                        _data.update { it.copy(isConnected = true, isConnecting = false) }
+                        _data.update {
+                            it.copy(
+                                isConnected = true,
+                                isConnecting = false,
+                            )
+                        }
                         fallbackDns.clearCache()
                         if (!autoTested) {
                             autoTested = true
                             kernelProxy.runAutoSpeedTest()
                         }
                         refreshKernelInfo()
+                        sampleDeviceEnvironment()
+                        startSpeedWatch()
                     }
             }
         }
@@ -232,7 +311,15 @@ constructor(
         if (current.isConnected) {
             kernelManager.stopVpn()
         } else {
-            _data.update { it.copy(isConnecting = true, errorMessageRes = null) }
+            // 计时起点取点开开关的时刻（而非隧道就绪时刻）：
+            // 用户一开代理就开始算运行时长，直到关闭清零
+            _data.update {
+                it.copy(
+                    isConnecting = true,
+                    errorMessageRes = null,
+                    connectedSinceElapsedMs = SystemClock.elapsedRealtime(),
+                )
+            }
             viewModelScope.launch {
                 try {
                     val profile = kernelConfig.ensureProfile()
@@ -302,5 +389,14 @@ constructor(
 
         /** 代理模式切换后等待内核 reload 完成的窗口，过后跑自愈核验 */
         const val RELOAD_SETTLE_MS = 3_000L
+
+        /** 实时网速采样间隔：每 1s 采一次累计流量差值 */
+        const val SPEED_WATCH_INTERVAL_MS = 1_000L
+
+        /** 速度历史缓冲上限：波形图采样点数（1 点/秒，约 1 分钟滚动窗口） */
+        const val SPEED_HISTORY_MAX_POINTS = 60
+
+        /** 连接期间内存采样周期：每 N 个网速采样轮刷新一次（= 5s） */
+        const val MEMORY_SAMPLE_EVERY = 5
     }
 }

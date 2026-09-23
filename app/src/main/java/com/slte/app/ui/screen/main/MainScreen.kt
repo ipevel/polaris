@@ -10,16 +10,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -29,24 +28,16 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.data.local.SecurePreferences
-import com.slte.app.data.local.ThemeMode
-import com.slte.app.ui.component.CircleIconButton
-import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.UsageCard
-import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
@@ -56,14 +47,9 @@ import com.slte.app.utils.FormatUtils
 internal fun MainScreen(
     mainViewModel: MainViewModel,
     data: DashboardData,
-    onTraffic: () -> Unit = {},
-    onServer: () -> Unit = {},
-    onNotice: () -> Unit = {},
-    onProfile: () -> Unit = {},
     onRenew: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val themeMode by mainViewModel.themeMode.collectAsStateWithLifecycle()
     val vpnPermissionLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult(),
@@ -99,33 +85,6 @@ internal fun MainScreen(
                             modifier = Modifier.padding(start = Dimens.gap.sm),
                         )
                     }
-                },
-                actions = {
-                    CircleIconButton(
-                        icon = when (themeMode) {
-                            ThemeMode.DARK -> SlteIcons.LightMode
-                            ThemeMode.LIGHT -> SlteIcons.DarkMode
-                            ThemeMode.SYSTEM -> SlteIcons.DarkMode
-                        },
-                        description = stringResource(
-                            when (themeMode) {
-                                ThemeMode.DARK -> R.string.topbar_light_mode
-                                ThemeMode.LIGHT -> R.string.topbar_dark_mode
-                                ThemeMode.SYSTEM -> R.string.topbar_auto_mode
-                            },
-                        ),
-                        onClick = mainViewModel::toggleDarkMode,
-                    )
-                    CircleIconButton(
-                        icon = SlteIcons.Notifications,
-                        description = stringResource(R.string.topbar_notice),
-                        onClick = onNotice,
-                    )
-                    CircleIconButton(
-                        icon = SlteIcons.Profile,
-                        description = stringResource(R.string.topbar_profile),
-                        onClick = onProfile,
-                    )
                 },
                 modifier = Modifier.background(MaterialTheme.colorScheme.surface),
                 colors =
@@ -174,16 +133,7 @@ internal fun MainScreen(
                 }
             },
             onSelectProxyMode = mainViewModel::setProxyMode,
-            onUpdateSubscription = {
-                if (data.hasPlan) {
-                    mainViewModel.updateSubscription()
-                } else {
-                    onRenew()
-                }
-            },
-            onTraffic = onTraffic,
             onRenew = onRenew,
-            onServer = onServer,
             modifier =
             Modifier
                 .fillMaxSize()
@@ -209,17 +159,14 @@ internal fun DashboardContent(
     data: DashboardData,
     onToggleConnection: () -> Unit,
     onSelectProxyMode: (String) -> Unit,
-    onUpdateSubscription: () -> Unit,
-    onTraffic: () -> Unit,
     onRenew: () -> Unit,
-    onServer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    androidx.compose.foundation.layout.BoxWithConstraints(
+    BoxWithConstraints(
         modifier = modifier.background(MaterialTheme.colorScheme.background),
     ) {
         val compact = maxHeight < Dimens.dashboardCompactBreakpoint
-        androidx.compose.foundation.lazy.LazyColumn(
+        LazyColumn(
             modifier =
             Modifier
                 .fillMaxSize()
@@ -233,6 +180,69 @@ internal fun DashboardContent(
                 vertical = if (compact) Dimens.dashboardScreenPaddingVCompact else Dimens.dashboardScreenPaddingV,
             ),
         ) {
+            item {
+                ProxyModeCard(
+                    proxyMode = data.proxyMode,
+                    onSelectMode = onSelectProxyMode,
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
+                ) {
+                    SessionTrafficCard(
+                        modifier = Modifier.weight(1f),
+                        sessionUploadBytes = data.sessionUploadBytes,
+                        sessionDownloadBytes = data.sessionDownloadBytes,
+                    )
+                    SpeedCard(
+                        modifier = Modifier.weight(1f),
+                        uploadSpeedBps = data.uploadSpeedBps,
+                        downloadSpeedBps = data.downloadSpeedBps,
+                        speedHistory = data.speedHistory,
+                    )
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
+                ) {
+                    CurrentIpCard(
+                        modifier = Modifier.weight(1f),
+                        currentIp = data.currentIp,
+                    )
+                    LanIpCard(
+                        modifier = Modifier.weight(1f),
+                        lanIp = data.lanIp,
+                    )
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
+                ) {
+                    MemoryCard(
+                        modifier = Modifier.weight(1f),
+                        appMemoryUsedMb = data.appMemoryUsedMb,
+                    )
+                    UptimeCard(
+                        modifier = Modifier.weight(1f),
+                        connectedSinceElapsedMs = data.connectedSinceElapsedMs,
+                        isConnected = data.isConnected,
+                        isConnecting = data.isConnecting,
+                        onToggleConnection = onToggleConnection,
+                    )
+                }
+            }
             item {
                 UsageCard(
                     planName = data.planName,
@@ -252,76 +262,6 @@ internal fun DashboardContent(
                     ),
                     actionEnabled = true,
                     onAction = onRenew,
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-                ) {
-                    ProxyModeCard(
-                        modifier = Modifier.weight(1f),
-                        proxyMode = data.proxyMode,
-                        onSelectMode = onSelectProxyMode,
-                    )
-                    CurrentIpCard(
-                        modifier = Modifier.weight(1f),
-                        currentIp = data.currentIp,
-                        ipCountryCode = data.ipCountryCode,
-                    )
-                }
-            }
-            item {
-                DashboardActionButtons(
-                    onUpdateSubscription = onUpdateSubscription,
-                    hasPlan = data.hasPlan,
-                    onTraffic = onTraffic,
-                    onServer = onServer,
-                )
-            }
-            item {
-                ConnectToggleCard(
-                    isConnected = data.isConnected,
-                    isConnecting = data.isConnecting,
-                    onToggle = onToggleConnection,
-                    minHeight =
-                    if (compact) {
-                        Dimens.dashboardToggleCardMinHeightCompact
-                    } else {
-                        Dimens.dashboardToggleCardMinHeight
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SiteInfoCard(
-    siteName: String,
-    siteDescription: String,
-) {
-    SlteCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(Dimens.gap.lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = siteName,
-                style = SlteType.title,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            if (siteDescription.isNotBlank()) {
-                Spacer(modifier = Modifier.height(Dimens.gap.xs))
-                Text(
-                    text = siteDescription,
-                    style = SlteType.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
                 )
             }
         }

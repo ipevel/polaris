@@ -24,7 +24,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
 import com.slte.app.R
+import com.slte.app.data.local.ThemeMode
 import com.slte.app.domain.model.isPlanValid
+import com.slte.app.ui.component.SlteRowCard
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.component.rememberToast
@@ -38,7 +40,9 @@ import com.slte.app.utils.sanitizeLog
 
 @Composable
 fun ProfileScreen(
-    onBack: () -> Unit,
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    onToggleTheme: () -> Unit = {},
+    onNotice: () -> Unit = {},
     onOrders: () -> Unit = {},
     onInvite: () -> Unit = {},
     onRenew: () -> Unit = {},
@@ -47,6 +51,7 @@ fun ProfileScreen(
     onAbout: () -> Unit = {},
     onLogout: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
+    giftCardViewModel: GiftCardRedeemViewModel = hiltViewModel(),
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
@@ -57,7 +62,6 @@ fun ProfileScreen(
     val telegramUrl = data.telegramDiscussLink ?: BuildConfig.TELEGRAM_GROUP_URL
 
     // 礼品卡兑换：弹窗状态 + 结果提示 + 成功后刷新个人中心
-    val giftCardViewModel: GiftCardRedeemViewModel = hiltViewModel()
     val giftCardState by giftCardViewModel.state.collectAsStateWithLifecycle()
     val giftCardTip by giftCardViewModel.tip.collectAsStateWithLifecycle()
     val giftCardRedeemed by giftCardViewModel.redeemed.collectAsStateWithLifecycle()
@@ -76,7 +80,7 @@ fun ProfileScreen(
 
     SlteScaffold(
         title = stringResource(R.string.profile_title),
-        onBack = onBack,
+        showBack = false,
     ) { innerPadding ->
         LazyColumn(
             modifier =
@@ -87,6 +91,14 @@ fun ProfileScreen(
             verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
             contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
         ) {
+            item {
+                NavigateCard(
+                    icon = SlteIcons.Notifications,
+                    title = stringResource(R.string.topbar_notice),
+                    onClick = onNotice,
+                )
+            }
+
             item {
                 if (data.userInfoError) {
                     ErrorCard(
@@ -175,6 +187,22 @@ fun ProfileScreen(
                     )
                 }
             }
+            item {
+                SlteRowCard(
+                    icon = if (themeMode == ThemeMode.DARK) SlteIcons.DarkMode else SlteIcons.LightMode,
+                    title = stringResource(R.string.settings_dark_mode),
+                    value =
+                    stringResource(
+                        when (themeMode) {
+                            ThemeMode.DARK -> R.string.topbar_dark_mode
+                            ThemeMode.LIGHT -> R.string.topbar_light_mode
+                            ThemeMode.SYSTEM -> R.string.topbar_auto_mode
+                        },
+                    ),
+                    onClick = onToggleTheme,
+                )
+            }
+
             item {
                 NavigateCard(
                     icon = SlteIcons.Settings,
