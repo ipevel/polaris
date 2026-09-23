@@ -119,24 +119,10 @@ internal fun ProfilePageContent(
 @Composable
 internal fun ServerPageContent(
     serverViewModel: ServerViewModel,
-    subscriptionName: String,
-    usedBytes: Long,
-    totalBytes: Long,
-    isValid: Boolean,
-    hasPlan: Boolean,
-    daysUntilExpired: Int,
-    expiredAt: Long,
     onUpdateSubscription: () -> Unit,
 ) {
     LaunchedEffect(Unit) { serverViewModel.loadNodes() }
     ServerScreen(
-        subscriptionName = subscriptionName,
-        usedBytes = usedBytes,
-        totalBytes = totalBytes,
-        isValid = isValid,
-        hasPlan = hasPlan,
-        daysUntilExpired = daysUntilExpired,
-        expiredAt = expiredAt,
         onUpdateSubscription = onUpdateSubscription,
         viewModel = serverViewModel,
     )
@@ -204,10 +190,8 @@ internal fun AboutPageContent(onBack: () -> Unit) {
 @Composable
 internal fun TrafficPageContent(
     trafficViewModel: TrafficViewModel,
-    onRenew: () -> Unit,
 ) {
     TrafficScreen(
-        onRenew = onRenew,
         viewModel = trafficViewModel,
     )
 }

@@ -246,32 +246,14 @@ class FourTabsScreenshotTest {
     @Test
     fun 节点亮色() {
         snapshot("server", RootTab.Server, dark = false) {
-            ServerScreen(
-                subscriptionName = "Pro 月付套餐",
-                usedBytes = 128_000_000_000L,
-                totalBytes = 1_024_000_000_000L,
-                isValid = true,
-                hasPlan = true,
-                daysUntilExpired = 18,
-                expiredAt = futureEpoch(18),
-                viewModel = serverViewModel(),
-            )
+            ServerScreen(viewModel = serverViewModel())
         }
     }
 
     @Test
     fun 节点暗色() {
         snapshot("server", RootTab.Server, dark = true) {
-            ServerScreen(
-                subscriptionName = "Pro 月付套餐",
-                usedBytes = 128_000_000_000L,
-                totalBytes = 1_024_000_000_000L,
-                isValid = true,
-                hasPlan = true,
-                daysUntilExpired = 18,
-                expiredAt = futureEpoch(18),
-                viewModel = serverViewModel(),
-            )
+            ServerScreen(viewModel = serverViewModel())
         }
     }
 
@@ -295,13 +277,6 @@ class FourTabsScreenshotTest {
                         TrafficLogRecord("2026-09-16", 75_000_000L, 540_000_000L),
                     ),
                     isLoading = false,
-                    planName = "Pro 月付套餐",
-                    usedBytes = 128_000_000_000L,
-                    totalBytes = 1_024_000_000_000L,
-                    isValid = true,
-                    hasPlan = true,
-                    daysUntilExpired = 18,
-                    expiredAt = futureEpoch(18),
                 ),
             )
         return vm
@@ -310,14 +285,14 @@ class FourTabsScreenshotTest {
     @Test
     fun 流量亮色() {
         snapshot("traffic", RootTab.Traffic, dark = false) {
-            TrafficScreen(onRenew = {}, viewModel = trafficViewModel())
+            TrafficScreen(viewModel = trafficViewModel())
         }
     }
 
     @Test
     fun 流量暗色() {
         snapshot("traffic", RootTab.Traffic, dark = true) {
-            TrafficScreen(onRenew = {}, viewModel = trafficViewModel())
+            TrafficScreen(viewModel = trafficViewModel())
         }
     }
 

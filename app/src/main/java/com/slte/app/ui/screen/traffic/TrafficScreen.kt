@@ -1,10 +1,9 @@
-// SPDX-FileCopyrightText: 2026 Polaris Contributors
+﻿// SPDX-FileCopyrightText: 2026 Polaris Contributors
 // SPDX-License-Identifier: GPL-3.0-only
 
 package com.slte.app.ui.screen.traffic
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
@@ -41,8 +38,6 @@ import com.slte.app.R
 import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.ui.component.ErrorState
 import com.slte.app.ui.component.LottieLoadingIcon
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.SltePullRefresh
 import com.slte.app.ui.component.SlteScaffold
@@ -57,7 +52,6 @@ import com.slte.app.utils.FormatUtils
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrafficScreen(
-    onRenew: () -> Unit,
     viewModel: TrafficViewModel = hiltViewModel(),
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
@@ -89,10 +83,7 @@ fun TrafficScreen(
                             )
                         }
                     else ->
-                        TrafficContent(
-                            data = data,
-                            onRenew = onRenew,
-                        )
+                        TrafficContent(data = data)
                 }
             }
         }
@@ -102,7 +93,6 @@ fun TrafficScreen(
 @Composable
 private fun TrafficContent(
     data: TrafficData,
-    onRenew: () -> Unit,
 ) {
     LazyColumn(
         modifier =
@@ -115,13 +105,6 @@ private fun TrafficContent(
             vertical = Dimens.gap.lg,
         ),
     ) {
-        // 用量总览卡片（有套餐才显示）
-        item {
-            if (data.hasPlan) {
-                TrafficUsageCard(data = data, onRenew = onRenew)
-            }
-        }
-
         item {
             Text(
                 text = stringResource(R.string.traffic_records_title),
@@ -160,143 +143,6 @@ private fun TrafficContent(
         }
     }
 }
-
-// region 用量总览卡片
-
-@Composable
-private fun TrafficUsageCard(
-    data: TrafficData,
-    onRenew: () -> Unit,
-) {
-    SlteCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
-        ) {
-            // 第一行：剩余流量 + 状态徽标
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column {
-                    Text(
-                        text = "剩余流量",
-                        style = SlteType.label,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.height(Dimens.gap.xs))
-                    Text(
-                        text = FormatUtils.traffic(data.totalBytes - data.usedBytes),
-                        style = SlteType.heading,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                TrafficStatusBadge(isValid = data.isValid)
-            }
-
-            // 第二行：距离重置
-            if (data.daysUntilExpired != null) {
-                Spacer(modifier = Modifier.height(Dimens.gap.md))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "距离重置",
-                        style = SlteType.body,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "${data.daysUntilExpired} 天",
-                        style = SlteType.body,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-
-            // 第三行：套餐到期
-            if (data.expiredAt > 0L) {
-                Spacer(modifier = Modifier.height(Dimens.gap.sm))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "套餐到期",
-                        style = SlteType.body,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = FormatUtils.formatExpiryDate(data.expiredAt),
-                        style = SlteType.body,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-
-            // 底部：续费按钮（靠右）
-            Spacer(modifier = Modifier.height(Dimens.gap.lg))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                SlteButton(
-                    text = stringResource(R.string.plan_renew_button),
-                    onClick = onRenew,
-                    style = SlteButtonStyle.Medium,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrafficStatusBadge(isValid: Boolean) {
-    val bg =
-        if (isValid) {
-            SlteColors.current.statusSuccessBg
-        } else {
-            SlteColors.current.statusDangerBg
-        }
-    val fg =
-        if (isValid) {
-            SlteColors.current.statusSuccess
-        } else {
-            SlteColors.current.statusDanger
-        }
-
-    Box(
-        modifier =
-        Modifier
-            .clip(RoundedCornerShape(Dimens.planStatusChipCornerRadius))
-            .background(bg)
-            .padding(horizontal = Dimens.gap.lg, vertical = Dimens.planStatusPaddingV),
-    ) {
-        Text(
-            text =
-            if (isValid) {
-                stringResource(R.string.dashboard_usage_valid)
-            } else {
-                stringResource(R.string.plan_status_expired)
-            },
-            fontWeight = FontWeight.SemiBold,
-            style = SlteType.caption,
-            color = fg,
-        )
-    }
-}
-
-// endregion
-
-// region 流量记录行
 
 @Composable
 private fun TrafficRecordRow(record: TrafficLogRecord) {
@@ -387,8 +233,6 @@ private fun DirectionPill(
         )
     }
 }
-
-// endregion
 
 // region 30天流量趋势图
 

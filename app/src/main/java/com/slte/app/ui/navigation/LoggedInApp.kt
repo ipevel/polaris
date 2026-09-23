@@ -188,20 +188,12 @@ private fun RootTabContent(
         RootTab.Server ->
             ServerPageContent(
                 serverViewModel = viewModels.server,
-                subscriptionName = mainData.planName,
-                usedBytes = mainData.usedBytes,
-                totalBytes = mainData.totalBytes,
-                isValid = mainData.isValid,
-                hasPlan = mainData.hasPlan,
-                daysUntilExpired = mainData.daysUntilExpired,
-                expiredAt = mainData.expiredAt,
                 onUpdateSubscription = viewModels.main::updateSubscription,
             )
 
         RootTab.Traffic ->
             TrafficPageContent(
                 trafficViewModel = viewModels.traffic,
-                onRenew = onRenew,
             )
 
         RootTab.Profile ->
