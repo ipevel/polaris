@@ -22,13 +22,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.CircleIconButton
 import com.slte.app.ui.component.SlteScaffold
+import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
+import com.slte.app.utils.FormatUtils
 
 @Composable
 fun ServerScreen(
-    onBack: () -> Unit,
+    subscriptionName: String = "",
+    usedBytes: Long = 0L,
+    totalBytes: Long = 0L,
+    isValid: Boolean = false,
+    hasPlan: Boolean = false,
+    daysUntilExpired: Int = 0,
+    expiredAt: Long = 0L,
     onUpdateSubscription: (() -> Unit)? = null,
     viewModel: ServerViewModel = hiltViewModel(),
 ) {
@@ -41,7 +49,7 @@ fun ServerScreen(
 
     SlteScaffold(
         title = stringResource(R.string.server_title),
-        onBack = onBack,
+        showBack = false,
         actions = {
             CircleIconButton(
                 icon = SlteIcons.SpeedTest,
@@ -63,9 +71,24 @@ fun ServerScreen(
                 .padding(horizontal = Dimens.dashboardScreenPaddingH),
             verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
         ) {
+            // 复用首页订阅卡片：套餐用量 + 进度条 + 到期信息，动作按键改为"更新订阅"
+            item {
+                UsageCard(
+                    planName = subscriptionName,
+                    usedBytes = usedBytes,
+                    totalBytes = totalBytes,
+                    isValid = isValid,
+                    hasPlan = hasPlan,
+                    daysUntilExpired = daysUntilExpired.takeIf { it > 0 },
+                    expiredAtDate = expiredAt.takeIf { it > 0 }?.let { FormatUtils.formatExpiryDate(it) },
+                    actionText = stringResource(R.string.dashboard_update_subscription),
+                    actionEnabled = true,
+                    onAction = onUpdateSubscription ?: viewModel::updateSubscription,
+                )
+            }
+
             item { Spacer(modifier = Modifier.height(Dimens.gap.md)) }
 
-            // 分流/策略组
             item {
                 Text(
                     text = stringResource(R.string.proxy_groups_title),
