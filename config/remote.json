@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.4.9 — 登录后端自识别修复",
   "update_changelog": "- fix(login): 登录提交时同步探测面板后端类型，消除与用户点击的竞态；不再回退编译期默认值，杜绝后端错配导致订阅/套餐读取失败\n- refactor: 后端类型未识别时不再兜底 BuildConfig 默认，保持与面板地址一致的『不默认』策略\n- chore: 版本号升到 1.4.9 (versionCode 23)",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.8/Polaris-1.4.8.apk",
-  "update_apk_sha256": "2cec70d8d85869908791ffddbac15ff3eb9bec58bdc41877c3daa186d8513dc2"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.9/Polaris-1.4.9.apk",
+  "update_apk_sha256": "565d73553ac6cc55dc871a6e712765412b03a6b0602ab51608d381d65cc7f87d"
 }
