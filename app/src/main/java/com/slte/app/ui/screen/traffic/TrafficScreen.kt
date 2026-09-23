@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,7 +47,9 @@ import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.SltePullRefresh
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.ToastTip
+import com.slte.app.ui.screen.main.TrafficDonut
 import com.slte.app.ui.theme.SlteColors
+import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
@@ -53,7 +57,6 @@ import com.slte.app.utils.FormatUtils
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrafficScreen(
-    onBack: () -> Unit,
     onRenew: () -> Unit,
     viewModel: TrafficViewModel = hiltViewModel(),
 ) {
@@ -66,7 +69,7 @@ fun TrafficScreen(
 
     SlteScaffold(
         title = stringResource(R.string.traffic_title),
-        onBack = onBack,
+        showBack = false,
     ) { innerPadding ->
         if (data.isLoading && data.records.isEmpty()) {
             LoadingContent(modifier = Modifier.padding(innerPadding))
@@ -119,7 +122,6 @@ private fun TrafficContent(
             }
         }
 
-        // 流量记录标题
         item {
             Text(
                 text = stringResource(R.string.traffic_records_title),
@@ -129,7 +131,6 @@ private fun TrafficContent(
             )
         }
 
-        // 30天流量趋势图
         if (data.records.size >= 2) {
             item {
                 TrafficTrendChart(records = data.records)
@@ -241,13 +242,18 @@ private fun TrafficUsageCard(
                 }
             }
 
-            // 底部：续费按钮
+            // 底部：续费按钮（靠右）
             Spacer(modifier = Modifier.height(Dimens.gap.lg))
-            SlteButton(
-                text = stringResource(R.string.plan_renew_button),
-                onClick = onRenew,
-                style = SlteButtonStyle.Medium,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                SlteButton(
+                    text = stringResource(R.string.plan_renew_button),
+                    onClick = onRenew,
+                    style = SlteButtonStyle.Medium,
+                )
+            }
         }
     }
 }
@@ -295,53 +301,90 @@ private fun TrafficStatusBadge(isValid: Boolean) {
 @Composable
 private fun TrafficRecordRow(record: TrafficLogRecord) {
     SlteCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
+        Row(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
+                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.lg),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 第一行：日期（左）+ 总流量（右）
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            // 左侧：日期 + 上行/下行紧凑列
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
             ) {
                 Text(
                     text = record.date.ifBlank { stringResource(R.string.traffic_records_empty) },
-                    style = SlteType.body,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = FormatUtils.traffic(record.totalBytes),
-                    style = SlteType.body,
+                    style = SlteType.bodySmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DirectionPill(
+                        isUp = true,
+                        label = FormatUtils.traffic(record.uploadBytes),
+                    )
+                    Spacer(modifier = Modifier.width(Dimens.gap.md))
+                    DirectionPill(
+                        isUp = false,
+                        label = FormatUtils.traffic(record.downloadBytes),
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.md))
+            Spacer(modifier = Modifier.width(Dimens.gap.md))
 
-            // 第二行：上传 ↑（左）+ 下载 ↓（右）
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+            // 右侧：当天总流量环形图（中心合计）
+            Box(
+                modifier = Modifier.size(64.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "↑ ${FormatUtils.traffic(record.uploadBytes)}",
-                    style = SlteType.body,
-                    fontWeight = FontWeight.SemiBold,
-                    color = SlteColors.current.statusSuccess,
+                TrafficDonut(
+                    uploadBytes = record.uploadBytes,
+                    downloadBytes = record.downloadBytes,
+                    modifier = Modifier.fillMaxSize(),
                 )
-                Text(
-                    text = "↓ ${FormatUtils.traffic(record.downloadBytes)}",
-                    style = SlteType.body,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = FormatUtils.traffic(record.totalBytes),
+                        style = SlteType.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
+    }
+}
+
+/** 上下行方向小胶囊：箭头 + 数值。 */
+@Composable
+private fun DirectionPill(
+    isUp: Boolean,
+    label: String,
+) {
+    val color =
+        if (isUp) {
+            SlteColors.current.brandGold
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = if (isUp) SlteIcons.ArrowUp else SlteIcons.ArrowDown,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(Dimens.icon.md),
+        )
+        Spacer(modifier = Modifier.width(Dimens.gap.xs))
+        Text(
+            text = label,
+            style = SlteType.field,
+            fontWeight = FontWeight.Medium,
+            color = color,
+        )
     }
 }
 

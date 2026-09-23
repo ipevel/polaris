@@ -52,6 +52,7 @@ constructor(
 
     init {
         applySubscribeInfo(subscribeRepository.getCachedSubscribeInfo())
+        load()
     }
 
     fun load() {
