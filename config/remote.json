@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.12",
-  "update_changelog_title": "Polaris 1.4.12 更新",
-  "update_changelog": "- feat(ui): Aurora Polaris 视觉重设计，全新配色与卡片样式，4 个页面（首页/节点/流量/我的）亮暗双主题优化\n- fix(ui): 修复首页流量统计卡横向溢出，环形图与实时网速合并为纵向堆叠 Hero 卡\n- refactor(ui): 精简订阅卡文案（已用/总额）与到期提示（剩 N 天）\n- chore: 版本号升到 1.4.12 (versionCode 26)，核心功能保持不变",
+  "update_version": "1.4.13",
+  "update_changelog_title": "Polaris 1.4.13 更新",
+  "update_changelog": "- feat(ui): 顶部 Aurora 极光氛围光（cyan+purple 双 radial）应用到全部页面 Scaffold\n- feat(ui): 底部导航激活项改用 cyan-soft 胶囊背景替代金色小圆点\n- fix(ui): 卡片顶部 hairline 可见性增强（alpha 6%→10%）\n- polish(ui): 电源开关按钮连接态加彩色外发光（shadow 12dp）\n- chore: 版本号升到 1.4.13 (versionCode 27)，核心功能保持不变",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.12/Polaris-1.4.12.apk",
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.13/Polaris-1.4.13.apk",
   "update_apk_sha256": "b5068c42527552b7d996cccabe0f90dbe1bf1de4ee5aaa33ee0ab83e1955d441"
 }
