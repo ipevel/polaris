@@ -19,17 +19,16 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 ### Android
 
-- 双面板后端支持：XiaoV2b / Xboard（`xiaov2b` API 握手，Xboard 兼容复用同一适配器）
-- 面板地址完全由用户掌控：登录页填写自己的面板网址，App 不内置任何面板地址
-- 首页仪表盘：连接开关（点击起即计时长）、流量统计与网速方形大卡、当前 IP（国旗地区码）、用量与套餐等高对齐信息密度布局
-- 四栏底部导航：主页 / 节点 / 流量 / 我的，切换与页面预加载更流畅
-- 策略组选择与延迟测试、节点名归一化显示、流量明细（按日环形总图 + 上行/下行/合计）
-- 订阅卡片一键更新订阅、礼品卡兑换、邀请返利、工单、公告
-- 应用内更新（远程配置多源容灾 + 下载进度条 + SHA-256 校验）
-- 三种代理模式：规则 / 全局 / 直连
-- TUN 堆栈可选：System / Gvisor / Mixed
-- 多语言：简体中文 / 繁體中文 / English
-- 深色 / 浅色 / 跟随系统主题
+- 双面板后端支持：XiaoV2b / Xboard，两套适配器同时内置，登录时按面板 `guest/comm/config` 响应自动识别类型，无需换包
+- 面板地址完全由用户掌控：登录页填写自己的面板网址（自动补全 `https://`，只接受 HTTPS），App 不内置任何面板地址
+- 首页仪表盘：代理模式切换（规则 / 全局 / 直连）、连接开关（点击起即计时长）与当前节点、实时上下行与速率曲线、会话信息（当前 IP / 内网 IP / 本次用量 / 内存）、套餐用量与到期
+- 四栏底部导航：首页 / 节点 / 流量 / 我的，切换与页面预加载更流畅
+- 节点页：策略组卡片（组内选节点，收起态直接显示当前出口与延迟），右上角「测速」一次测完全部策略组、「更新订阅」一键刷新
+- 流量页：已用 / 上行 / 下行 / 统计天数概览、流量趋势图与按日明细
+- 我的：公告、邮箱与余额、套餐续费、订单、礼品卡兑换、邀请返利、工单、Telegram 讨论组（面板配置优先，编译期链接兜底）
+- 其他设置：外观（跟随系统 / 浅色 / 深色）、语言（简体中文 / 繁體中文 / English）、TUN 堆栈（System / Gvisor / Mixed）、修改密码、到期与流量提醒开关
+- 关于软件：应用与内核版本、检查更新、日志导出与分享
+- 应用内更新：远程配置多源容灾 + 下载进度条 + SHA-256 校验（缺少校验和时拒绝安装）
 - 安全白名单：凭据只发往白名单内域名，防配置投毒
 - 日志脱敏：路径型 token（`/s/xxx` 等）统一打码，凭据与敏感值不入日志
 
@@ -51,20 +50,20 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.4.10 | 24 |
+| Android | 1.4.17 | 31 |
 
 > 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）
-
 
 ## 开发环境
 
 | 依赖 | 版本 |
 |------|------|
-| JDK | 17+（推荐 21） |
-| Android SDK | compileSdk 36 |
-| NDK | 28.2 |
-| CMake | 3.22+ |
+| JDK | 17（`sourceCompatibility` / `jvmTarget` 均为 17，CI 同样使用 17） |
+| Android SDK | compileSdk 36 / targetSdk 36 / minSdk 28 |
+| NDK | 28.2.13676358 |
+| CMake | 3.22.1+（`kernel-core/src/main/cpp/CMakeLists.txt` 最低要求） |
 | Gradle | 8.13（wrapper 内置） |
+| Android Gradle Plugin | 8.9.1 |
 | Kotlin | 2.0.21 |
 | Compose BOM | 2025.04.01 |
 
@@ -73,14 +72,22 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 ## 编译
 
 ```bash
-# 调试包（含单元测试）
+# 调试包（含单元测试）——不触达 release 变体，无需签名变量
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 
-# 发布包（必须提供签名环境变量）
-POLARIS_RELEASE_STORE_FILE=<keystore> \
-POLARIS_RELEASE_STORE_PASSWORD=<密码> \
-POLARIS_RELEASE_KEY_ALIAS=<别名> \
-POLARIS_RELEASE_KEY_PASSWORD=<密码> \
+# 任何会分析 release 变体的任务（ktlintCheck / lintDebug / R8 等）都必须先提供
+# 签名四件套，否则 Gradle 直接报错拒绝——防「用 debug 签名发版」
+export POLARIS_RELEASE_STORE_FILE=<keystore>
+export POLARIS_RELEASE_STORE_PASSWORD=<密码>
+export POLARIS_RELEASE_KEY_ALIAS=<别名>
+export POLARIS_RELEASE_KEY_PASSWORD=<密码>
+
+# 本地全量门禁（与 CI 对齐，推送前必跑；本地可用一次性 keystore）
+./gradlew :app:verifyKernelBinary :app:assembleDebug :app:testDebugUnitTest \
+  :app:assembleDebugAndroidTest :app:minifyReleaseWithR8 \
+  :app:verifyReleaseApiSurvivors :app:ktlintCheck :app:lintDebug
+
+# 发布包
 ./gradlew :app:assembleRelease
 ```
 
@@ -88,7 +95,7 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 
 ### 面板地址（运行时）
 
-**App 不内置任何面板地址。** 用户首次使用时在登录页填写自己的面板网址（自动补全 `https://` 前缀），登录后所有面板 API 请求都基于该地址；未填写时网络层直接快速失败。更换面板 = 退出登录后填写新地址。
+**App 不内置任何面板地址。** 用户首次使用时在登录页填写自己的面板网址（自动补全 `https://`，仅接受可解析的 HTTPS 地址），登录后所有面板 API 请求都基于该地址；未填写时网络层直接快速失败。更换面板 = 退出登录后填写新地址。
 
 ### 编译期变量
 
@@ -98,9 +105,16 @@ POLARIS_RELEASE_KEY_PASSWORD=<密码> \
 |------|--------|------|
 | `POLARIS_APP_NAME` | `Polaris` | 应用显示名 |
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 应用包名 |
-| `POLARIS_API_TYPE` | `—（不再作运行时默认）` | 遗留变量：后端类型已改为登录时自动识别（`xiaov2b`/`xboard` 由面板接口探测），不再以此值兜底选型 |
-| `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用 |
+| `POLARIS_VERSION_NAME` | `1.4.17` | 版本名（Release 由 build.yml 传入） |
+| `POLARIS_VERSION_CODE` | `31` | versionCode |
+| `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用；同时并入域名白名单 |
+| `POLARIS_API_TYPE` | `xiaov2b` | 遗留变量：仍写入 `BuildConfig.API_TYPE`，但运行时已不再读取（后端类型改为登录时自动探测） |
+| `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅链接路径，面板地址 + 该路径 + token 组成订阅源 |
 | `POLARIS_REMOTE_CONFIG_URLS` | 见 [config/remote.json](config/remote.json) 默认源 | 远程配置 URL，逗号分隔多源 |
+| `POLARIS_ALLOWED_DOMAINS` | （空） | 追加域名白名单，逗号分隔；与 API 地址、远程配置源域名合并去重 |
+| `POLARIS_TELEGRAM_GROUP_URL` | （空） | Telegram 讨论组兜底链接，面板未下发且此处留空时隐藏该入口 |
+
+> 发版签名走 `POLARIS_RELEASE_STORE_FILE` / `POLARIS_RELEASE_STORE_PASSWORD` / `POLARIS_RELEASE_KEY_ALIAS` / `POLARIS_RELEASE_KEY_PASSWORD`（见[编译](#编译)）。
 
 > `POLARIS_REMOTE_CONFIG_URLS` 的默认值为 `https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json`，详见 [CONFIG.md](CONFIG.md)。
 
