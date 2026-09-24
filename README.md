@@ -15,7 +15,7 @@
 
 ## 简介
 
-Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核构建的代理客户端，稳定可靠，为你指引网络航向。
+Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核构建的代理客户端。
 
 ### Android
 
