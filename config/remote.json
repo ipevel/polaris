@@ -5,5 +5,5 @@
   "update_changelog": "- feat(ui): 顶部状态徽章（代理中/套餐有效/套餐过期）加状态色软光晕（shadow 8dp）\n- feat(ui): 续费按钮加 aurora 渐变（primary→tertiary 垂直渐变 + 8dp 同色发光）\n- polish(ui): sparkline 下载主线已有渐变填充，本版统一氛围光效\n- chore: 版本号升到 1.4.14 (versionCode 28)，核心功能保持不变",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.14/Polaris-1.4.14.apk",
-  "update_apk_sha256": "pending-v1.4.14-build"
+  "update_apk_sha256": "5d4ed73a87310ed8766dce451602db8af5205aba8f66866301111464a23f46be"
 }
