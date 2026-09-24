@@ -86,7 +86,14 @@ grep -rnE 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
 ## 第 3 步：升版本号（若本次包含要发布的功能）
 
 1. `app/build.gradle.kts` 第 45-46 行：`POLARIS_VERSION_CODE` / `POLARIS_VERSION_NAME` 的**默认值**（versionCode 恒 +1）
-2. `config/remote.json`：`update_version`、`update_changelog_title`、`update_changelog`（本版变更摘要）
+
+**不要在这一步改 `config/remote.json`。** 该文件的更新相关字段（`update_version` / `update_apk_url` / `update_apk_sha256` / `update_changelog_title` / `update_changelog`）**全部由 build.yml 在 Release 成功之后以 github-actions[bot] 身份写入**。
+
+原因（2026-09 修正，原流程此处有缺陷）：曾经要求人工在 push 前就把 `update_version` 改成新版本，但此时直链与校验和还是上一版的。App 端 `shouldShowUpdateDialog` 只看版本号大于当前版本就提示更新，于是用户被提示「有新版本」→ 下载到的是**上一版的包** → 而旧包的 SHA-256 恰好等于文件里残留的旧校验和 → **完整性校验反而通过** → 装完版本没变又提示更新，形成**无限更新循环**，每人白下一个完整 APK。更糟的是若此窗口内 `update_force=true`，提示不可关闭，用户被锁死。
+
+一句话不变量：**版本号可见 与 APK 可下载，必须发生在同一个原子动作里**（都由 bot 在 Release 成功后写）。人工提交阶段只动 `app/build.gradle.kts`。
+
+本版变更摘要不用写进 `remote.json`——第 6 步通过 `releaseNotes` 传给 workflow，由 bot 写入 `update_changelog`；`update_changelog_title` 由 bot 按 `Polaris <版本> 更新` 自动生成。
 
 ## 第 4 步：提交
 
@@ -123,6 +130,7 @@ gh workflow run build.yml \
 - `apiType`：历史 Release 均为 `xboard`，用户未明示时用 `xboard`
 - `remoteConfigUrls` / `allowedDomains`：**留空**——build.yml 已内置默认值（raw.githubusercontent.com 配置源 + github.com 更新白名单），留空才会用默认值
 - `iconB64`：留空使用仓库内 `app/icon-source.png`（图标更新流程见下）
+- `releaseNotes`：本版变更摘要（多行 markdown）。bot 会把它写进 `remote.json` 的 `update_changelog`，即 App 更新面板里显示的正文；不传则沿用上一版正文
 
 ## 第 7 步：发布验证
 
@@ -132,7 +140,23 @@ gh release view v<版本>        # 确认 APK/SHA256SUMS.txt/SIGNING.txt 三件�
 git fetch --tags               # 同步远端自动创建的 tag 到本地
 ```
 
-Release 成功后 build.yml 会自动把 `update_version/update_apk_url/update_apk_sha256` 回写到 `config/remote.json` 并以 github-actions[bot] 身份推送——这就是应用内更新的数据源，无需手工维护。
+Release 成功后 build.yml 会自动把 `update_version / update_apk_url / update_apk_sha256 / update_changelog_title / update_changelog` 回写到 `config/remote.json` 并以 github-actions[bot] 身份推送——这就是应用内更新的数据源，无需手工维护。
+
+**必须核对的顺序不变量**（应用内更新链路的正确性前提）：
+
+```bash
+# 1) remote.json 的直链、校验和必须与新版本同源
+gh api "repos/ipevel/polaris/contents/config/remote.json?ref=main" --jq '.content' \
+  | base64 -d | python -c "import json,sys; c=json.load(sys.stdin); print(c['update_version'], c['update_apk_url'], c['update_apk_sha256'])"
+# 2) 上面的 sha256 必须等于 Release 资产的实际哈希
+gh release download v<版本> --repo ipevel/polaris --pattern SHA256SUMS.txt --clobber -O -
+```
+
+若两者不一致：说明 bot 的写回没跑完或失败了。**不要手工去补 `config/remote.json`**，直接看 release job 的「更新 config/remote.json」步骤日志并从该步骤重跑。
+
+build.yml 在该步骤里有三道保护（2026-09 加）：Release 资产不存在则 `exit 1`；SHA-256 取不到或不是 64 位 hex 则 `exit 1`（原先只 warning 后写空值，会让全网用户装到无法验证的包）；标题与正文一并由 bot 写，使该文件不再需要人工介入。
+
+App 端（`UpdateViewModel`）有对应的自洽校验：`update_apk_url` 必须为 https 且含 `v<update_version>`、`update_apk_sha256` 必须为 64 位 hex，否则**不提示更新**（`force` 也不能绕过）；下载后若校验和缺失则拒绝安装。因此即使发布侧再次出现不自洽，存量老版本用户也不会被带进更新循环——但发布侧仍须守住这条不变量。
 
 ## 图标更新（用户提供了新 SVG 时）
 

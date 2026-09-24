@@ -31,14 +31,45 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 
+/**
+ * 更新载荷自洽性：版本号、APK 直链、SHA-256 必须同时指向同一个已发布的包。
+ *
+ * 存在的理由：发布流程曾允许在 Release 产出**之前**先把 remote.json 的 update_version 改成新版本，
+ * 此时直链与校验和仍是上一版的。App 只看版本号就提示更新，用户下载到的是旧包，而旧包的哈希恰好
+ * 与旧校验和一致 —— 校验反而通过，装完版本没变又提示更新，形成无限循环。这里要求三者同源，
+ * 任一不自洽就不提示更新（宁可少提示，也不能把旧包/未验证的包当新版本安装）。
+ */
+internal fun isUpdatePayloadConsistent(
+    updateVersion: String,
+    apkUrl: String?,
+    apkSha256: String?,
+): Boolean {
+    val version = updateVersion.trim().trimStart('v')
+    if (version.isBlank()) return false
+    val url = apkUrl?.trim().orEmpty()
+    if (!url.startsWith("https://")) return false
+    // 直链必须指向所声明版本的 tag 或资产名，且版本号后不能再接数字/点（防 1.4.14 误配 v1.4.140）
+    val versionInUrl = Regex("""v${Regex.escape(version)}(?![\d.])""")
+    if (!versionInUrl.containsMatchIn(url)) return false
+    val sha = apkSha256?.trim().orEmpty()
+    return sha.length == SHA256_HEX_LENGTH && sha.all { it.isHexDigit() }
+}
+
+private const val SHA256_HEX_LENGTH = 64
+
+private fun Char.isHexDigit(): Boolean = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
+
 internal fun shouldShowUpdateDialog(
     updateVersion: String,
     currentVersion: String,
     force: Boolean,
     dismissedInSession: Boolean,
     manual: Boolean,
+    apkUrl: String?,
+    apkSha256: String?,
 ): Boolean {
     if (updateVersion.isBlank() || compareVersions(updateVersion, currentVersion) <= 0) return false
+    if (!isUpdatePayloadConsistent(updateVersion, apkUrl, apkSha256)) return false
     if (force) return true
     return manual || !dismissedInSession
 }
@@ -156,6 +187,10 @@ constructor(
             val signature = "${cfg.updateVersion}|${cfg.updateForce}"
             if (_state.value is UpdateUiState.Available && signature == lastShownSignature) return@launch
             _state.value = UpdateUiState.Checking
+            val newer =
+                cfg.updateVersion.isNotBlank() &&
+                    compareVersions(cfg.updateVersion, BuildConfig.VERSION_NAME) > 0
+            val consistent = isUpdatePayloadConsistent(cfg.updateVersion, cfg.updateApkUrl, cfg.updateApkSha256)
             val show =
                 shouldShowUpdateDialog(
                     updateVersion = cfg.updateVersion,
@@ -163,11 +198,15 @@ constructor(
                     force = cfg.updateForce,
                     dismissedInSession = dismissedInSession,
                     manual = manual,
+                    apkUrl = cfg.updateApkUrl,
+                    apkSha256 = cfg.updateApkSha256,
                 )
             if (!show) {
                 lastShownSignature = null
                 _state.value =
                     when {
+                        // 确有新版本但发布元数据不自洽：这是发布侧故障，明确报错而不是谎报「已是最新」
+                        manual && newer && !consistent -> UpdateUiState.Error
                         manual && cfg.updateVersion.isBlank() -> UpdateUiState.Error
                         manual -> UpdateUiState.Latest
                         else -> UpdateUiState.Idle
@@ -214,7 +253,12 @@ constructor(
                     }
                     AppLog.i("Polaris-Update", "APK 哈希校验通过")
                 } else {
-                    AppLog.w("Polaris-Update", "APK 无 SHA-256 校验和，跳过完整性验证")
+                    // 无校验和 = 无法验证完整性，拒绝安装。发布侧由 build.yml 保证不再发布空校验和，
+                    // 此处兜住「检查与下载之间 remote.json 被换成不带校验和的版本」这一竞态。
+                    AppLog.w("Polaris-Update", "APK 缺少 SHA-256 校验和，拒绝安装未验证的更新包")
+                    apkFile.delete()
+                    _state.value = UpdateUiState.DownloadFailed(R.string.update_apk_missing)
+                    return@launch
                 }
                 _state.value = UpdateUiState.Idle
                 installApk(apkFile)

@@ -399,9 +399,22 @@ jobs:
         env:
           VERSION: ${{ inputs.versionName }}
           NOTES: ${{ inputs.releaseNotes }}
+          TAG_INPUT: ${{ inputs.releaseTag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
+          TAG="${TAG_INPUT:-v${VERSION}}"
+          # releaseTag 是自由文本输入，限定 tag 合法字符后再拼进 gh 命令（防注入 / 防畸形标签）
+          if [ -n "$TAG_INPUT" ] && ! printf '%s' "$TAG_INPUT" | grep -qE '^[A-Za-z0-9._/-]+$'; then
+            echo "::error::releaseTag 含非法字符（仅允许字母、数字、. _ - /）"
+            exit 1
+          fi
+
+          # 顺序不变量：只有在 Release 资产真实存在之后，才允许把新版本号写进 remote.json。
+          # 否则 App 会先刷到「有新版本」却下载不到包（或下载到上一版的包）。
+          ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')" || { echo "::error::Release $TAG 不存在，中止 remote.json 更新"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -qx "Polaris-${VERSION}.apk" || { echo "::error::Release $TAG 缺少资产 Polaris-${VERSION}.apk，中止 remote.json 更新"; exit 1; }
+
           git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
           cd polaris-updater
           APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Polaris-${VERSION}.apk"
@@ -410,7 +423,12 @@ jobs:
           # 从构建产物校验文件中提取 APK SHA-256，写入 remote.json 驱动应用内
           # 更新的完整性校验（UpdateViewModel 读取 update_apk_sha256 验证下载包）
           APK_SHA="$(awk '{print tolower($1)}' ../out/SHA256SUMS.txt | head -1)"
-          test -n "$APK_SHA" || { echo "::warning::未取到 APK SHA-256，update_apk_sha256 置空"; }
+          # 取不到合法校验和就失败，绝不发布空值：空校验和会让 App 端无从验证下载包
+          # （App 侧已拒绝安装无校验和的包，更应在发布侧断开）
+          if ! printf '%s' "$APK_SHA" | grep -qE '^[0-9a-f]{64}$'; then
+            echo "::error::未取到合法的 APK SHA-256（实际值：'${APK_SHA}'），中止 remote.json 更新"
+            exit 1
+          fi
           export APK_SHA
           python3 -c "
           import json, os
@@ -423,6 +441,9 @@ jobs:
           cfg['update_version'] = version
           cfg['update_apk_url'] = apk
           cfg['update_apk_sha256'] = sha
+          # 标题与正文一并由 bot 写，使 remote.json 的更新相关字段完全由发布流程拥有，
+          # 人工提交阶段不再手工改这份文件（避免出现「版本号已改、直链还是上一版」的不自洽态）
+          cfg['update_changelog_title'] = 'Polaris %s 更新' % version
           if notes and notes != 'auto':
               cfg['update_changelog'] = notes
           with open('config/remote.json', 'w') as f:
