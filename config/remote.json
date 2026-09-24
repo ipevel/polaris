@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.14",
-  "update_changelog_title": "Polaris 1.4.14 更新",
-  "update_changelog": "- feat(ui): 顶部状态徽章（代理中/套餐有效/套餐过期）加状态色软光晕（shadow 8dp）\n- feat(ui): 续费按钮加 aurora 渐变（primary→tertiary 垂直渐变 + 8dp 同色发光）\n- polish(ui): sparkline 下载主线已有渐变填充，本版统一氛围光效\n- chore: 版本号升到 1.4.14 (versionCode 28)，核心功能保持不变",
+  "update_version": "1.4.15",
+  "update_changelog_title": "Polaris 1.4.15 更新",
+  "update_changelog": "- fix(update): 修正应用内更新链路，要求版本号、APK 直链与 SHA-256 三者同源，避免出现\"提示有新版本、下载到的却是旧包\"的更新循环\n- fix(update): 更新包缺少 SHA-256 校验和时拒绝安装，不再跳过完整性验证\n- ci(release): 发布侧写回 remote.json 前断言 Release 资产真实存在、校验和为合法 SHA-256，否则中止发布\n- chore(release): 版本号升至 1.4.15 (versionCode 29)，核心功能保持不变",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.14/Polaris-1.4.14.apk",
-  "update_apk_sha256": "5d4ed73a87310ed8766dce451602db8af5205aba8f66866301111464a23f46be"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.15/Polaris-1.4.15.apk",
+  "update_apk_sha256": "7acfea8806a865400e494341554e56513520b1249585bfb44331614a650e6dfb"
 }
