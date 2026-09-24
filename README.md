@@ -55,12 +55,6 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 > 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）
 
-## Contributors
-
-- [shgnx/slte](https://github.com/shgnx/slte) - 上游项目作者，本仓库基础代码来源
-- **DeepSeek** - AI 结对编程（架构设计、功能实现与代码审查）
-- **智谱 GLM** - AI 结对编程（功能移植、全局重构与发布工程）
-- **github-actions[bot]** - CI/CD 发布自动化（Release 构建、APK 上传与 `config/remote.json` 版本信息/checksum 自动回写）
 
 ## 开发环境
 
