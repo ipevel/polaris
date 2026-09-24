@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -35,6 +37,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteType
@@ -204,6 +207,7 @@ fun UsageCard(
                     onClick = onAction,
                     style = SlteButtonStyle.Medium,
                     enabled = actionEnabled,
+                    aurora = true,
                 )
             }
         }
@@ -227,10 +231,24 @@ private fun UsageBadge(
             isValid -> SlteColors.current.statusSuccess
             else -> SlteColors.current.statusDanger
         }
+    // 状态色软光晕：有效=绿、过期=红、无套餐=不发光
+    val glowColor =
+        when {
+            !hasPlan -> Color.Transparent
+            isValid -> SlteColors.current.statusSuccess
+            else -> SlteColors.current.statusDanger
+        }
+    val glowElevation = if (hasPlan) 8.dp else 0.dp
 
     Box(
         modifier =
         Modifier
+            .shadow(
+                elevation = glowElevation,
+                shape = RoundedCornerShape(Dimens.planStatusChipCornerRadius),
+                ambientColor = glowColor.copy(alpha = 0.45f),
+                spotColor = glowColor.copy(alpha = 0.65f),
+            )
             .clip(RoundedCornerShape(Dimens.planStatusChipCornerRadius))
             .background(bg)
             .padding(horizontal = Dimens.gap.lg, vertical = Dimens.planStatusPaddingV),

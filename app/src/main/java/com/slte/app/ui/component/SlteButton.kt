@@ -4,6 +4,7 @@
 package com.slte.app.ui.component
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -14,11 +15,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
@@ -51,6 +55,7 @@ fun SlteButton(
     borderColor: Color? = null,
     borderWidth: Dp? = null,
     height: Dp? = null,
+    aurora: Boolean = false,
 ) {
     val haptic = LocalHapticFeedback.current
     val presetHeight =
@@ -60,12 +65,37 @@ fun SlteButton(
             else -> Dimens.size.button
         }
     val effHeight = height ?: presetHeight
+    // Aurora 模式：primary→tertiary 垂直渐变 + 同色光晕
+    val primary = MaterialTheme.colorScheme.primary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    val auroraModifier =
+        if (aurora && enabled) {
+            modifier
+                .shadow(
+                    elevation = 8.dp,
+                    shape = SlteShapes.medium,
+                    ambientColor = primary.copy(alpha = 0.4f),
+                    spotColor = primary.copy(alpha = 0.6f),
+                )
+                .background(
+                    brush = Brush.verticalGradient(listOf(primary, tertiary)),
+                    shape = SlteShapes.medium,
+                )
+        } else {
+            modifier
+        }
     val effContainer =
-        containerColor ?: when (style) {
-            SlteButtonStyle.Secondary, SlteButtonStyle.Neutral -> Color.Transparent
-            SlteButtonStyle.Tonal -> MaterialTheme.colorScheme.surface
-            SlteButtonStyle.Danger -> MaterialTheme.colorScheme.error
-            else -> MaterialTheme.colorScheme.primary
+        if (aurora && enabled) {
+            Color.Transparent
+        } else if (containerColor != null) {
+            containerColor
+        } else {
+            when (style) {
+                SlteButtonStyle.Secondary, SlteButtonStyle.Neutral -> Color.Transparent
+                SlteButtonStyle.Tonal -> MaterialTheme.colorScheme.surface
+                SlteButtonStyle.Danger -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.primary
+            }
         }
     val effContent =
         contentColor ?: when (style) {
@@ -113,7 +143,7 @@ fun SlteButton(
         OutlinedButton(
             onClick = action,
             enabled = enabled,
-            modifier = modifier.height(effHeight),
+            modifier = auroraModifier.height(effHeight),
             shape = SlteShapes.medium,
             contentPadding = contentPadding,
             colors =
@@ -127,7 +157,7 @@ fun SlteButton(
         Button(
             onClick = action,
             enabled = enabled,
-            modifier = modifier.height(effHeight),
+            modifier = auroraModifier.height(effHeight),
             shape = SlteShapes.medium,
             contentPadding = contentPadding,
             colors =
