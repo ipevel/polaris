@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.16",
-  "update_changelog_title": "Polaris 1.4.16 更新",
-  "update_changelog": "- 全新视觉：北极星 v4 重构全部页面，首页改为「连接 / 会话信息 / 套餐」三层，连接重新成为主操作\n- 修复：App 内选择深色而系统为浅色时整屏文字不可见的问题（主题单源化）\n- 统一：强调色收敛为单一青色，圆角 / 字号 / 间距成体系，数值统一等宽对齐\n- 首页：4 张单值卡合并为一张「会话信息」卡，减少卡片堆叠\n- 列表：我的订单 / 我的工单 / 公告改为一张卡多行，卡片边界更清晰\n- 图表：流量趋势图补刻度线与日期标注，环形图数值不再被裁切\n- 设置：新增「外观」三态选择（跟随系统 / 浅色 / 深色）\n- 术语统一：策略组 → 分组、服务器 → 节点\n- 版本号 1.4.16 (versionCode 30)",
+  "update_version": "1.4.17",
+  "update_changelog_title": "Polaris 1.4.17 更新",
+  "update_changelog": "### 1.4.17\n\n- 节点页右上角「测速」现在真的生效了：点击后所有策略组同时测速，结束后即使不展开分组也能看到当前出口延迟（如「香港 01 32ms」），并会提示测速完成 / 测速失败\n- 无套餐、加载失败等提示不再静默\n- 「我的」页去掉了与「其他设置」重复的「外观」入口，外观统一在「其他设置」里选择（跟随系统 / 浅色 / 深色）",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.16/Polaris-1.4.16.apk",
-  "update_apk_sha256": "6e6422e91a955e85abf2c5edd35eff27d922605fda39916bbdcc5223706d6207"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.17/Polaris-1.4.17.apk",
+  "update_apk_sha256": "03f516d83794c0267500d861b5b65470b7750262d67c0b59c50ffd0a64586fc4"
 }
