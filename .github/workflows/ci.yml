@@ -92,6 +92,19 @@ jobs:
             exit 1
           fi
 
+      # 推送即产出可下载的调试包：assembleDebug 已在上面跑过，这里只是把产物留下
+      # 注意：调试包用 debug 签名，不能覆盖安装正式版（applicationId 相同但签名不同）
+      #      免费额度下 artifact 存储 500MB，调试包约 100MB，故保留期压到 7 天
+      - name: 上传调试包（推送即可下载）
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Polaris-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/Polaris-*-debug.apk
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 7
+
       - name: 上传检查报告（失败时）
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

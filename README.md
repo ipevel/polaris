@@ -91,6 +91,8 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ./gradlew :app:assembleRelease
 ```
 
+> **推送即出包**：每次推送到 main，CI 的「质量门禁」job 会在 `assembleDebug` 之后把调试包作为 artifact 上传（GitHub → Actions → 该次 run → Artifacts，保留 7 天），可直接下载自测。它是 **debug 签名**，与正式包签名不同，无法覆盖安装已装的正式版；正式分发仍走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`，见 `.agents/skills/polaris-release/SKILL.md`）。
+
 ## 配置
 
 ### 面板地址（运行时）

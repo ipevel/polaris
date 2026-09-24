@@ -108,6 +108,16 @@ git push
 
 push 后关注 `gh run list --limit 1` 的 CI 结果；失败则本地复现修复后重走第 2 步。
 
+推送**同时产出可下载的调试包**：ci.yml 的「质量门禁」job 在 `assembleDebug` 之后会把 `app/build/outputs/apk/debug/Polaris-*-debug.apk` 作为 artifact 上传（步骤名「上传调试包（推送即可下载）」，保留 7 天）。
+
+```bash
+# 取最近一次 run 的调试包信息（含下载 API 地址）
+gh api "repos/ipevel/polaris/actions/runs/$(gh run list --limit 1 --json databaseId --jq '.[0].databaseId')/artifacts" \
+  --jq '.artifacts[] | "\(.name)\t\(.size_in_bytes)\t\(.expired)"'
+```
+
+注意调试包是 debug 签名，**不能覆盖安装正式版**（applicationId 相同、签名不同）；它只用于预览/自测，正式分发仍走第 6 步。
+
 ## 第 6 步：发 Release（需用户要求发布时）
 
 Release 由手动触发的 `Polaris Build`（build.yml，workflow_dispatch）完成，CI 全绿**不会**自动发版。注意：**每次修改 build.yml 后，触发前先 commit+push，workflow 用的是 main 上的最新文件。**
