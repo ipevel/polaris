@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.4.13",
-  "update_changelog_title": "Polaris 1.4.13 更新",
-  "update_changelog": "- feat(ui): 顶部 Aurora 极光氛围光（cyan+purple 双 radial）应用到全部页面 Scaffold\n- feat(ui): 底部导航激活项改用 cyan-soft 胶囊背景替代金色小圆点\n- fix(ui): 卡片顶部 hairline 可见性增强（alpha 6%→10%）\n- polish(ui): 电源开关按钮连接态加彩色外发光（shadow 12dp）\n- chore: 版本号升到 1.4.13 (versionCode 27)，核心功能保持不变",
+  "update_version": "1.4.14",
+  "update_changelog_title": "Polaris 1.4.14 更新",
+  "update_changelog": "- feat(ui): 顶部状态徽章（代理中/套餐有效/套餐过期）加状态色软光晕（shadow 8dp）\n- feat(ui): 续费按钮加 aurora 渐变（primary→tertiary 垂直渐变 + 8dp 同色发光）\n- polish(ui): sparkline 下载主线已有渐变填充，本版统一氛围光效\n- chore: 版本号升到 1.4.14 (versionCode 28)，核心功能保持不变",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.13/Polaris-1.4.13.apk",
-  "update_apk_sha256": "bb4fea5808a1fb6b8eab014c3086e088c67804bcd5e451cf20037ee8a23eb877"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.14/Polaris-1.4.14.apk",
+  "update_apk_sha256": "pending-v1.4.14-build"
 }
