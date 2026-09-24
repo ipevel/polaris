@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.theme.slteAuroraBackground
 
 /** 统一顶部栏脚手架：返回键 + 标题 + 可选操作区，供各详情/设置页复用。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,7 +33,8 @@ fun SlteScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.slteAuroraBackground(),
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {

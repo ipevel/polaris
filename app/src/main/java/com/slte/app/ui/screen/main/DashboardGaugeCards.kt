@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -370,6 +371,12 @@ private fun PowerToggleButton(
         modifier =
         Modifier
             .size(40.dp)
+            .shadow(
+                elevation = if (isConnected || isConnecting) 12.dp else 0.dp,
+                shape = CircleShape,
+                ambientColor = container.copy(alpha = 0.5f),
+                spotColor = container.copy(alpha = 0.7f),
+            )
             .clip(CircleShape)
             .background(container)
             .clickable(enabled = !isConnecting) {

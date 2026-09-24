@@ -39,6 +39,7 @@ import com.slte.app.R
 import com.slte.app.data.local.SecurePreferences
 import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.theme.slteAuroraBackground
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
 
@@ -70,6 +71,8 @@ internal fun MainScreen(
     }
 
     Scaffold(
+        modifier = Modifier.slteAuroraBackground(),
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
@@ -163,7 +166,7 @@ internal fun DashboardContent(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(
-        modifier = modifier.background(MaterialTheme.colorScheme.background),
+        modifier = modifier,
     ) {
         val compact = maxHeight < Dimens.dashboardCompactBreakpoint
         LazyColumn(

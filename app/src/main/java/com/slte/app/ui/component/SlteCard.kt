@@ -27,9 +27,9 @@ import com.slte.app.utils.Dimens
 private val AuroraCardGradientDark = listOf(Color(0xFF182241), Color(0xFF131C30))
 private val AuroraCardGradientLight = listOf(Color(0xFFFFFFFF), Color(0xFFF5F7FA))
 
-// 卡片顶部高光线：暗色 6% 白，亮色 4% 近黑
-private val AuroraHairlineDark = Color(0x0FFFFFFF)
-private val AuroraHairlineLight = Color(0x0A0F172A)
+// 卡片顶部高光线：暗色 10% 白，亮色 8% 近黑（提亮以保可见性）
+private val AuroraHairlineDark = Color(0x1AFFFFFF)
+private val AuroraHairlineLight = Color(0x140F172A)
 
 @Composable
 fun SlteCard(

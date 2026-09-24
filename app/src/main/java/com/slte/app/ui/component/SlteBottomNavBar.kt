@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,8 +14,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.ui.navigation.RootTab
 import com.slte.app.ui.theme.SlteColors
@@ -39,7 +40,7 @@ import com.slte.app.utils.Dimens
 
 /**
  * 四个根 Tab 的底部导航栏（首页/节点/流量/我的）。
- * 激活项用主题主色高亮，顶部以「星辉金」小圆点做强调。
+ * 激活项用主题主色高亮，并以 cyan-soft 胶囊背景做强调（与 mockup 对齐）。
  */
 @Composable
 fun SlteBottomNavBar(
@@ -93,26 +94,29 @@ private fun BottomNavItem(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         }
+    // 激活态胶囊背景（cyan-soft 16%），替代原先的金色小圆点，与 mockup 对齐
+    val pillBg =
+        if (selected) {
+            SlteColors.current.accentInteractiveBg
+        } else {
+            Color.Transparent
+        }
     Column(
         modifier =
         modifier
             .fillMaxHeight()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(pillBg)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
-            ),
+            )
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier =
-            Modifier
-                .size(Dimens.bottomNavIndicatorSize)
-                .clip(CircleShape)
-                .background(if (selected) SlteColors.current.brandGold else Color.Transparent),
-        )
-        Spacer(modifier = Modifier.height(Dimens.gap.sm))
         Icon(
             imageVector = icon,
             contentDescription = label,
