@@ -5,5 +5,5 @@
   "update_changelog": "- feat(ui): 顶部 Aurora 极光氛围光（cyan+purple 双 radial）应用到全部页面 Scaffold\n- feat(ui): 底部导航激活项改用 cyan-soft 胶囊背景替代金色小圆点\n- fix(ui): 卡片顶部 hairline 可见性增强（alpha 6%→10%）\n- polish(ui): 电源开关按钮连接态加彩色外发光（shadow 12dp）\n- chore: 版本号升到 1.4.13 (versionCode 27)，核心功能保持不变",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.4.13/Polaris-1.4.13.apk",
-  "update_apk_sha256": "b5068c42527552b7d996cccabe0f90dbe1bf1de4ee5aaa33ee0ab83e1955d441"
+  "update_apk_sha256": "bb4fea5808a1fb6b8eab014c3086e088c67804bcd5e451cf20037ee8a23eb877"
 }
