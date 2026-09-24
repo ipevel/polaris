@@ -29,6 +29,8 @@ object SubscriptionSanitizer {
         val portsRewritten = runStep("zeroTopLevelPorts") { SanitizerNeutralizer.zeroTopLevelPorts(lines) }
         val controlNeutralized = runStep("neutralizeControlSurface") { SanitizerNeutralizer.neutralizeControlSurface(lines) }
         runStep("clearSubtitlePattern") { SanitizerNeutralizer.clearSubtitlePattern(lines) }
+        // 重名节点会让内核拒绝加载整份配置，必须在交给内核前改成唯一名
+        runStep("dedupeProxyNames") { SanitizerNameDeduper.dedupeProxyNames(lines) }
         runStep("injectHealthCheckConfig") { SanitizerInjector.injectHealthCheckConfig(lines) }
 
         var ruleInjected = true
