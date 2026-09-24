@@ -59,12 +59,17 @@
     <plurals name="plan_expire_days_label">
         <item quantity="other">%d 天後到期</item>
     </plurals>
+    <plurals name="plan_expire_days_short">
+        <item quantity="other">剩 %d 天</item>
+    </plurals>
     <string name="plan_expire_date_label">%1$s 到期</string>
     <string name="plan_expired_today">今天到期</string>
     <string name="plan_no_expiry">不限時</string>
     <string name="plan_percent">%d%%</string>
     <string name="plan_separator">·</string>
     <string name="plan_empty">尚無方案</string>
+    <string name="plan_used_prefix">已用</string>
+    <string name="plan_total_prefix">總額</string>
     <string name="plan_renew_button">續費</string>
     <string name="plan_buy_button">購買</string>
 

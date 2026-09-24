@@ -187,24 +187,13 @@ internal fun DashboardContent(
                 )
             }
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-                ) {
-                    SessionTrafficCard(
-                        modifier = Modifier.weight(1f),
-                        sessionUploadBytes = data.sessionUploadBytes,
-                        sessionDownloadBytes = data.sessionDownloadBytes,
-                    )
-                    SpeedCard(
-                        modifier = Modifier.weight(1f),
-                        uploadSpeedBps = data.uploadSpeedBps,
-                        downloadSpeedBps = data.downloadSpeedBps,
-                        speedHistory = data.speedHistory,
-                    )
-                }
+                HeroTrafficCard(
+                    sessionUploadBytes = data.sessionUploadBytes,
+                    sessionDownloadBytes = data.sessionDownloadBytes,
+                    uploadSpeedBps = data.uploadSpeedBps,
+                    downloadSpeedBps = data.downloadSpeedBps,
+                    speedHistory = data.speedHistory,
+                )
             }
             item {
                 Row(

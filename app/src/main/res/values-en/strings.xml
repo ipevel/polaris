@@ -60,12 +60,18 @@
         <item quantity="one">%d day left</item>
         <item quantity="other">%d days left</item>
     </plurals>
+    <plurals name="plan_expire_days_short">
+        <item quantity="one">%d day left</item>
+        <item quantity="other">%d days left</item>
+    </plurals>
     <string name="plan_expire_date_label">Expires %1$s</string>
     <string name="plan_expired_today">Expires today</string>
     <string name="plan_no_expiry">No expiry</string>
     <string name="plan_percent">%d%%</string>
     <string name="plan_separator">·</string>
     <string name="plan_empty">No plans yet</string>
+    <string name="plan_used_prefix">Used</string>
+    <string name="plan_total_prefix">Total</string>
     <string name="plan_renew_button">Renew</string>
     <string name="plan_buy_button">Buy</string>
 

@@ -31,7 +31,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteType
@@ -96,16 +99,34 @@ fun UsageCard(
 
             Spacer(modifier = Modifier.height(Dimens.gap.md))
 
+            val usedPrefix = stringResource(R.string.plan_used_prefix)
+            val totalPrefix = stringResource(R.string.plan_total_prefix)
+            val separator = stringResource(R.string.plan_separator)
+            val usageAccent = MaterialTheme.colorScheme.primary
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "${FormatUtils.traffic(usedBytes)} / ${FormatUtils.traffic(totalBytes)}",
-                    fontWeight = FontWeight.Medium,
+                    text =
+                    buildAnnotatedString {
+                        append("$usedPrefix ")
+                        withStyle(
+                            SpanStyle(
+                                color = usageAccent,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                        ) {
+                            append(FormatUtils.traffic(usedBytes))
+                        }
+                        append(" $separator ")
+                        append("$totalPrefix ")
+                        append(FormatUtils.traffic(totalBytes))
+                    },
                     style = SlteType.body,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
                 Text(
                     text = stringResource(R.string.plan_percent, percent),
@@ -151,11 +172,9 @@ fun UsageCard(
                             text =
                             when {
                                 daysUntilExpired == null -> stringResource(R.string.plan_no_expiry)
-                                daysUntilExpired > 0 && expiredAtDate != null ->
-                                    stringResource(R.string.plan_expire_date_label, expiredAtDate)
                                 daysUntilExpired > 0 ->
                                     pluralStringResource(
-                                        R.plurals.plan_expire_days_label,
+                                        R.plurals.plan_expire_days_short,
                                         daysUntilExpired,
                                         daysUntilExpired,
                                     )

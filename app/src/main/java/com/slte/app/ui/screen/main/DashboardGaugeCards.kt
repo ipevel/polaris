@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
+import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
@@ -58,60 +59,161 @@ import com.slte.app.utils.FormatUtils
 import java.util.Locale
 import kotlinx.coroutines.delay
 
-/** 会话流量卡：大号双色环形图（中心显示合计）+ 图例数值，纵向铺满方形卡。 */
+/**
+ * 首页 Hero 卡：环形会话流量 + 上下行实时速度（右侧两格竖排）+ 底部 sparkline。
+ * 由原 SessionTrafficCard 与 SpeedCard 合并为纵向堆叠，修复半宽并排时的横向溢出。
+ */
 @Composable
-internal fun SessionTrafficCard(
+internal fun HeroTrafficCard(
     sessionUploadBytes: Long,
     sessionDownloadBytes: Long,
+    uploadSpeedBps: Long,
+    downloadSpeedBps: Long,
+    speedHistory: List<Pair<Long, Long>>,
     modifier: Modifier = Modifier,
 ) {
-    GaugeCard(
-        title = stringResource(R.string.dashboard_traffic_stats),
-        icon = SlteIcons.Traffic,
-        modifier = modifier,
+    SlteCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
     ) {
-        // 环形图在剩余空间垂直居中，中心叠加合计流量
-        Box(
-            modifier = Modifier
+        Column(
+            modifier =
+            Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center,
+                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
         ) {
-            TrafficDonut(
-                uploadBytes = sessionUploadBytes,
-                downloadBytes = sessionDownloadBytes,
-                modifier = Modifier.size(88.dp),
-            )
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = stringResource(R.string.dashboard_traffic_total),
-                    style = SlteType.label,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = FormatUtils.traffic(sessionUploadBytes + sessionDownloadBytes),
-                    style = SlteType.body,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            // 行1：116dp 环形图（左）+ 右侧速度区（下行/上行两格竖排）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier.size(116.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TrafficDonut(
+                        uploadBytes = sessionUploadBytes,
+                        downloadBytes = sessionDownloadBytes,
+                        modifier = Modifier.size(116.dp),
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = FormatUtils.traffic(sessionUploadBytes + sessionDownloadBytes),
+                            style = SlteType.heading,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = stringResource(R.string.dashboard_traffic_total),
+                            style = SlteType.caption,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                // 右侧速度区：实时网速小标题 + 下行/上行两格（各占满右列宽度）
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier =
+                            Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(SlteColors.current.accentInteractive),
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = stringResource(R.string.dashboard_network_speed),
+                            style = SlteType.caption,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    HeroSpeedCell(
+                        arrow = "↓",
+                        label = stringResource(R.string.traffic_download),
+                        value = FormatUtils.speed(downloadSpeedBps),
+                        valueColor = SlteColors.current.accentInteractive,
+                    )
+                    HeroSpeedCell(
+                        arrow = "↑",
+                        label = stringResource(R.string.traffic_upload),
+                        value = FormatUtils.speed(uploadSpeedBps),
+                        valueColor = SlteColors.current.brandGold,
+                    )
+                }
             }
-        }
-        Spacer(modifier = Modifier.height(Dimens.gap.md))
-        // 图例：点 + 标签 + 数值紧凑同行左对齐，两行堆叠
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm)) {
-            TrafficLegendItem(
-                color = SlteColors.current.accentInteractive,
-                label = stringResource(R.string.traffic_download),
-                value = FormatUtils.traffic(sessionDownloadBytes),
+            // 行2：底部 sparkline，顶部加细分隔线
+            Spacer(modifier = Modifier.height(12.dp))
+            Box(
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
             )
-            TrafficLegendItem(
-                color = SlteColors.current.brandGold,
-                label = stringResource(R.string.traffic_upload),
-                value = FormatUtils.traffic(sessionUploadBytes),
+            SpeedWaveform(
+                history = speedHistory,
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .padding(top = 10.dp),
             )
         }
+    }
+}
+
+/** 上下行速度格：左侧箭头+标签，右侧数值；背景为次级表面色，圆角小卡。 */
+@Composable
+private fun HeroSpeedCell(
+    arrow: String,
+    label: String,
+    value: String,
+    valueColor: Color,
+) {
+    Row(
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = arrow,
+                style = SlteType.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = valueColor,
+            )
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+                text = label,
+                style = SlteType.caption,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = value,
+            style = SlteType.body,
+            fontWeight = FontWeight.Bold,
+            color = valueColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -380,39 +482,6 @@ internal fun TrafficDonut(
                 )
             }
         }
-    }
-}
-
-/** 图例项：色点 + 标签 + 数值紧凑同行，标签定宽使数值列天然对齐。 */
-@Composable
-private fun TrafficLegendItem(
-    color: Color,
-    label: String,
-    value: String,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier =
-            Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(color),
-        )
-        Spacer(modifier = Modifier.width(Dimens.gap.xs))
-        Text(
-            text = label,
-            style = SlteType.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.width(Dimens.gap.sm))
-        Text(
-            text = value,
-            style = SlteType.field,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
