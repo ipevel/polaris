@@ -144,7 +144,7 @@ fun UpdateDownloadingDialog(progress: Int) {
                 Spacer(modifier = Modifier.height(Dimens.gap.sm))
                 Text(
                     text = "$progress%",
-                    style = SlteType.bodySmall,
+                    style = SlteType.valueSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

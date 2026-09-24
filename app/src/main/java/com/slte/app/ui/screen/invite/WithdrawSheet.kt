@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 package com.slte.app.ui.screen.invite
+
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,7 +25,6 @@ import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.utils.Dimens
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WithdrawSheet(
     methodsState: WithdrawMethodsState,
@@ -36,7 +33,6 @@ fun WithdrawSheet(
     onRetryMethods: () -> Unit,
     onConfirm: (String, String) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedMethod by remember { mutableStateOf("") }
     var account by remember { mutableStateOf("") }
     val haptic = LocalHapticFeedback.current

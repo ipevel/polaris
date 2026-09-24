@@ -9,13 +9,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.slte.app.R
 import com.slte.app.domain.model.CommissionRecord
 import com.slte.app.ui.component.SlteCard
@@ -37,8 +39,7 @@ fun CommissionRecordsCard(records: List<CommissionRecord>) {
         ) {
             Text(
                 text = stringResource(R.string.invite_records_title),
-                fontWeight = FontWeight.SemiBold,
-                style = SlteType.body,
+                style = SlteType.cardTitle,
                 color = MaterialTheme.colorScheme.onSurface,
             )
 
@@ -51,8 +52,8 @@ fun CommissionRecordsCard(records: List<CommissionRecord>) {
                 )
             } else {
                 Spacer(modifier = Modifier.height(Dimens.gap.sm))
-                records.forEach { record ->
-                    CommissionRecordItem(record = record)
+                records.forEachIndexed { index, record ->
+                    CommissionRecordItem(record = record, topDivider = index > 0)
                 }
             }
         }
@@ -60,33 +61,58 @@ fun CommissionRecordsCard(records: List<CommissionRecord>) {
 }
 
 @Composable
-private fun CommissionRecordItem(record: CommissionRecord) {
-    Row(
-        modifier =
-        Modifier
-            .fillMaxWidth()
-            .height(Dimens.size.row),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.invite_record_order, record.tradeNo),
-                fontWeight = FontWeight.Medium,
-                style = SlteType.label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(Dimens.gap.xs))
-            Text(
-                text = stringResource(R.string.invite_record_amount_label, FormatUtils.balance(record.orderAmount)),
-                style = SlteType.label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun CommissionRecordItem(
+    record: CommissionRecord,
+    topDivider: Boolean,
+) {
+    val amountLabel =
+        stringResource(R.string.invite_record_amount_label, FormatUtils.balance(record.orderAmount))
+    val date = FormatUtils.formatDate(record.createdAt)
+    val meta =
+        if (date.isBlank()) {
+            amountLabel
+        } else {
+            amountLabel + " " + stringResource(R.string.plan_separator) + " " + date
+        }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (topDivider) {
+            HorizontalDivider(
+                thickness = Dimens.dividerThickness,
+                color = MaterialTheme.colorScheme.outlineVariant,
             )
         }
-        Text(
-            text = stringResource(R.string.invite_record_amount, FormatUtils.balance(record.getAmount)),
-            fontWeight = FontWeight.SemiBold,
-            style = SlteType.body,
-            color = SlteColors.current.accentInteractive,
-        )
+        Row(
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = Dimens.gap.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.invite_record_order, record.tradeNo),
+                    style = SlteType.valueSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(Dimens.gap.xs))
+                Text(
+                    text = meta,
+                    style = SlteType.label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(modifier = Modifier.width(Dimens.gap.sm))
+            Text(
+                text = stringResource(R.string.invite_record_amount, FormatUtils.balance(record.getAmount)),
+                style = SlteType.valueSmall,
+                color = SlteColors.current.accentInteractive,
+                maxLines = 1,
+            )
+        }
     }
 }

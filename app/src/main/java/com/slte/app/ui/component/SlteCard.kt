@@ -4,7 +4,6 @@
 package com.slte.app.ui.component
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -20,17 +19,17 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import com.slte.app.ui.theme.LocalExtendedColors
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.utils.Dimens
 
-// Aurora 卡片渐变：暗色 surface→bg-2，亮色 surface→surface-2
-private val AuroraCardGradientDark = listOf(Color(0xFF182241), Color(0xFF131C30))
-private val AuroraCardGradientLight = listOf(Color(0xFFFFFFFF), Color(0xFFF5F7FA))
-
-// 卡片顶部高光线：暗色 10% 白，亮色 8% 近黑（提亮以保可见性）
-private val AuroraHairlineDark = Color(0x1AFFFFFF)
-private val AuroraHairlineLight = Color(0x140F172A)
-
+/**
+ * 卡片：垂直渐变 + 顶部 1dp 发丝线，0 elevation。
+ *
+ * 渐变与发丝线取自 [LocalExtendedColors]，与 colorScheme 同源。**不要**在此处调用
+ * isSystemInDarkTheme()：App 内主题偏好与系统设置可以不一致，自行判断会让卡片在深色
+ * colorScheme 下依然画成浅色，与 onSurface 的白字撞在一起。
+ */
 @Composable
 fun SlteCard(
     modifier: Modifier = Modifier,
@@ -39,15 +38,13 @@ fun SlteCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val dark = isSystemInDarkTheme()
-    val gradientColors = if (dark) AuroraCardGradientDark else AuroraCardGradientLight
-    val hairline = if (dark) AuroraHairlineDark else AuroraHairlineLight
+    val extended = LocalExtendedColors.current
     val cardModifier = modifier
-        .background(Brush.verticalGradient(gradientColors), shape)
+        .background(Brush.verticalGradient(listOf(extended.cardTop, extended.cardBottom)), shape)
         .drawWithContent {
             drawContent()
             val brush = Brush.horizontalGradient(
-                colors = listOf(Color.Transparent, hairline, Color.Transparent),
+                colors = listOf(Color.Transparent, extended.cardHairline, Color.Transparent),
             )
             drawRect(
                 brush = brush,

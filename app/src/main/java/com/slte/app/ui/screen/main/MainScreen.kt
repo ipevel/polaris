@@ -11,12 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.ContextCompat
 import com.slte.app.R
 import com.slte.app.data.local.SecurePreferences
@@ -79,8 +78,11 @@ internal fun MainScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = data.siteName.ifBlank { stringResource(R.string.app_name) },
-                            style = SlteType.title,
+                            style = SlteType.pageTitle,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
                         ProxyStatusBadge(
                             isConnected = data.isConnected,
@@ -190,50 +192,26 @@ internal fun DashboardContent(
                 )
             }
             item {
-                HeroTrafficCard(
-                    sessionUploadBytes = data.sessionUploadBytes,
-                    sessionDownloadBytes = data.sessionDownloadBytes,
+                ConnectionHeroCard(
+                    isConnected = data.isConnected,
+                    isConnecting = data.isConnecting,
+                    connectedSinceElapsedMs = data.connectedSinceElapsedMs,
+                    serverName = data.serverName,
                     uploadSpeedBps = data.uploadSpeedBps,
                     downloadSpeedBps = data.downloadSpeedBps,
                     speedHistory = data.speedHistory,
+                    onToggleConnection = onToggleConnection,
                 )
             }
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-                ) {
-                    CurrentIpCard(
-                        modifier = Modifier.weight(1f),
-                        currentIp = data.currentIp,
-                    )
-                    LanIpCard(
-                        modifier = Modifier.weight(1f),
-                        lanIp = data.lanIp,
-                    )
-                }
-            }
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-                ) {
-                    MemoryCard(
-                        modifier = Modifier.weight(1f),
-                        appMemoryUsedMb = data.appMemoryUsedMb,
-                    )
-                    UptimeCard(
-                        modifier = Modifier.weight(1f),
-                        connectedSinceElapsedMs = data.connectedSinceElapsedMs,
-                        isConnected = data.isConnected,
-                        isConnecting = data.isConnecting,
-                        onToggleConnection = onToggleConnection,
-                    )
-                }
+                SessionInfoCard(
+                    currentIp = data.currentIp,
+                    lanIp = data.lanIp,
+                    sessionUploadBytes = data.sessionUploadBytes,
+                    sessionDownloadBytes = data.sessionDownloadBytes,
+                    appMemoryUsedMb = data.appMemoryUsedMb,
+                    isConnected = data.isConnected,
+                )
             }
             item {
                 UsageCard(

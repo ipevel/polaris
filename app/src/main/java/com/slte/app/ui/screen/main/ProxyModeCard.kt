@@ -23,12 +23,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slte.app.ui.theme.SlteColors
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 
 /**
- * 三段式代理模式选择器（规则 / 全局 / 直连），胶囊分段样式。
- * 选中的分段以主色药丸高亮，其余分段保持弱化文字。
+ * 三段式代理模式选择器（规则 / 全局 / 直连），卡内槽色分段控件。
+ * 选中段用强调色淡底 + 强调色文字，未选中保持弱化文字；不再用实心强调色块压过主操作。
  */
 @Composable
 fun ProxyModeCard(
@@ -36,11 +37,12 @@ fun ProxyModeCard(
     onSelectMode: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val selectedShape = RoundedCornerShape(SlteRadii.inner)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .clip(selectedShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(Dimens.gap.xs),
         horizontalArrangement = Arrangement.spacedBy(Dimens.gap.xs),
         verticalAlignment = Alignment.CenterVertically,
@@ -52,7 +54,7 @@ fun ProxyModeCard(
                 style = SlteType.label,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) {
-                    Color.White
+                    SlteColors.current.accentInteractive
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
@@ -61,10 +63,10 @@ fun ProxyModeCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(50))
+                    .clip(selectedShape)
                     .background(
                         if (selected) {
-                            SlteColors.current.accentInteractive
+                            SlteColors.current.accentInteractiveBg
                         } else {
                             Color.Transparent
                         },

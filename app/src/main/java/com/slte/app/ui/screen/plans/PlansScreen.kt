@@ -14,18 +14,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
@@ -41,6 +47,9 @@ import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.SltePullRefresh
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.formatCurrency
+import com.slte.app.ui.theme.SlteColors
+import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
@@ -96,9 +105,12 @@ fun PlansScreen(
                         verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
                         contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
                     ) {
-                        items(data.plans.distinctBy { it.id }, key = { it.id }) { plan ->
+                        val plans = data.plans.distinctBy { it.id }
+                        itemsIndexed(plans, key = { _, plan -> plan.id }) { index, plan ->
                             PlanCard(
                                 plan = plan,
+                                // 面板未下发「推荐」标记，取列表首项作为主推套餐，其余降级为 Tonal。
+                                isRecommended = index == 0,
                                 onSubscribe = { purchaseViewModel.startPurchase(plan) },
                             )
                         }
@@ -127,11 +139,14 @@ fun PlansScreen(
 @Composable
 private fun PlanCard(
     plan: PlanInfo,
+    isRecommended: Boolean,
     onSubscribe: () -> Unit,
 ) {
     val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
     val firstPrice = plan.periodPrices.firstOrNull()
+    val periodName =
+        firstPrice?.let { FormatUtils.periodLabel(it.period, context) }.orEmpty()
+    val benefits = remember(plan.content) { planContentLines(plan.content) }
 
     SlteCard(
         modifier = Modifier.fillMaxWidth(),
@@ -145,41 +160,68 @@ private fun PlanCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 Text(
                     text = plan.name,
-                    style = SlteType.title,
-                    fontWeight = FontWeight.SemiBold,
+                    style = SlteType.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
                 if (firstPrice != null) {
-                    Text(
-                        text = formatCurrency(firstPrice.price.toLongOrNull()?.toInt() ?: 0),
-                        style = SlteType.title,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Spacer(modifier = Modifier.width(Dimens.gap.md))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = formatCurrency(firstPrice.price.toLongOrNull()?.toInt() ?: 0),
+                            style = SlteType.value.copy(fontSize = 26.sp, lineHeight = 32.sp),
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = stringResource(R.string.plan_separator) + " " + periodName,
+                            style = SlteType.label,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.xs))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "${plan.transferEnable}${stringResource(R.string.plans_traffic_unit)}${stringResource(R.string.plans_traffic_label)}",
-                    style = SlteType.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlanPill(
+                    label = stringResource(R.string.plans_traffic_label),
+                    value = "${plan.transferEnable}${stringResource(R.string.plans_traffic_unit)}",
                 )
-                if (firstPrice != null) {
-                    Text(
-                        text = " ${stringResource(R.string.plan_separator)} ${FormatUtils.periodLabel(firstPrice.period, context)}",
-                        style = SlteType.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (periodName.isNotEmpty()) {
+                    PlanPill(value = periodName, mono = false)
                 }
             }
 
-            if (!plan.content.isNullOrBlank()) {
+            if (benefits.size > 1) {
+                Spacer(modifier = Modifier.height(Dimens.gap.md))
+                HorizontalDivider(
+                    thickness = Dimens.dividerThickness,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+                Spacer(modifier = Modifier.height(Dimens.gap.md))
+                benefits.forEach { benefit ->
+                    BenefitRow(text = benefit)
+                    Spacer(modifier = Modifier.height(Dimens.gap.sm))
+                }
+            } else if (!plan.content.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(Dimens.gap.md))
+                HorizontalDivider(
+                    thickness = Dimens.dividerThickness,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
                 Spacer(modifier = Modifier.height(Dimens.gap.md))
                 RichText(
                     text = plan.content,
@@ -193,8 +235,76 @@ private fun PlanCard(
                 text = stringResource(R.string.plans_subscribe),
                 onClick = onSubscribe,
                 modifier = Modifier.fillMaxWidth(),
-                style = SlteButtonStyle.Primary,
+                style = if (isRecommended) SlteButtonStyle.Primary else SlteButtonStyle.Tonal,
             )
         }
     }
 }
+
+@Composable
+private fun PlanPill(
+    value: String,
+    label: String? = null,
+    mono: Boolean = true,
+) {
+    Surface(
+        shape = RoundedCornerShape(SlteRadii.pill),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = Dimens.gap.md, vertical = Dimens.gap.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (label != null) {
+                Text(
+                    text = label,
+                    style = SlteType.label,
+                    maxLines = 1,
+                )
+                Spacer(modifier = Modifier.width(Dimens.gap.xs))
+            }
+            Text(
+                text = value,
+                style = if (mono) SlteType.valueSmall else SlteType.label,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BenefitRow(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = SlteIcons.Check,
+            contentDescription = null,
+            modifier = Modifier.size(Dimens.icon.sm),
+            tint = SlteColors.current.accentInteractive,
+        )
+        Spacer(modifier = Modifier.width(Dimens.gap.sm))
+        Text(
+            text = text,
+            style = SlteType.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+private val HTML_TAG_REGEX = Regex("</?[a-zA-Z][^>]*>")
+
+/** 面板下发的 content 是 HTML / Markdown 列表，拆成纯文本行做权益清单；只有一行时保留富文本渲染。 */
+private fun planContentLines(content: String?): List<String> = content
+    ?.replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+    ?.replace(Regex("</(p|div|li|h[1-6]|tr)>", RegexOption.IGNORE_CASE), "\n")
+    ?.replace(HTML_TAG_REGEX, "")
+    ?.lines()
+    ?.map { it.trim().trimStart('-', '*', '•').trim() }
+    ?.filter { it.isNotEmpty() }
+    .orEmpty()

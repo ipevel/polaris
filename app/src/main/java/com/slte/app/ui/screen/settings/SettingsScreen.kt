@@ -4,7 +4,9 @@
 package com.slte.app.ui.screen.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
+import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.theme.SlteIcons
@@ -35,7 +38,10 @@ fun SettingsScreen(
 ) {
     var showTunStackSheet by rememberSaveable { mutableStateOf(false) }
     var showLanguageSheet by rememberSaveable { mutableStateOf(false) }
+    var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val appearance = AppearanceMode.fromThemeMode(themeMode)
 
     SlteScaffold(
         title = stringResource(R.string.settings_title),
@@ -48,54 +54,62 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .padding(horizontal = Dimens.dashboardScreenPaddingH),
             verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-            contentPadding =
-            androidx.compose.foundation.layout
-                .PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
+            contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
         ) {
+            // 外观：显式三态入口（跟随系统 / 浅色 / 深色），替代个人中心的循环切换
             item {
-                SettingsRowCard(
-                    icon = SlteIcons.TunStack,
-                    title = stringResource(R.string.settings_tun_stack),
-                    value = stringResource(data.tunStackMode.labelRes),
-                    onClick = { showTunStackSheet = true },
-                )
+                SlteCard(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = if (appearance == AppearanceMode.DARK) SlteIcons.DarkMode else SlteIcons.LightMode,
+                        title = stringResource(R.string.settings_appearance),
+                        value = stringResource(appearance.labelRes),
+                        onClick = { showAppearanceSheet = true },
+                    )
+                    SettingsRow(
+                        icon = SlteIcons.Language,
+                        title = stringResource(R.string.settings_language),
+                        value = stringResource(LanguageMode.fromLocale(data.locale).labelRes),
+                        topDivider = true,
+                        onClick = { showLanguageSheet = true },
+                    )
+                }
             }
 
             item {
-                SettingsRowCard(
-                    icon = SlteIcons.Language,
-                    title = stringResource(R.string.settings_language),
-                    value = stringResource(LanguageMode.fromLocale(data.locale).labelRes),
-                    onClick = { showLanguageSheet = true },
-                )
+                SlteCard(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = SlteIcons.TunStack,
+                        title = stringResource(R.string.settings_tun_stack),
+                        value = stringResource(data.tunStackMode.labelRes),
+                        onClick = { showTunStackSheet = true },
+                    )
+                    SettingsRow(
+                        icon = SlteIcons.ChangePassword,
+                        title = stringResource(R.string.settings_change_password),
+                        topDivider = true,
+                        onClick = viewModel::showChangePassword,
+                    )
+                }
             }
 
             item {
-                SettingsRowCard(
-                    icon = SlteIcons.ChangePassword,
-                    title = stringResource(R.string.settings_change_password),
-                    onClick = viewModel::showChangePassword,
-                )
-            }
-
-            item {
-                SettingsSwitchCard(
-                    icon = SlteIcons.Email,
-                    title = stringResource(R.string.settings_expire_remind),
-                    checked = data.expireRemindEnabled,
-                    enabled = data.remindSync == RemindSync.Idle,
-                    onCheckedChange = viewModel::setExpireRemind,
-                )
-            }
-
-            item {
-                SettingsSwitchCard(
-                    icon = SlteIcons.Remind,
-                    title = stringResource(R.string.settings_traffic_remind),
-                    checked = data.trafficRemindEnabled,
-                    enabled = data.remindSync == RemindSync.Idle,
-                    onCheckedChange = viewModel::setTrafficRemind,
-                )
+                SlteCard(modifier = Modifier.fillMaxWidth()) {
+                    SettingsSwitchRow(
+                        icon = SlteIcons.Email,
+                        title = stringResource(R.string.settings_expire_remind),
+                        checked = data.expireRemindEnabled,
+                        enabled = data.remindSync == RemindSync.Idle,
+                        onCheckedChange = viewModel::setExpireRemind,
+                    )
+                    SettingsSwitchRow(
+                        icon = SlteIcons.Remind,
+                        title = stringResource(R.string.settings_traffic_remind),
+                        checked = data.trafficRemindEnabled,
+                        enabled = data.remindSync == RemindSync.Idle,
+                        topDivider = true,
+                        onCheckedChange = viewModel::setTrafficRemind,
+                    )
+                }
             }
 
             data.errorMessageRes?.let { res ->
@@ -109,6 +123,17 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showAppearanceSheet) {
+        AppearanceModeSheet(
+            currentMode = appearance,
+            onDismiss = { showAppearanceSheet = false },
+            onSelect = { mode ->
+                viewModel.setThemeMode(mode.mode)
+                showAppearanceSheet = false
+            },
+        )
     }
 
     if (showTunStackSheet) {

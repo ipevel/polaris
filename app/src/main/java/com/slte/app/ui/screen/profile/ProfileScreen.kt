@@ -190,7 +190,7 @@ fun ProfileScreen(
             item {
                 SlteRowCard(
                     icon = if (themeMode == ThemeMode.DARK) SlteIcons.DarkMode else SlteIcons.LightMode,
-                    title = stringResource(R.string.settings_dark_mode),
+                    title = stringResource(R.string.settings_appearance),
                     value =
                     stringResource(
                         when (themeMode) {

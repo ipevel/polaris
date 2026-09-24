@@ -18,11 +18,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.LoadingOverlay
+import com.slte.app.ui.component.SlteButton
+import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SltePullRefresh
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.ToastTip
-import com.slte.app.ui.theme.SlteColors
-import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.utils.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,19 +66,19 @@ fun InviteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
                     ) {
-                        InviteActionButton(
-                            icon = SlteIcons.Transfer,
+                        SlteButton(
                             text = stringResource(R.string.invite_transfer),
-                            tint = SlteColors.current.accentInteractive,
-                            modifier = Modifier.weight(1f),
                             onClick = viewModel::showTransferSheet,
-                        )
-                        InviteActionButton(
-                            icon = SlteIcons.Wallet,
-                            text = stringResource(R.string.invite_withdraw),
-                            tint = SlteColors.current.accentInteractive,
                             modifier = Modifier.weight(1f),
+                            style = SlteButtonStyle.Tonal,
+                            height = Dimens.size.button,
+                        )
+                        SlteButton(
+                            text = stringResource(R.string.invite_withdraw),
                             onClick = viewModel::showWithdrawSheet,
+                            modifier = Modifier.weight(1f),
+                            style = SlteButtonStyle.Neutral,
+                            height = Dimens.size.button,
                         )
                     }
                 }

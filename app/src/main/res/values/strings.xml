@@ -116,7 +116,7 @@
     <string name="dashboard_refresh_done">订阅已更新</string>
 
     <!-- Server -->
-    <string name="server_title">节点选择</string>
+    <string name="server_title">节点</string>
     <string name="server_speed_test">测速</string>
     <string name="server_timeout">超时</string>
 
@@ -373,7 +373,7 @@
     <string name="api_error_unsupported_backend">不支持的后端类型: %s</string>
     <!-- Additional error messages -->
     <string name="error_order_failed">订单操作失败</string>
-    <string name="error_server_load">加载服务器列表失败</string>
+    <string name="error_server_load">加载节点失败</string>
 
     <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->
     <string name="settings_language">语言</string>
@@ -382,9 +382,9 @@
     <string name="language_traditional">繁體中文</string>
     <string name="language_english">English</string>
 
-    <string name="proxy_groups_title">策略组</string>
-    <string name="proxy_groups_empty">暂无策略组</string>
-    <string name="proxy_groups_loading">正在读取策略组</string>
+    <string name="proxy_groups_title">分组</string>
+    <string name="proxy_groups_empty">暂无分组</string>
+    <string name="proxy_groups_loading">正在读取分组</string>
     <string name="proxy_group_test">测速</string>
     <string name="proxy_group_select_failed">切换失败</string>
     <string name="proxy_group_type_select">手动选择</string>
@@ -400,4 +400,20 @@
     <string name="tab_server">节点</string>
     <string name="tab_traffic">流量</string>
     <string name="tab_profile">我的</string>
+
+    <string name="dashboard_session_info">会话信息</string>
+    <string name="dashboard_session_usage">本次用量</string>
+    <string name="dashboard_current_node">当前节点</string>
+    <string name="dashboard_select_node_hint">选择节点后即可开始加速</string>
+    <string name="dashboard_wait_connect">等待连接</string>
+    <string name="dashboard_duration">时长</string>
+
+    <string name="traffic_month_used">本月已用</string>
+    <string name="traffic_daily_avg">日均</string>
+    <string name="traffic_daily_peak">单日峰值</string>
+    <string name="traffic_range">统计区间</string>
+    <string name="traffic_chart_title">近 30 天趋势</string>
+    <string name="traffic_detail_section">每日明细</string>
+
+    <string name="settings_appearance">外观</string>
 </resources>

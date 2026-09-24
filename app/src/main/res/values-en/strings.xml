@@ -119,7 +119,7 @@
     <string name="dashboard_refresh_done">Subscription updated</string>
 
     <!-- Server -->
-    <string name="server_title">Servers</string>
+    <string name="server_title">Nodes</string>
     <string name="server_speed_test">Speed test</string>
     <string name="server_timeout">Timeout</string>
 
@@ -377,7 +377,7 @@
     <string name="api_error_unsupported_backend">Unsupported backend type: %s</string>
     <!-- Additional error messages -->
     <string name="error_order_failed">Order failed</string>
-    <string name="error_server_load">Failed to load servers</string>
+    <string name="error_server_load">Failed to load nodes</string>
 
     <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->
     <string name="settings_language">Language</string>
@@ -386,9 +386,9 @@
     <string name="language_traditional">繁體中文</string>
     <string name="language_english">English</string>
 
-    <string name="proxy_groups_title">Proxy groups</string>
-    <string name="proxy_groups_empty">No proxy groups</string>
-    <string name="proxy_groups_loading">Loading proxy groups</string>
+    <string name="proxy_groups_title">Groups</string>
+    <string name="proxy_groups_empty">No groups</string>
+    <string name="proxy_groups_loading">Reading groups</string>
     <string name="proxy_group_test">Test</string>
     <string name="proxy_group_select_failed">Failed to switch</string>
     <string name="proxy_group_type_select">Manual</string>
@@ -404,4 +404,20 @@
     <string name="tab_server">Nodes</string>
     <string name="tab_traffic">Traffic</string>
     <string name="tab_profile">Me</string>
+
+    <string name="dashboard_session_info">Session info</string>
+    <string name="dashboard_session_usage">This session</string>
+    <string name="dashboard_current_node">Current node</string>
+    <string name="dashboard_select_node_hint">Choose a node to start</string>
+    <string name="dashboard_wait_connect">Waiting for connection</string>
+    <string name="dashboard_duration">Duration</string>
+
+    <string name="traffic_month_used">Used this month</string>
+    <string name="traffic_daily_avg">Daily average</string>
+    <string name="traffic_daily_peak">Peak day</string>
+    <string name="traffic_range">Range</string>
+    <string name="traffic_chart_title">Last 30 days</string>
+    <string name="traffic_detail_section">Daily breakdown</string>
+
+    <string name="settings_appearance">Appearance</string>
 </resources>

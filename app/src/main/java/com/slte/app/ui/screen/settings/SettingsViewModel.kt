@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
 import com.slte.app.data.local.LocaleStore
+import com.slte.app.data.local.ThemeMode
+import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelProxy
@@ -57,7 +59,15 @@ constructor(
     private val subscribeRepository: SubscribeRepository,
     private val kernelProxy: KernelProxy,
     private val localeStore: LocaleStore,
+    private val themePreference: ThemePreference,
 ) : ViewModel() {
+
+    /** 外观三态与「我的」页共用同一份偏好，不新增存储。 */
+    val themeMode: StateFlow<ThemeMode> = themePreference.mode
+
+    fun setThemeMode(mode: ThemeMode) {
+        themePreference.setMode(mode)
+    }
     private val _data =
         MutableStateFlow(
             SettingsData(

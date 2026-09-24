@@ -4,7 +4,6 @@
 package com.slte.app.ui.component
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -15,14 +14,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
@@ -42,6 +39,10 @@ enum class SlteButtonStyle {
     Danger,
 }
 
+/**
+ * 按钮。v4 起移除了 primary→tertiary 的彩色渐变与同色光晕（原先「续费」是全页最抢眼的元素，
+ * 压过了主操作「连接」）；强调色收敛为单一 cyan，靠填充/描边/中性三档区分层级而不是靠发光。
+ */
 @Composable
 fun SlteButton(
     text: String,
@@ -55,7 +56,6 @@ fun SlteButton(
     borderColor: Color? = null,
     borderWidth: Dp? = null,
     height: Dp? = null,
-    aurora: Boolean = false,
 ) {
     val haptic = LocalHapticFeedback.current
     val presetHeight =
@@ -65,41 +65,21 @@ fun SlteButton(
             else -> Dimens.size.button
         }
     val effHeight = height ?: presetHeight
-    // Aurora 模式：primary→tertiary 垂直渐变 + 同色光晕
-    val primary = MaterialTheme.colorScheme.primary
-    val tertiary = MaterialTheme.colorScheme.tertiary
-    val auroraModifier =
-        if (aurora && enabled) {
-            modifier
-                .shadow(
-                    elevation = 8.dp,
-                    shape = SlteShapes.medium,
-                    ambientColor = primary.copy(alpha = 0.4f),
-                    spotColor = primary.copy(alpha = 0.6f),
-                )
-                .background(
-                    brush = Brush.verticalGradient(listOf(primary, tertiary)),
-                    shape = SlteShapes.medium,
-                )
-        } else {
-            modifier
-        }
     val effContainer =
-        if (aurora && enabled) {
-            Color.Transparent
-        } else if (containerColor != null) {
+        if (containerColor != null) {
             containerColor
         } else {
             when (style) {
                 SlteButtonStyle.Secondary, SlteButtonStyle.Neutral -> Color.Transparent
-                SlteButtonStyle.Tonal -> MaterialTheme.colorScheme.surface
+                SlteButtonStyle.Tonal -> SlteColors.current.accentInteractiveBg
                 SlteButtonStyle.Danger -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.primary
             }
         }
     val effContent =
         contentColor ?: when (style) {
-            SlteButtonStyle.Secondary, SlteButtonStyle.Tonal -> MaterialTheme.colorScheme.primary
+            SlteButtonStyle.Secondary -> MaterialTheme.colorScheme.primary
+            SlteButtonStyle.Tonal -> SlteColors.current.accentInteractive
             SlteButtonStyle.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
             SlteButtonStyle.Danger -> MaterialTheme.colorScheme.onError
             else -> MaterialTheme.colorScheme.onPrimary
@@ -143,7 +123,7 @@ fun SlteButton(
         OutlinedButton(
             onClick = action,
             enabled = enabled,
-            modifier = auroraModifier.height(effHeight),
+            modifier = modifier.height(effHeight),
             shape = SlteShapes.medium,
             contentPadding = contentPadding,
             colors =
@@ -157,7 +137,7 @@ fun SlteButton(
         Button(
             onClick = action,
             enabled = enabled,
-            modifier = auroraModifier.height(effHeight),
+            modifier = modifier.height(effHeight),
             shape = SlteShapes.medium,
             contentPadding = contentPadding,
             colors =

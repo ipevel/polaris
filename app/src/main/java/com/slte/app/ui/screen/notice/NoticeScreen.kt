@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 package com.slte.app.ui.screen.notice
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,7 +24,8 @@ import com.slte.app.domain.model.Notice
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.component.EmptyState
 import com.slte.app.ui.component.ErrorState
-import com.slte.app.ui.component.LottieLoadingIcon
+import com.slte.app.ui.component.LoadingBox
+import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.SltePullRefresh
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.ToastTip
@@ -93,22 +93,25 @@ private fun NoticeList(
     notices: List<Notice>,
     onClick: (Notice) -> Unit,
 ) {
+    // 整份列表装进同一张卡、行间 1dp 发丝线：多张等亮卡片竖排时相邻边界只有 1.25:1，几乎看不出分组。
+    val unique = remember(notices) { notices.distinctBy { it.id } }
     LazyColumn(
         modifier =
         Modifier
             .fillMaxSize()
             .padding(horizontal = Dimens.dashboardScreenPaddingH),
-        verticalArrangement = Arrangement.spacedBy(Dimens.gap.md),
-        contentPadding =
-        androidx.compose.foundation.layout.PaddingValues(
-            vertical = Dimens.gap.lg,
-        ),
+        contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
     ) {
-        items(notices.distinctBy { it.id }, key = { it.id }) { notice ->
-            NoticeCard(
-                notice = notice,
-                onClick = { onClick(notice) },
-            )
+        item {
+            SlteCard(modifier = Modifier.fillMaxWidth()) {
+                unique.forEachIndexed { index, notice ->
+                    NoticeRow(
+                        notice = notice,
+                        topDivider = index > 0,
+                        onClick = { onClick(notice) },
+                    )
+                }
+            }
         }
     }
 }
@@ -133,7 +136,7 @@ private fun LoadingContent(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        LottieLoadingIcon(modifier = Modifier.size(Dimens.icon.lg))
+        LoadingBox()
     }
 }
 

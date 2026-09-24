@@ -155,9 +155,53 @@ object SlteType {
         TextStyle(
             fontFamily = FontFamily.Default,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 28.sp,
-            lineHeight = 36.sp,
+            fontSize = 22.sp,
+            lineHeight = 28.sp,
             letterSpacing = 0.sp,
+        )
+
+    /** 区块标题：11sp + 大字距，与页标题明确分层（原实现页标题与区块标题同为 16sp 撞级）。 */
+    val sectionLabel =
+        TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            letterSpacing = 1.1.sp,
+        )
+
+    /** 卡标题：卡片内的主标题。 */
+    val cardTitle =
+        TextStyle(
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            letterSpacing = 0.2.sp,
+        )
+
+    /**
+     * 数据值：所有数值（速率/流量/时长/金额/百分比/IP）统一走等宽 + tabular 数字，
+     * 避免同列数字宽度抖动、小数点不对齐（原实现只有 IP 用了 Monospace）。
+     */
+    val value =
+        TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            letterSpacing = (-0.2).sp,
+            fontFeatureSettings = "tnum",
+        )
+
+    val valueSmall =
+        TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            letterSpacing = (-0.1).sp,
+            fontFeatureSettings = "tnum",
         )
 }
 

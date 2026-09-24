@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,7 +23,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.domain.model.PaymentMethod
-import com.slte.app.ui.theme.SlteShapes
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 
@@ -70,7 +71,7 @@ internal fun PaymentMethodCell(
             onClick()
         },
         modifier = modifier.height(Dimens.paymentMethodCellHeight),
-        shape = SlteShapes.medium,
+        shape = RoundedCornerShape(SlteRadii.inner),
         color =
         if (selected) {
             MaterialTheme.colorScheme.primary

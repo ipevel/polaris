@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 package com.slte.app.ui.screen.about
+
 import android.content.ClipData
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,8 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,25 +26,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
 import com.slte.app.R
-import com.slte.app.ui.component.AnimatedSticker
 import com.slte.app.ui.component.LottieLoadingIcon
 import com.slte.app.ui.component.SlteCard
+import com.slte.app.ui.component.SlteRow
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Constants
 import com.slte.app.utils.Dimens
-import com.slte.app.utils.Stickers
 
 @Composable
 fun AboutScreen(
@@ -56,7 +54,7 @@ fun AboutScreen(
     val kernelVersion by viewModel.kernelVersion.collectAsStateWithLifecycle()
     val siteInfo by viewModel.siteInfo.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val haptic = LocalHapticFeedback.current
 
     SlteScaffold(
         title = stringResource(R.string.about_title),
@@ -69,99 +67,63 @@ fun AboutScreen(
                 .padding(innerPadding)
                 .padding(horizontal = Dimens.dashboardScreenPaddingH),
             verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
-            contentPadding =
-            androidx.compose.foundation.layout
-                .PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
+            contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
         ) {
             item {
-                SlteCard(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(Dimens.gap.xl),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        AnimatedSticker(
-                            assetPath = Stickers.LOGIN,
-                            modifier = Modifier.size(Dimens.logoSize),
-                        )
-                        Spacer(modifier = Modifier.height(Dimens.gap.md))
-                        Text(
-                            text = siteInfo?.appName?.ifBlank { null }
-                                ?: stringResource(R.string.app_name),
-                            style = SlteType.title,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Spacer(modifier = Modifier.height(Dimens.gap.sm))
-                        Text(
-                            text = siteInfo?.appDescription?.ifBlank { null }
-                                ?: stringResource(R.string.about_app_desc),
-                            style = SlteType.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
+                AboutIdentityCard(
+                    appName = siteInfo?.appName?.ifBlank { null } ?: stringResource(R.string.app_name),
+                    description =
+                    siteInfo?.appDescription?.ifBlank { null }
+                        ?: stringResource(R.string.about_app_desc),
+                )
             }
 
             item {
-                SlteCard(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column {
-                        AboutRowContent(
-                            icon = SlteIcons.About,
-                            title = stringResource(R.string.about_app_version),
-                            value = BuildConfig.VERSION_NAME,
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = Dimens.icon.lg + Dimens.gap.md * 2 + Dimens.gap.lg),
-                            thickness = Dimens.dividerThickness,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        )
-                        AboutRowContent(
-                            icon = SlteIcons.Settings,
-                            title = stringResource(R.string.about_kernel_version),
-                            value = kernelVersion ?: Constants.PLACEHOLDER_DASH,
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = Dimens.icon.lg + Dimens.gap.md * 2 + Dimens.gap.lg),
-                            thickness = Dimens.dividerThickness,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        )
-                        Row(
-                            modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(Dimens.size.row)
-                                .clickable {
-                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                    viewModel.checkUpdate(manual = true)
-                                },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            if (state is UpdateUiState.Checking) {
-                                LottieLoadingIcon(modifier = Modifier.size(Dimens.icon.lg))
-                            } else {
-                                Text(
-                                    text = stringResource(R.string.about_check_update),
-                                    style = SlteType.title,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                Spacer(modifier = Modifier.width(Dimens.gap.xs))
-                                Icon(
-                                    imageVector = SlteIcons.ChevronRight,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(Dimens.icon.md),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
+                SlteCard(modifier = Modifier.fillMaxWidth()) {
+                    SlteRow(
+                        icon = SlteIcons.About,
+                        title = stringResource(R.string.about_app_version),
+                        value = BuildConfig.VERSION_NAME,
+                        valueMono = true,
+                    )
+                    SlteRow(
+                        icon = SlteIcons.Settings,
+                        title = stringResource(R.string.about_kernel_version),
+                        value = kernelVersion ?: Constants.PLACEHOLDER_DASH,
+                        valueMono = true,
+                        topDivider = true,
+                    )
+                    HorizontalDivider(
+                        thickness = Dimens.dividerThickness,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                    Row(
+                        modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(Dimens.size.row)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.checkUpdate(manual = true)
+                            },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        if (state is UpdateUiState.Checking) {
+                            LottieLoadingIcon(modifier = Modifier.size(Dimens.icon.lg))
+                        } else {
+                            Text(
+                                text = stringResource(R.string.about_check_update),
+                                style = SlteType.cardTitle,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(modifier = Modifier.width(Dimens.gap.xs))
+                            Icon(
+                                imageVector = SlteIcons.ChevronRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(Dimens.icon.md),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                         }
                     }
                 }

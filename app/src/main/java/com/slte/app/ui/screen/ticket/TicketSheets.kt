@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +35,7 @@ import androidx.compose.ui.res.stringResource
 import com.slte.app.R
 import com.slte.app.domain.model.TicketDetail
 import com.slte.app.ui.component.ErrorState
-import com.slte.app.ui.component.LottieLoadingIcon
+import com.slte.app.ui.component.LoadingBox
 import com.slte.app.ui.component.SlteButton
 import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SlteInput
@@ -141,7 +140,7 @@ internal fun TicketDetailSheet(
                         .height(Dimens.size.row * 3),
                     contentAlignment = Alignment.Center,
                 ) {
-                    LottieLoadingIcon(modifier = Modifier.size(Dimens.icon.lg))
+                    LoadingBox()
                 }
             }
 

@@ -28,22 +28,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteColors
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
 
+/**
+ * 套餐用量卡（首页第三层）：标题 + 状态徽标，已用 · 总额 + 百分比，进度条，到期文案 + 操作按钮。
+ * v4 起动作按钮降级为强调色淡底（不再是全页最抢眼的实心按钮），状态徽标也去掉光晕。
+ */
 @Composable
 fun UsageCard(
     planName: String,
@@ -58,7 +61,6 @@ fun UsageCard(
     actionEnabled: Boolean = hasPlan,
     onAction: () -> Unit = {},
 ) {
-    val haptic = LocalHapticFeedback.current
     val percent =
         if (totalBytes > 0L) {
             ((usedBytes.toFloat() / totalBytes.toFloat()) * 100).toInt().coerceIn(0, 100)
@@ -92,10 +94,11 @@ fun UsageCard(
             ) {
                 Text(
                     text = planName.ifBlank { stringResource(R.string.dashboard_usage_title) },
-                    fontWeight = FontWeight.SemiBold,
-                    style = SlteType.title,
+                    style = SlteType.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 UsageBadge(isValid = isValid, hasPlan = hasPlan)
             }
@@ -105,7 +108,9 @@ fun UsageCard(
             val usedPrefix = stringResource(R.string.plan_used_prefix)
             val totalPrefix = stringResource(R.string.plan_total_prefix)
             val separator = stringResource(R.string.plan_separator)
-            val usageAccent = MaterialTheme.colorScheme.primary
+            val usageAccent = SlteColors.current.accentInteractive
+            // 数值部分单独走等宽，避免「已用 / 总额」两列数字宽度抖动
+            val monoValue = SpanStyle(fontFamily = FontFamily.Monospace)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -116,16 +121,15 @@ fun UsageCard(
                     buildAnnotatedString {
                         append("$usedPrefix ")
                         withStyle(
-                            SpanStyle(
-                                color = usageAccent,
-                                fontWeight = FontWeight.SemiBold,
-                            ),
+                            monoValue.copy(color = usageAccent, fontWeight = FontWeight.SemiBold),
                         ) {
                             append(FormatUtils.traffic(usedBytes))
                         }
                         append(" $separator ")
                         append("$totalPrefix ")
-                        append(FormatUtils.traffic(totalBytes))
+                        withStyle(monoValue) {
+                            append(FormatUtils.traffic(totalBytes))
+                        }
                     },
                     style = SlteType.body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -133,13 +137,12 @@ fun UsageCard(
                 )
                 Text(
                     text = stringResource(R.string.plan_percent, percent),
-                    fontWeight = FontWeight.SemiBold,
-                    style = SlteType.label,
+                    style = SlteType.valueSmall,
                     color =
                     if (hasPlan && !isValid) {
                         MaterialTheme.colorScheme.error
                     } else {
-                        MaterialTheme.colorScheme.primary
+                        usageAccent
                     },
                 )
             }
@@ -152,12 +155,12 @@ fun UsageCard(
                 Modifier
                     .fillMaxWidth()
                     .height(Dimens.dashboardUsageBarHeight)
-                    .clip(RoundedCornerShape(Dimens.dashboardUsageBarRadius)),
+                    .clip(RoundedCornerShape(SlteRadii.pill)),
                 color =
                 if (hasPlan && !isValid) {
                     MaterialTheme.colorScheme.error
                 } else {
-                    MaterialTheme.colorScheme.primary
+                    usageAccent
                 },
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
@@ -207,7 +210,8 @@ fun UsageCard(
                     onClick = onAction,
                     style = SlteButtonStyle.Medium,
                     enabled = actionEnabled,
-                    aurora = true,
+                    containerColor = SlteColors.current.accentInteractiveBg,
+                    contentColor = usageAccent,
                 )
             }
         }
@@ -231,27 +235,13 @@ private fun UsageBadge(
             isValid -> SlteColors.current.statusSuccess
             else -> SlteColors.current.statusDanger
         }
-    // 状态色软光晕：有效=绿、过期=红、无套餐=不发光
-    val glowColor =
-        when {
-            !hasPlan -> Color.Transparent
-            isValid -> SlteColors.current.statusSuccess
-            else -> SlteColors.current.statusDanger
-        }
-    val glowElevation = if (hasPlan) 8.dp else 0.dp
 
     Box(
         modifier =
         Modifier
-            .shadow(
-                elevation = glowElevation,
-                shape = RoundedCornerShape(Dimens.planStatusChipCornerRadius),
-                ambientColor = glowColor.copy(alpha = 0.45f),
-                spotColor = glowColor.copy(alpha = 0.65f),
-            )
-            .clip(RoundedCornerShape(Dimens.planStatusChipCornerRadius))
+            .clip(RoundedCornerShape(SlteRadii.pill))
             .background(bg)
-            .padding(horizontal = Dimens.gap.lg, vertical = Dimens.planStatusPaddingV),
+            .padding(horizontal = Dimens.gap.md, vertical = Dimens.planStatusPaddingV),
     ) {
         Text(
             text =

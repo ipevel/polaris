@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -35,11 +36,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.slte.app.R
-import com.slte.app.ui.component.SlteInput
-import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteShapes
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.FormatUtils
@@ -74,7 +73,7 @@ internal fun WithdrawMethodField(
             },
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
-            shape = SlteShapes.medium,
+            shape = RoundedCornerShape(SlteRadii.inner),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(Dimens.dividerThickness, MaterialTheme.colorScheme.outline),
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -123,7 +122,7 @@ internal fun WithdrawMethodField(
             Modifier
                 .width(anchorWidth)
                 .heightIn(max = Dimens.inviteMethodListMaxHeight),
-            shape = SlteShapes.medium,
+            shape = RoundedCornerShape(SlteRadii.inner),
             containerColor = MaterialTheme.colorScheme.surface,
             border = BorderStroke(Dimens.dividerThickness, MaterialTheme.colorScheme.outline),
             shadowElevation = Dimens.popupShadowElevation,
@@ -143,7 +142,7 @@ internal fun WithdrawMethodField(
                 ) {
                     Text(
                         text = method,
-                        style = SlteType.title,
+                        style = SlteType.body,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -166,14 +165,40 @@ internal fun WithdrawMethodField(
 
 @Composable
 internal fun ReadOnlyAmountField(cents: Int) {
-    SlteInput(
-        value = FormatUtils.balance(cents),
-        onValueChange = {},
-        placeholder = "",
-        icon = SlteIcons.Balance,
-        iconDesc = stringResource(R.string.invite_transfer_available),
-        readOnly = true,
-        enabled = false,
-        size = SlteInputSize.Compact,
-    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(SlteRadii.inner),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Row(
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(Dimens.size.button)
+                .padding(horizontal = Dimens.gap.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = SlteIcons.Balance,
+                contentDescription = stringResource(R.string.invite_transfer_available),
+                modifier = Modifier.size(Dimens.icon.md),
+                tint = SlteColors.current.accentInteractive,
+            )
+            Spacer(modifier = Modifier.width(Dimens.gap.sm))
+            Text(
+                text = stringResource(R.string.currency_symbol) + FormatUtils.balance(cents),
+                style = SlteType.value,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = stringResource(R.string.invite_transfer_available),
+                style = SlteType.label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
 }

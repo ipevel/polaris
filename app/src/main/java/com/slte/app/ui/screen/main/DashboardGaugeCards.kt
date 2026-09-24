@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,7 +44,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,6 +51,7 @@ import com.slte.app.R
 import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Constants
 import com.slte.app.utils.Dimens
@@ -61,8 +60,308 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 
 /**
- * 首页 Hero 卡：环形会话流量 + 上下行实时速度（右侧两格竖排）+ 底部 sparkline。
- * 由原 SessionTrafficCard 与 SpeedCard 合并为纵向堆叠，修复半宽并排时的横向溢出。
+ * 首页连接 Hero（唯一主焦点）：状态胶囊 + 时长、66dp 电源主操作 + 当前节点、
+ * 下行/上行两格、底部速度波形。原先分散在启动开关/速度/波形三处的信息收敛到一张卡。
+ */
+@Composable
+internal fun ConnectionHeroCard(
+    isConnected: Boolean,
+    isConnecting: Boolean,
+    connectedSinceElapsedMs: Long,
+    serverName: String,
+    uploadSpeedBps: Long,
+    downloadSpeedBps: Long,
+    speedHistory: List<Pair<Long, Long>>,
+    onToggleConnection: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // connectedSinceElapsedMs 是点开关时的 SystemClock.elapsedRealtime 时刻（断开为 0），
+    // 这里每秒刷新「当前时刻 - 起点」得到实时运行时长
+    var nowElapsedMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(isConnected, isConnecting) {
+        if (isConnected || isConnecting) {
+            while (true) {
+                nowElapsedMs = SystemClock.elapsedRealtime()
+                delay(UPTIME_TICK_MS)
+            }
+        }
+    }
+    val elapsedMs = (nowElapsedMs - connectedSinceElapsedMs).coerceAtLeast(0L)
+    val durationPrefix = stringResource(R.string.dashboard_duration)
+    val showNode = isConnected || isConnecting
+    val nodeName = if (showNode) serverName.ifBlank { Constants.PLACEHOLDER_DASH } else Constants.PLACEHOLDER_DASH
+
+    SlteCard(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.md),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                HeroStatusChip(isConnected = isConnected, isConnecting = isConnecting)
+                Text(
+                    text =
+                    when {
+                        isConnecting -> stringResource(R.string.status_connecting)
+                        isConnected -> "$durationPrefix ${formatUptime(elapsedMs)}"
+                        else -> stringResource(R.string.dashboard_wait_connect)
+                    },
+                    style = SlteType.valueSmall,
+                    color =
+                    if (isConnected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Dimens.gap.md),
+            ) {
+                HeroPowerButton(
+                    isConnected = isConnected,
+                    isConnecting = isConnecting,
+                    onToggle = onToggleConnection,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.dashboard_current_node),
+                        style = SlteType.label,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = nodeName,
+                        style = SlteType.value,
+                        color =
+                        if (showNode) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!showNode) {
+                        Text(
+                            text = stringResource(R.string.dashboard_select_node_hint),
+                            style = SlteType.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
+            ) {
+                HeroSpeedTile(
+                    arrow = "↓",
+                    label = stringResource(R.string.traffic_download),
+                    value = FormatUtils.speed(downloadSpeedBps),
+                    accent = SlteColors.current.accentInteractive,
+                    modifier = Modifier.weight(1f),
+                )
+                HeroSpeedTile(
+                    arrow = "↑",
+                    label = stringResource(R.string.traffic_upload),
+                    value = FormatUtils.speed(uploadSpeedBps),
+                    accent = SlteColors.current.brandGold,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
+
+            Box(
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(Dimens.dividerThickness)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+            SpeedWaveform(
+                history = speedHistory,
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .padding(top = Dimens.gap.sm),
+            )
+        }
+    }
+}
+
+/** 连接状态胶囊：状态色圆点 + 文案，未连接时退化为中性表面色。 */
+@Composable
+private fun HeroStatusChip(
+    isConnected: Boolean,
+    isConnecting: Boolean,
+) {
+    val statusColor =
+        when {
+            isConnecting -> SlteColors.current.statusWarning
+            isConnected -> SlteColors.current.statusSuccess
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    val statusBg =
+        when {
+            isConnecting -> SlteColors.current.statusWarningBg
+            isConnected -> SlteColors.current.statusSuccessBg
+            else -> MaterialTheme.colorScheme.surfaceVariant
+        }
+    val labelRes =
+        when {
+            isConnecting -> R.string.status_connecting
+            isConnected -> R.string.status_connected
+            else -> R.string.status_disconnected
+        }
+
+    Row(
+        modifier =
+        Modifier
+            .clip(RoundedCornerShape(SlteRadii.pill))
+            .background(statusBg)
+            .padding(horizontal = Dimens.gap.sm, vertical = Dimens.gap.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.gap.xs),
+    ) {
+        Box(
+            modifier =
+            Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(statusColor),
+        )
+        Text(
+            text = stringResource(labelRes),
+            style = SlteType.label,
+            fontWeight = FontWeight.SemiBold,
+            color = statusColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** 首页主操作：66dp 圆形电源键，连接=绿 / 连接中=橙（禁点）/ 未连接=中性槽色。 */
+@Composable
+private fun HeroPowerButton(
+    isConnected: Boolean,
+    isConnecting: Boolean,
+    onToggle: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val container =
+        when {
+            isConnecting -> SlteColors.current.statusWarning
+            isConnected -> SlteColors.current.statusSuccess
+            else -> MaterialTheme.colorScheme.surfaceVariant
+        }
+    val tint =
+        if (isConnected || isConnecting) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    val description =
+        when {
+            isConnecting -> stringResource(R.string.status_connecting)
+            isConnected -> stringResource(R.string.status_connected)
+            else -> stringResource(R.string.status_disconnected)
+        }
+
+    Box(
+        modifier =
+        Modifier
+            .size(66.dp)
+            .shadow(
+                elevation = if (isConnected || isConnecting) 16.dp else 0.dp,
+                shape = CircleShape,
+                ambientColor = container.copy(alpha = 0.5f),
+                spotColor = container.copy(alpha = 0.7f),
+            )
+            .clip(CircleShape)
+            .background(container)
+            .clickable(enabled = !isConnecting) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onToggle()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = SlteIcons.Power,
+            contentDescription = description,
+            tint = tint,
+            modifier = Modifier.size(30.dp),
+        )
+    }
+}
+
+/** 速度格：上行/下行各占一半宽度，数值等宽；金色只作上行数据序列色。 */
+@Composable
+private fun HeroSpeedTile(
+    arrow: String,
+    label: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+        modifier
+            .clip(RoundedCornerShape(SlteRadii.inner))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = Dimens.gap.md, vertical = Dimens.gap.sm),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = arrow,
+                style = SlteType.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+            )
+            Spacer(modifier = Modifier.width(Dimens.gap.xs))
+            Text(
+                text = label,
+                style = SlteType.label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(modifier = Modifier.height(Dimens.gap.xs))
+        Text(
+            text = value,
+            style = SlteType.value,
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * 旧版 Hero 卡（环形会话流量 + 速度 + 波形）：首页 v4 已被 [ConnectionHeroCard] 取代，
+ * 保留组件本体供其他入口复用，签名不变。
  */
 @Composable
 internal fun HeroTrafficCard(
@@ -75,7 +374,7 @@ internal fun HeroTrafficCard(
 ) {
     SlteCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(SlteRadii.card),
     ) {
         Column(
             modifier =
@@ -86,7 +385,7 @@ internal fun HeroTrafficCard(
             // 行1：116dp 环形图（左）+ 右侧速度区（下行/上行两格竖排）
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(Dimens.gap.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -117,7 +416,7 @@ internal fun HeroTrafficCard(
                 // 右侧速度区：实时网速小标题 + 下行/上行两格（各占满右列宽度）
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -152,12 +451,12 @@ internal fun HeroTrafficCard(
                 }
             }
             // 行2：底部 sparkline，顶部加细分隔线
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(Dimens.gap.md))
             Box(
                 modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
+                    .height(Dimens.dividerThickness)
                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
             )
             SpeedWaveform(
@@ -184,9 +483,9 @@ private fun HeroSpeedCell(
         modifier =
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(SlteRadii.inner))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = Dimens.gap.md, vertical = Dimens.gap.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -209,8 +508,7 @@ private fun HeroSpeedCell(
         }
         Text(
             text = value,
-            style = SlteType.body,
-            fontWeight = FontWeight.Bold,
+            style = SlteType.value,
             color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -218,7 +516,7 @@ private fun HeroSpeedCell(
     }
 }
 
-/** 内网 IP 卡：等宽字体显示本机局域网地址。 */
+/** 内网 IP 卡：等宽字体显示本机局域网地址。首页 v4 已并入会话信息卡，签名不变。 */
 @Composable
 internal fun LanIpCard(
     lanIp: String,
@@ -231,9 +529,7 @@ internal fun LanIpCard(
     ) {
         Text(
             text = lanIp,
-            fontFamily = FontFamily.Monospace,
-            style = SlteType.field,
-            fontWeight = FontWeight.Medium,
+            style = SlteType.value,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -241,7 +537,7 @@ internal fun LanIpCard(
     }
 }
 
-/** 内存卡：当前 app 进程占用内存（PSS），不再展示系统总内存。 */
+/** 内存卡：当前 app 进程占用内存（PSS），不再展示系统总内存。首页 v4 已并入会话信息卡。 */
 @Composable
 internal fun MemoryCard(
     appMemoryUsedMb: Int,
@@ -261,14 +557,13 @@ internal fun MemoryCard(
             contentAlignment = Alignment.CenterStart,
         ) {
             Text(
-                text = if (appMemoryUsedMb > 0) {
+                text =
+                if (appMemoryUsedMb > 0) {
                     FormatUtils.traffic(appMemoryUsedMb.toLong() * BYTES_PER_MB)
                 } else {
                     Constants.PLACEHOLDER_DASH
                 },
-                fontFamily = FontFamily.Monospace,
-                style = SlteType.field,
-                fontWeight = FontWeight.Medium,
+                style = SlteType.value,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -277,7 +572,7 @@ internal fun MemoryCard(
     }
 }
 
-/** 启动开关卡：未启动显示灰色开关 + 服务已就绪，启动后实时累计运行时长。 */
+/** 启动开关卡：未启动显示灰色开关 + 服务已就绪，启动后实时累计运行时长。首页 v4 已并入 Hero。 */
 @Composable
 internal fun UptimeCard(
     connectedSinceElapsedMs: Long,
@@ -287,7 +582,7 @@ internal fun UptimeCard(
     modifier: Modifier = Modifier,
 ) {
     // connectedSinceElapsedMs 是点开关时的 SystemClock.elapsedRealtime 时刻（断开为 0），
-    // 这里每秒刷新"当前时刻 - 起点"得到实时运行时长
+    // 这里每秒刷新「当前时刻 - 起点」得到实时运行时长
     var nowElapsedMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(isConnected, isConnecting) {
         if (isConnected || isConnecting) {
@@ -320,9 +615,7 @@ internal fun UptimeCard(
                     isConnected -> formatUptime(elapsedMs)
                     else -> stringResource(R.string.service_ready)
                 },
-                fontFamily = FontFamily.Monospace,
-                style = SlteType.field,
-                fontWeight = FontWeight.Medium,
+                style = SlteType.value,
                 color = timeColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -350,11 +643,11 @@ private fun PowerToggleButton(
     when {
         isConnecting -> {
             container = SlteColors.current.statusWarning
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onPrimary
         }
         isConnected -> {
             container = SlteColors.current.statusSuccess
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onPrimary
         }
         else -> {
             container = MaterialTheme.colorScheme.surfaceVariant
@@ -389,7 +682,7 @@ private fun PowerToggleButton(
             imageVector = SlteIcons.Power,
             contentDescription = description,
             tint = tint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(Dimens.icon.md),
         )
     }
 }
@@ -402,12 +695,7 @@ private fun GaugeCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth().fillMaxHeight(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = Dimens.cardElevation,
-    ) {
+    SlteCard(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
         Column(
             modifier =
             Modifier
@@ -425,8 +713,7 @@ private fun GaugeCard(
                 Spacer(modifier = Modifier.width(Dimens.gap.xs))
                 Text(
                     text = title,
-                    style = SlteType.body,
-                    fontWeight = FontWeight.Medium,
+                    style = SlteType.label,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

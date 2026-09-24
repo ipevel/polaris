@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.outlined.Add
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,14 +23,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.slte.app.R
 import com.slte.app.domain.model.InviteCodeInfo
 import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.rememberToast
+import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteShapes
+import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.copyToClipboard
@@ -42,7 +45,7 @@ fun InviteCodeCard(
     onGenerate: () -> Unit,
     context: android.content.Context,
 ) {
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val haptic = LocalHapticFeedback.current
     SlteCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -59,15 +62,21 @@ fun InviteCodeCard(
             ) {
                 Text(
                     text = stringResource(R.string.invite_code_title),
-                    fontWeight = FontWeight.SemiBold,
-                    style = SlteType.body,
+                    style = SlteType.cardTitle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                TextButton(onClick = {
-                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    onGenerate()
-                }, enabled = !isGenerating) {
-                    Icon(SlteIcons.Add, contentDescription = null, modifier = Modifier.size(Dimens.inviteCodeCopyIconSize))
+                TextButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onGenerate()
+                    },
+                    enabled = !isGenerating,
+                ) {
+                    Icon(
+                        imageVector = SlteIcons.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(Dimens.inviteCodeCopyIconSize),
+                    )
                     Spacer(modifier = Modifier.width(Dimens.gap.xs))
                     Text(stringResource(R.string.invite_code_generate), style = SlteType.bodySmall)
                 }
@@ -84,6 +93,7 @@ fun InviteCodeCard(
                 Spacer(modifier = Modifier.height(Dimens.gap.sm))
                 codes.forEach { code ->
                     InviteCodeItem(code = code, context = context)
+                    Spacer(modifier = Modifier.height(Dimens.gap.sm))
                 }
             }
         }
@@ -95,23 +105,24 @@ private fun InviteCodeItem(
     code: InviteCodeInfo,
     context: android.content.Context,
 ) {
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val haptic = LocalHapticFeedback.current
     val toast = rememberToast()
     Row(
         modifier =
         Modifier
             .fillMaxWidth()
             .height(Dimens.inviteCodeItemHeight)
-            .clip(SlteShapes.medium)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = Dimens.inviteCodeItemBgAlpha))
+            .clip(RoundedCornerShape(SlteRadii.inner))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = Dimens.inviteCodeItemPaddingH),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = code.code,
-            fontWeight = FontWeight.Medium,
-            style = SlteType.title,
+            style = SlteType.value,
             color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Text(
@@ -122,19 +133,18 @@ private fun InviteCodeItem(
         Spacer(modifier = Modifier.width(Dimens.gap.sm))
         IconButton(
             onClick = {
-                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 copyToClipboard(context, "invite_code", code.code)
                 toast.show(R.string.invite_code_copied)
             },
             modifier = Modifier.size(Dimens.inviteCodeCopyBtnSize),
         ) {
             Icon(
-                SlteIcons.Copy,
+                imageVector = SlteIcons.Copy,
                 contentDescription = stringResource(R.string.invite_code_copy),
                 modifier = Modifier.size(Dimens.inviteCodeCopyIconSize),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = SlteColors.current.accentInteractive,
             )
         }
     }
-    Spacer(modifier = Modifier.height(Dimens.gap.sm))
 }
