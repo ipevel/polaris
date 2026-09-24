@@ -240,6 +240,9 @@ class FourTabsScreenshotTest {
             )
         every { vm.isLoadingGroups } returns MutableStateFlow(false)
         every { vm.testingGroup } returns MutableStateFlow(null)
+        every { vm.isTestingAll } returns MutableStateFlow(false)
+        every { vm.errorMessageRes } returns MutableStateFlow(null)
+        every { vm.speedTestTipRes } returns MutableStateFlow<Int?>(null)
         return vm
     }
 

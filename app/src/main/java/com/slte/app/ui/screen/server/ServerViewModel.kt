@@ -12,7 +12,6 @@ import com.slte.app.kernel.KernelProxy
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.cachedSpeedResults
 import com.slte.app.kernel.groupByTypeCurrentNode
-import com.slte.app.kernel.groupByTypeDelay
 import com.slte.app.kernel.proxyGroups
 import com.slte.app.kernel.selectAuto
 import com.slte.app.kernel.selectFallback
@@ -56,6 +55,16 @@ constructor(
 
     private val _testingGroup = MutableStateFlow<String?>(null)
     val testingGroup: StateFlow<String?> = _testingGroup.asStateFlow()
+
+    private val _isTestingAll = MutableStateFlow(false)
+
+    /** 顶部「测速」触发的全组测速是否进行中（页面只渲染策略组，单独暴露一个布尔）。 */
+    val isTestingAll: StateFlow<Boolean> = _isTestingAll.asStateFlow()
+
+    private val _speedTestTipRes = MutableStateFlow<Int?>(null)
+
+    /** 全组测速结束提示（完成 / 失败），UI 取用后需 consume。 */
+    val speedTestTipRes: StateFlow<Int?> = _speedTestTipRes.asStateFlow()
 
     init {
 
@@ -164,54 +173,31 @@ constructor(
     }
 
     fun startSpeedTest() {
-        if (_data.value.isTesting) return
+        if (_isTestingAll.value) return
         if (!hasPlan()) {
             _errorMessageRes.value = R.string.dashboard_no_plan_tip
             return
         }
-        _data.update { it.copy(isTesting = true, testedNodes = emptySet()) }
         _errorMessageRes.value = null
+        // 先置位再启协程：点击即进入测速态，重复点击直接被上面的守卫吃掉
+        _isTestingAll.value = true
         viewModelScope.launch {
-            val delays =
-                kernelProxy.speedTestProgressiveAndCache { partial ->
-                    _data.update { state ->
-                        if (partial.isEmpty()) return@update state
-
-                        val nodes =
-                            state.nodes.map { node ->
-                                val d = partial[node.name]
-                                if (d != null && d != Constants.DELAY_TIMEOUT && node.name !in state.testedNodes) node.copy(delay = d) else node
-                            }
-
-                        val tested = partial.filterValues { it != Constants.DELAY_TIMEOUT }.keys
-                        state.copy(nodes = nodes, testedNodes = state.testedNodes + tested)
-                    }
+            // 页面只剩策略组，测速即"全组测速"：healthCheckAll 覆盖所有组，
+            // 结束后把内核的实时延迟回读到策略组卡片上
+            val delays = kernelProxy.speedTestProgressiveAndCache { }
+            refreshGroups()
+            _isTestingAll.value = false
+            _speedTestTipRes.value =
+                if (delays.values.any { it != Constants.DELAY_TIMEOUT }) {
+                    R.string.server_speed_test_done
+                } else {
+                    R.string.server_speed_test_failed
                 }
-            val cached = kernelProxy.cachedSpeedResults()
-            val fallbackDelay = kernelProxy.groupByTypeDelay("Fallback")
-            _data.update { state ->
-                val nodes =
-                    state.nodes.map { node ->
-                        val d = delays[node.name]
-                        val delay =
-                            when {
-                                d != null && d != Constants.DELAY_TIMEOUT -> d
-                                d == Constants.DELAY_TIMEOUT -> cached?.get(node.name) ?: d
-                                else -> node.delay
-                            }
-                        node.copy(delay = delay)
-                    }
-                state.copy(
-                    nodes = nodes,
-                    isTesting = false,
-                    testedNodes = emptySet(),
-                    kernelFallbackDelay = fallbackDelay,
-                )
-            }
-            refreshSpecialNodes()
-            // 测速完成后刷新策略组，让成员延迟同步更新
-            loadProxyGroups()
         }
+    }
+
+    fun consumeSpeedTestTip() {
+        _speedTestTipRes.value = null
     }
 
     fun updateSubscription() {
@@ -223,10 +209,29 @@ constructor(
     }
 
     fun loadProxyGroups() {
-        viewModelScope.launch {
-            _isLoadingGroups.value = true
-            _proxyGroups.value = kernelProxy.proxyGroups()
-            _isLoadingGroups.value = false
+        viewModelScope.launch { refreshGroups() }
+    }
+
+    private suspend fun refreshGroups() {
+        _isLoadingGroups.value = true
+        _proxyGroups.value = withCachedDelays(kernelProxy.proxyGroups())
+        _isLoadingGroups.value = false
+    }
+
+    /**
+     * 内核延迟 0 会被归一化成「超时」占位，未经测速的节点在卡片上会一律显示超时。
+     * 这里用上次测速的缓存回填这些成员，让策略组在测速前也能显示已知延迟。
+     */
+    private fun withCachedDelays(groups: List<KernelProxyGroupInfo>): List<KernelProxyGroupInfo> {
+        val cached = kernelProxy.cachedSpeedResults()?.takeIf { it.isNotEmpty() } ?: return groups
+        return groups.map { group ->
+            group.copy(
+                members =
+                group.members.map { member ->
+                    val hit = cached[member.name] ?: return@map member
+                    if (member.delay == null || member.delay == Constants.DELAY_TIMEOUT) member.copy(delay = hit) else member
+                },
+            )
         }
     }
 
@@ -271,9 +276,6 @@ data class ServerData(
     val nodes: List<NodeItem> = emptyList(),
     val selectedNodeId: Int = 0,
     val isLoading: Boolean = false,
-    val isTesting: Boolean = false,
-
-    val testedNodes: Set<String> = emptySet(),
 
     val kernelFallbackDelay: Int? = null,
 

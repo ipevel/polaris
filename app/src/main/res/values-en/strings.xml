@@ -121,6 +121,8 @@
     <!-- Server -->
     <string name="server_title">Nodes</string>
     <string name="server_speed_test">Speed test</string>
+    <string name="server_speed_test_done">Speed test completed</string>
+    <string name="server_speed_test_failed">Speed test failed, check your network and retry</string>
     <string name="server_timeout">Timeout</string>
 
     <!-- Invite -->

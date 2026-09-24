@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.CircleIconButton
 import com.slte.app.ui.component.SlteScaffold
+import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
@@ -34,9 +35,28 @@ fun ServerScreen(
     val proxyGroups by viewModel.proxyGroups.collectAsStateWithLifecycle()
     val isLoadingGroups by viewModel.isLoadingGroups.collectAsStateWithLifecycle()
     val testingGroup by viewModel.testingGroup.collectAsStateWithLifecycle()
+    val isTestingAll by viewModel.isTestingAll.collectAsStateWithLifecycle()
+    val errorMessageRes by viewModel.errorMessageRes.collectAsStateWithLifecycle()
+    val speedTestTipRes by viewModel.speedTestTipRes.collectAsStateWithLifecycle()
+    val toast = rememberToast()
 
     // 策略组随页面直接加载
     LaunchedEffect(Unit) { viewModel.loadProxyGroups() }
+
+    // 无套餐 / 加载失败等提示不能静默，否则右上角测速、更新订阅点了像没反应
+    LaunchedEffect(errorMessageRes) {
+        errorMessageRes?.let {
+            toast.show(it)
+            viewModel.dismissError()
+        }
+    }
+
+    LaunchedEffect(speedTestTipRes) {
+        speedTestTipRes?.let {
+            toast.show(it)
+            viewModel.consumeSpeedTestTip()
+        }
+    }
 
     SlteScaffold(
         title = stringResource(R.string.server_title),
@@ -83,7 +103,7 @@ fun ServerScreen(
                     items(proxyGroups, key = { it.name }) { group ->
                         ProxyGroupCard(
                             group = group,
-                            isTesting = testingGroup == group.name,
+                            isTesting = isTestingAll || testingGroup == group.name,
                             onSelect = viewModel::selectInGroup,
                             onTest = { viewModel.testGroup(group.name) },
                         )

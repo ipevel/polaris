@@ -24,9 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
 import com.slte.app.R
-import com.slte.app.data.local.ThemeMode
 import com.slte.app.domain.model.isPlanValid
-import com.slte.app.ui.component.SlteRowCard
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.UsageCard
 import com.slte.app.ui.component.rememberToast
@@ -40,8 +38,6 @@ import com.slte.app.utils.sanitizeLog
 
 @Composable
 fun ProfileScreen(
-    themeMode: ThemeMode = ThemeMode.SYSTEM,
-    onToggleTheme: () -> Unit = {},
     onNotice: () -> Unit = {},
     onOrders: () -> Unit = {},
     onInvite: () -> Unit = {},
@@ -187,22 +183,6 @@ fun ProfileScreen(
                     )
                 }
             }
-            item {
-                SlteRowCard(
-                    icon = if (themeMode == ThemeMode.DARK) SlteIcons.DarkMode else SlteIcons.LightMode,
-                    title = stringResource(R.string.settings_appearance),
-                    value =
-                    stringResource(
-                        when (themeMode) {
-                            ThemeMode.DARK -> R.string.topbar_dark_mode
-                            ThemeMode.LIGHT -> R.string.topbar_light_mode
-                            ThemeMode.SYSTEM -> R.string.topbar_auto_mode
-                        },
-                    ),
-                    onClick = onToggleTheme,
-                )
-            }
-
             item {
                 NavigateCard(
                     icon = SlteIcons.Settings,

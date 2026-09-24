@@ -9,8 +9,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
 import com.slte.app.data.local.SiteInfoStore
-import com.slte.app.data.local.ThemeMode
-import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.di.IoDispatcher
@@ -56,17 +54,10 @@ constructor(
     private val dataWriter: DashboardDataWriter,
     private val authRepository: AuthRepository,
     private val siteInfoStore: SiteInfoStore,
-    private val themePreference: ThemePreference,
     private val deviceEnvironment: DeviceEnvironmentSource,
 ) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
-
-    val themeMode: StateFlow<ThemeMode> = themePreference.mode
-
-    fun toggleDarkMode() {
-        themePreference.toggleDarkMode()
-    }
 
     private var autoTested = false
     private var tunnelWatchJob: Job? = null

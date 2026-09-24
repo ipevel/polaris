@@ -25,7 +25,7 @@ import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 
-/** 外观三态：与 LanguageMode 同构，供「外观」行展开选择（原先入口是个人中心的循环切换，看不到三态）。 */
+/** 外观三态：与 LanguageMode 同构，供「其他设置」里的「外观」行展开选择。 */
 enum class AppearanceMode(
     val mode: ThemeMode,
     val labelRes: Int,

@@ -87,6 +87,14 @@ internal fun ProxyGroupCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
+    // 收起态也显示当前出口的延迟，让顶部「测速」有可见结果；
+    // 只认已经测出来的真实值（内核未测的占位值不显示成假「超时」）
+    val nowDelay =
+        group.members
+            .firstOrNull { it.name == group.now && !it.isGroup }
+            ?.delay
+            ?.takeIf { it != Constants.DELAY_TIMEOUT }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -111,14 +119,25 @@ internal fun ProxyGroupCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    BoldNameText(
-                        text = group.now?.takeIf { it.isNotBlank() } ?: stringResource(R.string.proxy_group_type_select),
-                        style = SlteType.label,
-                        fontWeight = FontWeight.Medium,
-                        color = SlteColors.current.accentInteractive,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BoldNameText(
+                            text = group.now?.takeIf { it.isNotBlank() } ?: stringResource(R.string.proxy_group_type_select),
+                            style = SlteType.label,
+                            fontWeight = FontWeight.Medium,
+                            color = SlteColors.current.accentInteractive,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        nowDelay?.let { delay ->
+                            Spacer(modifier = Modifier.width(Dimens.gap.sm))
+                            Text(
+                                text = stringResource(R.string.format_delay_ms, delay),
+                                style = SlteType.bodySmall,
+                                color = latencyColor(delay),
+                            )
+                        }
+                    }
                 }
 
                 MemberCountBadge(count = group.members.size)

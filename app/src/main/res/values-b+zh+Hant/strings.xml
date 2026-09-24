@@ -118,6 +118,8 @@
     <!-- Server -->
     <string name="server_title">節點</string>
     <string name="server_speed_test">測速</string>
+    <string name="server_speed_test_done">測速完成</string>
+    <string name="server_speed_test_failed">測速失敗，請檢查網路後重試</string>
     <string name="server_timeout">逾時</string>
 
     <!-- Invite -->

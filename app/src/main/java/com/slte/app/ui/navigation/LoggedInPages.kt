@@ -5,7 +5,6 @@ package com.slte.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import com.slte.app.data.local.ThemeMode
 import com.slte.app.ui.screen.about.AboutScreen
 import com.slte.app.ui.screen.invite.InviteScreen
 import com.slte.app.ui.screen.invite.InviteViewModel
@@ -90,8 +89,6 @@ internal fun DashboardPageContent(
 @Composable
 internal fun ProfilePageContent(
     profileViewModel: ProfileViewModel,
-    themeMode: ThemeMode,
-    onToggleTheme: () -> Unit,
     onNotice: () -> Unit,
     onOrders: () -> Unit,
     onInvite: () -> Unit,
@@ -102,8 +99,6 @@ internal fun ProfilePageContent(
 ) {
     LaunchedEffect(Unit) { profileViewModel.refresh() }
     ProfileScreen(
-        themeMode = themeMode,
-        onToggleTheme = onToggleTheme,
         onNotice = onNotice,
         onOrders = onOrders,
         onInvite = onInvite,

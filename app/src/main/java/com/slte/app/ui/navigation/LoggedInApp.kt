@@ -37,7 +37,6 @@ fun LoggedInApp(
     val context = LocalContext.current
     val viewModels = rememberLoggedInViewModels(accountKey)
     val mainData by viewModels.main.data.collectAsStateWithLifecycle()
-    val themeMode by viewModels.main.themeMode.collectAsStateWithLifecycle()
     val purchaseStep by viewModels.purchase.step.collectAsStateWithLifecycle()
     val purchaseToast by viewModels.purchase.toastRes.collectAsStateWithLifecycle()
     val updateState by viewModels.update.state.collectAsStateWithLifecycle()
@@ -128,8 +127,6 @@ fun LoggedInApp(
                         tab = tab,
                         viewModels = viewModels,
                         mainData = mainData,
-                        themeMode = themeMode,
-                        onToggleTheme = viewModels.main::toggleDarkMode,
                         onNotice = { preload.enterPage(PendingNav.Notice) },
                         onOrders = { preload.enterPage(PendingNav.Orders) },
                         onInvite = { preload.enterPage(PendingNav.Invite) },
@@ -167,8 +164,6 @@ private fun RootTabContent(
     tab: RootTab,
     viewModels: LoggedInViewModels,
     mainData: com.slte.app.ui.screen.main.DashboardData,
-    themeMode: com.slte.app.data.local.ThemeMode,
-    onToggleTheme: () -> Unit,
     onNotice: () -> Unit,
     onOrders: () -> Unit,
     onInvite: () -> Unit,
@@ -199,8 +194,6 @@ private fun RootTabContent(
         RootTab.Profile ->
             ProfilePageContent(
                 profileViewModel = viewModels.profile,
-                themeMode = themeMode,
-                onToggleTheme = onToggleTheme,
                 onNotice = onNotice,
                 onOrders = onOrders,
                 onInvite = onInvite,

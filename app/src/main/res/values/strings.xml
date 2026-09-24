@@ -118,6 +118,8 @@
     <!-- Server -->
     <string name="server_title">节点</string>
     <string name="server_speed_test">测速</string>
+    <string name="server_speed_test_done">测速完成</string>
+    <string name="server_speed_test_failed">测速失败，请检查网络后重试</string>
     <string name="server_timeout">超时</string>
 
     <!-- Invite -->

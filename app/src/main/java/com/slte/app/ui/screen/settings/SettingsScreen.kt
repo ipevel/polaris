@@ -56,7 +56,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(Dimens.dashboardCardSpacing),
             contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
         ) {
-            // 外观：显式三态入口（跟随系统 / 浅色 / 深色），替代个人中心的循环切换
+            // 外观：唯一入口，三态显式选择（跟随系统 / 浅色 / 深色）
             item {
                 SlteCard(modifier = Modifier.fillMaxWidth()) {
                     SettingsRow(
