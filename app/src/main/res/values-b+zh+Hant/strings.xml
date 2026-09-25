@@ -285,6 +285,12 @@
     <string name="settings_local_routing_desc">啟用 App 內建分流規則並忽略面板下發設定（Karing 式）</string>
     <string name="settings_local_routing_failed">分流設定儲存失敗</string>
     <string name="settings_routing_rules">分流規則管理</string>
+    <string name="routing_rules_desc">內建分流規則組（移植自 Karing 預設）。關閉的組不再產生對應分流規則；改動即時生效。</string>
+    <string name="routing_outbound_proxy">預設走代理</string>
+    <string name="routing_outbound_direct">預設直連</string>
+    <string name="routing_outbound_block">預設攔截</string>
+    <string name="routing_rules_reset">恢復預設開關</string>
+    <string name="routing_rules_reset_desc">清除所有組的自訂開關，回到內建預設值</string>
 
     <!-- Orders -->
     <string name="order_empty">暫無訂單</string>

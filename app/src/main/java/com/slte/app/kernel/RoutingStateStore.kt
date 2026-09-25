@@ -108,6 +108,9 @@ constructor(
         return write(current.copy(groups = current.groups + (name to enabled)))
     }
 
+    /** 清空全部组开关（恢复内置默认）；返回写入是否成功。 */
+    fun resetGroups(): Boolean = write(load().copy(groups = emptyMap()))
+
     companion object {
         private const val LOG_TAG = "Polaris-Routing"
         const val FILE_NAME = "routing.json"

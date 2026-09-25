@@ -249,6 +249,27 @@ constructor(
         written
     }
 
+    /** 分流规则管理页：切换单个内置规则组开关，写盘后广播重载。 */
+    suspend fun applyRoutingGroup(
+        name: String,
+        enabled: Boolean,
+    ): Boolean = withContext(ioDispatcher) {
+        val written = routingStateStore.setGroupEnabled(name, enabled)
+        if (written) {
+            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
+        }
+        written
+    }
+
+    /** 分流规则管理页：恢复全部组的内置默认开关，写盘后广播重载。 */
+    suspend fun resetRoutingGroups(): Boolean = withContext(ioDispatcher) {
+        val written = routingStateStore.resetGroups()
+        if (written) {
+            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
+        }
+        written
+    }
+
     private fun profileName(): String = profileNameFor(subscribeSource.getEmail())
 
     suspend fun deleteAccountProfiles(email: String?): Boolean = safe(false, "deleteAccountProfiles") {

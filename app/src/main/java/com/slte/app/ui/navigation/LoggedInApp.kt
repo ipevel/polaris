@@ -115,6 +115,7 @@ fun LoggedInApp(
                         viewModels.orders.refresh()
                         pushPage(Page.Orders)
                     },
+                    onRoutingRules = { pushPage(Page.RoutingRules) },
                 )
             } else {
                 Box(
@@ -214,6 +215,7 @@ private fun LeafPageContent(
     onPendingPaymentConsumed: () -> Unit,
     onBack: () -> Unit,
     onGoToOrders: () -> Unit,
+    onRoutingRules: () -> Unit,
 ) {
     when (leaf) {
         Page.Invite ->
@@ -252,7 +254,13 @@ private fun LeafPageContent(
                 onGoToOrders = onGoToOrders,
             )
 
-        Page.Settings -> SettingsPageContent(onBack = onBack)
+        Page.Settings ->
+            SettingsPageContent(
+                onBack = onBack,
+                onRoutingRules = onRoutingRules,
+            )
+
+        Page.RoutingRules -> RoutingRulesPageContent(onBack = onBack)
 
         Page.About -> AboutPageContent(onBack = onBack)
     }

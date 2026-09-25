@@ -24,6 +24,7 @@ import com.slte.app.ui.screen.profile.ProfileScreen
 import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.screen.server.ServerScreen
 import com.slte.app.ui.screen.server.ServerViewModel
+import com.slte.app.ui.screen.settings.RoutingRulesScreen
 import com.slte.app.ui.screen.settings.SettingsScreen
 import com.slte.app.ui.screen.ticket.TicketScreen
 import com.slte.app.ui.screen.ticket.TicketViewModel
@@ -173,8 +174,19 @@ internal fun PlansPageContent(
 }
 
 @Composable
-internal fun SettingsPageContent(onBack: () -> Unit) {
-    SettingsScreen(onBack = onBack)
+internal fun SettingsPageContent(
+    onBack: () -> Unit,
+    onRoutingRules: () -> Unit,
+) {
+    SettingsScreen(
+        onBack = onBack,
+        onRoutingRules = onRoutingRules,
+    )
+}
+
+@Composable
+internal fun RoutingRulesPageContent(onBack: () -> Unit) {
+    RoutingRulesScreen(onBack = onBack)
 }
 
 @Composable

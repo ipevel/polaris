@@ -34,6 +34,7 @@ import com.slte.app.utils.Dimens
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onRoutingRules: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     var showTunStackSheet by rememberSaveable { mutableStateOf(false) }
@@ -78,9 +79,16 @@ fun SettingsScreen(
             item {
                 SlteCard(modifier = Modifier.fillMaxWidth()) {
                     SettingsRow(
+                        icon = SlteIcons.Route,
+                        title = stringResource(R.string.settings_routing_rules),
+                        subtitle = stringResource(R.string.settings_local_routing_desc),
+                        onClick = onRoutingRules,
+                    )
+                    SettingsRow(
                         icon = SlteIcons.TunStack,
                         title = stringResource(R.string.settings_tun_stack),
                         value = stringResource(data.tunStackMode.labelRes),
+                        topDivider = true,
                         onClick = { showTunStackSheet = true },
                     )
                     SettingsRow(

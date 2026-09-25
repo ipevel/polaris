@@ -289,6 +289,12 @@
     <string name="settings_local_routing_desc">Use built-in routing rules and ignore panel-issued config (Karing-style)</string>
     <string name="settings_local_routing_failed">Failed to save routing settings</string>
     <string name="settings_routing_rules">Routing rule groups</string>
+    <string name="routing_rules_desc">Built-in routing rule groups (ported from the Karing preset). Disabled groups generate no rules; changes apply immediately.</string>
+    <string name="routing_outbound_proxy">Proxy by default</string>
+    <string name="routing_outbound_direct">Direct by default</string>
+    <string name="routing_outbound_block">Block by default</string>
+    <string name="routing_rules_reset">Reset to defaults</string>
+    <string name="routing_rules_reset_desc">Clear custom toggles and restore built-in defaults</string>
 
     <!-- Orders -->
     <string name="order_empty">No orders</string>

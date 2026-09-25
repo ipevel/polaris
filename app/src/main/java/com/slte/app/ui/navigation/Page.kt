@@ -14,7 +14,7 @@ import androidx.compose.runtime.toMutableStateList
 enum class RootTab { Home, Server, Traffic, Profile }
 
 /** 二级叶子页（全屏 push，叠加在根 Tab 之上）。 */
-enum class Page { Invite, Notice, Orders, Plans, Settings, About, Ticket }
+enum class Page { Invite, Notice, Orders, Plans, Settings, About, Ticket, RoutingRules }
 
 internal enum class PendingNav {
     Invite,
