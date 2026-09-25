@@ -38,7 +38,9 @@ func Start(fd int, stack, gateway, portal, dns string) (io.Closer, error) {
 		}
 		prefix, err := netip.ParsePrefix(gatewayStr)
 		if err != nil {
-			log.Errorln("TUN:", err)
+			// 单参数传入：go vet 的 printf 检查会把「首参 + 非常量实参」判为
+			// "arguments but no formatting directives"，传字符串字面量尾部不报错。
+			log.Errorln("TUN: " + err.Error())
 			return nil, err
 		}
 
@@ -76,7 +78,7 @@ func Start(fd int, stack, gateway, portal, dns string) (io.Closer, error) {
 
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
 	if err != nil {
-		log.Errorln("TUN:", err)
+		log.Errorln("TUN: " + err.Error())
 		return nil, err
 	}
 
