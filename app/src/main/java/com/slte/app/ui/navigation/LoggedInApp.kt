@@ -13,7 +13,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -21,13 +20,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.ui.component.LoadingOverlay
-import com.slte.app.ui.component.SlteBottomNavBar
-import com.slte.app.utils.Dimens
 import com.slte.app.utils.findActivity
 
 @Composable
@@ -118,12 +114,9 @@ fun LoggedInApp(
                     onRoutingRules = { pushPage(Page.RoutingRules) },
                 )
             } else {
-                Box(
-                    modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(bottom = Dimens.bottomNavHeight),
-                ) {
+                // 底部导航由 v5 页面自带的悬浮胶囊导航（FloatingPillNav）提供，
+                // 此处不再叠加旧的 SlteBottomNavBar，也不再预留其高度
+                Box(modifier = Modifier.fillMaxSize()) {
                     RootTabContent(
                         tab = tab,
                         viewModels = viewModels,
@@ -140,14 +133,6 @@ fun LoggedInApp(
                     )
                 }
             }
-        }
-
-        if (pageStack.isEmpty()) {
-            SlteBottomNavBar(
-                currentTab = currentTab,
-                onTabSelected = { currentTab = it },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
         }
     }
 

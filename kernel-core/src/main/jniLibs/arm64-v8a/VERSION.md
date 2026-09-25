@@ -21,6 +21,9 @@
 - 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
   CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd
   go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+- 三次重建（2026-09-25，1.5.0 反馈修复）：分流规则组与自定义组改为 `include-all: true`
+  （全部节点并入每条分流组），成员表补齐 自动选择/故障转移，使用户可为单个分类指定
+  任意出口（跟随节点选择 / 自动 / 故障转移 / 直连 / 拦截 / 具体节点）。
 - 头文件：`jniLibs/arm64-v8a/libclash.h` 与 `cpp/libclash.h` 导出符号与本次构建逐一比对
   一致（仅 cgo 行号注释差异），故未替换；`.so` 摘要见同目录 SHA256SUMS。
 

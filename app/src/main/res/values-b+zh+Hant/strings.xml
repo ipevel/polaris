@@ -333,6 +333,15 @@
     <string name="v5_traffic_hint">按日彙總，來自面板流量日誌</string>
     <string name="v5_days_left">剩 %1$d 天</string>
     <string name="v5_balance">餘額</string>
+    <string name="v5_all_nodes">全部節點</string>
+    <string name="v5_no_nodes">暫無節點，請先更新訂閱</string>
+    <string name="v5_routing_groups">分流規則組</string>
+    <string name="v5_group_exit">當前出口</string>
+    <string name="v5_group_exit_hint">選擇該分類使用的出口（可指定具體節點）</string>
+    <string name="v5_group_current">當前：%1$s</string>
+    <string name="v5_group_follow_primary">跟隨「節點選擇」</string>
+    <string name="v5_group_unset">未選擇</string>
+    <string name="v5_group_item">策略組</string>
     <string name="me_plans">訂閱方案</string>
     <string name="me_orders">我的訂單</string>
     <string name="me_invite">邀請返利</string>

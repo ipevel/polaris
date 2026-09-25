@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.5.0",
-  "update_changelog_title": "Polaris 1.5.0 更新",
-  "update_changelog": "### 1.5.0\n\n- **本地分流方案（移植自 Karing）**：App 内置 27 条分流规则组，屏蔽面板下发的分流配置，只保留节点；规则集（geosite/geoip + ACL4SSR）每日自动更新，并内置离线种子保证冷启动可用\n- **分流规则管理页**：每条规则组可独立开关、一键恢复默认，支持添加自定义规则组（https 规则集地址，内核定期抓取）\n- **节点选择升级**：🚀 节点选择 / 自动选择（url-test）/ 故障转移（fallback）本地策略组，策略组内选择跨重连持久化\n- **V5 全新界面**：VmShell 设计语言——大圆连接钮、马卡龙数据瓷片、悬浮胶囊导航、实时速率曲线，亮暗双主题\n- 修复内核 override 读取的存量编译问题",
+  "update_version": "1.5.1",
+  "update_changelog_title": "Polaris 1.5.1 更新",
+  "update_changelog": "### 1.5.1\n\n- **修复底部导航重复**：v5 页面的悬浮胶囊导航与旧底栏同时显示的问题已修正，只保留 v5 导航\n- **节点页新增手动选择节点**：「全部节点」列表可直接点选任意节点作为主出口（含延迟显示与当前选中标记）\n- **每个分流分类可独立指定出口**：点任意分流规则组即可选择该分类的出口——跟随「节点选择」/ 自动选择 / 故障转移 / 直连 / 拦截，或直接指定某个具体节点\n- 节点/分组切换后策略组状态即时刷新，不再显示旧值",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.0/Polaris-1.5.0.apk",
   "update_apk_sha256": "bf1757ac47c57c2d98f90ebc8f902208eaee9296b3c91d9098267b52b5d0c8b9"

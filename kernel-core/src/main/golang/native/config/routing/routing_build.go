@@ -64,20 +64,26 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 		if !state.GroupEnabled(item) {
 			continue
 		}
-		// 成员顺序即默认出站（select 组默认选首位），对齐 Karing 预设 outbound 语义
+		// 成员顺序即默认出站（select 组默认选首位），对齐 Karing 预设 outbound 语义；
+		// 组内同时提供 自动选择/故障转移 作为可选出口，配合 include-all 的节点
+		// 形成「跟随全局 / 自动 / 故障转移 / 直连 / 拦截 / 任意节点」完整选项
 		var members []string
 		switch item.DefaultOut {
 		case "direct":
-			members = []string{outboundDirect, GroupNameSelector, outboundReject}
+			members = []string{outboundDirect, GroupNameSelector, GroupNameAuto, GroupNameFallback, outboundReject}
 		case "block":
 			members = []string{outboundReject, GroupNameSelector, outboundDirect}
 		default:
-			members = []string{GroupNameSelector, outboundDirect, outboundReject}
+			members = []string{GroupNameSelector, GroupNameAuto, GroupNameFallback, outboundDirect, outboundReject}
 		}
 		groups = append(groups, map[string]any{
 			"name":    item.Name,
 			"type":    groupTypeSelect,
 			"proxies": members,
+			// include-all：把全部节点并入每条分流组，用户才能给单个分类指定
+			// 具体节点（Karing 的「每条规则组独立选出口」语义）。默认出口仍由
+			// 首位成员表达；未手动指定时组内选中项即首位成员。
+			"include-all": true,
 		})
 		for _, key := range item.Providers {
 			p, ok := Providers[key]
@@ -181,9 +187,10 @@ func appendCustomGroup(
 		"interval": interval,
 	}
 	*groups = append(*groups, map[string]any{
-		"name":    name,
-		"type":    groupTypeSelect,
-		"proxies": []string{GroupNameSelector, outboundDirect, outboundReject},
+		"name":        name,
+		"type":        groupTypeSelect,
+		"proxies":     []string{GroupNameSelector, outboundDirect, outboundReject},
+		"include-all": true,
 	})
 	*rules = append(*rules, "RULE-SET,"+key+","+name)
 	return nil

@@ -142,7 +142,11 @@ internal fun ServerPageContent(
     onRoutingRules: () -> Unit,
     onNavSelect: (com.slte.app.ui.v5.NavTab) -> Unit,
 ) {
-    LaunchedEffect(Unit) { serverViewModel.loadNodes() }
+    LaunchedEffect(Unit) {
+        serverViewModel.loadNodes()
+        // 策略组（含分流规则组的出口）来自运行中的内核，进入节点页即拉一次
+        serverViewModel.loadProxyGroups()
+    }
     val data by serverViewModel.data.collectAsStateWithLifecycle()
     val groups by serverViewModel.proxyGroups.collectAsStateWithLifecycle()
     val isLoadingGroups by serverViewModel.isLoadingGroups.collectAsStateWithLifecycle()
@@ -155,6 +159,7 @@ internal fun ServerPageContent(
         testingGroup = testingGroup,
         isTestingAll = isTestingAll,
         onQuickSelect = serverViewModel::selectNode,
+        onSelectNode = serverViewModel::selectNode,
         onSelectInGroup = serverViewModel::selectInGroup,
         onTestGroup = serverViewModel::testGroup,
         onStartSpeedTest = serverViewModel::startSpeedTest,

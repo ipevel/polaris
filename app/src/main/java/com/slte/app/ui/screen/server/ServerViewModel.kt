@@ -153,6 +153,7 @@ constructor(
                 viewModelScope.launch {
                     kernelProxy.selectAuto()
                     refreshSpecialNodes()
+                    refreshGroupsIfLoaded()
                 }
             }
             -1 -> {
@@ -160,6 +161,7 @@ constructor(
                 viewModelScope.launch {
                     kernelProxy.selectFallback()
                     refreshSpecialNodes()
+                    refreshGroupsIfLoaded()
                 }
             }
             else -> {
@@ -167,9 +169,18 @@ constructor(
                 _data.update { it.copy(selectedNodeId = nodeId) }
                 viewModelScope.launch {
                     kernelProxy.selectNode(node.name)
+                    // 主选择组当前项变化后同步策略组快照，否则节点页高亮与
+                    // 各分流组的「当前出口」显示会停留在旧值
+                    refreshGroupsIfLoaded()
                 }
             }
         }
+    }
+
+    /** 仅在策略组已加载过时刷新，避免首次进入节点页前发起多余的组查询。 */
+    private suspend fun refreshGroupsIfLoaded() {
+        if (_proxyGroups.value.isEmpty()) return
+        _proxyGroups.value = withCachedDelays(kernelProxy.proxyGroups())
     }
 
     fun startSpeedTest() {

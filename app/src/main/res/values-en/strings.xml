@@ -337,6 +337,15 @@
     <string name="v5_traffic_hint">Daily summary from panel traffic log</string>
     <string name="v5_days_left">%1$d days left</string>
     <string name="v5_balance">Balance</string>
+    <string name="v5_all_nodes">All nodes</string>
+    <string name="v5_no_nodes">No nodes yet — update your subscription first</string>
+    <string name="v5_routing_groups">Routing rule groups</string>
+    <string name="v5_group_exit">Exit</string>
+    <string name="v5_group_exit_hint">Pick the exit for this category (a specific node is allowed)</string>
+    <string name="v5_group_current">Now: %1$s</string>
+    <string name="v5_group_follow_primary">Follow "Node select"</string>
+    <string name="v5_group_unset">Not set</string>
+    <string name="v5_group_item">Group</string>
     <string name="me_plans">Plans</string>
     <string name="me_orders">My orders</string>
     <string name="me_invite">Invite</string>
