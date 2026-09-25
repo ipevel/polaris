@@ -307,6 +307,57 @@
     <string name="routing_custom_duplicate_name">A group with the same name already exists</string>
     <string name="routing_custom_invalid_url">Only https URLs pointing to public hosts are allowed</string>
 
+    <!-- V5 UI (v5 redesign additions) -->
+    <string name="page_nodes">Nodes</string>
+    <string name="page_traffic">Traffic</string>
+    <string name="page_me">Me</string>
+    <string name="v5_connected_rule">Connected · Rule</string>
+    <string name="v5_not_connected">Not connected</string>
+    <string name="v5_protected">Protected</string>
+    <string name="v5_unprotected">Unprotected</string>
+    <string name="v5_connected_wait">Connected</string>
+    <string name="v5_waiting">Waiting to connect</string>
+    <string name="v5_connected_node">Connected · %1$s</string>
+    <string name="v5_ready_no_node">Ready · No node selected</string>
+    <string name="v5_down_speed">Download</string>
+    <string name="v5_up_speed">Upload</string>
+    <string name="v5_chart_hint">Live speed chart appears once connected</string>
+    <string name="v5_nodes_summary">%1$d nodes · %2$d groups</string>
+    <string name="v5_speed_testing">Testing</string>
+    <string name="v5_quick_pick">Quick pick</string>
+    <string name="v5_quick_pick_desc">Auto-select the fastest node or failover</string>
+    <string name="v5_auto_pick">Auto</string>
+    <string name="v5_fallback_pick">Failover</string>
+    <string name="v5_group_now">Now %1$s</string>
+    <string name="v5_groups_loading">Loading proxy groups…</string>
+    <string name="v5_traffic_down">Down</string>
+    <string name="v5_traffic_up">Up</string>
+    <string name="v5_traffic_loading">Loading…</string>
+    <string name="v5_traffic_empty">No traffic records</string>
+    <string name="v5_traffic_hint">Daily summary from panel traffic log</string>
+    <string name="v5_days_left">%1$d days left</string>
+    <string name="v5_balance">Balance</string>
+    <string name="me_plans">Plans</string>
+    <string name="me_orders">My orders</string>
+    <string name="me_invite">Invite</string>
+    <string name="me_tickets">Tickets</string>
+    <string name="me_notices">Notices</string>
+    <string name="me_about">About</string>
+    <string name="usage_no_plan">No plan</string>
+    <string name="usage_valid">Valid</string>
+    <string name="usage_expired">Expired</string>
+    <string name="usage_used">Used</string>
+    <string name="usage_total">/ %1$s</string>
+    <string name="usage_expired_on">Expired on %1$s</string>
+    <string name="session_title">Session</string>
+    <string name="session_running">Running</string>
+    <string name="session_not_running">Not running</string>
+    <string name="session_current_ip">Current IP</string>
+    <string name="session_used">Session usage</string>
+    <string name="session_lan_ip">LAN IP</string>
+    <string name="session_memory">Memory</string>
+    <string name="session_memory_mb">%1$d MB</string>
+
     <!-- Orders -->
     <string name="order_empty">No orders</string>
     <string name="order_unknown_plan">Unknown plan</string>

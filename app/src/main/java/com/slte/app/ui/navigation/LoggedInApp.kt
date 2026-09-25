@@ -135,6 +135,8 @@ fun LoggedInApp(
                         onTickets = { pushPage(Page.Ticket) },
                         onSettings = { pushPage(Page.Settings) },
                         onAbout = { pushPage(Page.About) },
+                        onRoutingRules = { pushPage(Page.RoutingRules) },
+                        onTabSelected = { currentTab = it },
                     )
                 }
             }
@@ -172,24 +174,40 @@ private fun RootTabContent(
     onTickets: () -> Unit,
     onSettings: () -> Unit,
     onAbout: () -> Unit,
+    onRoutingRules: () -> Unit,
+    onTabSelected: (RootTab) -> Unit,
 ) {
+    val onNavSelect: (com.slte.app.ui.v5.NavTab) -> Unit = { navTab ->
+        onTabSelected(
+            when (navTab) {
+                com.slte.app.ui.v5.NavTab.HOME -> RootTab.Home
+                com.slte.app.ui.v5.NavTab.NODES -> RootTab.Server
+                com.slte.app.ui.v5.NavTab.TRAFFIC -> RootTab.Traffic
+                com.slte.app.ui.v5.NavTab.ME -> RootTab.Profile
+            },
+        )
+    }
     when (tab) {
         RootTab.Home ->
             DashboardPageContent(
                 mainViewModel = viewModels.main,
                 mainData = mainData,
                 onRenew = onRenew,
+                onNavSelect = onNavSelect,
             )
 
         RootTab.Server ->
             ServerPageContent(
                 serverViewModel = viewModels.server,
                 onUpdateSubscription = viewModels.main::updateSubscription,
+                onRoutingRules = onRoutingRules,
+                onNavSelect = onNavSelect,
             )
 
         RootTab.Traffic ->
             TrafficPageContent(
                 trafficViewModel = viewModels.traffic,
+                onNavSelect = onNavSelect,
             )
 
         RootTab.Profile ->
@@ -202,6 +220,7 @@ private fun RootTabContent(
                 onTickets = onTickets,
                 onSettings = onSettings,
                 onAbout = onAbout,
+                onNavSelect = onNavSelect,
             )
     }
 }

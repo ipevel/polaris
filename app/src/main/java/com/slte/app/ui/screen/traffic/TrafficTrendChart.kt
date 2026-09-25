@@ -197,3 +197,6 @@ internal fun TrafficTrendChart(
         }
     }
 }
+
+/** ISO 日期转 MM-DD 轴标签（原 TrafficScreen 内的私有工具，随 v5 迁移保留）。 */
+private fun shortDate(iso: String): String = if (iso.length >= 10) iso.substring(5) else iso

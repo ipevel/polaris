@@ -303,6 +303,57 @@
     <string name="routing_custom_duplicate_name">同名規則組已存在</string>
     <string name="routing_custom_invalid_url">僅支援 https 地址，且不得指向本機/內網</string>
 
+    <!-- V5 UI（v5 重新設計新增） -->
+    <string name="page_nodes">節點</string>
+    <string name="page_traffic">流量</string>
+    <string name="page_me">我的</string>
+    <string name="v5_connected_rule">已連線 · 規則</string>
+    <string name="v5_not_connected">未連線</string>
+    <string name="v5_protected">已保護</string>
+    <string name="v5_unprotected">未受保護</string>
+    <string name="v5_connected_wait">已連線</string>
+    <string name="v5_waiting">等待連線</string>
+    <string name="v5_connected_node">已連線 · %1$s</string>
+    <string name="v5_ready_no_node">就緒 · 尚未選擇節點</string>
+    <string name="v5_down_speed">下行速率</string>
+    <string name="v5_up_speed">上行速率</string>
+    <string name="v5_chart_hint">連線後顯示即時速率曲線</string>
+    <string name="v5_nodes_summary">%1$d 個節點 · %2$d 個分組</string>
+    <string name="v5_speed_testing">測速中</string>
+    <string name="v5_quick_pick">快捷選擇</string>
+    <string name="v5_quick_pick_desc">自動選擇最快節點或故障轉移</string>
+    <string name="v5_auto_pick">自動選擇</string>
+    <string name="v5_fallback_pick">故障轉移</string>
+    <string name="v5_group_now">當前 %1$s</string>
+    <string name="v5_groups_loading">正在載入策略組…</string>
+    <string name="v5_traffic_down">下行</string>
+    <string name="v5_traffic_up">上行</string>
+    <string name="v5_traffic_loading">載入中…</string>
+    <string name="v5_traffic_empty">暫無流量記錄</string>
+    <string name="v5_traffic_hint">按日彙總，來自面板流量日誌</string>
+    <string name="v5_days_left">剩 %1$d 天</string>
+    <string name="v5_balance">餘額</string>
+    <string name="me_plans">訂閱方案</string>
+    <string name="me_orders">我的訂單</string>
+    <string name="me_invite">邀請返利</string>
+    <string name="me_tickets">我的工單</string>
+    <string name="me_notices">公告通知</string>
+    <string name="me_about">關於軟體</string>
+    <string name="usage_no_plan">暫無方案</string>
+    <string name="usage_valid">有效</string>
+    <string name="usage_expired">已過期</string>
+    <string name="usage_used">已用</string>
+    <string name="usage_total">/ %1$s</string>
+    <string name="usage_expired_on">已於 %1$s 到期</string>
+    <string name="session_title">會話資訊</string>
+    <string name="session_running">執行中</string>
+    <string name="session_not_running">未執行</string>
+    <string name="session_current_ip">當前 IP</string>
+    <string name="session_used">本次用量</string>
+    <string name="session_lan_ip">內網 IP</string>
+    <string name="session_memory">記憶體占用</string>
+    <string name="session_memory_mb">%1$d MB</string>
+
     <!-- Orders -->
     <string name="order_empty">暫無訂單</string>
     <string name="order_unknown_plan">未知方案</string>

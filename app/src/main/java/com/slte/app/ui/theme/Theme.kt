@@ -15,64 +15,47 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+// v5（VmShell）Material 配色：与 V5Theme 保持一致，整个 App（含尚未重构为
+// v5 布局的页面）统一使用 v5 色板
 private val LightColors =
     lightColorScheme(
-        primary = md_light_primary,
-        onPrimary = md_light_onPrimary,
-        primaryContainer = md_light_primaryContainer,
-        onPrimaryContainer = md_light_onPrimaryContainer,
-        secondary = md_light_secondary,
-        onSecondary = md_light_onSecondary,
-        secondaryContainer = md_light_secondaryContainer,
-        onSecondaryContainer = md_light_onSecondaryContainer,
-        tertiary = md_light_tertiary,
-        onTertiary = md_light_onTertiary,
-        tertiaryContainer = md_light_tertiaryContainer,
-        onTertiaryContainer = md_light_onTertiaryContainer,
-        error = md_light_error,
-        onError = md_light_onError,
-        errorContainer = md_light_errorContainer,
-        onErrorContainer = md_light_onErrorContainer,
-        background = md_light_background,
-        onBackground = md_light_onBackground,
-        surface = md_light_surface,
-        onSurface = md_light_onSurface,
-        surfaceVariant = md_light_surfaceVariant,
-        onSurfaceVariant = md_light_onSurfaceVariant,
-        outline = md_light_outline,
-        outlineVariant = md_light_outlineVariant,
+        primary = Color(0xFF2F6BF6),
+        onPrimary = Color(0xFFFFFFFF),
+        secondary = Color(0xFF16AC6C),
+        onSecondary = Color(0xFFFFFFFF),
+        tertiary = Color(0xFFEE8A2C),
+        error = Color(0xFFE5484D),
+        background = Color(0xFFF1F0F6),
+        onBackground = Color(0xFF191C26),
+        surface = Color(0xFFFFFFFF),
+        onSurface = Color(0xFF191C26),
+        surfaceVariant = Color(0xFFF6F5FA),
+        onSurfaceVariant = Color(0xFF575E72),
+        outline = Color(0xFFE8E6EF),
+        outlineVariant = Color(0xFFEFEDF5),
     )
 
 private val DarkColors =
     darkColorScheme(
-        primary = md_dark_primary,
-        onPrimary = md_dark_onPrimary,
-        primaryContainer = md_dark_primaryContainer,
-        onPrimaryContainer = md_dark_onPrimaryContainer,
-        secondary = md_dark_secondary,
-        onSecondary = md_dark_onSecondary,
-        secondaryContainer = md_dark_secondaryContainer,
-        onSecondaryContainer = md_dark_onSecondaryContainer,
-        tertiary = md_dark_tertiary,
-        onTertiary = md_dark_onTertiary,
-        tertiaryContainer = md_dark_tertiaryContainer,
-        onTertiaryContainer = md_dark_onTertiaryContainer,
-        error = md_dark_error,
-        onError = md_dark_onError,
-        errorContainer = md_dark_errorContainer,
-        onErrorContainer = md_dark_onErrorContainer,
-        background = md_dark_background,
-        onBackground = md_dark_onBackground,
-        surface = md_dark_surface,
-        onSurface = md_dark_onSurface,
-        surfaceVariant = md_dark_surfaceVariant,
-        onSurfaceVariant = md_dark_onSurfaceVariant,
-        outline = md_dark_outline,
-        outlineVariant = md_dark_outlineVariant,
+        primary = Color(0xFF6E97FF),
+        onPrimary = Color(0xFF0B0D15),
+        secondary = Color(0xFF3DCC8E),
+        onSecondary = Color(0xFF0B0D15),
+        tertiary = Color(0xFFF5A25B),
+        error = Color(0xFFF4776D),
+        background = Color(0xFF0B0D15),
+        onBackground = Color(0xFFEDF0F8),
+        surface = Color(0xFF171A25),
+        onSurface = Color(0xFFEDF0F8),
+        surfaceVariant = Color(0xFF1F2331),
+        onSurfaceVariant = Color(0xFFA7AEC2),
+        outline = Color(0x14FFFFFF),
+        outlineVariant = Color(0x0DFFFFFF),
     )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,6 +82,8 @@ fun SlteTheme(
 
     CompositionLocalProvider(
         LocalExtendedColors provides extendedColors,
+        // v5 设计令牌全局下发：v5 原生页面与 v4 布局页面共享同一套明暗状态
+        LocalV5Colors provides if (darkTheme) DarkV5Colors else LightV5Colors,
 
         LocalTextSelectionColors provides
             TextSelectionColors(

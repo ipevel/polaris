@@ -87,8 +87,8 @@ jobs:
           ./gradlew :app:ktlintCheck :app:lintDebug 2>&1 | tee -a ci-failure.log
 
           if rg -n 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
-               app/src/main/java --glob '!**/ui/theme/SlteIcons.kt'; then
-            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（SlteIcons 统一图标规范）"
+               app/src/main/java --glob '!**/ui/theme/SlteIcons.kt' --glob '!**/ui/v5/**'; then
+            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（SlteIcons 统一图标规范；ui/v5 设计系统目录除外，其图标为组件自身定义）"
             exit 1
           fi
 
