@@ -417,7 +417,9 @@ jobs:
 
           git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
           cd polaris-updater
-          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Polaris-${VERSION}.apk"
+          # 直链跟随实际 Release 标签 $TAG（默认 v${VERSION}）：修复自定义 releaseTag
+          # 时 remote.json 直链指向 v${VERSION} 而资产挂在自定义 tag 上的 404 陷阱
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/Polaris-${VERSION}.apk"
           # 必须显式 export：Python 子进程经 os.environ 读取，未导出时 update_apk_url 恒为空串
           export APK_URL
           # 从构建产物校验文件中提取 APK SHA-256，写入 remote.json 驱动应用内
