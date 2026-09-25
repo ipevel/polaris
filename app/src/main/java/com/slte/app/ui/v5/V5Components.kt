@@ -210,14 +210,23 @@ fun V5TopBar(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (onBack != null) V5TopIconButton(Icons.AutoMirrored.Outlined.ArrowBack, onBack)
-        Text(
-            title,
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Bold,
-            color = V5ThemeColors.current.text,
-            maxLines = 1,
-        )
-        Spacer(Modifier.weight(1f))
+        // 标题用 weight 吃掉全部剩余宽度、空出的空间由它承担，这样 actions（如首页的
+        // 「已连接/未连接」胶囊）保持内在宽度并始终贴右。
+        // 注意两点：
+        // 1) 不能再保留 Spacer(weight(1f))——两个 weight 子项会均分剩余宽度，长标题
+        //    反而更早被省略号截断；
+        // 2) 站点名是面板可控的任意长字符串，必须给 Ellipsis，否则默认 Clip 会硬切字，
+        //    且非 weighted 的 Text 会把 actions 挤到 0 宽（首页连接状态就此不可见）。
+        Box(Modifier.weight(1f)) {
+            Text(
+                title,
+                fontSize = 21.sp,
+                fontWeight = FontWeight.Bold,
+                color = V5ThemeColors.current.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         actions()
     }
 }

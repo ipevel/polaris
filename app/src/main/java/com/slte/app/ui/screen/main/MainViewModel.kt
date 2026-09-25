@@ -75,6 +75,18 @@ constructor(
         viewModelScope.launch { sampleDeviceEnvironment() }
         viewModelScope.launch { subscriptionUpdater.maybeSilentUpdate(_data, viewModelScope) }
 
+        // 站点名/描述的独立兜底拉取。
+        //
+        // 此前它只由订阅更新链路写入（SubscriptionUpdater.refreshSiteInfoFromPanel），
+        // 且要求 hasPlan 为 true 且 updateProfile() 未失败；登录路径完全不碰站点信息，
+        // 订阅头 profile-title 多数面板也不返回。结果是：**首次登录后站点名长期为空**，
+        // 面板被网络策略拦截（例如 Cloudflare 拦大陆出口）时更是永远空。
+        // 这里在 VM 初始化时直接拉一次（非强制，命中内存缓存则零网络开销），
+        // 让顶栏/关于页在不依赖订阅更新的情况下也能拿到站点名。
+        viewModelScope.launch {
+            applySiteInfo(authRepository.fetchSiteInfo())
+        }
+
         // 站点名称/描述与订阅生命周期挂钩：订阅头（profile-title）+ 面板
         // comm/config 在每次订阅拉取时更新 SiteInfoStore，这里只观察回放
         viewModelScope.launch {

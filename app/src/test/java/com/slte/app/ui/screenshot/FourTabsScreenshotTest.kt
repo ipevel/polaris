@@ -100,7 +100,10 @@ class FourTabsScreenshotTest {
 
     private fun futureEpoch(days: Long): Long = System.currentTimeMillis() / 1000L + days * 86_400L
 
-    private fun dashboardData(connected: Boolean = true): DashboardData = DashboardData(
+    private fun dashboardData(
+        connected: Boolean = true,
+        siteName: String = "",
+    ): DashboardData = DashboardData(
         usedBytes = 128_000_000_000L,
         totalBytes = 1_024_000_000_000L,
         isValid = true,
@@ -108,6 +111,8 @@ class FourTabsScreenshotTest {
         planName = "Pro 月付套餐",
         daysUntilExpired = 18,
         expiredAt = futureEpoch(18),
+        // 空 = 站点名未配置/未拉到 → 顶栏回退应用名（默认保持 "" 使既有基线语义不变）
+        siteName = siteName,
         serverName = "香港 01",
         proxyMode = "规则",
         currentIp = "203.0.113.7",
@@ -164,6 +169,40 @@ class FourTabsScreenshotTest {
         }
     }
 
+    // 站点名非空：顶栏必须显示站点名而不是应用名（用户反馈「首页左上角名称没有引用站点名称」）
+    @Test
+    fun 首页站点名亮色() {
+        snapshot("home-site", dark = false) {
+            V5HomeScreen(
+                data = dashboardData(siteName = "北极星加速"),
+                onToggleConnection = {},
+                onVpnPermissionDenied = {},
+                vpnRequestIntent = { null },
+                onRenew = {},
+                onNavSelect = {},
+                refreshKernelInfo = {},
+            )
+        }
+    }
+
+    // 超长站点名：标题须省略号收尾，且右上「已连接/未连接」胶囊必须仍完整可见。
+    // 回归的是 V5TopBar 标题此前无 weight/无 overflow：非 weighted 的 Text 会吃掉
+    // 整行剩余宽度，把状态胶囊挤成 0 宽（连接状态就此不可见）。
+    @Test
+    fun 首页超长站点名亮色() {
+        snapshot("home-site-long", dark = false) {
+            V5HomeScreen(
+                data = dashboardData(siteName = "北极星加速器 · 全球专线 · 官方唯一直营站点 · 高速稳定"),
+                onToggleConnection = {},
+                onVpnPermissionDenied = {},
+                vpnRequestIntent = { null },
+                onRenew = {},
+                onNavSelect = {},
+                refreshKernelInfo = {},
+            )
+        }
+    }
+
     @Test
     fun 首页未连接亮色() {
         snapshot("home-off", dark = false) {
@@ -185,8 +224,7 @@ class FourTabsScreenshotTest {
             V5HomeScreen(
                 data = dashboardData(connected = false),
                 onToggleConnection = {},
-                onVpnPermissionDenied = {},
-                vpnRequestIntent = { null },
+                onVpnPermissionDenied = {},                vpnRequestIntent = { null },
                 onRenew = {},
                 onNavSelect = {},
                 refreshKernelInfo = {},

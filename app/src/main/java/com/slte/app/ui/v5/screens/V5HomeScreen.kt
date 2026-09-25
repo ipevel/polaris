@@ -276,7 +276,10 @@ internal fun V5HomeScreen(
     LaunchedEffect(Unit) { refreshKernelInfo() }
 
     V5PageScaffold(tab = NavTab.HOME, onNavSelect = onNavSelect) {
-        V5TopBar(stringResource(R.string.app_name)) {
+        // 站点名由数据层合并（面板 comm/config → 面板域名 → 订阅 profile-title），
+        // 未配置/未拉到才回退应用名。v5 改造时这里被写成固定 app_name，导致
+        // DashboardData.siteName 一直是死数据（v4 首页的契约见 git 历史 MainScreen.kt）。
+        V5TopBar(siteDisplayName(data.siteName, stringResource(R.string.app_name))) {
             if (connected) {
                 V5Chip(ChipTone.OK, stringResource(R.string.v5_connected_rule), icon = Icons.Outlined.Shield, large = true)
             } else {
