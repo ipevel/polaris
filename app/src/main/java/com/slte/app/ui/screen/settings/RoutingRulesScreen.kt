@@ -85,6 +85,29 @@ fun RoutingRulesScreen(
                 }
             }
 
+            item {
+                SlteCard(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = SlteIcons.Add,
+                        title = stringResource(R.string.routing_custom_add),
+                        subtitle = stringResource(R.string.routing_custom_add_desc),
+                        onClick = viewModel::showAddCustomGroup,
+                    )
+                }
+            }
+
+            items(data.custom.size, key = { data.custom[it].name }) { index ->
+                val custom = data.custom[index]
+                SlteCard(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = SlteIcons.Delete,
+                        title = custom.name,
+                        subtitle = custom.url,
+                        onClick = { viewModel.removeCustomGroup(custom.name) },
+                    )
+                }
+            }
+
             data.errorMessageRes?.let { res ->
                 item {
                     Text(
@@ -96,6 +119,19 @@ fun RoutingRulesScreen(
                 }
             }
         }
+    }
+
+    val customGroupState by viewModel.customGroupState.collectAsStateWithLifecycle()
+    val editing = customGroupState as? CustomGroupState.Editing
+    if (editing != null) {
+        CustomRuleGroupSheet(
+            state = editing,
+            onNameChange = viewModel::onCustomNameChange,
+            onUrlChange = viewModel::onCustomUrlChange,
+            onBehaviorChange = viewModel::onCustomBehaviorChange,
+            onSubmit = viewModel::submitCustomGroup,
+            onDismiss = viewModel::dismissCustomGroup,
+        )
     }
 }
 

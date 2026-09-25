@@ -270,6 +270,24 @@ constructor(
         written
     }
 
+    /** 分流规则管理页：新增自定义规则组，写盘后广播重载。 */
+    suspend fun addRoutingCustomGroup(group: RoutingCustomGroup): Boolean = withContext(ioDispatcher) {
+        val written = routingStateStore.addCustomGroup(group)
+        if (written) {
+            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
+        }
+        written
+    }
+
+    /** 分流规则管理页：删除自定义规则组，写盘后广播重载。 */
+    suspend fun removeRoutingCustomGroup(name: String): Boolean = withContext(ioDispatcher) {
+        val written = routingStateStore.removeCustomGroup(name)
+        if (written) {
+            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
+        }
+        written
+    }
+
     private fun profileName(): String = profileNameFor(subscribeSource.getEmail())
 
     suspend fun deleteAccountProfiles(email: String?): Boolean = safe(false, "deleteAccountProfiles") {

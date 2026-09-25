@@ -111,6 +111,22 @@ constructor(
     /** 清空全部组开关（恢复内置默认）；返回写入是否成功。 */
     fun resetGroups(): Boolean = write(load().copy(groups = emptyMap()))
 
+    /**
+     * 追加自定义规则组（同名或与内置组同名视为重复，拒绝写入）；
+     * 返回写入是否成功。
+     */
+    fun addCustomGroup(group: RoutingCustomGroup): Boolean {
+        val current = load()
+        if (current.custom.any { it.name == group.name }) return false
+        return write(current.copy(custom = current.custom + group))
+    }
+
+    /** 删除自定义规则组；返回写入是否成功。 */
+    fun removeCustomGroup(name: String): Boolean {
+        val current = load()
+        return write(current.copy(custom = current.custom.filter { it.name != name }))
+    }
+
     companion object {
         private const val LOG_TAG = "Polaris-Routing"
         const val FILE_NAME = "routing.json"

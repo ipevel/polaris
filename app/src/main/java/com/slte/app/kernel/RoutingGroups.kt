@@ -45,3 +45,7 @@ val RoutingGroups: List<RoutingGroupInfo> =
         RoutingGroupInfo("🎯 国内直连", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🌏 国外穿墙", defaultOn = true, defaultOut = "proxy"),
     )
+
+/** 内核保留组名（结构组 + 兜底组），与 Go 侧 GroupName* 常量一致，自定义组不得占用。 */
+val RoutingReservedNames: Set<String> =
+    setOf("🚀 节点选择", "自动选择", "故障转移", "🐟 漏网之鱼")

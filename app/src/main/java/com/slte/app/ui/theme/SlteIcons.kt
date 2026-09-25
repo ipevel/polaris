@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -139,6 +140,7 @@ object SlteIcons {
     val LightMode: ImageVector = Icons.Outlined.LightMode
     val Remind: ImageVector = Icons.Outlined.SwitchAccount
     val Route: ImageVector = Icons.AutoMirrored.Rounded.AltRoute
+    val Delete: ImageVector = Icons.Outlined.Delete
 
     val ExportLog: ImageVector = Icons.Outlined.Description
 

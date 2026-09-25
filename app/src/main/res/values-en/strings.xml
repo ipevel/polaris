@@ -295,6 +295,17 @@
     <string name="routing_outbound_block">Block by default</string>
     <string name="routing_rules_reset">Reset to defaults</string>
     <string name="routing_rules_reset_desc">Clear custom toggles and restore built-in defaults</string>
+    <string name="routing_custom_add">Add custom rule group</string>
+    <string name="routing_custom_add_desc">Tap a group below to delete it; rule sets are fetched and refreshed by the kernel</string>
+    <string name="routing_custom_name_hint">Name (1–32 chars, must not clash with built-ins)</string>
+    <string name="routing_custom_url_hint">Rule set URL (https, YAML payload)</string>
+    <string name="routing_custom_behavior_classical">Mixed types (classical)</string>
+    <string name="routing_custom_behavior_domain">Domains (domain)</string>
+    <string name="routing_custom_behavior_ipcidr">IP CIDRs (ipcidr)</string>
+    <string name="routing_custom_submit">Add</string>
+    <string name="routing_custom_invalid_name">Name empty, too long, or clashes with built-ins</string>
+    <string name="routing_custom_duplicate_name">A group with the same name already exists</string>
+    <string name="routing_custom_invalid_url">Only https URLs pointing to public hosts are allowed</string>
 
     <!-- Orders -->
     <string name="order_empty">No orders</string>

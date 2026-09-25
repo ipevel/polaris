@@ -291,6 +291,17 @@
     <string name="routing_outbound_block">預設攔截</string>
     <string name="routing_rules_reset">恢復預設開關</string>
     <string name="routing_rules_reset_desc">清除所有組的自訂開關，回到內建預設值</string>
+    <string name="routing_custom_add">新增自訂規則組</string>
+    <string name="routing_custom_add_desc">點擊下方組即可刪除；規則集由核心定期抓取更新</string>
+    <string name="routing_custom_name_hint">組名（1–32 字元，不可與內建組同名）</string>
+    <string name="routing_custom_url_hint">規則集地址（https，YAML payload）</string>
+    <string name="routing_custom_behavior_classical">全類型（classical）</string>
+    <string name="routing_custom_behavior_domain">網域（domain）</string>
+    <string name="routing_custom_behavior_ipcidr">IP 段（ipcidr）</string>
+    <string name="routing_custom_submit">新增</string>
+    <string name="routing_custom_invalid_name">組名為空、超長或與內建組衝突</string>
+    <string name="routing_custom_duplicate_name">同名規則組已存在</string>
+    <string name="routing_custom_invalid_url">僅支援 https 地址，且不得指向本機/內網</string>
 
     <!-- Orders -->
     <string name="order_empty">暫無訂單</string>
