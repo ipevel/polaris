@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.5.2",
-  "update_changelog_title": "Polaris 1.5.2 更新",
+  "update_version": "1.5.3",
+  "update_changelog_title": "Polaris 1.5.3 更新",
   "update_changelog": "### 1.5.2\n\n- **节点页改为「组 → 成员」两层选择**：主组「🚀 节点选择」卡片直接列出全部成员——自动选择 / 故障转移 / 直连 / 每个具体节点同层可选；分流组里的「跟随节点选择」因此真正生效\n- **修复延迟测速大面积「超时」**：测速不再对每个策略组重复拨测同一批节点（1.5 起的扇出放大），且「从未测过」与「测到失败」在界面上分开显示（未测 / 超时），不再把没测完的节点显示成超时\n- **测速结果更稳定**：测速地址统一为 https 并与内核默认一致，消除同一节点两条测速历史互相覆盖导致的延迟抖动\n- 修复本地分流在「订阅节点名与内置分流组名冲突」时整份配置加载失败的问题，改为回退面板分流并给出提示\n- 自定义规则组名称/直连域名的非法字符（如逗号）会即时拦截并自动清理历史脏数据",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.2/Polaris-1.5.2.apk",
-  "update_apk_sha256": "819dd06d53dac9d3e4f68a561b1e923fd0823eb7d09e687df5ba434873c797b5"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.3/Polaris-1.5.3.apk",
+  "update_apk_sha256": "d2b6bacec4a1d9762c4b81c3bc7572c8dd353c68002c31c6d68a03a912b0cb4d"
 }
