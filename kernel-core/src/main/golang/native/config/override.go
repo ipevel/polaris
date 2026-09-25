@@ -9,10 +9,10 @@ package config
 
 import (
 	"io"
-	"log"
 	"os"
 
 	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
 )
 
 type OverrideSlot int

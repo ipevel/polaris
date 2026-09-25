@@ -11,6 +11,7 @@ import com.github.kr328.clash.service.util.sendBroadcastSelf
 import com.slte.app.BuildConfig
 import com.slte.app.di.IoDispatcher
 import com.slte.app.utils.AppLog
+import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
@@ -42,6 +43,7 @@ constructor(
     private val manager: KernelManager,
     private val subscribeSource: SubscribeSource,
     private val remoteConfig: AppRemoteConfig,
+    private val routingStateStore: RoutingStateStore,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
 ) {
@@ -89,6 +91,11 @@ constructor(
             if (activeChanged) {
                 profiles.setActive(profile)
             }
+
+            // 本地分流：确保 routing.json 存在（默认启用），并把内置规则种子
+            // 播种到内核 provider 缓存目录，避免冷启动断网时规则集为空。
+            routingStateStore.ensureDefault()
+            seedRoutingProviders(uuid)
 
             if (activeChanged || injectDirectRule(uuid)) {
                 context.sendBroadcastSelf(
@@ -143,6 +150,9 @@ constructor(
                 }
                 file.parentFile?.mkdirs()
                 atomicWrite(file, cleaned)
+                // 订阅更新后补齐 routing.json 与规则种子（幂等）
+                routingStateStore.ensureDefault()
+                seedRoutingProviders(profile.uuid)
                 context.sendBroadcastSelf(
                     Intent(Intents.ACTION_PROFILE_CHANGED)
                         .putExtra(Intents.EXTRA_UUID, profile.uuid.toString()),
@@ -198,6 +208,45 @@ constructor(
         if (current == cleaned) return false
         atomicWrite(file, cleaned)
         return true
+    }
+
+    /**
+     * 把 APK 内置的分流规则种子（assets/routing/providers）复制到内核的
+     * provider 缓存目录（imported/<uuid>/providers/polaris-rules/，与 Go 侧
+     * patchProviders 改写后的路径一致）。只补缺失文件，不覆盖内核已按
+     * interval 刷新的缓存。失败仅记录日志——provider 缺失时内核会自行联网
+     * 下载，初始下载失败也不阻断配置加载。
+     */
+    private fun seedRoutingProviders(uuid: UUID) {
+        runCatching {
+            val names = context.assets.list(RoutingStateStore.ASSETS_PROVIDERS_DIR).orEmpty()
+            if (names.isEmpty()) return
+            val targetDir = context.filesDir
+                .resolve("imported/$uuid/providers")
+                .resolve(RoutingStateStore.PROVIDERS_SUB_DIR)
+            targetDir.mkdirs()
+            for (name in names) {
+                val target = targetDir.resolve(name)
+                if (target.exists()) continue
+                context.assets
+                    .open("${RoutingStateStore.ASSETS_PROVIDERS_DIR}/$name")
+                    .use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+            }
+        }.onFailure {
+            AppLog.w("Polaris-Kernel", "seedRoutingProviders: ${sanitizeLog(it.message ?: "Unknown")}")
+        }
+    }
+
+    /**
+     * 设置页开关：写入 routing.json 并广播触发内核重载（内核运行中时立即
+     * 生效；未运行时文件持久化，下次连接首次 load 即读取）。
+     */
+    suspend fun setLocalRoutingEnabled(enabled: Boolean): Boolean = withContext(ioDispatcher) {
+        val written = routingStateStore.setEnabled(enabled)
+        if (written) {
+            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
+        }
+        written
     }
 
     private fun profileName(): String = profileNameFor(subscribeSource.getEmail())

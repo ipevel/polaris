@@ -281,6 +281,10 @@
     <string name="settings_expire_remind">到期提醒</string>
     <string name="settings_traffic_remind">流量提醒</string>
     <string name="settings_remind_save_failed">提醒設定儲存失敗</string>
+    <string name="settings_local_routing">本地分流方案</string>
+    <string name="settings_local_routing_desc">啟用 App 內建分流規則並忽略面板下發設定（Karing 式）</string>
+    <string name="settings_local_routing_failed">分流設定儲存失敗</string>
+    <string name="settings_routing_rules">分流規則管理</string>
 
     <!-- Orders -->
     <string name="order_empty">暫無訂單</string>

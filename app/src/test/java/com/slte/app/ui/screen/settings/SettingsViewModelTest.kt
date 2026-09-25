@@ -10,12 +10,16 @@ import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.domain.model.User
+import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelProxy
+import com.slte.app.kernel.RoutingState
+import com.slte.app.kernel.RoutingStateStore
 import com.slte.app.support.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -34,12 +38,23 @@ class SettingsViewModelTest {
     private val kernelProxy = mockk<KernelProxy>(relaxed = true)
     private val localeStore = mockk<LocaleStore>(relaxed = true)
     private val themePreference = mockk<ThemePreference>(relaxed = true)
+    private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
+    private val kernelConfig = mockk<KernelConfig>(relaxed = true)
 
-    private fun viewModel(): SettingsViewModel {
+    private fun viewModel(routingState: RoutingState = RoutingState()): SettingsViewModel {
         every { localeStore.locale } returns MutableStateFlow(null)
         every { themePreference.mode } returns MutableStateFlow(ThemeMode.SYSTEM)
         coEvery { kernelProxy.tunStackMode() } returns "system"
-        return SettingsViewModel(authRepository, subscribeRepository, kernelProxy, localeStore, themePreference)
+        every { routingStateStore.load() } returns routingState
+        return SettingsViewModel(
+            authRepository,
+            subscribeRepository,
+            kernelProxy,
+            localeStore,
+            themePreference,
+            routingStateStore,
+            kernelConfig,
+        )
     }
 
     private fun user(
@@ -103,6 +118,39 @@ class SettingsViewModelTest {
 
         assertTrue("失败应回滚为开启", vm.data.value.expireRemindEnabled)
         assertEquals(R.string.settings_remind_save_failed, vm.data.value.errorMessageRes)
+    }
+
+    @Test
+    fun `本地分流开关从 routing json 加载且切换成功`() = runTest(mainRule.dispatcher) {
+        coEvery { subscribeRepository.fetchUserInfo(force = true) } returns Result.success(user())
+        val vm = viewModel(routingState = RoutingState(enabled = false))
+        advanceUntilIdle()
+        assertFalse(vm.data.value.localRoutingEnabled)
+
+        coEvery { kernelConfig.setLocalRoutingEnabled(true) } returns true
+        vm.setLocalRouting(true)
+        advanceUntilIdle()
+
+        assertTrue(vm.data.value.localRoutingEnabled)
+        assertEquals(RemindSync.Idle, vm.data.value.routingSync)
+        coVerify(exactly = 1) { kernelConfig.setLocalRoutingEnabled(true) }
+        verify(exactly = 0) { routingStateStore.setEnabled(any()) } // 落盘由 KernelConfig 负责
+    }
+
+    @Test
+    fun `本地分流切换失败回滚并提示`() = runTest(mainRule.dispatcher) {
+        coEvery { subscribeRepository.fetchUserInfo(force = true) } returns Result.success(user())
+        val vm = viewModel()
+        advanceUntilIdle()
+        assertTrue(vm.data.value.localRoutingEnabled)
+
+        coEvery { kernelConfig.setLocalRoutingEnabled(false) } returns false
+        vm.setLocalRouting(false)
+        advanceUntilIdle()
+
+        assertTrue("失败应回滚为开启", vm.data.value.localRoutingEnabled)
+        assertEquals(RemindSync.Idle, vm.data.value.routingSync)
+        assertEquals(R.string.settings_local_routing_failed, vm.data.value.errorMessageRes)
     }
 
     @Test

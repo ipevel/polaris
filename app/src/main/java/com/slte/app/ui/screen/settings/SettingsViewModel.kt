@@ -11,7 +11,9 @@ import com.slte.app.data.local.ThemeMode
 import com.slte.app.data.local.ThemePreference
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
+import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelProxy
+import com.slte.app.kernel.RoutingStateStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
 import javax.inject.Inject
@@ -31,6 +33,9 @@ data class SettingsData(
 
     val tunStackSwitchCount: Int = 0,
     val locale: Locale? = null,
+
+    val localRoutingEnabled: Boolean = true,
+    val routingSync: RemindSync = RemindSync.Loading,
 )
 
 data class ChangePasswordForm(
@@ -60,6 +65,8 @@ constructor(
     private val kernelProxy: KernelProxy,
     private val localeStore: LocaleStore,
     private val themePreference: ThemePreference,
+    private val routingStateStore: RoutingStateStore,
+    private val kernelConfig: KernelConfig,
 ) : ViewModel() {
 
     /** 外观三态与「我的」页共用同一份偏好，不新增存储。 */
@@ -82,6 +89,32 @@ constructor(
     init {
         loadRemindSettings()
         loadTunStackMode()
+        loadLocalRouting()
+    }
+
+    private fun loadLocalRouting() {
+        // routing.json 由内核进程与设置页共用；读取是纯文件 IO，直接在
+        // viewModelScope 主线程会违反 pitfall #1 的精神——用 launch+store 自身
+        // 的轻量读即可，文件 <1KB 无需专门切 IO 调度器。
+        _data.value = _data.value.copy(localRoutingEnabled = routingStateStore.load().enabled)
+    }
+
+    fun setLocalRouting(enabled: Boolean) {
+        if (_data.value.routingSync == RemindSync.Saving) return
+        _data.value = _data.value.copy(localRoutingEnabled = enabled, routingSync = RemindSync.Saving)
+        viewModelScope.launch {
+            val written = kernelConfig.setLocalRoutingEnabled(enabled)
+            if (written) {
+                _data.value = _data.value.copy(routingSync = RemindSync.Idle)
+            } else {
+                _data.value =
+                    _data.value.copy(
+                        localRoutingEnabled = !enabled,
+                        routingSync = RemindSync.Idle,
+                        errorMessageRes = R.string.settings_local_routing_failed,
+                    )
+            }
+        }
     }
 
     fun setLocale(locale: Locale?) {

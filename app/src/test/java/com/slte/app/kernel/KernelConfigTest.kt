@@ -37,6 +37,7 @@ class KernelConfigTest {
     private val profiles = mockk<IProfileManager>(relaxed = true)
     private val subscribeSource = mockk<SubscribeSource>(relaxed = true)
     private val remoteConfig = mockk<AppRemoteConfig>(relaxed = true)
+    private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
     private val reporter = KernelFaultReporter(mainRule.dispatcher)
 
     private val email = "a@b.c"
@@ -66,7 +67,7 @@ class KernelConfigTest {
         every { remoteConfig.apiBaseUrl } returns baseUrl
         every { remoteConfig.directDomains } returns domains
         every { subscribeSource.getEmail() } returns email
-        return KernelConfig(reporter, manager, subscribeSource, remoteConfig, mainRule.dispatcher, context)
+        return KernelConfig(reporter, manager, subscribeSource, remoteConfig, routingStateStore, mainRule.dispatcher, context)
     }
 
     private fun profile(

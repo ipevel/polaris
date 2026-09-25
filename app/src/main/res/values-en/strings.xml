@@ -285,6 +285,10 @@
     <string name="settings_expire_remind">Expiry alert</string>
     <string name="settings_traffic_remind">Traffic alert</string>
     <string name="settings_remind_save_failed">Failed to save alerts</string>
+    <string name="settings_local_routing">Local routing rules</string>
+    <string name="settings_local_routing_desc">Use built-in routing rules and ignore panel-issued config (Karing-style)</string>
+    <string name="settings_local_routing_failed">Failed to save routing settings</string>
+    <string name="settings_routing_rules">Routing rule groups</string>
 
     <!-- Orders -->
     <string name="order_empty">No orders</string>

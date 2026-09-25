@@ -95,10 +95,19 @@ fun SettingsScreen(
             item {
                 SlteCard(modifier = Modifier.fillMaxWidth()) {
                     SettingsSwitchRow(
+                        icon = SlteIcons.Route,
+                        title = stringResource(R.string.settings_local_routing),
+                        subtitle = stringResource(R.string.settings_local_routing_desc),
+                        checked = data.localRoutingEnabled,
+                        enabled = data.routingSync == RemindSync.Idle,
+                        onCheckedChange = viewModel::setLocalRouting,
+                    )
+                    SettingsSwitchRow(
                         icon = SlteIcons.Email,
                         title = stringResource(R.string.settings_expire_remind),
                         checked = data.expireRemindEnabled,
                         enabled = data.remindSync == RemindSync.Idle,
+                        topDivider = true,
                         onCheckedChange = viewModel::setExpireRemind,
                     )
                     SettingsSwitchRow(

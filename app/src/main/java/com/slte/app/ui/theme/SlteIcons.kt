@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.automirrored.rounded.AltRoute
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
@@ -137,6 +138,7 @@ object SlteIcons {
     val DarkMode: ImageVector = Icons.Outlined.DarkMode
     val LightMode: ImageVector = Icons.Outlined.LightMode
     val Remind: ImageVector = Icons.Outlined.SwitchAccount
+    val Route: ImageVector = Icons.AutoMirrored.Rounded.AltRoute
 
     val ExportLog: ImageVector = Icons.Outlined.Description
 

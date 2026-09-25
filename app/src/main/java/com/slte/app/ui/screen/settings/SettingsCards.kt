@@ -43,6 +43,7 @@ internal fun SettingsSwitchRow(
     title: String,
     checked: Boolean,
     enabled: Boolean,
+    subtitle: String? = null,
     topDivider: Boolean = false,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -50,6 +51,7 @@ internal fun SettingsSwitchRow(
     SlteRow(
         icon = icon,
         title = title,
+        subtitle = subtitle,
         modifier =
         Modifier.semantics(mergeDescendants = true) {
             role = Role.Switch

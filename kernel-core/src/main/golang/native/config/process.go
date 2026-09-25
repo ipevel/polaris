@@ -26,6 +26,7 @@ import (
 var processors = []processor{
 	patchExternalController, // must before patchOverride, so we only apply ExternalController in Override settings
 	patchOverride,
+	patchLocalRouting, // 本地分流（Karing 式）：在面板规则被处理前整体替换，须在 patchRules 之前
 	patchGeneral,
 	patchProfile,
 	patchDns,
@@ -88,7 +89,10 @@ func patchGeneral(cfg *config.RawConfig, _ string) error {
 }
 
 func patchProfile(cfg *config.RawConfig, _ string) error {
-	cfg.Profile.StoreSelected = false
+	// 本地分流启用时开启选择持久化：分流组/主选择组的用户选择跨重连存活，
+	// 且此时面板组已被替换、不存在"面板组错位恢复"的问题；关闭时维持原状
+	// （StoreSelected=false，面板组语义不变）。
+	cfg.Profile.StoreSelected = localRoutingEnabled
 	cfg.Profile.StoreFakeIP = true
 
 	// 安全:订阅不得携带正则匹配脚本(ReDoS 输入面,app 侧脱敏可被绕过)
