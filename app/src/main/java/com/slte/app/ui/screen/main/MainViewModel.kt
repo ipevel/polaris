@@ -17,6 +17,7 @@ import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.kernel.awaitTunnelReady
+import com.slte.app.kernel.cachedSpeedResults
 import com.slte.app.kernel.ensureGlobalSelection
 import com.slte.app.kernel.fetchPublicIp
 import com.slte.app.kernel.runAutoSpeedTest
@@ -269,10 +270,15 @@ constructor(
 
                 kernelProxy.ensurePersistedMode()
                 kernelProxy.serverInfo()?.let { info ->
+                    // 出口延迟只读既有测速缓存（不触发 healthCheck）。
+                    // info.node 已把「当前出口是策略组」的情形解析成真实叶子节点，
+                    // 因此选择「自动选择」时这里拿到的是该组当前选中节点的延迟。
+                    val delays = kernelProxy.cachedSpeedResults()
+                    val delay = info.node?.let { node -> delays?.get(node) }
                     _data.update { state ->
                         state.copy(
-
                             serverName = if (state.hasPlan) info.node ?: state.serverName else state.serverName,
+                            exitDelay = if (state.hasPlan) delay else null,
                         )
                     }
                 }

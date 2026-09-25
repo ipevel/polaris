@@ -261,7 +261,6 @@ private fun LeafPageContent(
         Page.Settings ->
             SettingsPageContent(
                 onBack = onBack,
-                onRoutingRules = onRoutingRules,
             )
 
         Page.RoutingRules -> RoutingRulesPageContent(onBack = onBack)

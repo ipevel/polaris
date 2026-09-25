@@ -50,6 +50,28 @@ internal fun V5TrafficScreen(
     V5PageScaffold(tab = NavTab.TRAFFIC, onNavSelect = onNavSelect) {
         V5TopBar(stringResource(R.string.page_traffic))
         V5ScrollBody(NavTab.TRAFFIC) {
+            // —— 合计（上下行相加）：此前只有上下行两个瓷贴，用户看不到总量
+            V5Card {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.v5_traffic_total),
+                            fontSize = 12.5.sp,
+                            color = c.text2,
+                        )
+                        Text(
+                            FormatUtils.traffic(totalDown + totalUp),
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = c.accent,
+                        )
+                    }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MacaronTile(TileTone.BLUE, stringResource(R.string.v5_traffic_down), FormatUtils.traffic(totalDown), Modifier.weight(1f))
                 MacaronTile(TileTone.ORANGE, stringResource(R.string.v5_traffic_up), FormatUtils.traffic(totalUp), Modifier.weight(1f))

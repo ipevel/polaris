@@ -18,10 +18,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** 兑换结果提示：本地化资源或后端原文二选一。 */
+/**
+ * 兑换结果提示：**只允许本地化资源**。
+ *
+ * 刻意不保留「后端原文」通道：面板/网关返回的 message 属于外部不可信文本，
+ * 直接 toast 出来等于把远端内容回显给用户（也曾出现把码值/内部错误一起吐出的情况）。
+ * 无法映射的失败一律落到 [ApiErrors.GIFT_CARD] 这个本地化兜底文案。
+ */
 data class GiftCardTip(
     @StringRes val messageRes: Int? = null,
-    val message: String? = null,
 )
 
 data class GiftCardRedeemState(
@@ -93,12 +98,9 @@ constructor(
     private fun Throwable.toTip(): GiftCardTip {
         val api = this as? ApiException
         if (api?.stringResId != null) return GiftCardTip(messageRes = api.stringResId)
+        // 只按关键词映射到本地化文案；未命中就用兜底，绝不回显后端原文（含码值/内部错误）。
         val mapped = ErrorMessages.giftCardMessageRes(message)
-        return when {
-            mapped != null -> GiftCardTip(messageRes = mapped)
-            !message.isNullOrBlank() -> GiftCardTip(message = message)
-            else -> GiftCardTip(messageRes = ApiErrors.GIFT_CARD)
-        }
+        return GiftCardTip(messageRes = mapped ?: ApiErrors.GIFT_CARD)
     }
 
     private companion object {

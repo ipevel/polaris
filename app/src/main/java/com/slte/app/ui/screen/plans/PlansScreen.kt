@@ -19,13 +19,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,8 +45,6 @@ import com.slte.app.ui.component.SlteCard
 import com.slte.app.ui.component.SltePullRefresh
 import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.formatCurrency
-import com.slte.app.ui.theme.SlteColors
-import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteRadii
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
@@ -146,7 +142,6 @@ private fun PlanCard(
     val firstPrice = plan.periodPrices.firstOrNull()
     val periodName =
         firstPrice?.let { FormatUtils.periodLabel(it.period, context) }.orEmpty()
-    val benefits = remember(plan.content) { planContentLines(plan.content) }
 
     SlteCard(
         modifier = Modifier.fillMaxWidth(),
@@ -205,24 +200,17 @@ private fun PlanCard(
                 }
             }
 
-            if (benefits.size > 1) {
+            if (!plan.content.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(Dimens.gap.md))
                 HorizontalDivider(
                     thickness = Dimens.dividerThickness,
                     color = MaterialTheme.colorScheme.outlineVariant,
                 )
                 Spacer(modifier = Modifier.height(Dimens.gap.md))
-                benefits.forEach { benefit ->
-                    BenefitRow(text = benefit)
-                    Spacer(modifier = Modifier.height(Dimens.gap.sm))
-                }
-            } else if (!plan.content.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(Dimens.gap.md))
-                HorizontalDivider(
-                    thickness = Dimens.dividerThickness,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                Spacer(modifier = Modifier.height(Dimens.gap.md))
+                // 面板下发的 content 统一走 RichText（HTML 走 HtmlText、Markdown 走渲染器），
+                // 与公告页保持同一套支持格式。此前 `benefits.size > 1` 会把多行内容降级成
+                // 纯文本逐行加勾：`**加粗**` 只剩「加粗**」、`- 列表` 被 trimStart 掉符号，
+                // 「套餐页不支持 md」的根因就在这里，而不是渲染器没接线。
                 RichText(
                     text = plan.content,
                     modifier = Modifier.fillMaxWidth(),
@@ -274,37 +262,3 @@ private fun PlanPill(
         }
     }
 }
-
-@Composable
-private fun BenefitRow(text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = SlteIcons.Check,
-            contentDescription = null,
-            modifier = Modifier.size(Dimens.icon.sm),
-            tint = SlteColors.current.accentInteractive,
-        )
-        Spacer(modifier = Modifier.width(Dimens.gap.sm))
-        Text(
-            text = text,
-            style = SlteType.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-private val HTML_TAG_REGEX = Regex("</?[a-zA-Z][^>]*>")
-
-/** 面板下发的 content 是 HTML / Markdown 列表，拆成纯文本行做权益清单；只有一行时保留富文本渲染。 */
-private fun planContentLines(content: String?): List<String> = content
-    ?.replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
-    ?.replace(Regex("</(p|div|li|h[1-6]|tr)>", RegexOption.IGNORE_CASE), "\n")
-    ?.replace(HTML_TAG_REGEX, "")
-    ?.lines()
-    ?.map { it.trim().trimStart('-', '*', '•').trim() }
-    ?.filter { it.isNotEmpty() }
-    .orEmpty()

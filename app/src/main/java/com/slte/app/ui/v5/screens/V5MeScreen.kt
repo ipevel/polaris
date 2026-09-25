@@ -45,6 +45,7 @@ import com.slte.app.ui.v5.V5TopBar
 internal fun V5MeScreen(
     data: ProfileData,
     onPlans: () -> Unit,
+    onGiftCard: () -> Unit,
     onOrders: () -> Unit,
     onInvite: () -> Unit,
     onTickets: () -> Unit,
@@ -103,6 +104,16 @@ internal fun V5MeScreen(
                     icon = Icons.Outlined.Wallet,
                     chevron = true,
                     onClick = onPlans,
+                )
+                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                // 礼品卡（兑换码）入口：v5 重写 b5e3464 删掉 v4 ProfileScreen 时丢掉了挂载点，
+                // 组件与 ViewModel 一直保留但全仓无调用点；这里按 v4 原样恢复入口，
+                // 复用既有 R.string.gift_card_title，不新增字符串（三语键集合无需改动）。
+                V5RowItem(
+                    title = stringResource(R.string.gift_card_title),
+                    icon = SlteIcons.InviteCode,
+                    chevron = true,
+                    onClick = onGiftCard,
                 )
                 HorizontalDivider(thickness = 1.dp, color = c.hairline2)
                 V5RowItem(

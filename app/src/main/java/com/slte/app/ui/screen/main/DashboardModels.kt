@@ -14,6 +14,16 @@ data class DashboardData(
     val daysUntilExpired: Int = 0,
     val expiredAt: Long = 0L,
     val serverName: String = Constants.PLACEHOLDER_DASH,
+
+    /**
+     * 当前出口节点的延迟（毫秒，来自已有的测速缓存 `cachedSpeedResults`）。
+     *
+     * 刻意**只读缓存**、不在进入首页时触发任何 healthCheck（否则每次回首页都会向全部
+     * 节点发起探测，与测速扇出收敛的方向相反）。未测过时为 null，界面不显示延迟。
+     * 当出口是「自动选择」这类策略组时，[serverName] 与它已由 `serverInfo()` 解析成
+     * 真实叶子节点，所以这里拿到的就是该组当前选中节点自己的延迟。
+     */
+    val exitDelay: Int? = null,
     val proxyMode: String = Constants.DEFAULT_PROXY_MODE,
     val currentIp: String = Constants.PLACEHOLDER_DASH,
 

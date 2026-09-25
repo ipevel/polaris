@@ -73,8 +73,8 @@ data class KernelProxyMember(
 )
 
 /**
- * 成员的语义类型。收敛此前散落在三处（`V5NodesScreen.groupExitLabel`、
- * `GroupExitSheet.memberLabel`、`RoutingGroups.RoutingReservedNames`）的字符串匹配。
+ * 成员的语义类型。收敛此前散落在两处（`V5NodesScreen.groupExitLabel`、
+ * `RoutingGroups.RoutingReservedNames`）的字符串匹配。
  */
 enum class KernelProxyMemberKind { NODE, GROUP, DIRECT, REJECT }
 
@@ -133,7 +133,15 @@ suspend fun KernelProxy.proxyGroups(): List<KernelProxyGroupInfo> = safe(emptyLi
         }
 }
 
-/** 在指定策略组内切换选中项。仅 Selector 类型支持手动切换。 */
+/**
+ * 在指定策略组内切换选中项。仅 Selector 类型支持手动切换。
+ *
+ * **必须回读确认**：内核 `PatchSelector` 在 `Selector.Set()` 失败时只打日志、
+ * 仍然 `return true`（`native/tunnel/proxies.go`），所以 AIDL 返回值**不能**作为
+ * 成功依据——否则成员名不匹配、profile 重载后组被替换等情况下，用户看到的就是
+ * "点了没反应、勾选不动，也没有任何错误提示"。这里以「回读 `now` 是否等于目标」
+ * 为唯一成功判据。
+ */
 suspend fun KernelProxy.selectInGroup(
     groupName: String,
     proxyName: String,
@@ -149,8 +157,13 @@ suspend fun KernelProxy.selectInGroup(
         return@safe false
     }
     val result = clash.patchSelector(groupName, proxyName)
-    AppLog.d("Polaris-Kernel", "selectInGroup: $groupName -> $proxyName result=$result")
-    result
+    val after = clash.queryProxyGroup(groupName, ProxySort.Default).now
+    val ok = after == proxyName
+    AppLog.d(
+        "Polaris-Kernel",
+        "selectInGroup: $groupName -> $proxyName result=$result after=$after ok=$ok",
+    )
+    ok
 }
 
 /** 触发指定策略组的延迟测试，返回成员名到延迟的映射（超时为 DELAY_TIMEOUT）。 */
@@ -173,9 +186,16 @@ private const val GROUP_TYPE_SELECTOR = "Selector"
  * 与 [selectInGroup] 分开是刻意的——分流组出口不是全局出口，在分流组里改
  * GLOBAL 会让「某个分类选了日本」顺带改掉全局出口（语义污染）。而节点页的
  * 主选择组本身就是全局出口的语义，所以这里额外同步。
+ *
+ * [groupName] 由 UI 传入当前**实际展示**的主组名（`primaryGroupOf` 可能回退到
+ * 第一个 Selectable 组），不要在这里硬编码 `PrimaryGroupName`，否则本地分流关闭
+ * 或面板改名时会把 patch 打到用户没在看的那一组（表现为"点了没用"）。
  */
-suspend fun KernelProxy.selectPrimary(name: String): Boolean {
-    val ok = selectInGroup(PrimaryGroupName, name)
+suspend fun KernelProxy.selectPrimary(
+    groupName: String,
+    name: String,
+): Boolean {
+    val ok = selectInGroup(groupName, name)
     if (ok) patchGlobalIfGlobal(name)
     return ok
 }

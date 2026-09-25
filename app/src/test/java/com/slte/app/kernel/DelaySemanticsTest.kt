@@ -255,3 +255,43 @@ class RoutingInputValidatorTest {
         assertFalse(RoutingInputValidator.isValidRuleDomainShape("http://a.com"))
     }
 }
+
+/** 节点页成员可见性：移除「故障转移」入口，但保留 now 命中项（防"鬼选中"）。 */
+class VisibleGroupMembersTest {
+
+    private fun auto() = KernelProxyMember(AUTO_GROUP_NAME, true, null, KernelProxyMemberKind.GROUP)
+
+    private fun fallback() = KernelProxyMember(FALLBACK_GROUP_NAME, true, null, KernelProxyMemberKind.GROUP)
+
+    private fun node(name: String) = KernelProxyMember(name, false, 42)
+
+    @Test
+    fun `默认入口里没有故障转移、但有自动选择`() {
+        val members = listOf(auto(), fallback(), node("香港 01"))
+        val visible = visibleGroupMembers(members, now = "香港 01")
+        assertEquals(listOf(AUTO_GROUP_NAME, "香港 01"), visible.map { it.name })
+    }
+
+    @Test
+    fun `当前出口正是故障转移时必须保留该项`() {
+        // 否则卡片头部显示「故障转移」，列表里却没有任何勾选行
+        val members = listOf(auto(), fallback(), node("香港 01"))
+        val visible = visibleGroupMembers(members, now = FALLBACK_GROUP_NAME)
+        assertEquals(listOf(AUTO_GROUP_NAME, FALLBACK_GROUP_NAME, "香港 01"), visible.map { it.name })
+    }
+
+    @Test
+    fun `now 为空或不匹配时判定为移除`() {
+        val members = listOf(fallback(), node("香港 01"))
+        assertEquals(listOf("香港 01"), visibleGroupMembers(members, now = null).map { it.name })
+        assertEquals(listOf("香港 01"), visibleGroupMembers(members, now = "日本 01").map { it.name })
+    }
+
+    @Test
+    fun `不改动其余成员的相对顺序与身份`() {
+        val members = listOf(node("A"), fallback(), node("B"))
+        val visible = visibleGroupMembers(members, now = "B")
+        assertEquals(listOf("A", "B"), visible.map { it.name })
+        assertTrue("必须是原对象而不是重建的副本", visible[0] === members[0])
+    }
+}

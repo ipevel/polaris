@@ -17,7 +17,6 @@ import com.slte.app.R
 import com.slte.app.ui.screen.settings.AppearanceMode
 import com.slte.app.ui.screen.settings.LanguageMode
 import com.slte.app.ui.screen.settings.SettingsViewModel
-import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5PageBody
@@ -39,7 +38,6 @@ internal fun V5SettingsScreen(
     onLanguage: () -> Unit,
     onTunStack: () -> Unit,
     onChangePassword: () -> Unit,
-    onRoutingRules: () -> Unit,
 ) {
     val c = V5ThemeColors.current
     val data by viewModel.data.collectAsStateWithLifecycle()
@@ -47,33 +45,8 @@ internal fun V5SettingsScreen(
     V5PageScaffold(tab = null) {
         V5TopBar(stringResource(R.string.settings_title), onBack = onBack)
         V5PageBody {
-            // —— 分流（Karing 式本地分流方案）
-            V5CardFlat(Modifier) {
-                V5RowItem(
-                    title = stringResource(R.string.settings_routing_rules),
-                    sub = stringResource(R.string.settings_local_routing_desc),
-                    icon = SlteIcons.Route,
-                    highlight = true,
-                    chevron = true,
-                    onClick = onRoutingRules,
-                )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
-                V5RowItem(
-                    title = stringResource(R.string.settings_local_routing),
-                    sub = stringResource(R.string.settings_local_routing_desc),
-                    icon = SlteIcons.Route,
-                    trailing = {
-                        V5Switch(checked = data.localRoutingEnabled)
-                    },
-                    onClick =
-                    if (data.routingSync == com.slte.app.ui.screen.settings.RemindSync.Idle) {
-                        { viewModel.setLocalRouting(!data.localRoutingEnabled) }
-                    } else {
-                        null
-                    },
-                )
-            }
-
+            // 分流相关的两个入口（分流规则管理 / 本地分流方案开关）已迁到节点页底部，
+            // 这里不再出现，避免同一设置项两处入口。
             // —— 通用
             V5CardFlat(Modifier) {
                 V5RowItem(

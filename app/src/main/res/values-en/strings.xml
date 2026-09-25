@@ -333,6 +333,7 @@
     <string name="v5_fallback_pick">Failover</string>
     <string name="v5_group_now">Now %1$s</string>
     <string name="v5_groups_loading">Loading proxy groups…</string>
+    <string name="v5_traffic_total">Total</string>
     <string name="v5_traffic_down">Down</string>
     <string name="v5_traffic_up">Up</string>
     <string name="v5_traffic_loading">Loading…</string>

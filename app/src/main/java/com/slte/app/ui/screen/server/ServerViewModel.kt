@@ -13,6 +13,7 @@ import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.SpeedTestOutcome
 import com.slte.app.kernel.cachedSpeedResults
 import com.slte.app.kernel.groupByTypeCurrentNode
+import com.slte.app.kernel.primaryGroupOf
 import com.slte.app.kernel.proxyGroups
 import com.slte.app.kernel.selectAuto
 import com.slte.app.kernel.selectFallback
@@ -192,7 +193,7 @@ constructor(
                 // 内核回读的主组 now 决定），保留写入只为兼容既有调用方/用例。
                 _data.update { it.copy(selectedNodeId = nodeId) }
                 viewModelScope.launch {
-                    kernelProxy.selectPrimary(node.name)
+                    selectPrimaryMember(node.name)
                     // 主选择组当前项变化后同步策略组快照，否则节点页高亮与
                     // 各分流组的「当前出口」显示会停留在旧值
                     refreshGroupsIfLoaded()
@@ -204,16 +205,24 @@ constructor(
     /**
      * 节点页「节点选择」卡的主组切换（成员可以是组：自动选择 / 故障转移）。
      * 失败必须有可见反馈——旧路径丢弃了内核返回的 Boolean，用户点了没反应。
+     *
+     * **组名不硬编码**：`primaryGroupOf` 在主组缺失（本地分流关闭 / 面板改名）时会
+     * 回退到第一个 Selectable 组，若这里写死 `PrimaryGroupName` 就会 patch 到用户
+     * 没在看的那一组，表现为"点了没用"。成功判据由 [selectInGroup] 的回读确认给出。
      */
-    fun selectPrimary(name: String) {
-        viewModelScope.launch {
-            if (!kernelProxy.selectPrimary(name)) {
-                _errorMessageRes.value = R.string.proxy_group_select_failed
-                return@launch
-            }
-            refreshSpecialNodes()
-            refreshGroupsIfLoaded()
+    suspend fun selectPrimaryMember(memberName: String) {
+        val primaryName = primaryGroupOf(_proxyGroups.value)?.name ?: com.slte.app.kernel.PrimaryGroupName
+        if (!kernelProxy.selectPrimary(primaryName, memberName)) {
+            _errorMessageRes.value = R.string.proxy_group_select_failed
+            return
         }
+        refreshSpecialNodes()
+        refreshGroupsIfLoaded()
+    }
+
+    /** 保留给旧调用点的入口（后台线程外的 UI 层统一走 [selectPrimaryMember]）。 */
+    fun selectPrimary(name: String) {
+        viewModelScope.launch { selectPrimaryMember(name) }
     }
 
     /** 仅在策略组已加载过时刷新，避免首次进入节点页前发起多余的组查询。 */
@@ -268,10 +277,24 @@ constructor(
 
     /**
      * 切换某个区块（按组名）的展开/收起。集合内 = 收起。
-     * 与 [com.slte.app.kernel.toggleCollapsed] 同一语义，保证可单测。
+     *
+     * 分流组走**单开手风琴**：每条分流组都 include-all 了全部节点，而节点页滚动体是
+     * 非懒加载的 `Column+verticalScroll`，同时展开多组会组合出「组数 × 节点数」行
+     * （默认 10 组 × N 节点，全开 27 组）；所以展开一个分流组时把其余分流组收起。
+     * 主组不受影响（它本是页面主任务）。
      */
     fun toggleSection(name: String) {
-        _collapsedSections.value = com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
+        val routingNames =
+            _proxyGroups.value
+                .map { it.name }
+                .filterNot { it in com.slte.app.kernel.RoutingReservedNames }
+        _collapsedSections.value =
+            if (name in routingNames) {
+                val collapsed = com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
+                if (name in collapsed) collapsed else collapsed + (routingNames - name)
+            } else {
+                com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
+            }
     }
 
     /**

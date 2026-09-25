@@ -11,7 +11,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.screen.about.AboutScreen
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemSheet
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemViewModel
 import com.slte.app.ui.screen.invite.InviteScreen
 import com.slte.app.ui.screen.invite.InviteViewModel
 import com.slte.app.ui.screen.main.DashboardData
@@ -118,12 +121,31 @@ internal fun ProfilePageContent(
     onSettings: () -> Unit,
     onAbout: () -> Unit,
     onNavSelect: (com.slte.app.ui.v5.NavTab) -> Unit,
+    // 礼品卡兑换：ViewModel 与 Sheet 组件在 v5 重写时被留成死代码，这里恢复挂载点。
+    // 用无 key 的 hiltViewModel()（与设置页同款），实例落在 Activity store，切 Tab 不丢状态。
+    giftCardViewModel: GiftCardRedeemViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(Unit) { profileViewModel.refresh() }
     val data by profileViewModel.data.collectAsStateWithLifecycle()
+
+    val giftCardState by giftCardViewModel.state.collectAsStateWithLifecycle()
+    val giftCardTip by giftCardViewModel.tip.collectAsStateWithLifecycle()
+    val giftCardRedeemed by giftCardViewModel.redeemed.collectAsStateWithLifecycle()
+    val toast = rememberToast()
+
+    LaunchedEffect(giftCardTip) {
+        giftCardTip?.messageRes?.let { toast.show(it) }
+        if (giftCardTip != null) giftCardViewModel.clearTip()
+    }
+    // 兑换成功会改变余额/流量/到期，必须回拉个人中心，否则用户看到的是旧数据
+    LaunchedEffect(giftCardRedeemed) {
+        if (giftCardRedeemed > 0) profileViewModel.refresh()
+    }
+
     V5MeScreen(
         data = data,
         onPlans = onRenew,
+        onGiftCard = giftCardViewModel::open,
         onOrders = onOrders,
         onInvite = onInvite,
         onTickets = onTickets,
@@ -133,6 +155,15 @@ internal fun ProfilePageContent(
         onLogout = profileViewModel::logout,
         onNavSelect = onNavSelect,
     )
+
+    if (giftCardState.visible) {
+        GiftCardRedeemSheet(
+            state = giftCardState,
+            onCodeChange = giftCardViewModel::updateCode,
+            onSubmit = giftCardViewModel::submit,
+            onDismiss = giftCardViewModel::dismiss,
+        )
+    }
 }
 
 @Composable
@@ -154,6 +185,11 @@ internal fun ServerPageContent(
     val isTestingAll by serverViewModel.isTestingAll.collectAsStateWithLifecycle()
     // 折叠态放 ViewModel：切 Tab 会销毁本屏组合，屏幕内 remember/rememberSaveable 都会丢
     val collapsedSections by serverViewModel.collapsedSections.collectAsStateWithLifecycle()
+    // 本地分流开关从设置页迁到节点页；用无 key 的 hiltViewModel()（与 SettingsPageContent 同款），
+    // 全仓无 NavHost → 落在同一 Activity store、按类名 key，因此两页拿到**同一实例**，
+    // 不会出现"一处拨动另一处显示旧值"的双真相。
+    val settingsViewModel: com.slte.app.ui.screen.settings.SettingsViewModel = hiltViewModel()
+    val settingsData by settingsViewModel.data.collectAsStateWithLifecycle()
     V5NodesScreen(
         data = data,
         groups = groups,
@@ -171,6 +207,9 @@ internal fun ServerPageContent(
         onNavSelect = onNavSelect,
         collapsedSections = collapsedSections,
         onToggleSection = serverViewModel::toggleSection,
+        localRoutingEnabled = settingsData.localRoutingEnabled,
+        localRoutingBusy = settingsData.routingSync != com.slte.app.ui.screen.settings.RemindSync.Idle,
+        onToggleLocalRouting = { settingsViewModel.setLocalRouting(!settingsData.localRoutingEnabled) },
     )
 }
 
@@ -226,7 +265,6 @@ internal fun PlansPageContent(
 @Composable
 internal fun SettingsPageContent(
     onBack: () -> Unit,
-    onRoutingRules: () -> Unit,
 ) {
     val viewModel: SettingsViewModel = hiltViewModel()
     var showAppearance by rememberSaveable { mutableStateOf(false) }
@@ -239,7 +277,6 @@ internal fun SettingsPageContent(
         onLanguage = { showLanguage = true },
         onTunStack = { showTunStack = true },
         onChangePassword = viewModel::showChangePassword,
-        onRoutingRules = onRoutingRules,
     )
     if (showAppearance) {
         AppearanceModeSheet(

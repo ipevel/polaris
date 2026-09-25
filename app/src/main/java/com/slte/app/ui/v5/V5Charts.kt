@@ -32,32 +32,60 @@ import com.slte.app.ui.theme.V5ThemeColors
    v5 图表：实时速率曲线 / 近 30 天柱状图 / 用量环形
    ============================================================ */
 
-private val SPARK_DOWN = floatArrayOf(
-    8f, 14f, 11f, 22f, 17f, 30f, 26f, 38f, 33f, 44f, 40f, 52f, 47f, 58f,
-    51f, 62f, 56f, 49f, 54f, 44f, 48f, 36f, 41f, 30f, 34f, 26f, 29f, 22f, 26f, 18f,
-)
-private val SPARK_UP = floatArrayOf(
-    4f, 6f, 5f, 9f, 7f, 12f, 10f, 15f, 13f, 18f, 16f, 21f, 19f, 24f,
-    21f, 26f, 23f, 20f, 22f, 18f, 20f, 15f, 17f, 13f, 15f, 11f, 13f, 9f, 11f, 7f,
-)
+/** 速率曲线的横向格数（固定刻度，右侧对齐最新采样）；与 MainViewModel 的历史上限一致。 */
+private const val WINDOW_POINTS = 60
 
-/** 实时速率曲线：下行主色面积图 + 上行琥珀细线。 */
+/** 速率纵轴刻度地板（1 MiB/s，单位与 speedHistory 一致为字节/秒）：低于它按它归一，抑制空闲抖动。 */
+private const val SPEED_SCALE_FLOOR_BPS = 1024L * 1024L
+
+/**
+ * 实时速率曲线：下行主色面积图 + 上行琥珀细线。
+ *
+ * [history] 为 `(上传 bps, 下载 bps)` 采样序列（MainViewModel 侧 1Hz、最多 60 点）。
+ * 三个必须守住的点（否则会出现"崩溃/假波动/假山峰"）：
+ * 1. **点数 < 2 不画线**：空列表取 `[0]` 会越界、单点 `/(size-1)` 会除零得 NaN；
+ * 2. **固定 60 点窗口、右对齐**：若按 `i/(n-1)*w` 拉满宽度，刚连接时 2 个点先铺满整宽、
+ *    之后每来一个采样整条曲线被压缩一次，是流式图表最典型的抖动；
+ * 3. **标尺有地板**：空闲时几百 bps 的抖动若按窗口峰值归一，会被放大成满屏山峰（图表说谎）。
+ */
 @Composable
-fun SparkChart(modifier: Modifier = Modifier, height: Dp = 52.dp) {
+fun SparkChart(
+    history: List<Pair<Long, Long>> = emptyList(),
+    modifier: Modifier = Modifier,
+    height: Dp = 52.dp,
+) {
     val c = V5ThemeColors.current
+    // 只用最近 WINDOW_POINTS 个采样，超出的老点丢弃（与 MainViewModel 的上限同源）。
+    val samples = if (history.size > WINDOW_POINTS) history.takeLast(WINDOW_POINTS) else history
+    // 归一化刻度：上行/下行共用同一峰值，保证两条线的相对高度可比。
+    // 峰值取「窗口内最大值」与「1MiB/s 地板」的较大者：
+    // - 取窗口最大值 → 两条线相对高度可比，任一方向为 0 时也不会把另一条线压平；
+    // - 有地板 → 空闲时几百 B/s 的抖动不会被拉成满屏山峰（那属于图表说谎）。
+    val peak = (samples.maxOfOrNull { maxOf(it.first, it.second) } ?: 0L)
+        .coerceAtLeast(SPEED_SCALE_FLOOR_BPS)
     Canvas(modifier.fillMaxWidth().height(height)) {
         val w = size.width
         val h = size.height
-        val maxY = 66f
-        fun pts(a: FloatArray): List<Offset> = a.mapIndexed { i, v -> Offset(i / (a.size - 1f) * w, h - v / maxY * h) }
+        // 采样不足两点时画基线：此前这里画的是硬编码假曲线，会让人误以为"有数据但不刷新"
+        if (samples.size < 2) {
+            drawLine(c.hairline2, Offset(0f, h - 1f), Offset(w, h - 1f), 1.dp.toPx())
+            return@Canvas
+        }
+        // 右对齐：x 按「固定 WINDOW_POINTS 格」定位，最新采样恒在最右侧。
+        // 若按 i/(n-1)*w 拉满宽度，刚连接时 2 个点先铺满整宽、之后每来一个采样整条曲线
+        // 被压缩一次——流式图表最典型的抖动，故 n 不参与横向刻度。
+        val offset = WINDOW_POINTS - samples.size
+        fun pts(value: (Pair<Long, Long>) -> Long): List<Offset> = samples.mapIndexed { i, sample ->
+            val v = value(sample).coerceAtLeast(0L).toFloat()
+            Offset((offset + i) / (WINDOW_POINTS - 1f) * w, h - (v / peak) * (h * 0.92f))
+        }
 
-        val down = pts(SPARK_DOWN)
-        val up = pts(SPARK_UP)
-
+        val down = pts { it.second }
+        val up = pts { it.first }
         val area = Path().apply {
-            moveTo(0f, h)
+            moveTo(down.first().x, h)
             down.forEach { lineTo(it.x, it.y) }
-            lineTo(w, h)
+            lineTo(down.last().x, h)
             close()
         }
         drawPath(

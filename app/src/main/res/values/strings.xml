@@ -329,6 +329,7 @@
     <string name="v5_fallback_pick">故障转移</string>
     <string name="v5_group_now">当前 %1$s</string>
     <string name="v5_groups_loading">正在加载策略组…</string>
+    <string name="v5_traffic_total">合计流量</string>
     <string name="v5_traffic_down">下行</string>
     <string name="v5_traffic_up">上行</string>
     <string name="v5_traffic_loading">加载中…</string>

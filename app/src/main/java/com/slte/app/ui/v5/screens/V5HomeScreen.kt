@@ -308,15 +308,17 @@ internal fun V5HomeScreen(
                             color = c.text3,
                         )
                     }
-                    HeroConnectButton(
-                        connected = connected,
-                        modifier = Modifier.padding(top = 4.dp),
-                        onClick = handleToggle,
-                    )
+                    // 节点（含延迟）移到按钮**上方**：此前它在大圆钮下方，而圆钮的光环
+                    // 向下溢出约 13~23dp，视觉上正好压住节点行——即用户反馈的"按钮挡住节点"。
+                    // 延迟取自测速缓存（未测过则不显示，不写"未测"以免误导）；出口是
+                    // 「自动选择」时 serverName 已被 serverInfo() 解析为其当前选中的叶子节点，
+                    // 因此这里显示的确实是那个节点的延迟。
                     V5Chip(
                         if (connected) ChipTone.OK else ChipTone.ACCENT,
                         if (connected) {
-                            stringResource(R.string.v5_connected_node, data.serverName)
+                            val base = stringResource(R.string.v5_connected_node, data.serverName)
+                            val delay = data.exitDelay
+                            if (delay != null && delay > 0) "$base · $delay ms" else base
                         } else {
                             stringResource(R.string.v5_ready_no_node)
                         },
@@ -325,6 +327,11 @@ internal fun V5HomeScreen(
                         large = true,
                         modifier = Modifier.padding(top = 12.dp),
                     )
+                    HeroConnectButton(
+                        connected = connected,
+                        modifier = Modifier.padding(top = 20.dp),
+                        onClick = handleToggle,
+                    )
                 }
             }
             // —— 速率瓷片
@@ -332,10 +339,10 @@ internal fun V5HomeScreen(
                 SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, Modifier.weight(1f))
                 SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, Modifier.weight(1f))
             }
-            // —— 速率曲线
+            // —— 速率曲线（真实采样：MainViewModel.speedWatchJob 每秒写入 speedHistory）
             V5Card {
                 if (connected) {
-                    SparkChart()
+                    SparkChart(history = data.speedHistory)
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         Text(

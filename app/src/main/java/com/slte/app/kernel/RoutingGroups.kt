@@ -53,9 +53,33 @@ const val PrimaryGroupName: String = "🚀 节点选择"
 const val OUTBOUND_DIRECT: String = "DIRECT"
 const val OUTBOUND_REJECT: String = "REJECT"
 
+/** 主组的自动测速组名（内核 GroupNameAuto），保留为用户可选出口。 */
+const val AUTO_GROUP_NAME: String = "自动选择"
+
+/** 主组的故障转移组名（内核 GroupNameFallback）。按产品要求从节点页 UI 移除。 */
+const val FALLBACK_GROUP_NAME: String = "故障转移"
+
+/**
+ * 节点页各组成员里实际可见的成员（纯函数，可单测）。
+ *
+ * 产品决策：**移除「故障转移」入口**（用户反馈其行为不符合预期），**保留「自动选择」**
+ * ——它是内核主组的首位成员即默认出口，且本次已修好"选择不生效"的两个缺陷
+ * （`PatchSelector` 吞错 → 改为回读 `now` 确认；`selectPrimary` 硬编码组名 → 改为传入
+ * 实际展示的组名）。
+ *
+ * 必须保留 `now` 命中项：否则当某组当前出口正是「故障转移」时，卡片头部会显示该名字
+ * 而列表里没有任何勾选行（"鬼选中"）。
+ */
+fun visibleGroupMembers(
+    members: List<KernelProxyMember>,
+    now: String?,
+): List<KernelProxyMember> = members.filter { member ->
+    member.name != FALLBACK_GROUP_NAME || member.name == now
+}
+
 /** 内核保留组名（结构组 + 兜底组），与 Go 侧 GroupName* 常量一致，自定义组不得占用。 */
 val RoutingReservedNames: Set<String> =
-    linkedSetOf(PrimaryGroupName, "自动选择", "故障转移", "🐟 漏网之鱼")
+    linkedSetOf(PrimaryGroupName, AUTO_GROUP_NAME, FALLBACK_GROUP_NAME, "🐟 漏网之鱼")
 
 /**
  * 节点页区块折叠集合的切换（纯函数，可单测）。集合内 = **已收起**。

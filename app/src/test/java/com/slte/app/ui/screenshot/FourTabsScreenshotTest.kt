@@ -437,6 +437,7 @@ class FourTabsScreenshotTest {
         V5MeScreen(
             data = profileData,
             onPlans = {},
+            onGiftCard = {},
             onOrders = {},
             onInvite = {},
             onTickets = {},
