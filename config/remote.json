@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.5.3",
-  "update_changelog_title": "Polaris 1.5.3 更新",
+  "update_version": "1.5.4",
+  "update_changelog_title": "Polaris 1.5.4 更新",
   "update_changelog": "### 1.5.3\n\n- **首页左上角改为显示站点名称**（此前固定显示 Polaris）：站点名取自面板后台配置，未配置时退化为面板域名，仍取不到才回退应用名；且不再依赖「订阅更新成功」这一前提，登录后即可生效\n- **节点页「节点选择」卡片支持折叠**：点击卡片头部收起/展开，收起后仍显示当前出口（不展开也能确认流量走向）；折叠状态切换标签页后保持\n- **超长站点名不再挤掉右上角连接状态**：标题超长时以省略号收尾，「已连接 / 未连接」胶囊始终完整可见\n- 站点名显示做安全清洗：换行、零宽字符与双向控制字符会被剔除（避免单行标题被撑成两行或出现视觉反转）\n- 顺带修复：分流规则组出口弹层在订阅更新/测速后可能显示旧值",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.3/Polaris-1.5.3.apk",
-  "update_apk_sha256": "d2b6bacec4a1d9762c4b81c3bc7572c8dd353c68002c31c6d68a03a912b0cb4d"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.4/Polaris-1.5.4.apk",
+  "update_apk_sha256": "b6501cbe964a9572136393a80e128badf2aa26d544ecc44da840d79783d6a536"
 }
