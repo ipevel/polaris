@@ -170,6 +170,40 @@ class ServerViewModelTest {
         assertEquals(R.string.dashboard_no_plan_tip, vm.errorMessageRes.value)
     }
 
+    @Test
+    fun `策略组内切换失败时提示错误`() = runTest(mainRule.dispatcher) {
+        // 未桩化内核时 selectInGroup 扩展函数实际执行后 clash==null，safe 返回 false，触发失败路径
+        val vm = viewModel()
+
+        vm.selectInGroup(GROUP_NAME, "香港01")
+        advanceUntilIdle()
+
+        assertEquals(R.string.proxy_group_select_failed, vm.errorMessageRes.value)
+    }
+
+    @Test
+    fun `购买后刷新节点成功填充列表`() = runTest(mainRule.dispatcher) {
+        coEvery { serverRepository.fetchServers(any()) } returns Result.success(listOf(node("香港01", 1)))
+        val vm = viewModel()
+
+        vm.refreshNodesForPurchase()
+        advanceUntilIdle()
+
+        assertEquals(1, vm.data.value.nodes.size)
+        assertNull(vm.errorMessageRes.value)
+    }
+
+    @Test
+    fun `购买后刷新节点失败提示错误`() = runTest(mainRule.dispatcher) {
+        coEvery { serverRepository.fetchServers(any()) } returns Result.failure(java.io.IOException("boom"))
+        val vm = viewModel()
+
+        vm.refreshNodesForPurchase()
+        advanceUntilIdle()
+
+        assertEquals(R.string.error_server_load, vm.errorMessageRes.value)
+    }
+
     /** 以桩化的内核策略组替换默认的"未就绪"内核，供测速 / 策略组用例使用。 */
     private fun stubClashGroups(
         members: List<Pair<String, Int>>,
