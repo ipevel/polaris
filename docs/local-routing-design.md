@@ -46,11 +46,32 @@
 | # | 组名 | 类型 | 成员 | 说明 |
 |---|---|---|---|---|
 | 1 | 🚀 节点选择 | select | [自动选择, 故障转移, DIRECT] + include-all | 全局手动选择，默认=自动选择 |
-| 2 | 自动选择 | url-test | include-all | url=gstatic generate_204, interval=300, tolerance=50, lazy |
+| 2 | 自动选择 | url-test | include-all | url=gstatic generate_204（https，见下），interval=300, tolerance=50, lazy 默认 |
 | 3 | 故障转移 | fallback | include-all | 同上 URL |
-| 4… | 各分流组 | select | [🚀 节点选择, REJECT, DIRECT]（block 型组 REJECT 首位） | 默认出口由首位成员表达 |
-| n-1 | 🎯 全球直连 | select | [DIRECT, 🚀 节点选择] | |
-| n | 🐟 漏网之鱼 | select | [🚀 节点选择, DIRECT] | MATCH 兜底组 |
+| 4… | 各分流组 | select | [🚀 节点选择, REJECT, DIRECT]（block 型组 REJECT 首位） + include-all | 默认出口由首位成员表达 |
+| n-1 | 🎯 全球直连 | select | [DIRECT, 🚀 节点选择] + include-all | |
+| n | 🐟 漏网之鱼 | select | [🚀 节点选择, DIRECT] | MATCH 兜底组，刻意不 include-all |
+
+> **成员顺序与显示**：`include-all` 并入的成员在 mihomo 侧被 `slices.Sort(AllProxies)` 按
+> **UTF-8 字节序**排序，与面板 API 顺序不同；Kotlin 的 `String.compareTo` 是 UTF-16 code unit 序
+> （含 emoji 的节点名结果不同）。因此节点页用 `orderMembers()` 按**面板索引映射**重排节点段
+> （结构项保持内核位置，面板列表外的成员追加到末尾；索引为空时原样返回内核序）。
+
+> **测速 URL 契约（2026-09-25 起）**：`proxyGroupURL` 必须与 mihomo `constant.DefaultTestURL`
+> 逐字一致（当前均为 `https://www.gstatic.com/generate_204`），并显式设置
+> `expected-status: "204"`。原因：生成组显式声明 url 时，`addTestUrlToProviders` 会把它注册为
+> proxy-provider 的**额外** health-check 任务（`healthcheck.go` 的 `url != hc.url` 才登记）——
+> 两者不同会让同一节点被两个 URL 各测一次，而 UI 只读 `latestDelayTestUrl()` 选出的「最近有结果」
+> 那一条，表现为延迟抖动甚至把好节点读成超时；留空 expected-status 时 mihomo 默认 `*`，
+> 任意响应（含中间盒拦截页 200）都算存活。改动此常量**必须重编 `libclash.so`**（坑 7）。
+
+> **测速扇出契约（坑 10）**：`include-all` 让每个生成组都持有全部节点，而 `HealthCheckAll()`
+> 对每个组都起 goroutine 且组间无全局上限 → 一次测速的拨测次数是 `组数 × 节点数`。App 侧因此
+> 只 await **结构组**（`KernelProxySpeed.collectDelaysViaStructuralGroup`）：`healthCheck(group)`
+> 的 AIDL 返回发生在 `connectivity.go` 的 `wg.Wait()` 之后，是唯一可靠的「该组已测完」信号；
+> 预算按 `ceil(N/10)×5s×1.5`，上下限 15s/300s。分流组的 `include-all` **不要**为降扇出撤掉
+> （那是「每条分类可指定任意出口」的实现方式）。
+
 
 - 与现有 App 启发式对齐：`selectAuto()` 找 URLTest 组命中「自动选择」；`selectFallback()` 命中「故障转移」；`ensureGlobalSelection()` 全局模式兜底自动挂载。
 - 面板 `cfg.ProxyGroup` / `cfg.Rule` / `cfg.SubRules` / `cfg.RuleProvider` 整体丢弃（= 屏蔽网站下发分流）。

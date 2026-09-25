@@ -158,8 +158,9 @@ internal fun ServerPageContent(
         isLoadingGroups = isLoadingGroups,
         testingGroup = testingGroup,
         isTestingAll = isTestingAll,
-        onQuickSelect = serverViewModel::selectNode,
-        onSelectNode = serverViewModel::selectNode,
+        // 节点选择卡是主组切换：走 selectPrimary（额外同步全局模式下的 GLOBAL），
+        // 分流规则组仍走 selectInGroup（不应改 GLOBAL）。
+        onSelectPrimary = serverViewModel::selectPrimary,
         onSelectInGroup = serverViewModel::selectInGroup,
         onTestGroup = serverViewModel::testGroup,
         onStartSpeedTest = serverViewModel::startSpeedTest,

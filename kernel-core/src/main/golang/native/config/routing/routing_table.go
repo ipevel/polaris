@@ -32,9 +32,18 @@ const (
 	outboundDirect = "DIRECT"
 	outboundReject = "REJECT"
 
-	proxyGroupURL       = "http://www.gstatic.com/generate_204"
+	// proxyGroupURL 与 mihomo 的 constant.DefaultTestURL 必须逐字一致：
+	// 生成组显式声明 url 时，addTestUrlToProviders 会把它注册为 proxy-provider
+	// 的额外 health-check 任务（healthcheck.go:url != hc.url 才登记）；两者不同
+	// 会让同一节点被两个 URL 各测一次，而 LatestDelayTestUrl 只取「最近有结果」
+	// 的那条 → UI 延迟在两条历史之间抖动、甚至把好节点读成超时。
+	// 之前这里是明文 http://，既与被阻断的明文链路冲突，也与默认 URL 不一致。
+	proxyGroupURL       = "https://www.gstatic.com/generate_204"
 	proxyGroupInterval  = 300
 	proxyGroupTolerance = 50
+	// proxyGroupExpectedStatus 只把 204 视为存活。留空时 mihomo 默认 "*"，
+	// 任意响应（含中间盒的拦截页 200）都算通，会伪造出「低延迟」。
+	proxyGroupExpectedStatus = "204"
 )
 
 // Provider 一个规则集数据源。

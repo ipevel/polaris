@@ -124,6 +124,7 @@
     <string name="server_speed_test_done">Speed test completed</string>
     <string name="server_speed_test_failed">Speed test failed, check your network and retry</string>
     <string name="server_timeout">Timeout</string>
+    <string name="server_untested">Not tested</string>
 
     <!-- Invite -->
     <string name="invite_title">Referral</string>
@@ -306,6 +307,8 @@
     <string name="routing_custom_invalid_name">Name empty, too long, or clashes with built-ins</string>
     <string name="routing_custom_duplicate_name">A group with the same name already exists</string>
     <string name="routing_custom_invalid_url">Only https URLs pointing to public hosts are allowed</string>
+    <string name="routing_custom_cleaned_invalid">Some custom rule groups had invalid names or domains and were removed</string>
+    <string name="routing_degraded_notice">Local routing was not applied: subscription node names collide with built-in group names, panel routing is used instead</string>
 
     <!-- V5 UI (v5 redesign additions) -->
     <string name="page_nodes">Nodes</string>

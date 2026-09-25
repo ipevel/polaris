@@ -17,6 +17,7 @@ import com.slte.app.domain.model.SubscribeInfo
 import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.KernelProxyMember
+import com.slte.app.kernel.KernelProxyMemberKind
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.screen.main.DashboardData
 import com.slte.app.ui.screen.profile.ProfileData
@@ -212,11 +213,17 @@ class FourTabsScreenshotTest {
             type = "Selector",
             now = "香港 01",
             selectable = true,
+            // include-all 会把结构项排在最前，节点段按面板序重排（orderMembers）
             members = listOf(
                 KernelProxyMember("香港 01", false, 32),
                 KernelProxyMember("香港 02", false, 45),
                 KernelProxyMember("日本 01", false, 68),
                 KernelProxyMember("新加坡 01", false, 55),
+                KernelProxyMember(name = "自动选择", isGroup = true, delay = null, kind = KernelProxyMemberKind.GROUP),
+                KernelProxyMember(name = "故障转移", isGroup = true, delay = null, kind = KernelProxyMemberKind.GROUP),
+                KernelProxyMember(name = "DIRECT", isGroup = false, delay = null, kind = KernelProxyMemberKind.DIRECT),
+                // 从未测过的节点：必须显示「未测」而不是「超时」
+                KernelProxyMember("未测节点", false, 0),
             ),
         ),
         KernelProxyGroupInfo(
@@ -251,8 +258,7 @@ class FourTabsScreenshotTest {
                 isLoadingGroups = false,
                 testingGroup = null,
                 isTestingAll = false,
-                onQuickSelect = {},
-                onSelectNode = {},
+                onSelectPrimary = {},
                 onSelectInGroup = { _, _ -> },
                 onTestGroup = {},
                 onStartSpeedTest = {},
@@ -272,8 +278,7 @@ class FourTabsScreenshotTest {
                 isLoadingGroups = false,
                 testingGroup = null,
                 isTestingAll = false,
-                onQuickSelect = {},
-                onSelectNode = {},
+                onSelectPrimary = {},
                 onSelectInGroup = { _, _ -> },
                 onTestGroup = {},
                 onStartSpeedTest = {},

@@ -36,12 +36,31 @@ type Proxy struct {
 	Type     string `json:"type"`
 	Delay    int    `json:"delay"`
 	IsGroup  bool   `json:"isGroup"`
+	// Tested 表示该 proxy 的测速 URL 是否已产生过至少一条历史记录。
+	// 与 Delay 组合可把三态区分开：
+	//   Tested=false                 → 从未测过（App 显示「未测」）
+	//   Tested=true  && Delay=0xffff → 测过但不存活（App 显示「超时」）
+	//   Tested=true  && Delay<=65534 → 真实延迟
+	// 此前两者都返回 0xffff，UI 只能把「没测完」显示成「超时」。
+	Tested bool `json:"tested"`
 }
 
 type ProxyGroup struct {
 	Type    string   `json:"type"`
 	Now     string   `json:"now"`
 	Proxies []*Proxy `json:"proxies"`
+}
+
+// delayTested 判断该 proxy 是否已经跑过至少一次测速：URLTest 在 defer 里
+// 一定会给 p.extra[url] 建条目并写入一条历史（失败时 Delay=0），所以只要
+// 存在非空历史就说明「测过」，区别于「从未测过」。
+func delayTested(p C.Proxy) bool {
+	for _, state := range p.ExtraDelayHistories() {
+		if len(state.History) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // latestDelayTestURL 取最近一次被测过的 URL：节点历史中可能并存多个测速 URL
@@ -219,6 +238,7 @@ func convertProxies(proxies []C.Proxy, uiSubtitlePattern *regexp2.Regexp) []*Pro
 			Type:     p.Type().String(),
 			Delay:    int(p.LastDelayForTestUrl(testURL)),
 			IsGroup:  isGroup,
+			Tested:   delayTested(p),
 		})
 	}
 	return result
@@ -254,6 +274,7 @@ func collectProviders(providers []provider.ProxyProvider, uiSubtitlePattern *reg
 				Type:     px.Type().String(),
 				Delay:    int(px.LastDelayForTestUrl(testURL)),
 				IsGroup:  isGroup,
+				Tested:   delayTested(px),
 			})
 		}
 	}

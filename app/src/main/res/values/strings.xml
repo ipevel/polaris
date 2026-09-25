@@ -121,6 +121,7 @@
     <string name="server_speed_test_done">测速完成</string>
     <string name="server_speed_test_failed">测速失败，请检查网络后重试</string>
     <string name="server_timeout">超时</string>
+    <string name="server_untested">未测</string>
 
     <!-- Invite -->
     <string name="invite_title">邀请返利</string>
@@ -302,6 +303,8 @@
     <string name="routing_custom_invalid_name">组名为空、超长或与内置组冲突</string>
     <string name="routing_custom_duplicate_name">同名规则组已存在</string>
     <string name="routing_custom_invalid_url">仅支持 https 地址，且不得指向本地/内网</string>
+    <string name="routing_custom_cleaned_invalid">部分自定义规则组名称或直连域名非法，已自动移除</string>
+    <string name="routing_degraded_notice">本地分流未生效：订阅节点名与内置分流组名冲突，已临时回退面板分流</string>
 
     <!-- V5 UI（v5 重设计新增） -->
     <string name="page_nodes">节点</string>

@@ -27,6 +27,36 @@
 - 头文件：`jniLibs/arm64-v8a/libclash.h` 与 `cpp/libclash.h` 导出符号与本次构建逐一比对
   一致（仅 cgo 行号注释差异），故未替换；`.so` 摘要见同目录 SHA256SUMS。
 
+## 2026-09-25 重建记录（测速与健壮性修复）
+
+- 变更：
+  - `native/config/routing/routing_table.go`：`proxyGroupURL` 由明文
+    `http://www.gstatic.com/generate_204` 改为与 mihomo `constant.DefaultTestURL`
+    逐字一致的 `https://…`，并新增 `proxyGroupExpectedStatus = "204"`。
+    原来组 URL 与 provider 默认 URL 不同，会让每个 proxy-provider 被登记一条
+    额外 health-check（`healthcheck.go:url != hc.url` 才登记）→ 同一节点被两个
+    URL 各测一次，而 UI 只读「最近有结果」的那条 → 延迟在两条历史之间抖动。
+    另：留空 expected-status 时 mihomo 默认 `*`，任意响应（含拦截页 200）都算通。
+  - `native/config/routing/routing_build.go`：结构组补 `expected-status`；
+    自定义组名与直连域名接入 `validGroupName` / `validRuleDomain`（非法项跳过
+    并告警，避免逗号导致 `RULE-SET` / `DOMAIN-SUFFIX` 字段错位进而整份配置加载失败）。
+  - `native/config/routing/reserved.go`（新增）：生成前扫描面板节点名 / provider 名
+    是否命中保留名（结构组 + 内置分流组 + `DIRECT/REJECT/COMPLETE/PASS/GLOBAL/default`），
+    命中即 `NameCollisionError` → 复用既有「降级回面板配置」回退（mihomo 对重名是
+    硬失败，会被订阅内容直接触发）。
+  - `native/config/routing.go`：降级时写 `routing-degraded.json` 标记（成功应用时删除），
+    App 侧读取后给可见提示。
+  - `native/tunnel/proxies.go`：`Proxy` 新增 `tested` 字段（`delayTested`），把
+    「从未测过」与「测过但不存活」区分开——两者此前都返回 `0xffff`，UI 只能把
+    没测完显示成「超时」。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+- 头文件：`libclash.h` 已随本次构建刷新，导出符号（37 个）与 `cpp/libclash.h` 比对一致。
+- 验证：`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags "android cmfa with_gvisor" ./native/...`
+  通过；`go test ./native/config/routing/...` 通过（含新增的测速 URL / 命名冲突 /
+  字符集校验 / 预算默认值断言）；`:app:verifyKernelBinary` 与 `:app:testDebugUnitTest` 见 CI 记录。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。

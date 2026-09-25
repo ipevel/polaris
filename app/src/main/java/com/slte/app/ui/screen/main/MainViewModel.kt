@@ -55,6 +55,7 @@ constructor(
     private val authRepository: AuthRepository,
     private val siteInfoStore: SiteInfoStore,
     private val deviceEnvironment: DeviceEnvironmentSource,
+    private val routingStateStore: com.slte.app.kernel.RoutingStateStore,
 ) : ViewModel() {
     private val _data = MutableStateFlow(DashboardData())
     val data: StateFlow<DashboardData> = _data.asStateFlow()
@@ -230,9 +231,23 @@ constructor(
                         refreshKernelInfo()
                         sampleDeviceEnvironment()
                         startSpeedWatch()
+                        checkRoutingDegraded()
                     }
             }
         }
+    }
+
+    /**
+     * 本地分流被内核降级（生成失败 / 面板节点名与保留组名冲突）时提示用户。
+     * 内核会写 `routing-degraded.json`，成功应用时删除，所以「文件在」= 当前
+     * 处于降级状态（分流开关看起来开着、实际走面板分流）。不做提示的话用户
+     * 只会认为「分流开关坏了」。
+     */
+    private fun checkRoutingDegraded() {
+        val degraded = routingStateStore.readDegraded() ?: return
+        AppLog.w("Polaris-Main", "本地分流已降级: reason=${degraded.reason}")
+        routingStateStore.clearDegraded()
+        _data.update { it.copy(errorMessageRes = R.string.routing_degraded_notice) }
     }
 
     fun refreshKernelInfo() {

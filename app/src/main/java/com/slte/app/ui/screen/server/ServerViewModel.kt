@@ -10,13 +10,15 @@ import com.slte.app.data.repository.ServerRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.kernel.KernelProxyGroupInfo
+import com.slte.app.kernel.SpeedTestOutcome
 import com.slte.app.kernel.cachedSpeedResults
 import com.slte.app.kernel.groupByTypeCurrentNode
 import com.slte.app.kernel.proxyGroups
 import com.slte.app.kernel.selectAuto
 import com.slte.app.kernel.selectFallback
 import com.slte.app.kernel.selectInGroup
-import com.slte.app.kernel.selectNode
+import com.slte.app.kernel.selectPrimary
+import com.slte.app.kernel.speedTestOutcome
 import com.slte.app.kernel.speedTestProgressiveAndCache
 import com.slte.app.kernel.testGroup
 import com.slte.app.utils.Constants
@@ -166,14 +168,31 @@ constructor(
             }
             else -> {
                 val node = _data.value.nodes.firstOrNull { it.id == nodeId } ?: return
+                // selectedNodeId 是 v5 之前的遗留字段（v5 节点页的选中态完全由
+                // 内核回读的主组 now 决定），保留写入只为兼容既有调用方/用例。
                 _data.update { it.copy(selectedNodeId = nodeId) }
                 viewModelScope.launch {
-                    kernelProxy.selectNode(node.name)
+                    kernelProxy.selectPrimary(node.name)
                     // 主选择组当前项变化后同步策略组快照，否则节点页高亮与
                     // 各分流组的「当前出口」显示会停留在旧值
                     refreshGroupsIfLoaded()
                 }
             }
+        }
+    }
+
+    /**
+     * 节点页「节点选择」卡的主组切换（成员可以是组：自动选择 / 故障转移）。
+     * 失败必须有可见反馈——旧路径丢弃了内核返回的 Boolean，用户点了没反应。
+     */
+    fun selectPrimary(name: String) {
+        viewModelScope.launch {
+            if (!kernelProxy.selectPrimary(name)) {
+                _errorMessageRes.value = R.string.proxy_group_select_failed
+                return@launch
+            }
+            refreshSpecialNodes()
+            refreshGroupsIfLoaded()
         }
     }
 
@@ -193,16 +212,20 @@ constructor(
         // 先置位再启协程：点击即进入测速态，重复点击直接被上面的守卫吃掉
         _isTestingAll.value = true
         viewModelScope.launch {
-            // 页面只剩策略组，测速即"全组测速"：healthCheckAll 覆盖所有组，
-            // 结束后把内核的实时延迟回读到策略组卡片上
+            // 本地分流下结构组已 include-all，测速只 await 结构组（见 KernelProxySpeed）
             val delays = kernelProxy.speedTestProgressiveAndCache { }
             refreshGroups()
+            // 同一份 delays 回填节点列表：此前只刷新策略组，导致「全部节点」
+            // 列表停留在旧值、与分组卡片显示两个不同数字
+            if (delays.isNotEmpty()) {
+                _data.update { state -> state.copy(nodes = mergeDelays(state.nodes, delays)) }
+            }
             _isTestingAll.value = false
             _speedTestTipRes.value =
-                if (delays.values.any { it != Constants.DELAY_TIMEOUT }) {
-                    R.string.server_speed_test_done
-                } else {
-                    R.string.server_speed_test_failed
+                when (speedTestOutcome(delays, completed = true)) {
+                    SpeedTestOutcome.COMPLETE -> R.string.server_speed_test_done
+                    SpeedTestOutcome.PARTIAL -> R.string.server_speed_test_done
+                    SpeedTestOutcome.EMPTY -> R.string.server_speed_test_failed
                 }
         }
     }
@@ -230,8 +253,10 @@ constructor(
     }
 
     /**
-     * 内核延迟 0 会被归一化成「超时」占位，未经测速的节点在卡片上会一律显示超时。
-     * 这里用上次测速的缓存回填这些成员，让策略组在测速前也能显示已知延迟。
+     * 未经测速的成员延迟是「未测」（[Constants.DELAY_PENDING]）而不是「超时」，
+     * 用上次测速的缓存回填这些成员，让策略组在测速前也能显示已知延迟。
+     * 已测过且失败（[Constants.DELAY_TIMEOUT]）的成员同样用缓存覆盖——
+     * 缓存里存的是历史有效值（见 KernelProxySpeed.storeableDelays）。
      */
     private fun withCachedDelays(groups: List<KernelProxyGroupInfo>): List<KernelProxyGroupInfo> {
         val cached = kernelProxy.cachedSpeedResults()?.takeIf { it.isNotEmpty() } ?: return groups
@@ -240,10 +265,23 @@ constructor(
                 members =
                 group.members.map { member ->
                     val hit = cached[member.name] ?: return@map member
-                    if (member.delay == null || member.delay == Constants.DELAY_TIMEOUT) member.copy(delay = hit) else member
+                    val unmeasured =
+                        member.delay == null ||
+                            member.delay <= Constants.DELAY_PENDING ||
+                            member.delay >= Constants.DELAY_TIMEOUT
+                    if (unmeasured) member.copy(delay = hit) else member
                 },
             )
         }
+    }
+
+    /** 把测速结果合并进节点列表（纯函数，可单测）。 */
+    internal fun mergeDelays(
+        nodes: List<NodeItem>,
+        delays: Map<String, Int>,
+    ): List<NodeItem> = nodes.map { node ->
+        val hit = delays[node.name] ?: return@map node
+        node.copy(delay = if (hit >= Constants.DELAY_TIMEOUT) Constants.DELAY_TIMEOUT else hit)
     }
 
     fun selectInGroup(
@@ -304,7 +342,9 @@ data class ServerData(
             nodes
                 .asSequence()
                 .mapNotNull { it.delay }
-                .filter { it != Constants.DELAY_TIMEOUT }
+                // > DELAY_PENDING：未测（0）不能被当成 0ms 参与取最小
+                // < DELAY_TIMEOUT：超时（999）不是有效延迟
+                .filter { it > Constants.DELAY_PENDING && it < Constants.DELAY_TIMEOUT }
                 .minOrNull()
 
     val fallbackDelay: Int?
@@ -312,7 +352,7 @@ data class ServerData(
             kernelFallbackDelay ?: nodes
                 .asSequence()
                 .mapNotNull { it.delay }
-                .filter { it != Constants.DELAY_TIMEOUT }
+                .filter { it > Constants.DELAY_PENDING && it < Constants.DELAY_TIMEOUT }
                 .sorted()
                 .toList()
                 .getOrNull(1)

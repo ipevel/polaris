@@ -51,6 +51,12 @@ object Constants {
 
     const val DELAY_TIMEOUT = 999
 
+    /**
+     * 从未测过（内核侧 tested=false / 无数据）。与 [DELAY_TIMEOUT] 区分：
+     * 之前两者都被归一成 999，UI 只能把「没测完」显示成「超时」。
+     */
+    const val DELAY_PENDING = 0
+
     const val DELAY_INVALID_MAX = 65535
 }
 

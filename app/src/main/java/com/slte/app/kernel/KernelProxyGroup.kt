@@ -68,7 +68,26 @@ data class KernelProxyMember(
     val name: String,
     val isGroup: Boolean,
     val delay: Int?,
+    /** 语义分类，渲染层据此给标签，不再做字符串匹配。 */
+    val kind: KernelProxyMemberKind = KernelProxyMemberKind.NODE,
 )
+
+/**
+ * 成员的语义类型。收敛此前散落在三处（`V5NodesScreen.groupExitLabel`、
+ * `GroupExitSheet.memberLabel`、`RoutingGroups.RoutingReservedNames`）的字符串匹配。
+ */
+enum class KernelProxyMemberKind { NODE, GROUP, DIRECT, REJECT }
+
+/** 成员类型判定（纯函数，可单测）。 */
+internal fun memberKindOf(
+    name: String,
+    isGroup: Boolean,
+): KernelProxyMemberKind = when {
+    name == OUTBOUND_DIRECT -> KernelProxyMemberKind.DIRECT
+    name == OUTBOUND_REJECT -> KernelProxyMemberKind.REJECT
+    isGroup -> KernelProxyMemberKind.GROUP
+    else -> KernelProxyMemberKind.NODE
+}
 
 /** 一个策略组的快照，用于「可分流的选择」界面。 */
 data class KernelProxyGroupInfo(
@@ -102,13 +121,11 @@ suspend fun KernelProxy.proxyGroups(): List<KernelProxyGroupInfo> = safe(emptyLi
                     group.proxies
                         .filter { it.name != groupName }
                         .map { proxy ->
-                            if (proxy.name.contains("**")) {
-                                AppLog.d("Polaris-Kernel", "proxyGroups: member name 含粗体标记=${proxy.name}")
-                            }
                             KernelProxyMember(
                                 name = proxy.name,
                                 isGroup = proxy.isGroup,
-                                delay = normalizeDelay(proxy.delay),
+                                delay = resolveDelay(proxy.delay, proxy.tested),
+                                kind = memberKindOf(proxy.name, proxy.isGroup),
                             )
                         },
                 )
@@ -143,10 +160,25 @@ suspend fun KernelProxy.testGroup(groupName: String): Map<String, Int> = safe(em
     clash
         .queryProxyGroup(groupName, ProxySort.Delay)
         .proxies
-        .associate { it.name to normalizeDelay(it.delay) }
+        // healthCheck 返回时该组已完成探测（见 KernelProxySpeed 的说明），
+        // 所以这里未取到真实值的成员一定是「测过但失败」。
+        .associate { it.name to resolveDelay(it.delay, hasTestRun = true) }
 }
 
 private const val GROUP_TYPE_SELECTOR = "Selector"
+
+/**
+ * 节点页「节点选择」卡的主组切换：成功后同步全局模式下的 GLOBAL。
+ *
+ * 与 [selectInGroup] 分开是刻意的——分流组出口不是全局出口，在分流组里改
+ * GLOBAL 会让「某个分类选了日本」顺带改掉全局出口（语义污染）。而节点页的
+ * 主选择组本身就是全局出口的语义，所以这里额外同步。
+ */
+suspend fun KernelProxy.selectPrimary(name: String): Boolean {
+    val ok = selectInGroup(PrimaryGroupName, name)
+    if (ok) patchGlobalIfGlobal(name)
+    return ok
+}
 
 private const val GLOBAL_GROUP = "GLOBAL"
 
@@ -167,7 +199,7 @@ suspend fun KernelProxy.groupByTypeDelay(type: String): Int? = safe(null, "group
             ?: state.proxies.firstOrNull { !it.isGroup }
             ?: return@safe null
 
-    normalizeDelay(proxy.delay)
+    resolveDelay(proxy.delay, hasTestRun = true)
 }
 
 internal suspend fun KernelProxy.queryGroupByTypeName(type: String): String? {
@@ -205,7 +237,25 @@ internal suspend fun KernelProxy.waitForGroups(): String? {
     return null
 }
 
-internal fun KernelProxy.normalizeDelay(delay: Int): Int = if (delay <= 0 || delay >= Constants.DELAY_INVALID_MAX) Constants.DELAY_TIMEOUT else delay
+/**
+ * 延迟三态归一（纯函数，可单测）。
+ *
+ * 内核 `LastDelayForTestUrl` 对「从未测过」与「测过但不存活」都返回 0xffff，
+ * 只有 `Proxy.Tested` 能把两者分开（native/tunnel/proxies.go:delayTested）：
+ * - `1..65534`            → 真实延迟，原样返回
+ * - 0xffff 且 hasTestRun  → 测过但失败 → [Constants.DELAY_TIMEOUT]（「超时」）
+ * - 其余（含 0/负数）     → 从未测过 → [Constants.DELAY_PENDING]（「未测」）
+ *
+ * hasTestRun=false 用于「本会话还没跑过测速」的读数：此时 0xffff 不能断言是超时。
+ */
+internal fun resolveDelay(
+    raw: Int,
+    hasTestRun: Boolean,
+): Int = when {
+    raw in 1 until Constants.DELAY_INVALID_MAX -> raw
+    raw >= Constants.DELAY_INVALID_MAX && hasTestRun -> Constants.DELAY_TIMEOUT
+    else -> Constants.DELAY_PENDING
+}
 
 internal suspend fun KernelProxy.selectorGroup(): String? {
     val clash = manager.clash() ?: return null

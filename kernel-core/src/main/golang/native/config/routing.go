@@ -4,6 +4,8 @@
 package config
 
 import (
+	"errors"
+
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/log"
 
@@ -22,6 +24,7 @@ func patchLocalRouting(cfg *config.RawConfig, _ string) error {
 	state := routing.ReadState()
 	localRoutingEnabled = state.Enabled
 	if !state.Enabled {
+		routing.ClearDegraded()
 		return nil
 	}
 	// 自家后端域名优先用 App 侧注入的真实清单（routing.json）；
@@ -31,11 +34,19 @@ func patchLocalRouting(cfg *config.RawConfig, _ string) error {
 		domains = state.DirectDomains
 	}
 	if err := routing.Build(cfg, state, domains); err != nil {
-		// 生成本地分流失败时回退面板配置（而不是让整个 profile 加载失败）
+		// 生成本地分流失败时回退面板配置（而不是让整个 profile 加载失败）。
+		// 写下降级标记，App 侧据此给出可见提示，避免"开关看起来开了但其实没生效"。
 		localRoutingEnabled = false
+		reason := "build-failed"
+		var collision *routing.NameCollisionError
+		if errors.As(err, &collision) {
+			reason = "name-collision"
+		}
+		routing.WriteDegraded(reason, err.Error())
 		log.Warnln("Apply local routing: %s", err.Error())
 		return nil
 	}
+	routing.ClearDegraded()
 	log.Infoln("Local routing applied: %d rules", len(cfg.Rule))
 	return nil
 }

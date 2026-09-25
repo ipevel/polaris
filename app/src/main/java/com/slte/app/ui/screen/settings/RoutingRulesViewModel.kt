@@ -10,7 +10,7 @@ import com.slte.app.data.remote.config.ConfigValidation
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.RoutingCustomGroup
 import com.slte.app.kernel.RoutingGroups
-import com.slte.app.kernel.RoutingReservedNames
+import com.slte.app.kernel.RoutingInputValidator
 import com.slte.app.kernel.RoutingStateStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
@@ -74,7 +74,10 @@ constructor(
 
     /** 组的生效开关：routing.json 有覆盖用覆盖值，否则用内置默认。 */
     private fun refresh() {
-        val state = routingStateStore.load()
+        // loadSanitized：旧版本或其它写入点可能在 routing.json 留下非法名称/
+        // 域名（会让整份内核配置加载失败），读时清掉并回写，同时提示用户。
+        val sanitized = routingStateStore.loadSanitized()
+        val state = sanitized.state
         val items =
             RoutingGroups.map { group ->
                 RoutingRuleItem(
@@ -84,7 +87,18 @@ constructor(
                     enabled = state.groups[group.name] ?: group.defaultOn,
                 )
             }
-        _data.update { it.copy(items = items, custom = state.custom) }
+        _data.update {
+            it.copy(
+                items = items,
+                custom = state.custom,
+                errorMessageRes =
+                if (sanitized.hasDropped) {
+                    R.string.routing_custom_cleaned_invalid
+                } else {
+                    it.errorMessageRes
+                },
+            )
+        }
     }
 
     fun setEnabled(
@@ -185,9 +199,9 @@ constructor(
         val url = form.url.trim()
         val error =
             when {
-                name.isEmpty() || name.length > 32 -> R.string.routing_custom_invalid_name
-                RoutingGroups.any { it.name == name } || name in RoutingReservedNames ->
-                    R.string.routing_custom_invalid_name
+                // 字符集校验（逗号/控制字符）与保留名判定统一收敛到 validator，
+                // 与内核侧 reserved.go 的规则保持一致。
+                !RoutingInputValidator.isValidGroupName(name) -> R.string.routing_custom_invalid_name
                 !isValidPublicHttpsUrl(url) -> R.string.routing_custom_invalid_url
                 else -> null
             }

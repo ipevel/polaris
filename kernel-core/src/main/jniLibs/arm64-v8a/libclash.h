@@ -21,22 +21,22 @@ extern const char *_GoStringPtr(_GoString_ s);
 /* Start of preamble from import "C" comments.  */
 
 
-#line 3 "app.go"
+#line 10 "app.go"
 #include "bridge.h"
 
 #line 1 "cgo-generated-wrapper"
 
-#line 3 "config.go"
+#line 10 "config.go"
 #include "bridge.h"
 
 #line 1 "cgo-generated-wrapper"
 
-#line 3 "log.go"
+#line 10 "log.go"
 #include "bridge.h"
 
 #line 1 "cgo-generated-wrapper"
 
-#line 3 "main.go"
+#line 10 "main.go"
 
 
 
@@ -44,17 +44,17 @@ extern const char *_GoStringPtr(_GoString_ s);
 
 #line 1 "cgo-generated-wrapper"
 
-#line 3 "proxy.go"
+#line 10 "proxy.go"
 #include "bridge.h"
 
 #line 1 "cgo-generated-wrapper"
 
-#line 3 "tun.go"
+#line 10 "tun.go"
 #include "bridge.h"
 
 #line 1 "cgo-generated-wrapper"
 
-#line 3 "tunnel.go"
+#line 10 "tunnel.go"
 #include "bridge.h"
 
 #line 1 "cgo-generated-wrapper"

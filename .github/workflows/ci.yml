@@ -13,6 +13,43 @@ permissions:
   contents: read
 
 jobs:
+  go:
+    name: 内核 Go 门禁（vet + build + test）
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: 安装 Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          # 与 go.mod 的 `go 1.20` 兼容；内核本身用 Go NDK 交叉编译，这里只做
+          # 语法/编译/单测门禁（GOOS=linux，不需要 NDK）。
+          go-version: '1.22'
+
+      - name: go vet（native 全树，带构建标签）
+        working-directory: kernel-core/src/main/golang
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go vet -tags "android cmfa with_gvisor" ./native/...
+
+      - name: go build（native 交叉编译语法门禁）
+        working-directory: kernel-core/src/main/golang
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go build -tags "android cmfa with_gvisor" ./native/...
+
+      # 这条是本次回归能溜进发布的结构性缺口：routing 单测早已存在
+      # （含组数契约 TestDefaultOnGroups），但 CI 从来没跑过 go test。
+      - name: go test（本地分流生成层）
+        working-directory: kernel-core/src/main/golang
+        run: go test -v -count=1 ./native/config/routing/...
+
   quality:
     name: 质量门禁（test + ktlint + lint）
     runs-on: ubuntu-latest

@@ -1,0 +1,149 @@
+// Polaris 首次连接业务流 — 业务视图（actor / action / outcome）
+// 状态：current（当前实现）
+// 职责分层：本图只讲业务动作与结果；实现类名/文件/协议在 first-connect-flow.technical.dot
+// 置信度：[高] 代码/配置直接证据；[中] 多方部分信号但无直接确认；[低] 命名或结构推断；[未知] 明确未知
+// 渲染：需 CJK 字体。Windows 下 graphviz 自带 fontname 可用；Linux 渲染请加 -Gfontname 或装中文字体
+digraph polaris_first_connect_business {
+  rankdir=TB;
+  graph [
+    fontname="Microsoft YaHei",
+    fontsize=16,
+    labelloc="t",
+    label="Polaris 首次连接业务流（业务视图）\n范围：填面板地址 → 登录 → 拉订阅 → 净化配置 → 起隧道 → 流量回流\n证据见 first-connect-flow.evidence.md，缺口见 first-connect-flow.risks-and-gaps.md",
+    compound=true,
+    newrank=true,
+    nodesep=0.4,
+    ranksep=0.55,
+    bgcolor="white"
+  ];
+  node [
+    fontname="Microsoft YaHei",
+    fontsize=11,
+    shape=box,
+    style="rounded,filled",
+    fillcolor="#f4f7fb",
+    color="#7d90a6"
+  ];
+  edge [
+    fontname="Microsoft YaHei",
+    fontsize=9,
+    color="#5a6b7d",
+    fontcolor="#3d4b5a"
+  ];
+
+  /* ================= 用户 / 设备 ================= */
+  subgraph cluster_user {
+    label="用户 / 设备";
+    style="rounded,dashed";
+    color="#9aa9bb";
+    fontsize=12;
+    fontcolor="#5a6b7d";
+
+    b_user_enter_url [label="填写「自己」面板网址\n（App 不内置任何地址）[高]", fillcolor="#e6effa"];
+    b_user_confirm_change [label="地址与上次保存的不一致？\n→ 二次确认（防误切面板）[高]", shape=diamond, fillcolor="#fff6e0"];
+    b_user_grant_vpn [label="系统 VPN 授权弹窗\n（VpnService.prepare）[高]", shape=diamond, fillcolor="#fff6e0"];
+    b_user_see_connected [label="看到「已连接」\n+ 实时网速 + 本次累计流量 [高]", fillcolor="#e6f4ea"];
+    b_user_cancel [label="连接中可再次点击取消 [高]", fillcolor="#eef1f5"];
+  }
+
+  /* ================= 外部面板（信任边界） ================= */
+  subgraph cluster_panel {
+    label="用户自选面板（外部系统 · 信任边界外）";
+    style="rounded,dashed";
+    color="#c9a227";
+    fontsize=12;
+    fontcolor="#8a6d1f";
+
+    p_panel_backend [label="面板后端\nXiaoV2b / Xboard [高]", fillcolor="#fdf7e3"];
+    p_unknown_accounting [label="面板侧计费 / 额度扣减 / 订单结算\n真实规则与副作用 [未知]", fillcolor="#f2f2f2", color="#9e9e9e", style="rounded,filled,dashed"];
+  }
+
+  /* ================= Polaris 客户端 ================= */
+  subgraph cluster_app {
+    label="Polaris 客户端（App 进程）";
+    style="rounded";
+    color="#7d90a6";
+    fontsize=12;
+    fontcolor="#3d4b5a";
+
+    b_detect_backend [label="识别面板类型\n（私有地址不探测，防 SSRF）[高]"];
+    b_login [label="用账号密码换取访问凭据\n（客户端可见的契约）[高]"];
+    b_session [label="保存登录态\n（本地加密存储）[高]"];
+    b_fetch_plan [label="读取套餐与流量额度\n（请求与解析已证实）[高]"];
+    b_fetch_config [label="取得面板下发的代理配置 [高]"];
+    b_sanitize [label="把配置净化为安全配置\n（只允许白名单域名直连）[高]"];
+    b_sanitize_ok [label="净化通过？[高]", shape=diamond, fillcolor="#fff6e0"];
+    b_reject_write [label="拒绝写入并报错\n（失败关闭，不用半清洗配置）[高]", fillcolor="#fdecea", color="#c0392b"];
+    b_write_config [label="写入本机配置文件 [高]"];
+    b_show_usage [label="展示面板侧套餐用量 [中]", fillcolor="#f4f7fb"];
+
+    b_need_plan [label="有有效套餐？[高]", shape=diamond, fillcolor="#fff6e0"];
+    b_block_no_plan [label="阻止连接，引导续费 [高]", fillcolor="#fdecea", color="#c0392b"];
+    b_error_no_panel [label="面板不可达：候选地址回退后仍失败\n→ 报错 [高]", fillcolor="#fdecea", color="#c0392b"];
+    b_error_bad_config [label="响应不是有效订阅\n（已过期 / HTML 错误页）→ 拒绝写入 [高]", fillcolor="#fdecea", color="#c0392b"];
+    b_session_expired [label="会话失效检测\n（仅面板 JSON 失效文案触发）\n→ 清会话 + 停 VPN [高]", fillcolor="#fdecea", color="#c0392b"];
+    b_connecting [label="保持「连接中」，超时仍可取消 [高]", fillcolor="#eef1f5"];
+  }
+
+  /* ================= 内置 mihomo 内核 ================= */
+  subgraph cluster_kernel {
+    label="内置 mihomo 内核（独立进程 · Binder/IPC 边界）";
+    style="rounded";
+    color="#4a7c59";
+    fontsize=12;
+    fontcolor="#2f5d3f";
+
+    k_load_config [label="装载配置 [高]", fillcolor="#e8f3ec"];
+    k_build_tun [label="建立 TUN 隧道 [高]", fillcolor="#e8f3ec"];
+    k_tunnel_ready [label="隧道就绪？[高]", shape=diamond, fillcolor="#fff6e0"];
+    k_forward [label="转发流量\n并维护秒级流量心跳 [高]", fillcolor="#e8f3ec"];
+    k_dormant_worker [label="内核自带的定时订阅更新通道\n（无调度方 → 当前不可达）[高]", fillcolor="#f2f2f2", color="#9e9e9e", style="rounded,filled,dashed"];
+  }
+
+  /* ================= 主路径 ================= */
+  b_user_enter_url -> b_user_confirm_change [label="提交登录前校验 [高]"];
+  b_user_confirm_change -> b_detect_backend [label="首次设置 / 已确认变更 [高]"];
+  b_detect_backend -> b_login [label="类型已知 [高]"];
+  b_login -> p_panel_backend [label="HTTPS / REST [高]", style=bold];
+  p_panel_backend -> b_session [label="返回凭据 [高]", style=bold];
+  b_session -> b_fetch_plan [label="登录成功后 [高]"];
+  b_fetch_plan -> p_panel_backend [label="HTTPS / REST [高]"];
+  b_fetch_plan -> b_need_plan [label="额度与套餐状态 [高]"];
+  b_need_plan -> b_fetch_config [label="有套餐 [高]"];
+  b_need_plan -> b_block_no_plan [label="无套餐 [高]"];
+  b_fetch_config -> b_sanitize [label="拿到订阅内容 [高]"];
+  b_sanitize -> b_sanitize_ok [label="逐行清洗后自检 [高]"];
+  b_sanitize_ok -> b_reject_write [label="关键步骤失败 / 残留危险顶层键 [高]"];
+  b_sanitize_ok -> b_write_config [label="通过 [高]"];
+  b_write_config -> k_load_config [label="跨进程通知「配置已变更」[高]", style=bold];
+  k_load_config -> b_user_grant_vpn [label="准备起隧道 [高]"];
+  b_user_grant_vpn -> k_build_tun [label="已授权 [高]"];
+  b_user_grant_vpn -> b_user_cancel [label="未授权 [高]"];
+  k_build_tun -> k_tunnel_ready [label="异步建立 [高]"];
+  k_tunnel_ready -> k_forward [label="就绪 [高]"];
+  k_tunnel_ready -> b_connecting [label="未就绪 [高]", style=dashed];
+  b_connecting -> b_user_cancel [label="用户取消 [高]"];
+  k_forward -> b_user_see_connected [label="状态 + 秒级流量心跳 [高]", style=bold];
+  k_forward -> b_show_usage [label="面板侧用量另行拉取 [中]", style=dashed];
+  b_show_usage -> p_panel_backend [label="HTTPS / REST [中]", style=dashed];
+
+  /* ================= 失败与降级分支 ================= */
+  b_fetch_config -> b_error_no_panel [label="全部候选地址失败 [高]", style=dashed];
+  b_fetch_config -> b_error_bad_config [label="内容非法 [高]", style=dashed];
+  b_session -> b_session_expired [label="后续请求返回 401\n或 403 且为面板失效文案 [高]", style=dashed];
+  p_panel_backend -> p_unknown_accounting [label="客户端不可见 [未知]", style=dotted, arrowhead=onormal];
+  k_dormant_worker -> k_load_config [label="若被外部触发则绕过净化\n（当前无生产者）[高]", style=dotted, color="#c0392b", fontcolor="#c0392b"];
+
+  /* ================= 图例 ================= */
+  subgraph cluster_legend {
+    label="图例";
+    style="rounded";
+    color="#c8d2dc";
+    fontsize=11;
+    fontcolor="#5a6b7d";
+    l_ok [label="业务主路径", fillcolor="#e6f4ea", style="rounded,filled"];
+    l_decision [label="判定点", shape=diamond, fillcolor="#fff6e0"];
+    l_fail [label="失败 / 拒绝路径", fillcolor="#fdecea"];
+    l_unknown [label="未知 / 不可达（虚线框）", fillcolor="#f2f2f2", style="rounded,filled,dashed"];
+  }
+}

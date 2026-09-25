@@ -54,10 +54,16 @@ internal object ConfigValidation {
     ): Boolean {
         val host = value.trim().lowercase().trimEnd('.')
         if (host.isEmpty() || host.length > 253) return false
+        // 字符集必须显式限制：这些域名会被拼进内核的 "DOMAIN-SUFFIX,<host>,DIRECT"
+        // 规则串，逗号/空白会让字段错位（轻则整份配置加载失败，重则规则改指向）。
+        if (!DOMAIN_CHARSET.matches(host)) return false
         val labels = host.split(".")
         if (labels.size < 2 || labels.any { it.isEmpty() || it.length > 63 }) return false
+        if (labels.any { it.startsWith("-") || it.endsWith("-") }) return false
         return isHostAllowed(host, allowedSuffixes)
     }
+
+    private val DOMAIN_CHARSET = Regex("^[a-z0-9.-]+$")
 
     fun hasSamePath(
         a: String,

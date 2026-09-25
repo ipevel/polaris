@@ -42,6 +42,38 @@ func StatePath() string {
 	return constant.Path.Resolve("routing.json")
 }
 
+// DegradedPath 降级标记文件路径。本地分流因「面板与保留名冲突」等原因
+// 无法应用时写入，App 侧读取后给用户可见提示——避免静默退回面板分流
+// 让用户以为「分流开关坏了」。成功应用本地分流时删除。
+func DegradedPath() string {
+	return constant.Path.Resolve("routing-degraded.json")
+}
+
+// Degraded 降级标记内容。
+type Degraded struct {
+	Reason string `json:"reason"`
+	Detail string `json:"detail"`
+}
+
+// WriteDegraded 写入降级标记（失败仅告警，不影响连接）。
+func WriteDegraded(reason, detail string) {
+	buf, err := json.Marshal(&Degraded{Reason: reason, Detail: detail})
+	if err != nil {
+		log.Warnln("Encode routing degraded: %s", err.Error())
+		return
+	}
+	if err := os.WriteFile(DegradedPath(), buf, 0600); err != nil {
+		log.Warnln("Write routing degraded: %s", err.Error())
+	}
+}
+
+// ClearDegraded 删除降级标记；文件不存在视为成功。
+func ClearDegraded() {
+	if err := os.Remove(DegradedPath()); err != nil && !os.IsNotExist(err) {
+		log.Warnln("Clear routing degraded: %s", err.Error())
+	}
+}
+
 // ReadState 读取本地分流状态；任何错误都返回 enabled=false 的零状态。
 func ReadState() *State {
 	state := &State{Version: 1, Enabled: false}

@@ -1,0 +1,231 @@
+// Polaris 首次连接业务流 — 技术下钻视图（类 / 文件 / 协议）
+// 状态：current（当前实现）
+// 本图是业务视图（first-connect-flow.business.dot）的实现级补充，不作为业务沟通图使用
+// 置信度：[高] 代码直接证据；[中] 部分信号；[低] 结构推断；[未知] 明确未知
+digraph polaris_first_connect_technical {
+  rankdir=TB;
+  graph [
+    fontname="Microsoft YaHei",
+    fontsize=16,
+    labelloc="t",
+    label="Polaris 首次连接 — 技术下钻（实现级）\n节点 = 类 / 文件 / 进程；边 = 调用与协议\n每条边的协议与证据见 first-connect-flow.evidence.md",
+    compound=true,
+    newrank=true,
+    nodesep=0.35,
+    ranksep=0.5,
+    bgcolor="white"
+  ];
+  node [
+    fontname="Consolas",
+    fontsize=10,
+    shape=box,
+    style="rounded,filled",
+    fillcolor="#f4f7fb",
+    color="#7d90a6"
+  ];
+  edge [
+    fontname="Consolas",
+    fontsize=8,
+    color="#5a6b7d",
+    fontcolor="#3d4b5a"
+  ];
+
+  /* ================= UI 层（App 主进程） ================= */
+  subgraph cluster_ui {
+    label="UI 层（App 主进程 · Compose）";
+    style="rounded";
+    color="#7d90a6";
+    fontsize=11;
+
+    ui_login [label="UI: LoginScreen\napp/.../ui/screen/login/LoginScreen.kt", fillcolor="#e6effa"];
+    ui_main [label="UI: MainScreen\napp/.../ui/screen/main/MainScreen.kt", fillcolor="#e6effa"];
+    vm_login [label="LoginViewModel\nlogin() / performLogin()\npersistPanelSettings()", fillcolor="#e6effa"];
+    vm_main [label="MainViewModel\ntoggleConnection()\nstartSpeedWatch()", fillcolor="#e6effa"];
+    updater [label="SubscriptionUpdater\nmaybeSilentUpdate() / refreshAfterPurchase()", fillcolor="#e6effa"];
+  }
+
+  /* ================= 校验 / 存储 ================= */
+  subgraph cluster_local {
+    label="校验与本地存储（App 主进程）";
+    style="rounded";
+    color="#9aa9bb";
+    fontsize=11;
+
+    validation [label="ConfigValidation\nnormalizePanelUrl()\nisPrivateOrReservedHost()"];
+    apiurlstore [label="ApiUrlStore\nEncryptedSharedPreferences\n(SecurePreferences)"];
+    sessionstore [label="SessionStore / SessionManager\nSessionState.LoggedIn"];
+    sessionmgr [label="SessionManager.logoutEvents\n→ SubscribeRepository.invalidateCache()"];
+  }
+
+  /* ================= 网络层 ================= */
+  subgraph cluster_net {
+    label="网络层（OkHttp / Retrofit 拦截器链）";
+    style="rounded";
+    color="#7d90a6";
+    fontsize=11;
+
+    failover [label="ApiFailoverInterceptor\n按运行时面板地址改写主机\n(排在 AuthInterceptor 之前)"];
+    authint [label="AuthInterceptor\n凭据注入白名单闸门\nAllowedHosts || ApiUrlStore.isCurrentHost"];
+    formint [label="FormUrlEncodedInterceptor"];
+    retro [label="Retrofit + kotlinx.serialization\nXiaoV2bRetrofit / XboardRetrofit"];
+    dual [label="DualBackendAuthApi\n按 ApiUrlStore.backendType 每次请求路由"];
+  }
+
+  /* ================= 仓库层 ================= */
+  subgraph cluster_repo {
+    label="Repository / 数据源（App 主进程）";
+    style="rounded";
+    color="#9aa9bb";
+    fontsize=11;
+
+    authrepo [label="AuthRepository\nlogin() → sessionManager.setLoggedIn()"];
+    subrepo [label="SubscribeRepository\nfetchSubscribeInfo()\n(TTL 缓存 + Mutex 去重)"];
+    subsrc [label="SubscribeSourceImpl\nfetchSubscribeYaml()\n候选地址回退 / 仅 https / 捕获 profile-title"];
+    trafficrepo [label="TrafficRepository\nfetchTrafficLog()\n(面板侧按日用量，另一条链路)"];
+  }
+
+  /* ================= 配置生成（App 主进程，核心枢纽） ================= */
+  subgraph cluster_kcfg {
+    label="配置生成与净化（App 主进程 · KernelConfig）";
+    style="rounded";
+    color="#b7791f";
+    fontsize=11;
+
+    kcfg [label="KernelConfig.ensureProfile() / updateProfile()\nprofileMutex + ioDispatcher", fillcolor="#fdf7e3"];
+    limit [label="readLimited()\n20MB 上限 + isValidSubscribeYaml()", fillcolor="#fdf7e3"];
+    sanitizer [label="SubscriptionSanitizer.sanitize()\nSanitizerNeutralizer / SanitizerInjector / SanitizerYamlLines", fillcolor="#fdf7e3"];
+    failclosed [label="失败关闭：\n关键步骤失败或 hasUnsafeResidue() → 返回空串", fillcolor="#fdecea", color="#c0392b"];
+    atomic [label="atomicWrite()\nfilesDir/imported|pending/<uuid>/config.yaml", fillcolor="#fdf7e3"];
+    pname [label="profileNameFor(email)\nPolaris-<sha256(email)>\nProfile.Type.Url, source=apiBaseUrl+SUBSCRIBE_PATH", fillcolor="#fdf7e3"];
+  }
+
+  /* ================= 内核进程（Binder / IPC 边界） ================= */
+  subgraph cluster_kern {
+    label="内核进程（kernel-service · Binder / AIDL(KAIDL) 边界）";
+    style="rounded";
+    color="#4a7c59";
+    fontsize=11;
+
+    km [label="KernelManager\nbind(RemoteService)\nIRemoteService / IClashManager / IProfileManager / ILogObserver", fillcolor="#e8f3ec"];
+    km_bind [label="退避重绑\n1s→30s，最多 5 次", fillcolor="#e8f3ec"];
+    profilermgr [label="ProfileManager.create / commit / setActive\nImported/Pending Dao + ageSecretKey", fillcolor="#e8f3ec"];
+    proc [label="ProfileProcessor.apply()\nforce && processingDir/config.yaml 存在\n→ 跳过内核侧抓取", fillcolor="#e8f3ec"];
+    proc_update [label="ProfileProcessor.update()\n无条件 fetchProfile() 直抓\n（无脱敏）【无生产者】", fillcolor="#f2f2f2", color="#9e9e9e", style="rounded,filled,dashed"];
+    worker [label="ProfileWorker\nACTION_PROFILE_REQUEST_UPDATE\n【无调度方】", fillcolor="#f2f2f2", color="#9e9e9e", style="rounded,filled,dashed"];
+    receiver [label="ProfileReceiver\nexported=true + 自定义签名权限\n既有 intent-filter，仅 cancelNext 被调用", fillcolor="#f2f2f2", color="#9e9e9e", style="rounded,filled,dashed"];
+    bcast [label="ACTION_PROFILE_CHANGED\n(sendBroadcastSelf)", fillcolor="#e8f3ec"];
+    cfgmod [label="ConfigurationModule\nClash.load(importedDir/<uuid>)\npatchSelector / setAgeSecretKey", fillcolor="#e8f3ec"];
+    statusp [label="StatusProvider\ncurrentProfile / serviceRunning\n(ContentProvider · content://)", fillcolor="#e8f3ec"];
+    tun [label="TunService : VpnService\nTunModule (Builder) / close / network / restart 模块", fillcolor="#e8f3ec"];
+    clashmgr [label="ClashManager : IClashManager\nqueryTrafficTotal / queryTrafficNow\nqueryTunnelState", fillcolor="#e8f3ec"];
+  }
+
+  /* ================= 原生内核 ================= */
+  subgraph cluster_core {
+    label="mihomo 内核（native / Go · 输入为 Go 源码 vendored）";
+    style="rounded";
+    color="#3d5a80";
+    fontsize=11;
+
+    jni [label="Clash.kt → Bridge.nativeQueryTrafficNow\nkernel-core/src/main/cpp/main.c", fillcolor="#e3edf7"];
+    scale [label="down_scale_traffic()\nbridge_helper.c（×100 精度）", fillcolor="#e3edf7"];
+    gostat [label="Go: tunnel/statistic/manager.go\ntime.NewTicker(1s) + uploadTemp.Swap(0)\n→ uploadBlip", fillcolor="#e3edf7"];
+    gocore [label="mihomo 核心（Go / C）\n装载配置 · TUN 转发", fillcolor="#e3edf7"];
+  }
+
+  /* ================= 外部系统 ================= */
+  subgraph cluster_ext {
+    label="外部系统（信任边界外）";
+    style="rounded,dashed";
+    color="#c9a227";
+    fontsize=11;
+
+    panel [label="面板 REST API\nXiaoV2b / Xboard", fillcolor="#fdf7e3"];
+    probe [label="后端类型探测\nHttpURLConnection GET\n/api/v1/guest/comm/config", fillcolor="#fdf7e3"];
+    subhost [label="订阅主机（由面板下发，可能非面板域名）", fillcolor="#fdf7e3"];
+  }
+
+  /* ================= 边：登录与地址 ================= */
+  ui_login -> vm_login [label="表单提交"];
+  vm_login -> validation [label="校验 + 归一化"];
+  validation -> vm_login [label="合法 / 非法"];
+  vm_login -> probe [label="类型未知时探测\n(私有地址跳过)"];
+  probe -> vm_login [label="xboard / xiaov2b / 空"];
+  vm_login -> apiurlstore [label="setUrl + setBackendType"];
+  apiurlstore -> failover [label="请求期同步读取 runtime URL"];
+
+  /* ================= 边：登录与订阅 ================= */
+  vm_login -> authrepo [label="login(email, password)"];
+  authrepo -> dual [label="AuthApi"];
+  dual -> retro [label="按 backendType 选适配器"];
+  retro -> failover [label="拦截器链"];
+  failover -> authint [label="主机已改写"];
+  authint -> formint [label="凭据判定完成"];
+  formint -> panel [label="HTTPS + Authorization(仅白名单主机)", style=bold];
+  panel -> authrepo [label="凭据 / 套餐 / 订阅信息"];
+  authrepo -> sessionstore [label="setLoggedIn(user)"];
+  authrepo -> subrepo [label="invalidateCache()"];
+  sessionmgr -> subrepo [label="登出事件清缓存"];
+
+  ui_main -> vm_main [label="连接开关"];
+  vm_main -> updater [label="maybeSilentUpdate()"];
+  updater -> subrepo [label="fetchSubscribeInfo(force)"];
+  subrepo -> authrepo [label="共用 AuthApi"];
+  updater -> kcfg [label="updateProfile()"];
+
+  /* ================= 边：配置获取与净化 ================= */
+  kcfg -> subrepo [label="取订阅信息 / 令牌"];
+  kcfg -> subsrc [label="fetchSubscribeYaml()"];
+  subsrc -> retro [label="candidateSubscribeUrls()"];
+  subsrc -> subhost [label="HTTPS GET 候选地址\n(账号下发地址需 https)", style=bold];
+  subhost -> limit [label="响应体"];
+  limit -> sanitizer [label="校验通过后逐行清洗"];
+  sanitizer -> failclosed [label="自检失败"];
+  sanitizer -> atomic [label="净化后文本"];
+  atomic -> pname [label="绑定 profile 身份"];
+  pname -> profilermgr [label="create / commit(uuid)"];
+
+  /* ================= 边：内核装载 ================= */
+  profilermgr -> proc [label="commit(uuid)"];
+  proc_update -> proc [label="若 pending 已有 config.yaml\n则此路不通", style=dotted, color="#c0392b", fontcolor="#c0392b"];
+  proc_update -> gocore [label="Clash.fetchAndValid()\n直抓订阅（无脱敏）", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  worker -> proc_update [label="run(uuid)", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  receiver -> worker [label="startForegroundService", style=dashed, color="#c0392b", fontcolor="#c0392b"];
+  proc -> bcast [label="导入完成"];
+  bcast -> cfgmod [label="广播订阅\n(内核进程内)"];
+  cfgmod -> gocore [label="Clash.load()"];
+  cfgmod -> statusp [label="currentProfile = name"];
+
+  /* ================= 边：起隧道 ================= */
+  vm_main -> km [label="ensureProfile() 成功后 startVpn()"];
+  km -> km_bind [label="绑定丢失时"];
+  km -> tun [label="startForegroundService(Intent)"];
+  tun -> gocore [label="tun.open() → TUN 文件描述符"];
+  km -> statusp [label="contentResolver.call\nMETHOD_CURRENT_PROFILE"];
+  tun -> bcast [label="ACTION_CLASH_STARTED / STOPPED"];
+
+  /* ================= 边：流量回流 ================= */
+  vm_main -> clashmgr [label="AIDL 同步调用\n(ioDispatcher)"];
+  clashmgr -> jni [label="JNI"];
+  jni -> scale [label="编码"];
+  scale -> vm_main [label="Long: 高32位上传 / 低32位下载"];
+  gostat -> clashmgr [label="queryNow → blip 快照"];
+  gocore -> gostat [label="每秒 Swap 累计差值"];
+  vm_main -> ui_main [label="StateFlow<DashboardData>"];
+  ui_main -> trafficrepo [label="流量明细页"];
+  trafficrepo -> panel [label="HTTPS：面板侧按日用量"];
+
+  /* ================= 图例 ================= */
+  subgraph cluster_legend {
+    label="图例";
+    style="rounded";
+    color="#c8d2dc";
+    fontsize=10;
+    l_proc [label="App 主进程", fillcolor="#e6effa"];
+    l_kern [label="内核进程", fillcolor="#e8f3ec"];
+    l_native [label="native / Go", fillcolor="#e3edf7"];
+    l_ext [label="外部 / 信任边界外", fillcolor="#fdf7e3"];
+    l_dead [label="当前不可达（保留但无生产者）", fillcolor="#f2f2f2", style="rounded,filled,dashed"];
+    l_red [label="绕过净化的理论路径（红色虚线）", fillcolor="#fdecea", color="#c0392b"];
+  }
+}

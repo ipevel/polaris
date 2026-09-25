@@ -20,6 +20,14 @@ data class Proxy(
     val type: String,
     val delay: Int,
     var isGroup: Boolean,
+    /**
+     * 该节点是否已跑过至少一次测速。与 [delay] 组合区分三态：
+     * `tested=false` → 从未测过（「未测」）；`tested=true && delay=0xffff` →
+     * 测过但不存活（「超时」）；否则为真实延迟。
+     * 内核侧由 `Proxy.Tested` 填充（native/tunnel/proxies.go）。
+     * 默认值 false 保证与旧版内核混跑时可解析（未测）。
+     */
+    val tested: Boolean = false,
 ) : Parcelable {
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         Parcelizer.encodeToParcel(serializer(), parcel, this)

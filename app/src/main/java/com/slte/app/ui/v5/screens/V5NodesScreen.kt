@@ -3,17 +3,11 @@
 
 package com.slte.app.ui.v5.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Sync
@@ -26,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -35,18 +28,14 @@ import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.RoutingReservedNames
-import com.slte.app.ui.screen.server.NodeItem
+import com.slte.app.kernel.orderMembers
+import com.slte.app.kernel.primaryGroupOf
 import com.slte.app.ui.screen.server.ServerData
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.ChipTone
-import com.slte.app.ui.v5.GradientIcon
-import com.slte.app.ui.v5.IconTone
-import com.slte.app.ui.v5.LatencyText
 import com.slte.app.ui.v5.NavTab
-import com.slte.app.ui.v5.RadioDot
-import com.slte.app.ui.v5.TileTone
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
@@ -56,40 +45,44 @@ import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.V5TopIconButton
-import com.slte.app.ui.v5.tile
-import com.slte.app.utils.Constants
 
 /* ============================================================
-   v5 节点页
-   1) 快捷出口：自动选择 / 故障转移
-   2) 全部节点：手动点选（作用于「🚀 节点选择」主组）
-   3) 分流规则组：每条规则组独立指定出口（跟随/自动/故障转移/直连/拦截/具体节点）
+   v5 节点页（组 → 成员两层）
+
+   内核生成的结构是 Karing 式的：
+     🚀 节点选择   select   = [自动选择, 故障转移, DIRECT] + include-all 全部节点
+     自动选择      url-test  ← 独立组，同时又是主组成员
+     故障转移      fallback  ← 独立组，同时又是主组成员
+
+   所以「节点选择」这一层必须直接渲染主组的成员列表：自动选择 / 故障转移
+   与具体节点是同一层里的可选项。此前把它们做成两枚独立磁贴、节点列表又
+   只渲染面板 API 的扁平节点，导致主组选择在主屏不可见，分流组里的
+   「跟随节点选择」也就失去了意义。
+
+   第二层是「分流规则组」：每条规则组独立指定出口（跟随/自动/故障转移/
+   直连/拦截/具体节点），由 GroupExitSheet 承担。
    ============================================================ */
 
-/** 主选择组名（保留组名集合首项 = 🚀 节点选择）。 */
-private val primaryGroupName: String = RoutingReservedNames.first()
-
-/** 延迟展示：null=未测速、超时=危险色，其余按阈值分色。 */
-@Composable
-private fun latencyLabel(delay: Int?): Pair<String, ChipTone> = when {
-    delay == null -> "--" to ChipTone.NEUTRAL
-    delay >= Constants.DELAY_TIMEOUT -> stringResource(R.string.server_timeout) to ChipTone.DANGER
-    delay < 120 -> "$delay ms" to ChipTone.OK
-    delay < 300 -> "$delay ms" to ChipTone.WARN
-    else -> "$delay ms" to ChipTone.DANGER
+/** 分流规则组 = 除结构组（主选择/自动/故障转移/漏网之鱼）外的全部策略组。 */
+private fun routingGroupsOf(all: List<KernelProxyGroupInfo>): List<KernelProxyGroupInfo> {
+    val rest = all.filterNot { it.name in RoutingReservedNames }
+    return rest
 }
 
-/** 主选择组当前挂载的节点名；未连接/未就绪时为 null。 */
-private fun primaryNode(groups: List<KernelProxyGroupInfo>): String? = groups.firstOrNull { it.name == primaryGroupName }?.now
-
-/** 分流规则组 = 除结构组（主选择/自动/故障转移/漏网之鱼）外的全部策略组。 */
-private fun routingGroupsOf(groups: List<KernelProxyGroupInfo>): List<KernelProxyGroupInfo> = groups.filter { it.name !in RoutingReservedNames }
+/** 面板节点顺序索引，用于把 include-all 的成员重排回订阅顺序。 */
+private fun nodeOrderIndex(data: ServerData): Map<String, Int> {
+    val indexed = data.nodes.withIndex()
+    return indexed.associate { (index, node) -> node.name to index }
+}
 
 @Composable
-private fun groupExitLabel(group: KernelProxyGroupInfo): String {
+private fun groupExitLabel(
+    group: KernelProxyGroupInfo,
+    primaryName: String?,
+): String {
     val now = group.now ?: return stringResource(R.string.v5_group_unset)
     return when (now) {
-        primaryGroupName -> stringResource(R.string.v5_group_follow_primary)
+        primaryName -> stringResource(R.string.v5_group_follow_primary)
         "DIRECT" -> stringResource(R.string.routing_outbound_direct)
         "REJECT" -> stringResource(R.string.routing_outbound_block)
         else -> now
@@ -103,8 +96,7 @@ internal fun V5NodesScreen(
     isLoadingGroups: Boolean,
     testingGroup: String?,
     isTestingAll: Boolean,
-    onQuickSelect: (Int) -> Unit,
-    onSelectNode: (Int) -> Unit,
+    onSelectPrimary: (String) -> Unit,
     onSelectInGroup: (String, String) -> Unit,
     onTestGroup: (String) -> Unit,
     onStartSpeedTest: () -> Unit,
@@ -113,7 +105,8 @@ internal fun V5NodesScreen(
     onNavSelect: (NavTab) -> Unit,
 ) {
     val c = V5ThemeColors.current
-    val current = primaryNode(groups)
+    val primary = primaryGroupOf(groups)
+    val members = primary?.let { orderMembers(it.members, nodeOrderIndex(data)) } ?: emptyList()
     val groupsForRouting = routingGroupsOf(groups)
     var exitSheetGroup by remember { mutableStateOf<KernelProxyGroupInfo?>(null) }
 
@@ -139,64 +132,41 @@ internal fun V5NodesScreen(
                 }
             }
 
-            // —— 快捷出口
-            V5Card {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        GradientIcon(IconTone.GREEN, Icons.Outlined.AutoAwesome)
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.v5_quick_pick), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.text)
-                            Text(stringResource(R.string.v5_quick_pick_desc), fontSize = 11.5.sp, color = c.text3)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QuickTile(
-                            TileTone.GREEN,
-                            stringResource(R.string.v5_auto_pick),
-                            data.autoNode ?: "--",
-                            Modifier.weight(1f),
-                        ) { onQuickSelect(0) }
-                        QuickTile(
-                            TileTone.PURPLE,
-                            stringResource(R.string.v5_fallback_pick),
-                            data.fallbackNode ?: "--",
-                            Modifier.weight(1f),
-                        ) { onQuickSelect(-1) }
-                    }
-                }
-            }
-
-            // —— 全部节点：手动点选（作用于主选择组）
+            // —— 节点选择：主组（🚀 节点选择）的全部成员
+            // 结构项（自动选择 / 故障转移 / DIRECT）与具体节点同层可选，
+            // 选中态完全由内核回读的主组 now 决定（不做乐观更新）。
             V5CardFlat(Modifier.fillMaxWidth()) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = 15.dp, end = 15.dp, top = 14.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(stringResource(R.string.v5_all_nodes), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.text)
+                    Text(
+                        primary?.name ?: stringResource(R.string.v5_all_nodes),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = c.text,
+                    )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        current ?: stringResource(R.string.v5_group_unset),
+                        primary?.now ?: stringResource(R.string.v5_group_unset),
                         fontSize = 11.5.sp,
                         fontFamily = FontFamily.Monospace,
                         color = c.accent,
                     )
                 }
-                if (data.nodes.isEmpty()) {
-                    Text(
-                        stringResource(R.string.v5_no_nodes),
-                        fontSize = 12.5.sp,
-                        color = c.text3,
-                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
-                    )
-                }
-                data.nodes.forEachIndexed { index, node ->
-                    if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
-                    NodeRow(
-                        node = node,
-                        selected = node.name == current,
-                        testing = isTestingAll,
-                        onClick = { onSelectNode(node.id) },
-                    )
+                when {
+                    members.isNotEmpty() -> {
+                        members.forEachIndexed { index, member ->
+                            if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                            MemberRow(
+                                member = member,
+                                selected = member.name == primary?.now,
+                                onClick = { onSelectPrimary(member.name) },
+                            )
+                        }
+                    }
+                    isLoadingGroups -> GroupPlaceholder(stringResource(R.string.v5_groups_loading))
+                    else -> GroupPlaceholder(stringResource(R.string.v5_no_nodes))
                 }
             }
 
@@ -215,15 +185,19 @@ internal fun V5NodesScreen(
                         if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
                         V5RowItem(
                             title = group.name,
-                            sub = stringResource(R.string.v5_group_exit) + " · " + groupExitLabel(group),
+                            sub = stringResource(R.string.v5_group_exit) + " · " + groupExitLabel(group, primary?.name),
                             trailing = {
-                                V5Button(
-                                    stringResource(R.string.server_speed_test),
-                                    ButtonStyle.TONAL,
-                                    small = true,
-                                    leadingIcon = Icons.Outlined.MonitorHeart,
-                                    onClick = { onTestGroup(group.name) },
-                                )
+                                if (testingGroup == group.name) {
+                                    V5Chip(ChipTone.ACCENT, stringResource(R.string.v5_speed_testing), dot = true)
+                                } else {
+                                    V5Button(
+                                        stringResource(R.string.server_speed_test),
+                                        ButtonStyle.TONAL,
+                                        small = true,
+                                        leadingIcon = Icons.Outlined.MonitorHeart,
+                                        onClick = { onTestGroup(group.name) },
+                                    )
+                                }
                             },
                             chevron = true,
                             onClick = { exitSheetGroup = group },
@@ -268,46 +242,11 @@ internal fun V5NodesScreen(
 }
 
 @Composable
-private fun NodeRow(
-    node: NodeItem,
-    selected: Boolean,
-    testing: Boolean,
-    onClick: () -> Unit,
-) {
-    val (label, tone) = latencyLabel(node.delay)
-    V5RowItem(
-        title = node.name,
-        sub = if (node.countryCode.isNotBlank() && node.countryCode != "XX") node.countryCode else null,
-        leading = { RadioDot(on = selected) },
-        trailing = {
-            if (testing) {
-                Text("--", fontSize = 12.5.sp, fontFamily = FontFamily.Monospace, color = V5ThemeColors.current.text3)
-            } else {
-                LatencyText(label, tone)
-            }
-        },
-        onClick = onClick,
+private fun GroupPlaceholder(text: String) {
+    Text(
+        text = text,
+        fontSize = 12.5.sp,
+        color = V5ThemeColors.current.text3,
+        modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
     )
-}
-
-@Composable
-private fun QuickTile(
-    tone: TileTone,
-    label: String,
-    node: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val c = V5ThemeColors.current
-    val t = c.tile(tone)
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(t.bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
-    ) {
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = t.ink)
-        Text(node, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = c.text, maxLines = 1)
-    }
 }

@@ -27,8 +27,14 @@ class RoutingRulesViewModelTest {
     private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
     private val kernelConfig = mockk<KernelConfig>(relaxed = true)
 
-    private fun viewModel(state: RoutingState = RoutingState()): RoutingRulesViewModel {
+    private fun stubState(state: RoutingState) {
         every { routingStateStore.load() } returns state
+        every { routingStateStore.loadSanitized() } returns
+            RoutingStateStore.SanitizedRoutingState(state, droppedCustom = 0, droppedDomains = 0)
+    }
+
+    private fun viewModel(state: RoutingState = RoutingState()): RoutingRulesViewModel {
+        stubState(state)
         return RoutingRulesViewModel(routingStateStore, kernelConfig)
     }
 
@@ -78,8 +84,7 @@ class RoutingRulesViewModelTest {
     @Test
     fun `恢复默认清空覆盖并回读默认值`() = runTest(mainRule.dispatcher) {
         coEvery { kernelConfig.resetRoutingGroups() } returns true
-        every { routingStateStore.load() } returns
-            RoutingState(groups = mapOf("📲 电报消息" to true))
+        stubState(RoutingState(groups = mapOf("📲 电报消息" to true)))
 
         val vm = viewModel()
         vm.resetDefaults()

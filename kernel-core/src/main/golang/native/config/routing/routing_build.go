@@ -20,6 +20,12 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 		return fmt.Errorf("profile has no proxies/providers")
 	}
 
+	// 面板节点/Provider 名与保留组名冲突时整体降级回面板配置：mihomo 对重名
+	// 是硬失败（整个 profile 加载失败），而这个冲突完全由订阅内容决定。
+	if err := checkNameCollisions(cfg); err != nil {
+		return err
+	}
+
 	groups := make([]map[string]any, 0, len(Table)+5)
 
 	// 主选择组：默认选中自动选择（首位成员即默认项），用户可切手动节点。
@@ -31,19 +37,21 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 		"include-all": true,
 	})
 	groups = append(groups, map[string]any{
-		"name":        GroupNameAuto,
-		"type":        groupTypeURLTest,
-		"url":         proxyGroupURL,
-		"interval":    proxyGroupInterval,
-		"tolerance":   proxyGroupTolerance,
-		"include-all": true,
+		"name":            GroupNameAuto,
+		"type":            groupTypeURLTest,
+		"url":             proxyGroupURL,
+		"interval":        proxyGroupInterval,
+		"tolerance":       proxyGroupTolerance,
+		"expected-status": proxyGroupExpectedStatus,
+		"include-all":     true,
 	})
 	groups = append(groups, map[string]any{
-		"name":        GroupNameFallback,
-		"type":        groupTypeFallback,
-		"url":         proxyGroupURL,
-		"interval":    proxyGroupInterval,
-		"include-all": true,
+		"name":            GroupNameFallback,
+		"type":            groupTypeFallback,
+		"url":             proxyGroupURL,
+		"interval":        proxyGroupInterval,
+		"expected-status": proxyGroupExpectedStatus,
+		"include-all":     true,
 	})
 
 	ruleProviders := map[string]map[string]any{}
@@ -56,6 +64,12 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 		domains = state.DirectDomains
 	}
 	for _, domain := range domains {
+		// 非法域名不能继续 emit：逗号会让 "DOMAIN-SUFFIX,<d>,DIRECT" 的 target
+		// 字段错位（轻则加载失败，重则规则静默改指向）。跳过并告警，保证整体可用。
+		if err := validRuleDomain(domain); err != nil {
+			log.Warnln("routing: skip invalid direct domain %q: %s", domain, err.Error())
+			continue
+		}
 		rules = append(rules, "DOMAIN-SUFFIX,"+domain+","+outboundDirect)
 	}
 	rules = append(rules, lanDirectRules...)
@@ -152,16 +166,8 @@ func appendCustomGroup(
 	c CustomGroup,
 ) error {
 	name := strings.TrimSpace(c.Name)
-	if name == "" || len(name) > 32 {
-		return fmt.Errorf("invalid name")
-	}
-	if name == GroupNameSelector || name == GroupNameAuto || name == GroupNameFallback || name == GroupNameFinal {
-		return fmt.Errorf("name conflicts with builtin group")
-	}
-	for _, item := range Table {
-		if item.Name == name {
-			return fmt.Errorf("name conflicts with builtin group")
-		}
+	if err := validGroupName(name); err != nil {
+		return err
 	}
 	if !strings.HasPrefix(c.URL, "https://") {
 		return fmt.Errorf("url must be https")

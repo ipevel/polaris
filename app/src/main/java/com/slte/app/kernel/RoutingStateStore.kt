@@ -43,6 +43,13 @@ data class RoutingState(
     @SerialName("direct_domains") val directDomains: List<String> = emptyList(),
 )
 
+/** 内核写入的降级标记（`routing-degraded.json`，字段与 Go 的 Degraded 一致）。 */
+@Serializable
+data class DegradedRouting(
+    val reason: String = "",
+    val detail: String = "",
+)
+
 @Singleton
 class RoutingStateStore
 @Inject
@@ -63,7 +70,63 @@ constructor(
      * ReadState 的降级语义完全一致（缺省=关闭=面板配置原样生效），杜绝
      * 「UI 显示开启而内核按关闭处理」的期望值/真实值分裂（pitfall #6）。
      * 启用状态由 [ensureDefault] 在订阅导入流程写盘后再被读到。
+     *
+     * 读到的**非法自定义组/直连域名会被清掉**（`routing.json` 可能由旧版本或
+     * 其它写入点留下非法值，非法值会让整份内核配置加载失败）。清洗结果会
+     * 立刻回写一次，避免每次启动重复清洗。返回的 [SanitizedRoutingState] 带
+     * 丢弃数量，供 UI 提示。enabled / groups 开关不受影响。
+     *
+     * 注意：本方法**不递归**——只有 [loadSanitized] 会回写，缓存层不会。
      */
+    fun loadSanitized(): SanitizedRoutingState {
+        val raw = load()
+        val custom = raw.custom.filter { RoutingInputValidator.isValidGroupName(it.name) }
+        val domains = raw.directDomains.filter { RoutingInputValidator.isValidRuleDomainShape(it) }
+        val droppedCustom = raw.custom.size - custom.size
+        val droppedDomains = raw.directDomains.size - domains.size
+        val clean = raw.copy(custom = custom, directDomains = domains)
+        if (droppedCustom > 0 || droppedDomains > 0) {
+            AppLog.w(
+                LOG_TAG,
+                "load: 已清除非法本地分流项 custom=$droppedCustom domain=$droppedDomains",
+            )
+            write(clean)
+        }
+        return SanitizedRoutingState(clean, droppedCustom, droppedDomains)
+    }
+
+    /** [loadSanitized] 的结果：清洗后的状态 + 被丢弃的条目数（供 UI 提示）。 */
+    data class SanitizedRoutingState(
+        val state: RoutingState,
+        val droppedCustom: Int,
+        val droppedDomains: Int,
+    ) {
+        val hasDropped: Boolean get() = droppedCustom > 0 || droppedDomains > 0
+    }
+
+    /**
+     * 读取内核写的降级标记（本地分流因面板命名冲突等原因未生效）。内核在成功
+     * 应用本地分流时会删除该文件，所以「文件存在」= 当前处于降级状态。
+     * 返回 null 表示无降级。
+     */
+    fun readDegraded(): DegradedRouting? = runCatching {
+        val file = File(context.filesDir, "clash").resolve(DEGRADED_FILE_NAME)
+        if (!file.exists()) {
+            null
+        } else {
+            json.decodeFromString<DegradedRouting>(file.readText())
+        }
+    }.getOrElse {
+        AppLog.w(LOG_TAG, "readDegraded: 解析失败: ${sanitizeLog(it.message ?: "Unknown")}")
+        null
+    }
+
+    fun clearDegraded(): Boolean = runCatching {
+        val file = File(context.filesDir, "clash").resolve(DEGRADED_FILE_NAME)
+        !file.exists() || file.delete()
+    }.getOrDefault(false)
+
+    /** 读取状态（不含清洗回写；供写入路径内部使用）。 */
     fun load(): RoutingState = runCatching {
         val file = stateFile()
         if (!file.exists()) return RoutingState()
@@ -127,10 +190,11 @@ constructor(
     fun resetGroups(): Boolean = write(load().copy(groups = emptyMap()))
 
     /**
-     * 追加自定义规则组（同名或与内置组同名视为重复，拒绝写入）；
+     * 追加自定义规则组（名称非法 / 同名 / 与内置保留组同名一律拒绝）；
      * 返回写入是否成功。
      */
     fun addCustomGroup(group: RoutingCustomGroup): Boolean {
+        if (!RoutingInputValidator.isValidGroupName(group.name)) return false
         val current = load()
         if (current.custom.any { it.name == group.name }) return false
         return write(current.copy(custom = current.custom + group))
@@ -145,6 +209,9 @@ constructor(
     companion object {
         private const val LOG_TAG = "Polaris-Routing"
         const val FILE_NAME = "routing.json"
+
+        /** 内核写的降级标记文件名（与 Go routing.DegradedPath 一致）。 */
+        const val DEGRADED_FILE_NAME = "routing-degraded.json"
 
         /** 内置分流种子在 APK assets 中的目录（与 Go providerSubPath 无关）。 */
         const val ASSETS_PROVIDERS_DIR = "routing/providers"

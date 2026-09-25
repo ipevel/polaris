@@ -12,6 +12,7 @@ import com.slte.app.domain.model.SessionState
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
+import com.slte.app.kernel.RoutingStateStore
 import com.slte.app.support.MainDispatcherRule
 import com.slte.app.support.stubKernelBridge
 import io.mockk.coEvery
@@ -43,6 +44,11 @@ class MainViewModelTest {
     private val authRepository = mockk<AuthRepository>(relaxed = true)
     private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
     private val deviceEnvironment = mockk<DeviceEnvironmentSource>(relaxed = true)
+    private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
+
+    private fun stubNoRoutingDegraded() {
+        every { routingStateStore.readDegraded() } returns null
+    }
 
     private fun viewModel(
         hasPlan: Boolean = true,
@@ -61,7 +67,8 @@ class MainViewModelTest {
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
         every { deviceEnvironment.appMemoryUsageMb() } returns 0
         every { deviceEnvironment.lanIpv4() } returns null
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, siteInfoStore, deviceEnvironment)
+        stubNoRoutingDegraded()
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, siteInfoStore, deviceEnvironment, routingStateStore)
     }
 
     /**
@@ -183,6 +190,7 @@ class MainViewModelTest {
                 authRepository,
                 siteInfoStore,
                 deviceEnvironment,
+                routingStateStore,
             )
         advanceUntilIdle()
 
@@ -208,6 +216,7 @@ class MainViewModelTest {
         stubAuthSession()
         every { deviceEnvironment.appMemoryUsageMb() } returns 0
         every { deviceEnvironment.lanIpv4() } returns null
+        stubNoRoutingDegraded()
         val vm =
             MainViewModel(
                 mainRule.dispatcher,
@@ -220,6 +229,7 @@ class MainViewModelTest {
                 authRepository,
                 siteInfoStore,
                 deviceEnvironment,
+                routingStateStore,
             )
         advanceUntilIdle()
 

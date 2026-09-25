@@ -18,8 +18,6 @@ import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.V5ThemeColors
-import com.slte.app.ui.v5.RadioDot
-import com.slte.app.ui.v5.V5RowItem
 
 /**
  * 分流规则组的出口选择弹层。
@@ -41,10 +39,9 @@ fun GroupExitSheet(
         onDismiss = onDismiss,
     ) {
         group.members.forEach { member ->
-            V5RowItem(
-                title = memberLabel(member.name),
-                sub = if (member.isGroup) stringResource(R.string.v5_group_item) else null,
-                leading = { RadioDot(on = member.name == group.now) },
+            MemberRow(
+                member = member,
+                selected = member.name == group.now,
                 onClick = { onSelect(member.name) },
             )
         }
@@ -58,13 +55,4 @@ fun GroupExitSheet(
                 .padding(horizontal = 4.dp),
         )
     }
-}
-
-/** 结构出口的本地化名称；节点名原样展示。 */
-@Composable
-private fun memberLabel(name: String): String = when (name) {
-    com.slte.app.kernel.RoutingReservedNames.first() -> stringResource(R.string.v5_group_follow_primary)
-    "DIRECT" -> stringResource(R.string.routing_outbound_direct)
-    "REJECT" -> stringResource(R.string.routing_outbound_block)
-    else -> name
 }

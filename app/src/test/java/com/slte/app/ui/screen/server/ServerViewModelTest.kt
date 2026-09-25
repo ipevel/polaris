@@ -75,7 +75,7 @@ class ServerViewModelTest {
     }
 
     @Test
-    fun `选中普通节点调用内核选择并更新选中项`() = runTest(mainRule.dispatcher) {
+    fun `选中普通节点调用内核主组选择并更新选中项`() = runTest(mainRule.dispatcher) {
         coEvery { serverRepository.fetchServers(any()) } returns Result.success(listOf(node("香港01", 1)))
         val vm = viewModel()
         vm.loadNodes(force = true)
@@ -86,6 +86,23 @@ class ServerViewModelTest {
         advanceUntilIdle()
 
         assertEquals(target.id, vm.data.value.selectedNodeId)
+    }
+
+    /**
+     * 内核侧选择失败必须给出可见反馈：旧实现丢弃了内核返回的 Boolean，
+     * 用户点了没反应。这里用"内核未就绪（clash()=null）"制造失败。
+     */
+    @Test
+    fun `主组选择失败时给出可见提示`() = runTest(mainRule.dispatcher) {
+        coEvery { serverRepository.fetchServers(any()) } returns Result.success(listOf(node("香港01", 1)))
+        val vm = viewModel()
+        vm.loadNodes(force = true)
+        advanceUntilIdle()
+
+        vm.selectPrimary(vm.data.value.nodes.first().name)
+        advanceUntilIdle()
+
+        assertEquals(R.string.proxy_group_select_failed, vm.errorMessageRes.value)
     }
 
     @Test
