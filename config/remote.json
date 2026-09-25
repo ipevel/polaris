@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.1 更新",
   "update_changelog": "### 1.5.1\n\n- **修复底部导航重复**：v5 页面的悬浮胶囊导航与旧底栏同时显示的问题已修正，只保留 v5 导航\n- **节点页新增手动选择节点**：「全部节点」列表可直接点选任意节点作为主出口（含延迟显示与当前选中标记）\n- **每个分流分类可独立指定出口**：点任意分流规则组即可选择该分类的出口——跟随「节点选择」/ 自动选择 / 故障转移 / 直连 / 拦截，或直接指定某个具体节点\n- 节点/分组切换后策略组状态即时刷新，不再显示旧值",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.0/Polaris-1.5.0.apk",
-  "update_apk_sha256": "bf1757ac47c57c2d98f90ebc8f902208eaee9296b3c91d9098267b52b5d0c8b9"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.1/Polaris-1.5.1.apk",
+  "update_apk_sha256": "3453f96b599eb387ddf826152237b8504ec042d7508562cc293f6a8995d5df2d"
 }
