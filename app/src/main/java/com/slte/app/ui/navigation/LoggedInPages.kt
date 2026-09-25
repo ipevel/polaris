@@ -152,6 +152,8 @@ internal fun ServerPageContent(
     val isLoadingGroups by serverViewModel.isLoadingGroups.collectAsStateWithLifecycle()
     val testingGroup by serverViewModel.testingGroup.collectAsStateWithLifecycle()
     val isTestingAll by serverViewModel.isTestingAll.collectAsStateWithLifecycle()
+    // 折叠态放 ViewModel：切 Tab 会销毁本屏组合，屏幕内 remember/rememberSaveable 都会丢
+    val collapsedSections by serverViewModel.collapsedSections.collectAsStateWithLifecycle()
     V5NodesScreen(
         data = data,
         groups = groups,
@@ -167,6 +169,8 @@ internal fun ServerPageContent(
         onRefreshSubscription = onUpdateSubscription,
         onRoutingRules = onRoutingRules,
         onNavSelect = onNavSelect,
+        collapsedSections = collapsedSections,
+        onToggleSection = serverViewModel::toggleSection,
     )
 }
 

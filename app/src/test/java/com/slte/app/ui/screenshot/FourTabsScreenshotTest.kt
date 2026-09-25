@@ -224,7 +224,8 @@ class FourTabsScreenshotTest {
             V5HomeScreen(
                 data = dashboardData(connected = false),
                 onToggleConnection = {},
-                onVpnPermissionDenied = {},                vpnRequestIntent = { null },
+                onVpnPermissionDenied = {},
+                vpnRequestIntent = { null },
                 onRenew = {},
                 onNavSelect = {},
                 refreshKernelInfo = {},
@@ -323,6 +324,49 @@ class FourTabsScreenshotTest {
                 onRefreshSubscription = {},
                 onRoutingRules = {},
                 onNavSelect = {},
+            )
+        }
+    }
+
+    // 折叠主组：头部须仍显示「组名 + 当前出口」，成员行不渲染
+    @Test
+    fun 节点主组收起亮色() {
+        snapshot("server-collapsed", dark = false) {
+            V5NodesScreen(
+                data = serverData(),
+                groups = proxyGroups,
+                isLoadingGroups = false,
+                testingGroup = null,
+                isTestingAll = false,
+                onSelectPrimary = {},
+                onSelectInGroup = { _, _ -> },
+                onTestGroup = {},
+                onStartSpeedTest = {},
+                onRefreshSubscription = {},
+                onRoutingRules = {},
+                onNavSelect = {},
+                collapsedSections = setOf("🚀 节点选择"),
+            )
+        }
+    }
+
+    @Test
+    fun 节点主组收起暗色() {
+        snapshot("server-collapsed", dark = true) {
+            V5NodesScreen(
+                data = serverData(),
+                groups = proxyGroups,
+                isLoadingGroups = false,
+                testingGroup = null,
+                isTestingAll = false,
+                onSelectPrimary = {},
+                onSelectInGroup = { _, _ -> },
+                onTestGroup = {},
+                onStartSpeedTest = {},
+                onRefreshSubscription = {},
+                onRoutingRules = {},
+                onNavSelect = {},
+                collapsedSections = setOf("🚀 节点选择"),
             )
         }
     }

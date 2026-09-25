@@ -68,6 +68,26 @@ constructor(
     /** 全组测速结束提示（完成 / 失败），UI 取用后需 consume。 */
     val speedTestTipRes: StateFlow<Int?> = _speedTestTipRes.asStateFlow()
 
+    /**
+     * 节点页已收起的区块（**按组名**，集合内 = 收起）。
+     *
+     * 两点是刻意的：
+     * 1. 放在 ViewModel 而不是屏幕内 `remember`：Tab 内容是
+     *    `AnimatedContent(contentKey = { tab to leaf })`，切 Tab 会销毁整棵子树，
+     *    局部状态（含 `rememberSaveable`，本仓没有 SaveableStateHolder）必丢，
+     *    表现为"收起后切走再回来又全展开"。
+     * 2. 用组名做 key 而不是组对象/下标：每次测速或订阅更新都会整体重建
+     *    `KernelProxyGroupInfo` 列表，而同名对象的 now/members 已变化故不相等，
+     *    用对象做 key 会导致折叠态在刷新后静默失效。
+     *
+     * 只在内存中，不落盘（跨进程启动复位为默认展开，属预期）。
+     */
+    private val _collapsedSections = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedSections: StateFlow<Set<String>> = _collapsedSections.asStateFlow()
+
+    /** 已发生过一次组加载：用于区分"还没加载"与"确实没有组"。 */
+    private var sectionsLoaded = false
+
     init {
 
         val cachedDelays = kernelProxy.cachedSpeedResults()
@@ -199,7 +219,7 @@ constructor(
     /** 仅在策略组已加载过时刷新，避免首次进入节点页前发起多余的组查询。 */
     private suspend fun refreshGroupsIfLoaded() {
         if (_proxyGroups.value.isEmpty()) return
-        _proxyGroups.value = withCachedDelays(kernelProxy.proxyGroups())
+        refreshPrimarySectionState(kernelProxy.proxyGroups())
     }
 
     fun startSpeedTest() {
@@ -246,10 +266,44 @@ constructor(
         viewModelScope.launch { refreshGroups() }
     }
 
+    /**
+     * 切换某个区块（按组名）的展开/收起。集合内 = 收起。
+     * 与 [com.slte.app.kernel.toggleCollapsed] 同一语义，保证可单测。
+     */
+    fun toggleSection(name: String) {
+        _collapsedSections.value = com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
+    }
+
+    /**
+     * 组列表变化后校正折叠集合：丢弃已不存在的组名，并补上 [defaultCollapsed]。
+     *
+     * 两个保护（否则会吃掉用户的操作）：
+     * 1. **组列表为空时不裁剪**——首次进节点页 `_proxyGroups` 尚为空，此时裁剪会把
+     *    用户刚收起的组名一并清掉；
+     * 2. 只丢弃"库里已没有"的名字，其余保持原样，因此测速/订阅更新导致的列表重建
+     *    不会把折叠态复位。
+     */
+    fun syncCollapsedSections(
+        groupNames: List<String>,
+        defaultCollapsed: Set<String> = emptySet(),
+    ) {
+        if (groupNames.isEmpty()) return
+        val names = groupNames.toSet()
+        val pruned = if (!sectionsLoaded) _collapsedSections.value else _collapsedSections.value intersect names
+        sectionsLoaded = true
+        _collapsedSections.value = defaultCollapsed + pruned
+    }
+
     private suspend fun refreshGroups() {
         _isLoadingGroups.value = true
-        _proxyGroups.value = withCachedDelays(kernelProxy.proxyGroups())
+        refreshPrimarySectionState(kernelProxy.proxyGroups())
         _isLoadingGroups.value = false
+    }
+
+    /** 拉取组列表并把结果同步给折叠集合（避免各调用点各写一份）。 */
+    private suspend fun refreshPrimarySectionState(next: List<KernelProxyGroupInfo>) {
+        _proxyGroups.value = withCachedDelays(next)
+        syncCollapsedSections(next.map { it.name })
     }
 
     /**
@@ -290,7 +344,11 @@ constructor(
     ) {
         viewModelScope.launch {
             if (kernelProxy.selectInGroup(groupName, proxyName)) {
-                _proxyGroups.value = kernelProxy.proxyGroups()
+                // 就地更新（不重新查询内核，避免丢掉刚写回的延迟）；
+                // 组集合本身不变，但同步一次折叠集合以覆盖"组曾缺失"的情形。
+                val next = kernelProxy.proxyGroups()
+                _proxyGroups.value = next
+                syncCollapsedSections(next.map { it.name })
                 refreshSpecialNodes()
             } else {
                 _errorMessageRes.value = R.string.proxy_group_select_failed

@@ -58,6 +58,22 @@ val RoutingReservedNames: Set<String> =
     linkedSetOf(PrimaryGroupName, "自动选择", "故障转移", "🐟 漏网之鱼")
 
 /**
+ * 节点页区块折叠集合的切换（纯函数，可单测）。集合内 = **已收起**。
+ *
+ * 语义刻意选"黑名单（收起集合）"而不是"白名单（展开集合）"：默认（不在集合里）
+ * 即展开，于是"默认展开"这个决策只是一行初始值，而不是散落在 UI 里的 if-else；
+ * 新出现的组也天然是展开的。
+ *
+ * key 必须是**组名**：每次测速/订阅更新都会整体重建组对象
+ * （同名对象的 now/members 已变，data class 不相等），用对象或下标做 key
+ * 会让折叠态在刷新后静默失效。
+ */
+fun toggleCollapsed(
+    current: Set<String>,
+    name: String,
+): Set<String> = if (name in current) current - name else current + name
+
+/**
  * 解析节点页「节点选择」卡对应的主组（纯函数，可单测）。
  *
  * 顺序即契约：

@@ -165,8 +165,55 @@ class SpeedTestOutcomeTest {
     }
 }
 
-class RoutingInputValidatorTest {
+/** 节点页区块折叠集合（集合内 = 收起）。 */
+class ToggleCollapsedTest {
 
+    @Test
+    fun `点击在收起与展开之间往返`() {
+        val collapsed = toggleCollapsed(emptySet(), PrimaryGroupName)
+        assertTrue(PrimaryGroupName in collapsed)
+        val expanded = toggleCollapsed(collapsed, PrimaryGroupName)
+        assertTrue(PrimaryGroupName !in expanded)
+    }
+
+    @Test
+    fun `切换一个组不影响其他组`() {
+        val a = toggleCollapsed(emptySet(), "A")
+        val ab = toggleCollapsed(a, "B")
+        assertEquals(setOf("A", "B"), ab)
+        assertEquals(setOf("B"), toggleCollapsed(ab, "A"))
+    }
+
+    @Test
+    fun `同名不同对象（模拟刷新重建）语义不变——key 是组名而非对象`() {
+        // 刷新会重建 KernelProxyGroupInfo（now/members 变化 → data class 不相等），
+        // 但折叠集合只存组名，因此状态必须保持不变
+        val before = KernelProxyGroupInfo(
+            name = PrimaryGroupName,
+            type = "Selector",
+            now = "香港 01",
+            selectable = true,
+            members = emptyList(),
+        )
+        val collapsed = toggleCollapsed(emptySet(), before.name)
+        val after = KernelProxyGroupInfo(
+            name = PrimaryGroupName,
+            type = "Selector",
+            now = "日本 01",
+            selectable = true,
+            members = listOf(KernelProxyMember("日本 01", false, 42)),
+        )
+        assertTrue("刷新重建后仍应保持收起", after.name in collapsed)
+    }
+
+    @Test
+    fun `重复切换总是回到集合原状`() {
+        val start = setOf("X")
+        assertEquals(start, toggleCollapsed(toggleCollapsed(start, "Y"), "Y"))
+    }
+}
+
+class RoutingInputValidatorTest {
     @Test
     fun `合法组名通过`() {
         assertTrue(RoutingInputValidator.isValidGroupName("我的规则"))

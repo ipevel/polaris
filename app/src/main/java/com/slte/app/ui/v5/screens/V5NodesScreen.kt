@@ -3,15 +3,19 @@
 
 package com.slte.app.ui.v5.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slte.app.R
@@ -103,12 +108,18 @@ internal fun V5NodesScreen(
     onRefreshSubscription: () -> Unit,
     onRoutingRules: () -> Unit,
     onNavSelect: (NavTab) -> Unit,
+    // 折叠态由 ViewModel 持有（切 Tab 会销毁本屏组合，局部状态必丢）。
+    // 给默认值是为了不破坏截图测试等既有调用点。
+    collapsedSections: Set<String> = emptySet(),
+    onToggleSection: (String) -> Unit = {},
 ) {
     val c = V5ThemeColors.current
     val primary = primaryGroupOf(groups)
     val members = primary?.let { orderMembers(it.members, nodeOrderIndex(data)) } ?: emptyList()
     val groupsForRouting = routingGroupsOf(groups)
-    var exitSheetGroup by remember { mutableStateOf<KernelProxyGroupInfo?>(null) }
+    // 只存组名：存组对象快照会在组刷新后让弹层里的 now/延迟停在旧值
+    var exitSheetGroupName by remember { mutableStateOf<String?>(null) }
+    val exitSheetGroup = exitSheetGroupName?.let { name -> groups.firstOrNull { it.name == name } }
 
     V5PageScaffold(tab = NavTab.NODES, onNavSelect = onNavSelect) {
         V5TopBar(stringResource(R.string.page_nodes)) {
@@ -135,9 +146,23 @@ internal fun V5NodesScreen(
             // —— 节点选择：主组（🚀 节点选择）的全部成员
             // 结构项（自动选择 / 故障转移 / DIRECT）与具体节点同层可选，
             // 选中态完全由内核回读的主组 now 决定（不做乐观更新）。
+            //
+            // 折叠（用户反馈「节点选择没有折叠」）：
+            // - 头部整行可点，命中区 ≥48dp（此前约 43dp，低于最小触控目标）；
+            // - 收起后**仍显示当前出口**——那是用户确认流量走向的唯一入口，不能藏；
+            // - 折叠只 gate 成员列表：加载中/无节点的占位必须照样显示，
+            //   否则首屏是一张没有行、没有解释的空卡；
+            // - 折叠态 key = 组名，存放在 ServerViewModel（本屏局部状态会被切 Tab 销毁）。
+            val collapsed = primary != null && primary.name in collapsedSections
             V5CardFlat(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 15.dp, end = 15.dp, top = 14.dp, bottom = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .clickable(enabled = primary != null) {
+                            primary?.let { onToggleSection(it.name) }
+                        }
+                        .padding(start = 15.dp, end = 12.dp, top = 13.dp, bottom = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -145,17 +170,35 @@ internal fun V5NodesScreen(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = c.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.weight(1f))
+                    // 当前出口：收起后依然可见
                     Text(
                         primary?.now ?: stringResource(R.string.v5_group_unset),
                         fontSize = 11.5.sp,
                         fontFamily = FontFamily.Monospace,
                         color = c.accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    // 折叠箭头复用既有图标令牌；不用 ChevronRight（本工程语义是"进入下一层"）
+                    if (primary != null) {
+                        Icon(
+                            if (collapsed) SlteIcons.ExpandMore else SlteIcons.ExpandLess,
+                            contentDescription = null,
+                            tint = c.text3,
+                            modifier = Modifier.padding(start = 4.dp).size(20.dp),
+                        )
+                    }
                 }
                 when {
-                    members.isNotEmpty() -> {
+                    // 占位分支在折叠判断之外：收起时也要能看到"在加载/确实没有"
+                    members.isEmpty() && isLoadingGroups -> GroupPlaceholder(stringResource(R.string.v5_groups_loading))
+                    members.isEmpty() -> GroupPlaceholder(stringResource(R.string.v5_no_nodes))
+                    collapsed -> Unit
+                    else -> {
                         members.forEachIndexed { index, member ->
                             if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
                             MemberRow(
@@ -165,8 +208,6 @@ internal fun V5NodesScreen(
                             )
                         }
                     }
-                    isLoadingGroups -> GroupPlaceholder(stringResource(R.string.v5_groups_loading))
-                    else -> GroupPlaceholder(stringResource(R.string.v5_no_nodes))
                 }
             }
 
@@ -200,7 +241,7 @@ internal fun V5NodesScreen(
                                 }
                             },
                             chevron = true,
-                            onClick = { exitSheetGroup = group },
+                            onClick = { exitSheetGroupName = group.name },
                         )
                     }
                 }
@@ -232,10 +273,10 @@ internal fun V5NodesScreen(
     exitSheetGroup?.let { group ->
         GroupExitSheet(
             group = group,
-            onDismiss = { exitSheetGroup = null },
+            onDismiss = { exitSheetGroupName = null },
             onSelect = { member ->
                 onSelectInGroup(group.name, member)
-                exitSheetGroup = null
+                exitSheetGroupName = null
             },
         )
     }
