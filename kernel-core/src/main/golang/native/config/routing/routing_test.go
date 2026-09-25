@@ -99,6 +99,24 @@ func TestBuildStructure(t *testing.T) {
 	}
 }
 
+func TestDirectDomainsFromState(t *testing.T) {
+	cfg := testRawConfig()
+	state := &State{Version: 1, Enabled: true, DirectDomains: []string{"panel.example.cn"}}
+	if err := Build(cfg, state, []string{"example.com"}); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	// App 侧注入的真实域名清单优先于内核编译期占位清单
+	if cfg.Rule[0] != "DOMAIN-SUFFIX,panel.example.cn,DIRECT" {
+		t.Fatalf("first rule must use state direct domain: %q", cfg.Rule[0])
+	}
+	for _, r := range cfg.Rule {
+		if strings.Contains(r, "example.com,") {
+			t.Fatalf("placeholder domain must not appear: %q", r)
+		}
+	}
+}
+
 func TestDefaultOnGroups(t *testing.T) {
 	cfg := testRawConfig()
 	if err := Build(cfg, defaultEnabledState(), nil); err != nil {

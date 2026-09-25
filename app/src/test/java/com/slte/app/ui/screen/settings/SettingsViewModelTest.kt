@@ -140,7 +140,8 @@ class SettingsViewModelTest {
     @Test
     fun `本地分流切换失败回滚并提示`() = runTest(mainRule.dispatcher) {
         coEvery { subscribeRepository.fetchUserInfo(force = true) } returns Result.success(user())
-        val vm = viewModel()
+        // 初始为启用状态（订阅导入后 ensureDefault 写盘的文件内容）
+        val vm = viewModel(routingState = RoutingState(enabled = true))
         advanceUntilIdle()
         assertTrue(vm.data.value.localRoutingEnabled)
 

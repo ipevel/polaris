@@ -32,6 +32,7 @@ class RoutingStateStoreContractTest {
                 RoutingState(
                     enabled = true,
                     groups = mapOf("📺 哔哩哔哩" to false),
+                    directDomains = listOf("panel.example.cn"),
                     custom = listOf(RoutingCustomGroup(name = "x", url = "https://a/b.yaml", behavior = "domain", interval = 3600)),
                 ),
             )
@@ -40,6 +41,7 @@ class RoutingStateStoreContractTest {
         assertTrue(text.contains("\"enabled\":true"))
         assertTrue(text.contains("\"groups\":"))
         assertTrue(text.contains("\"custom\":"))
+        assertTrue(text.contains("\"direct_domains\":[\"panel.example.cn\"]"))
         assertTrue(text.contains("\"name\":\"x\""))
         assertTrue(text.contains("\"url\":\"https://a/b.yaml\""))
         assertTrue(text.contains("\"behavior\":\"domain\""))
@@ -54,7 +56,9 @@ class RoutingStateStoreContractTest {
                 "{\"version\":1,\"groups\":{\"A\":true},\"future_field\":123}",
             )
 
-        assertTrue(state.enabled) // 缺失 enabled 时 Kotlin 侧默认启用（App 始终写出该字段）
+        // 缺省 enabled=false 与内核 ReadState 的降级语义一致（缺省=关闭）；
+        // 启用由 ensureDefault 写盘后的真实文件内容决定
+        assertFalse(state.enabled)
         assertEquals(mapOf("A" to true), state.groups)
         assertTrue(state.custom.isEmpty())
     }

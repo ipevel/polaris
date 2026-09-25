@@ -19,7 +19,7 @@
 | 策略组成员 | `include-all: true` 自动纳入全部节点 | 订阅更新后无需重新生成；节点增减自动跟随 |
 | 规则数据 | 内置 APK assets 预播种 + http rule-provider 自动更新 | 冷启动断网时使用内置文件可立即生效；联网后内核按 interval 从 jsDelivr 刷新 |
 | 选择持久化 | 本地分流启用时 `StoreSelected=true`（mihomo cache.db） | 每条分流组的出口选择必须跨重连存活；本地分流关闭时维持现状 false |
-| 规则数据源 | `ipevel/clash-rulesets`（fastly.jsdelivr.net CDN） | 工作区自有仓库、每日自动更新、mihomo 原生格式、仅 606KB 可全量内置 |
+| 规则数据源 | karing-ruleset 数据谱系：`MetaCubeX/meta-rules-dat@meta`（geosite/geoip）+ `ACL4SSR/ACL4SSR@master`（Clash 清单），经 fastly.jsdelivr.net | 与 karing-ruleset 同一上游、每日自动更新；48 个种子全量内置（1.5MB） |
 
 ## 3. 状态文件契约（routing.json）
 
@@ -69,12 +69,25 @@
 
 ## 6. 内置分流表（provider → behavior）
 
-来自 `clash-rulesets/clashmeta`（ipevel/clash-rulesets @main）：
-- classical：OpenAI、Claude、GoogleGemini、ProxyMedia、TikTok、Instagram、Netflix、Google、GooglePlay、GoogleFCM、Apple、GitHub、Bing、OneDrive、Microsoft、ChinaDomain、Telegram、ProxyGFWlist
-- ipcidr：ChinaIp、ChinaIpV6、ChinaCompanyIp、TelegramCIDR
-- ProxyLite：裸关键字（内联 DOMAIN-KEYWORD，不走 provider）
+分组、顺序、默认开关与出站语义逐条对齐 **Karing 预设 cn.json**（KaringX/karing
+assets/datas/preset/cn.json）：广告拦截(REJECT 默认,关)、应用净化(关)、苹果推送(关)、
+苹果服务(DIRECT,开)、油管(关)、Gemini(关)、Google Play(开)、Google FCM(关)、
+Google(开)、Facebook(关)、X(关)、TikTok(关)、Instagram(关)、奈飞(关)、WhatsApp(关)、
+电报(关)、Claude(关)、OpenAI(关)、GitHub(关)、微软Bing(关)、微软云盘(关)、
+微软服务(关)、游戏平台(关)、哔哩哔哩(DIRECT,开)、网易音乐(关)、国内直连(DIRECT,开)、
+国外穿墙(开)。
 
-分组（Karing 预设风格，默认开关沿用其语义）：广告拦截*(REJECT 默认)、恶意软件*(REJECT 默认)、AI 平台、油管视频、奈飞、TikTok、Instagram、电报消息、Google、Google Play、Google FCM(DIRECT)、苹果服务、GitHub、微软 Bing、微软云盘、微软服务、国内直连(DIRECT 默认)、漏网之鱼兜底。`*` = 默认关闭（Karing 预设同款默认）。
+规则数据源沿用 karing-ruleset 的**数据谱系**（karing-ruleset 本体仅发布 sing-box
+.srs 格式，mihomo 无法读取）：
+- geosite/geoip 类别 → `MetaCubeX/meta-rules-dat@meta`（karing-ruleset 的 geo
+  数据同源上游；KaringX/meta-rules-dat README 指定的 mihomo 格式获取渠道），
+  behavior: geosite=domain、geoip=ipcidr，payload YAML
+- ACL4SSR 清单 → `ACL4SSR/ACL4SSR@master` 的 `Clash/` 目录（karing-ruleset
+  workflow 每日转换 srs 的同一来源），behavior=classical、format=text
+- 下载均走 `fastly.jsdelivr.net`，provider interval=86400s（24h），与
+  karing-ruleset 每日构建节奏一致
+- 「恶意软件」组缺失：其引用的 malware/phishing 类别仅存在于 karing-ruleset 的
+  Iran 专用源，meta-rules-dat 无对应类别
 
 ## 7. 处理器链与持久化
 
@@ -83,7 +96,7 @@ patchExternalController → patchOverride → [NEW] patchLocalRouting → patchG
   → patchProfile(StoreSelected=分流启用) → patchDns → patchRules(兜底保留) → …
 ```
 
-- `patchRules`（自家域名直连插队）保留：其查重逻辑保证与生成规则不重复。
+- 直连兜底优先级：App 构建期注入清单（随 routing.json `direct_domains` 下发的真实面板域名）> 内核编译期 `directDomains`（占位）；`patchRules`（自家域名直连插队）保留为面板模式兜底，其查重逻辑保证与生成规则不重复。
 - 冷启动安全性：provider 初始下载失败仅记日志（executor `loadProvider` 非致命），规则不匹配时流量落入 MATCH 兜底，不会连接失败。
 - `IsSafePath` 在 cmfa 构建下恒放行（上游 CFA 同款），patchProviders 的 profileDir 路径重写沿用。
 

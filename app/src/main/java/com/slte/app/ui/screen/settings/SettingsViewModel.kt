@@ -34,7 +34,9 @@ data class SettingsData(
     val tunStackSwitchCount: Int = 0,
     val locale: Locale? = null,
 
-    val localRoutingEnabled: Boolean = true,
+    // 默认 false 与内核「文件缺失=关闭」语义一致；真实值由 load() 从
+    // routing.json 读出（订阅导入后即为 true）
+    val localRoutingEnabled: Boolean = false,
     val routingSync: RemindSync = RemindSync.Loading,
 )
 

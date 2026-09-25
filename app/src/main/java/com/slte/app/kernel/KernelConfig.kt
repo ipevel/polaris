@@ -92,9 +92,10 @@ constructor(
                 profiles.setActive(profile)
             }
 
-            // 本地分流：确保 routing.json 存在（默认启用），并把内置规则种子
-            // 播种到内核 provider 缓存目录，避免冷启动断网时规则集为空。
-            routingStateStore.ensureDefault()
+            // 本地分流：确保 routing.json 存在（默认启用），并把自家域名清单
+            // 与内置规则种子同步到内核，避免面板域名丢失直连兜底与冷启动断网
+            // 时规则集为空。
+            routingStateStore.ensureDefault(directDomains())
             seedRoutingProviders(uuid)
 
             if (activeChanged || injectDirectRule(uuid)) {
@@ -151,7 +152,7 @@ constructor(
                 file.parentFile?.mkdirs()
                 atomicWrite(file, cleaned)
                 // 订阅更新后补齐 routing.json 与规则种子（幂等）
-                routingStateStore.ensureDefault()
+                routingStateStore.ensureDefault(directDomains())
                 seedRoutingProviders(profile.uuid)
                 context.sendBroadcastSelf(
                     Intent(Intents.ACTION_PROFILE_CHANGED)

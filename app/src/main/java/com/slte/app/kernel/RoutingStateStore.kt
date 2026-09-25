@@ -10,6 +10,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -35,9 +36,11 @@ data class RoutingCustomGroup(
 @Serializable
 data class RoutingState(
     val version: Int = 1,
-    val enabled: Boolean = true,
+    val enabled: Boolean = false,
     val groups: Map<String, Boolean> = emptyMap(),
     val custom: List<RoutingCustomGroup> = emptyList(),
+    // 字段名必须与 Go State 的 json tag 逐字一致（snake_case）
+    @SerialName("direct_domains") val directDomains: List<String> = emptyList(),
 )
 
 @Singleton
@@ -55,6 +58,12 @@ constructor(
 
     fun stateFile(): File = File(context.filesDir, "clash").resolve(FILE_NAME)
 
+    /**
+     * 读取状态；文件缺失或损坏一律返回 enabled=false 的零状态——与内核侧
+     * ReadState 的降级语义完全一致（缺省=关闭=面板配置原样生效），杜绝
+     * 「UI 显示开启而内核按关闭处理」的期望值/真实值分裂（pitfall #6）。
+     * 启用状态由 [ensureDefault] 在订阅导入流程写盘后再被读到。
+     */
     fun load(): RoutingState = runCatching {
         val file = stateFile()
         if (!file.exists()) return RoutingState()
@@ -88,13 +97,19 @@ constructor(
     }
 
     /**
-     * 状态文件不存在时写入默认状态（本地分流启用）。幂等；已存在时不覆盖，
-     * 保留用户的组开关与自定义组。仅在订阅导入流程（IO 线程）调用。
+     * 状态文件不存在时写入启用状态（本地分流默认开启，产品语义），并同步
+     * 自家后端域名清单；已存在时仅补域名清单（保留用户的组开关/自定义组）。
+     * 仅在订阅导入流程（IO 线程）调用。
      */
-    fun ensureDefault(): Boolean {
-        if (stateFile().exists()) return true
-        return write(RoutingState())
+    fun ensureDefault(directDomains: List<String>): Boolean {
+        if (!stateFile().exists()) {
+            return write(RoutingState(enabled = true, directDomains = directDomains))
+        }
+        return syncDirectDomains(directDomains)
     }
+
+    /** 更新自家后端域名清单（App 侧构建期注入清单 → 内核生成直连规则）。 */
+    fun syncDirectDomains(directDomains: List<String>): Boolean = write(load().copy(directDomains = directDomains))
 
     /** 置总开关并落盘；返回写入是否成功。 */
     fun setEnabled(enabled: Boolean): Boolean = write(load().copy(enabled = enabled))

@@ -50,7 +50,12 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 	rules := make([]string, 0, 256)
 
 	// 自家后端域名直连最前置（patchRules 仍保留为兜底，其查重保证不重复）。
-	for _, domain := range directDomains {
+	// 优先用 App 侧经 routing.json 注入的真实域名清单；参数值是编译期占位兜底。
+	domains := directDomains
+	if len(state.DirectDomains) > 0 {
+		domains = state.DirectDomains
+	}
+	for _, domain := range domains {
 		rules = append(rules, "DOMAIN-SUFFIX,"+domain+","+outboundDirect)
 	}
 	rules = append(rules, lanDirectRules...)
@@ -122,16 +127,14 @@ func ProviderRawMap(p Provider) map[string]any {
 		"behavior": p.Behavior,
 		"format":   p.Format,
 		"url":      p.URL,
-		"path":     providerSubPath + "/" + p.Key + FileExt(p),
+		"path":     providerSubPath + "/" + p.Key + ".yaml",
 		"interval": providerInterval,
 	}
 }
 
-// FileExt 预播种文件扩展名：text 格式 .list，其余 .yaml。
-func FileExt(p Provider) string {
-	if p.Format == "text" {
-		return ".list"
-	}
+// FileExt 预播种文件扩展名。统一为 .yaml：mihomo 按声明的 format（yaml/text）
+// 解析内容，扩展名仅用于与 App 侧种子文件名对齐，不参与解析。
+func FileExt(_ Provider) string {
 	return ".yaml"
 }
 

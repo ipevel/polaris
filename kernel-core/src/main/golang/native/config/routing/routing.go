@@ -25,12 +25,16 @@ type CustomGroup struct {
 
 // State 本地分流状态，由 App 侧写入 home 目录 routing.json
 // （与 override.json 同目录、同读写模式）。缺失或损坏一律回退为关闭，
-// 即维持面板下发的 rules/proxy-groups，与 override 的静默降级策略一致。
+// 即维持面板下发的 rules/proxy-groups，与 override 的静默降级策略一致；
+// App 侧 RoutingState 的缺省值与之保持一致（两侧均默认关闭）。
 type State struct {
-	Version int           `json:"version"`
-	Enabled bool          `json:"enabled"`
+	Version int `json:"version"`
+	Enabled bool `json:"enabled"`
 	Groups  map[string]bool `json:"groups"` // 内置分流组名 -> 启用；缺省 = 内置默认
-	Custom  []CustomGroup `json:"custom"`
+	Custom  []CustomGroup   `json:"custom"`
+	// DirectDomains 自家后端域名（App 构建期注入清单），作为生成规则最前
+	// 的直连白名单。为空时内核退回编译期占位清单。
+	DirectDomains []string `json:"direct_domains"`
 }
 
 // StatePath 状态文件路径（Go home 目录，App 侧为 filesDir/clash/）。

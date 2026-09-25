@@ -14,6 +14,10 @@
   `native/config/routing`（Karing 式本地分流生成，见 `docs/local-routing-design.md`）；
   `patchProfile` 的 StoreSelected 改为随本地分流开关；修复 `override.go` 存量编译破损
   （stdlib log 无 Warnln，改用 mihomo log）。
+- 二次重建（同日缺陷修复）：routing.json 新增 `direct_domains`（App 侧注入真实面板
+  域名清单，优先于编译期占位——否则本地生成规则会整体替换掉清洗注入的直连规则）；
+  provider 预播种扩展名统一为 `.yaml`（mihomo 按声明 format 解析，与扩展名无关），
+  与 App 侧 48 个种子文件名对齐。
 - 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
   CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd
   go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`

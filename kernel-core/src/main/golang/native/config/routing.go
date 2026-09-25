@@ -24,7 +24,13 @@ func patchLocalRouting(cfg *config.RawConfig, _ string) error {
 	if !state.Enabled {
 		return nil
 	}
-	if err := routing.Build(cfg, state, directDomains); err != nil {
+	// 自家后端域名优先用 App 侧注入的真实清单（routing.json）；
+	// 内核编译期清单只是占位兜底。
+	domains := directDomains
+	if len(state.DirectDomains) > 0 {
+		domains = state.DirectDomains
+	}
+	if err := routing.Build(cfg, state, domains); err != nil {
 		// 生成本地分流失败时回退面板配置（而不是让整个 profile 加载失败）
 		localRoutingEnabled = false
 		log.Warnln("Apply local routing: %s", err.Error())
