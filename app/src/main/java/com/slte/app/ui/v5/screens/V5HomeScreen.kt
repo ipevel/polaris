@@ -6,6 +6,7 @@ package com.slte.app.ui.v5.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -50,7 +52,6 @@ import com.slte.app.ui.v5.LedgerData
 import com.slte.app.ui.v5.MacaronTile
 import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.ProgressTrack
-import com.slte.app.ui.v5.SparkChart
 import com.slte.app.ui.v5.TileTone
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Card
@@ -72,21 +73,32 @@ private fun SpeedTile(
     label: String,
     bps: Long,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    MacaronTile(tone, label, modifier, icon = icon) {
-        Text(
-            buildAnnotatedString {
-                withStyle(SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
-                    append(FormatUtils.traffic(bps))
-                }
-                withStyle(SpanStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
-                    // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
-                    // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。等价的现成写法见 FormatUtils.speed()。
-                    append("/s")
-                }
-            },
-        )
+    MacaronTile(tone, label, modifier, icon = icon, live = active) {
+        if (!active) {
+            // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
+            Text(
+                "--",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = V5ThemeColors.current.text3,
+            )
+        } else {
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
+                        append(FormatUtils.traffic(bps))
+                    }
+                    withStyle(SpanStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
+                        // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
+                        // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。等价的现成写法见 FormatUtils.speed()。
+                        append("/s")
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -99,12 +111,24 @@ private fun PlanUsageCard(
     val c = V5ThemeColors.current
     val fraction =
         if (data.totalBytes > 0L) (data.usedBytes.toFloat() / data.totalBytes).coerceIn(0f, 1f) else 0f
+    val daysLeftLabel =
+        if (data.isValid && data.daysUntilExpired > 0) {
+            stringResource(R.string.v5_days_left, data.daysUntilExpired)
+        } else {
+            ""
+        }
     val expiredLabel =
         if (data.expiredAt > 0L) {
             stringResource(R.string.usage_expired_on, FormatUtils.formatExpiryDate(data.expiredAt))
         } else {
             ""
         }
+    // 有效套餐把「剩余天数」放在到期日之前（复用「我的/套餐」页同款 v5_days_left，免新增 i18n）：
+    // 只给到期日期用户还得自己心算，补上剩余天数才一眼可读。
+    val expiryText = listOf(daysLeftLabel, expiredLabel).filter { it.isNotEmpty() }.joinToString(" · ")
+    // 用量逼近上限（≥90%）时把数字与进度条转成警示红，提前提醒，避免用超/被限速。
+    val nearLimit = fraction >= 0.9f
+    val usedColor = if (nearLimit) c.danger else c.accent
     V5Card(modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -128,7 +152,7 @@ private fun PlanUsageCard(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    color = c.accent,
+                    color = usedColor,
                 )
                 Text(stringResource(R.string.usage_total, FormatUtils.traffic(data.totalBytes)), fontSize = 12.5.sp, color = c.text3)
                 Spacer(Modifier.weight(1f))
@@ -137,12 +161,12 @@ private fun PlanUsageCard(
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    color = c.accent,
+                    color = usedColor,
                 )
             }
-            ProgressTrack(fraction)
+            ProgressTrack(fraction, brush = if (nearLimit) SolidColor(c.danger) else null)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(expiredLabel, fontSize = 12.5.sp, color = c.text3)
+                Text(expiryText, fontSize = 12.5.sp, color = c.text3)
                 Spacer(Modifier.weight(1f))
                 V5Button(
                     stringResource(if (data.hasPlan) R.string.plan_renew_button else R.string.plan_buy_button),
@@ -159,13 +183,29 @@ private fun PlanUsageCard(
 private fun SessionCard(data: DashboardData) {
     val c = V5ThemeColors.current
     val connected = data.isConnected
+    // 运行中追加连接时长：实时曲线移除后，这里是首页唯一能体现「已连多久」的信息，
+    // 也与原型设计（已运行 00:45:00）一致。未连接/连接中不显示时长。
+    // connectedSinceElapsedMs 是「连接时刻」时间戳（elapsedRealtime 毫秒），不是时长本身，
+    // 必须先与当前时刻相减；> 0 的判断顺带兜住异常数据，避免显示成设备开机时长。
+    val uptime =
+        if (connected && data.connectedSinceElapsedMs > 0L) {
+            FormatUtils.formatDuration(SystemClock.elapsedRealtime() - data.connectedSinceElapsedMs)
+        } else {
+            ""
+        }
+    val statusText =
+        if (connected) {
+            listOf(stringResource(R.string.session_running), uptime).filter { it.isNotEmpty() }.joinToString(" · ")
+        } else {
+            stringResource(R.string.session_not_running)
+        }
     V5Card {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.session_title), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.text)
                 Spacer(Modifier.weight(1f))
                 Text(
-                    if (connected) stringResource(R.string.session_running) else stringResource(R.string.session_not_running),
+                    statusText,
                     fontSize = 11.5.sp,
                     fontFamily = FontFamily.Monospace,
                     color = c.text3,
@@ -217,7 +257,6 @@ internal fun V5HomeScreen(
     onNavSelect: (NavTab) -> Unit,
     refreshKernelInfo: () -> Unit,
 ) {
-    val c = V5ThemeColors.current
     val connected = data.isConnected
     // 连接中态：v5 改造时把这个字段丢了（isConnecting 在 ui/v5/ 下零命中），
     // 导致"点连接"到"连上"之间界面与未连接完全一致（截图逐字节相同）。
@@ -328,23 +367,8 @@ internal fun V5HomeScreen(
             }
             // —— 速率瓷片
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, Modifier.weight(1f))
-                SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, Modifier.weight(1f))
-            }
-            // —— 速率曲线（真实采样：MainViewModel.speedWatchJob 每秒写入 speedHistory）
-            V5Card {
-                if (connected) {
-                    SparkChart(history = data.speedHistory)
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            stringResource(R.string.v5_chart_hint),
-                            fontSize = 10.5.sp,
-                            color = c.text3,
-                            modifier = Modifier.padding(vertical = 14.dp),
-                        )
-                    }
-                }
+                SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, connected, Modifier.weight(1f))
+                SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, connected, Modifier.weight(1f))
             }
             SessionCard(data)
             PlanUsageCard(data, onRenew)

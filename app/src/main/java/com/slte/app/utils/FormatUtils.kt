@@ -55,6 +55,23 @@ object FormatUtils {
 
     fun speed(bytesPerSecond: Long): String = "${traffic(bytesPerSecond)}/s"
 
+    /**
+     * 连接时长：毫秒 → `H:MM:SS`（不足 1 小时给 `MM:SS`）。
+     * 纯数值格式、无需本地化；`<= 0` 返回空串，由调用方决定是否展示（未连接时不显示时长）。
+     */
+    fun formatDuration(elapsedMs: Long): String {
+        if (elapsedMs <= 0L) return ""
+        val totalSeconds = elapsedMs / 1000L
+        val hours = totalSeconds / 3600L
+        val minutes = (totalSeconds % 3600L) / 60L
+        val seconds = totalSeconds % 60L
+        return if (hours > 0L) {
+            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        }
+    }
+
     fun formatDate(epochSeconds: Long): String = formatEpochDate(epochSeconds, DateFormats.ISO)
 
     fun formatExpiryDate(epochSeconds: Long): String = formatEpochDate(epochSeconds, DateFormats.EXPIRY)

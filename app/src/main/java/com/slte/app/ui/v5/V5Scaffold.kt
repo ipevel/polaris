@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -55,11 +58,12 @@ fun V5ScrollBody(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, bottom = if (tab != null) 118.dp else 20.dp),
+            .padding(start = 16.dp, end = 16.dp, bottom = (if (tab != null) 118.dp else 20.dp) + navInset),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content,
     )
@@ -71,11 +75,12 @@ fun V5PageBody(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp + navInset),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content,
     )

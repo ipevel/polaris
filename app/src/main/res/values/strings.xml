@@ -326,7 +326,6 @@
     <string name="v5_ready_no_node">就绪 · 尚未选择节点</string>
     <string name="v5_down_speed">下行速率</string>
     <string name="v5_up_speed">上行速率</string>
-    <string name="v5_chart_hint">连接后显示实时速率曲线</string>
     <string name="v5_nodes_summary">%1$d 个节点 · %2$d 个分组</string>
     <string name="v5_speed_testing">测速中</string>
     <string name="v5_quick_pick">快捷选择</string>

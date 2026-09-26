@@ -385,6 +385,7 @@ fun MacaronTile(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     small: Boolean = false,
+    live: Boolean = false,
     value: @Composable () -> Unit,
 ) {
     val c = V5ThemeColors.current
@@ -398,6 +399,18 @@ fun MacaronTile(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             icon?.let { Icon(it, null, modifier = Modifier.size(13.dp), tint = t.ink) }
             Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp, color = t.ink)
+            // 实时指示：柔和呼吸的绿点。首页移除实时曲线后，用它表明速率仍在按秒刷新，
+            // 既保留"数据是活的"这一信息，又不占额外版面、不喧宾夺主。
+            if (live) {
+                val transition = rememberInfiniteTransition(label = "tile-live")
+                val alpha by transition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0.35f,
+                    animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
+                    label = "tile-live-alpha",
+                )
+                Box(Modifier.size(6.dp).clip(CircleShape).background(c.ok.copy(alpha = alpha)))
+            }
         }
         Box(Modifier.padding(top = 2.dp)) { value() }
     }

@@ -330,7 +330,6 @@
     <string name="v5_ready_no_node">Ready · No node selected</string>
     <string name="v5_down_speed">Download</string>
     <string name="v5_up_speed">Upload</string>
-    <string name="v5_chart_hint">Live speed chart appears once connected</string>
     <string name="v5_nodes_summary">%1$d nodes · %2$d groups</string>
     <string name="v5_speed_testing">Testing</string>
     <string name="v5_quick_pick">Quick pick</string>

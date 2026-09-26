@@ -4,6 +4,7 @@
 package com.slte.app
 
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,6 +35,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 底部导航为自绘：关闭系统给三键导航栏加的半透明底衬，避免与自绘底栏叠色（API 29+）。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent {
             setSingletonImageLoaderFactory { context ->
                 ImageLoader
