@@ -50,7 +50,7 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.5.5 | 38 |
+| Android | 1.5.6 | 39 |
 
 > 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。
 >
@@ -109,8 +109,8 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 |------|--------|------|
 | `POLARIS_APP_NAME` | `Polaris` | 应用显示名 |
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 应用包名 |
-| `POLARIS_VERSION_NAME` | `1.5.5` | 版本名（Release 由 build.yml 传入） |
-| `POLARIS_VERSION_CODE` | `38` | versionCode |
+| `POLARIS_VERSION_NAME` | `1.5.6` | 版本名（Release 由 build.yml 传入） |
+| `POLARIS_VERSION_CODE` | `39` | versionCode |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用；同时并入域名白名单 |
 | `POLARIS_API_TYPE` | `xiaov2b` | 遗留变量：仍写入 `BuildConfig.API_TYPE`，但运行时已不再读取（后端类型改为登录时自动探测） |
 | `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅链接路径，面板地址 + 该路径 + token 组成订阅源 |
