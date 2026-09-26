@@ -10,10 +10,33 @@
 
 $ErrorActionPreference = "Continue"
 
-# 0. Environment (same as CI)
-$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
-$env:ANDROID_HOME = "C:\Android\Sdk"
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+# 0. Environment -- use JAVA_HOME / ANDROID_HOME if already set; otherwise probe
+#    the usual locations. Never hard-code a personal machine path in this script
+#    (see docs/writing-guide.md 2.6).
+if (-not $env:JAVA_HOME) {
+    $jdkRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)})
+    if ($env:LOCALAPPDATA) { $jdkRoots += (Join-Path $env:LOCALAPPDATA 'Programs') }
+    $jdkRoots = $jdkRoots | Where-Object { $_ -and (Test-Path $_) }
+    foreach ($root in $jdkRoots) {
+        $hit = Get-ChildItem -Path (Join-Path $root 'Eclipse Adoptium') -Directory -Filter 'jdk-17*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1
+        if ($hit) { $env:JAVA_HOME = $hit.FullName; break }
+    }
+}
+if (-not $env:ANDROID_HOME -and $env:LOCALAPPDATA) { $env:ANDROID_HOME = Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+if (-not $env:ANDROID_SDK_ROOT -and $env:ANDROID_HOME) { $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME }
+if ($env:JAVA_HOME) { $env:PATH = "$env:JAVA_HOME\bin;$env:PATH" }
+
+if (-not $env:JAVA_HOME) {
+    Write-Host "WARN: JDK not found; install JDK 17 or set JAVA_HOME" -ForegroundColor Yellow
+} elseif (-not (Test-Path $env:JAVA_HOME)) {
+    Write-Host "WARN: JAVA_HOME points to a missing path: $env:JAVA_HOME" -ForegroundColor Yellow
+}
+if (-not $env:ANDROID_HOME) {
+    Write-Host "WARN: Android SDK not found; set ANDROID_HOME" -ForegroundColor Yellow
+} elseif (-not (Test-Path $env:ANDROID_HOME)) {
+    Write-Host "WARN: ANDROID_HOME points to a missing path: $env:ANDROID_HOME" -ForegroundColor Yellow
+}
 
 $kp = Join-Path $env:TEMP 'polaris-throwaway.keystore'
 $env:POLARIS_RELEASE_STORE_FILE = $kp
