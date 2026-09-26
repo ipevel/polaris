@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.6 更新",
   "update_changelog": "### 1.5.6\n\n- **修复节点选择重启后丢失**：内核切换节点时只改了内存、没有写入选择缓存，退出重进或被系统回收后就回到默认；现在切换成功即落盘，重开仍保留你选中的节点\n- **修复分流规则组的节点排序**：分流组此前沿用内核 include-all 的原始顺序，与「节点选择」列表不一致；现在两者统一按面板/订阅顺序排列\n- **流量页失败时显示具体原因**：不再只提示一句「获取失败」，同时显示 HTTP 状态码或服务端错误信息，便于判断是面板问题还是网络问题",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.5/Polaris-1.5.5.apk",
-  "update_apk_sha256": "9194523a186139c5df48821e83956b8dd2c8f8361ac09236f3b614c8867c677d"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.6/Polaris-1.5.6.apk",
+  "update_apk_sha256": "5b32202436f7062d9574407f3a5157af0e9280ae7d135f25fecdd4213f1b93f9"
 }
