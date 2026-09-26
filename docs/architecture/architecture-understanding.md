@@ -177,7 +177,7 @@
 
 ## 7. Agent 指令覆盖度
 
-仓库唯一 agent 指令是 `.agents/skills/polaris-release/SKILL.md`，**强在发版与合规流程，弱在业务与安全约束**。对本流程而言，它没有写进以下 4 条，而这 4 条恰好是避免事故的关键：
+仓库包含一套发版与合规流程约定，**强在发版与合规流程，弱在业务与安全约束**。对本流程而言，它没有写进以下 4 条，而这 4 条恰好是避免事故的关键：
 
 1. 净化链路是安全底线，任何路径都不得绕过 `SubscriptionSanitizer`；
 2. `ProfileWorker` / `ProfileProcessor.update()` 是**保留且不可达**，不要再接调度方；
@@ -203,4 +203,4 @@
 - 本目录产物为**当前态快照**，基线 v1.4.14（`09fac69`）。任何改动以下位置都需重跑本流程：
   `AuthInterceptor` / `ApiUrlStore` / `SubscriptionSanitizer` 及其 `Sanitizer*` 依赖 / `KernelConfig` / `ProfileProcessor` / `ConfigurationModule` / `TunService` / `KernelManager` / `KernelProxyTraffic`。
 - 图源是 `.dot` 文本文件，可直接 diff。**本次未接入 CI 校验**（本仓库此前没有任何架构产物，无可比对基线）；如需"活架构"校验，属 `architecture-health` 场景，可另起一轮。
-- 这些文件是新增的未跟踪文件。本仓库有严格的发版合规流程（`.agents/skills/polaris-release/SKILL.md`），**是否提交需按该流程单独决定**，不要顺手带入版本发布提交。
+- 这些文件是新增的未跟踪文件。本仓库有严格的发版合规流程（见 [CONTRIBUTING.md](../../CONTRIBUTING.md)），**是否提交需按该流程单独决定**，不要顺手带入版本发布提交。
