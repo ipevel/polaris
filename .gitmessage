@@ -1,0 +1,6 @@
+# <type>(<scope>): <摘要，≤ 50 字符，中文祈使句，结尾不加句号>
+# ↑ 可选 type：feat fix docs style refactor perf test build ci chore revert
+# ↑ 可选 scope：app ui nodes routing home traffic update config kernel ci repo release deps
+# 空一行后写正文：为什么改 / 影响面 / 如何验证（每行 ≤ 72 字符）
+# 空一行后写页脚：BREAKING CHANGE: … / Closes #123
+# 规范详见 docs/writing-guide.md

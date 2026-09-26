@@ -19,26 +19,26 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 ### Android
 
-- 双面板后端支持：XiaoV2b / Xboard，两套适配器同时内置，登录时按面板 `guest/comm/config` 响应自动识别类型，无需换包
-- 面板地址完全由用户掌控：登录页填写自己的面板网址（自动补全 `https://`，只接受 HTTPS），App 不内置任何面板地址
-- 首页仪表盘：代理模式切换（规则 / 全局 / 直连）、连接开关（点击起即计时长）与当前节点、实时上下行与速率曲线、会话信息（当前 IP / 内网 IP / 本次用量 / 内存）、套餐用量与到期
-- 四栏底部导航：首页 / 节点 / 流量 / 我的，切换与页面预加载更流畅
-- 节点页：两层结构 ——「🚀 节点选择」卡直接列出主组全部成员（自动选择 / 故障转移 / 直连 / 每个具体节点同层可选，也可在分流组里被「跟随节点选择」引用），该卡可折叠且收起后仍显示当前出口；下方「分流规则组」每条独立指定出口（跟随/自动/故障转移/直连/拦截/具体节点）。右上角「测速」按结构组测完全部节点、「更新订阅」一键刷新
-- 流量页：已用 / 上行 / 下行 / 统计天数概览、流量趋势图与按日明细
-- 我的：公告、邮箱与余额、套餐续费、订单、礼品卡兑换、邀请返利、工单、Telegram 讨论组（面板配置优先，编译期链接兜底）
-- 其他设置：外观（跟随系统 / 浅色 / 深色）、语言（简体中文 / 繁體中文 / English）、TUN 堆栈（System / Gvisor / Mixed）、修改密码、到期与流量提醒开关
-- 关于软件：应用与内核版本、检查更新、日志导出与分享
-- 应用内更新：远程配置多源容灾 + 下载进度条 + SHA-256 校验（缺少校验和时拒绝安装）
-- 安全白名单：凭据只发往白名单内域名，防配置投毒
-- 日志脱敏：路径型 token（`/s/xxx` 等）统一打码，凭据与敏感值不入日志
+- 双面板后端支持：XiaoV2b / Xboard，两套适配器同时内置，登录时按面板 `guest/comm/config` 响应自动识别类型，无需换包。
+- 面板地址完全由用户掌控：登录页填写自己的面板网址（自动补全 `https://`，只接受 HTTPS），App 不内置任何面板地址。
+- 首页仪表盘：代理模式切换（规则 / 全局 / 直连）、连接开关（点击起即计时长）与当前节点、实时上下行与速率曲线、会话信息（当前 IP / 内网 IP / 本次用量 / 内存）、套餐用量与到期。
+- 四栏底部导航：首页 / 节点 / 流量 / 我的，切换与页面预加载更流畅。
+- 节点页：两层结构 ——「🚀 节点选择」卡直接列出主组全部成员（自动选择 / 故障转移 / 直连 / 每个具体节点同层可选，也可在分流组里被「跟随节点选择」引用），该卡可折叠且收起后仍显示当前出口；下方「分流规则组」每条独立指定出口（跟随 / 自动 / 故障转移 / 直连 / 拦截 / 具体节点）。右上角「测速」按结构组测完全部节点、「更新订阅」一键刷新。
+- 流量页：已用 / 上行 / 下行 / 统计天数概览、流量趋势图与按日明细。
+- 我的：公告、邮箱与余额、套餐续费、订单、礼品卡兑换、邀请返利、工单、Telegram 讨论组（面板配置优先，编译期链接兜底）。
+- 其他设置：外观（跟随系统 / 浅色 / 深色）、语言（简体中文 / 繁體中文 / English）、TUN 堆栈（System / Gvisor / Mixed）、修改密码、到期与流量提醒开关。
+- 关于软件：应用与内核版本、检查更新、日志导出与分享。
+- 应用内更新：远程配置多源容灾 + 下载进度条 + SHA-256 校验（缺少校验和时拒绝安装）。
+- 安全白名单：凭据只发往白名单内域名，防配置投毒。
+- 日志脱敏：路径型 token（`/s/xxx` 等）统一打码，凭据与敏感值不入日志。
 
 ## 下载与安装
 
-1. 从 [Releases](https://github.com/ipevel/polaris/releases) 下载最新版 APK（`Polaris-<版本号>.apk`，arm64-v8a）
-2. **校验完整性**：下载页附有 `SHA256SUMS.txt` 与签名证书指纹，安装前比对 SHA-256（Windows：`certutil -hashfile <APK> SHA256`；Linux/macOS：`sha256sum <APK>`）；不一致请勿安装
-3. 按系统提示允许「安装未知应用」后完成安装（需 Android 8.0 / API 28 及以上）
-4. 首次启动在登录页填写**你自己的面板网址**（App 不内置任何面板地址）
-5. 升级走 App 内更新（下载后自动校验 SHA-256），也可手动下载新版覆盖安装（数据保留）
+1. 从 [Releases](https://github.com/ipevel/polaris/releases) 下载最新版 APK（`Polaris-<版本号>.apk`，arm64-v8a）。
+2. **校验完整性**：下载页附有 `SHA256SUMS.txt` 与签名证书指纹，安装前比对 SHA-256（Windows：`certutil -hashfile <APK> SHA256`；Linux/macOS：`sha256sum <APK>`）；不一致请勿安装。
+3. 按系统提示允许「安装未知应用」后完成安装（需 Android 8.0 / API 28 及以上）。
+4. 首次启动在登录页填写**你自己的面板网址**（App 不内置任何面板地址）。
+5. 升级走 App 内更新（下载后自动校验 SHA-256），也可手动下载新版覆盖安装（数据保留）。
 
 > 本项目仅通过 GitHub Releases 分发；其他渠道的安装包无法保证来源与完整性。
 
@@ -50,9 +50,11 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.5.4 | 37 |
+| Android | 1.5.5 | 38 |
 
-> 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）
+> 内核版本：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。
+>
+> 版本以 [Releases](https://github.com/ipevel/polaris/releases) 页为准。
 
 ## 开发环境
 
@@ -91,7 +93,7 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ./gradlew :app:assembleRelease
 ```
 
-> **推送即出包**：每次推送到 main，CI 的「质量门禁」job 会在 `assembleDebug` 之后把调试包作为 artifact 上传（GitHub → Actions → 该次 run → Artifacts，保留 7 天），可直接下载自测。它是 **debug 签名**，与正式包签名不同，无法覆盖安装已装的正式版；正式分发仍走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`，见 `.agents/skills/polaris-release/SKILL.md`）。
+> **推送即出包**：每次推送到 main，CI 的「质量门禁」job 会在 `assembleDebug` 之后把调试包作为 artifact 上传（GitHub → Actions → 该次 run → Artifacts，保留 7 天），可直接下载自测。它是 **debug 签名**，与正式包签名不同，无法覆盖安装已装的正式版；正式分发走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`，发布前须跑完本地门禁，见 [CONTRIBUTING.md](CONTRIBUTING.md)）。
 
 ## 配置
 
@@ -107,8 +109,8 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 |------|--------|------|
 | `POLARIS_APP_NAME` | `Polaris` | 应用显示名 |
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 应用包名 |
-| `POLARIS_VERSION_NAME` | `1.4.17` | 版本名（Release 由 build.yml 传入） |
-| `POLARIS_VERSION_CODE` | `31` | versionCode |
+| `POLARIS_VERSION_NAME` | `1.5.5` | 版本名（Release 由 build.yml 传入） |
+| `POLARIS_VERSION_CODE` | `38` | versionCode |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造引导占位，运行时不使用；同时并入域名白名单 |
 | `POLARIS_API_TYPE` | `xiaov2b` | 遗留变量：仍写入 `BuildConfig.API_TYPE`，但运行时已不再读取（后端类型改为登录时自动探测） |
 | `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅链接路径，面板地址 + 该路径 + token 组成订阅源 |
@@ -135,7 +137,7 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ## 社区
 
 - [安全政策](SECURITY.md) —— 漏洞请走私有渠道报告，勿开公开 Issue
-- [贡献指南](CONTRIBUTING.md) ｜ [行为准则](CODE_OF_CONDUCT.md)
+- [贡献指南](CONTRIBUTING.md) ｜ [说明规范](docs/writing-guide.md) ｜ [行为准则](CODE_OF_CONDUCT.md)
 - [支持与求助](SUPPORT.md)
 
 ## 许可证
