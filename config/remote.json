@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.5.4",
-  "update_changelog_title": "Polaris 1.5.4 更新",
+  "update_version": "1.5.5",
+  "update_changelog_title": "Polaris 1.5.5 更新",
   "update_changelog": "### 1.5.4\n\n- **节点页统一为可展开卡片**：分流规则组与「节点选择」现在是同一套 UI（点头部展开/收起，分流组默认收起且同时只展开一个），收起后仍显示当前出口；原来的行内按钮 + 底部弹层已移除\n- **移除「故障转移」入口**（保留「自动选择」）：主组列表不再出现故障转移；若当前出口正是它，仍会保留勾选行，避免出现「头部显示某出口、列表里没有任何勾选」\n- **修复选择节点不生效**：内核在切换失败时也会返回成功，改为回读内核确认后再给提示；主组名不再硬编码，本地分流关闭或面板改名时的回退组也能正确选中\n- **首页**：节点行（带延迟）移到连接按钮上方，不再被按钮遮住；延迟直接读测速缓存、不额外发起探测；速率曲线接入真实采样（固定 60 点窗口 + 标尺下限，空闲抖动不再被放大成山峰）\n- **流量页**：新增「合计流量」= 上行 + 下行\n- **套餐页**：权益内容支持 Markdown（多行 Markdown 此前被降级为纯文本）；公告页与套餐页的外链只放行 http/https\n- **我的页**：恢复「礼品卡兑换」入口，兑换成功自动刷新余额/流量/到期；失败只显示本地化文案，不回显接口原文\n- **设置页**：移除「分流规则管理」「本地分流方案」两项，本地分流开关移到节点页底部",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.4/Polaris-1.5.4.apk",
-  "update_apk_sha256": "b6501cbe964a9572136393a80e128badf2aa26d544ecc44da840d79783d6a536"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.5/Polaris-1.5.5.apk",
+  "update_apk_sha256": "9194523a186139c5df48821e83956b8dd2c8f8361ac09236f3b614c8867c677d"
 }
