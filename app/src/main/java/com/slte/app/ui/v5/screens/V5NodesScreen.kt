@@ -149,9 +149,12 @@ internal fun V5NodesScreen(
 ) {
     val c = V5ThemeColors.current
     val primary = primaryGroupOf(groups)
+    // 面板/订阅顺序索引：主组与各分流组都要用它重排节点成员。分流组若漏掉这一步，
+    // 会保留内核 include-all 的 UTF-8 字节序，与「节点选择」列表的排序不一致。
+    val nodeOrder = nodeOrderIndex(data)
     // 主组过滤掉「故障转移」入口（产品决策），但保留 now 命中项避免"鬼选中"
     val members = primary?.let {
-        orderMembers(visibleGroupMembers(it.members, it.now), nodeOrderIndex(data))
+        orderMembers(visibleGroupMembers(it.members, it.now), nodeOrder)
     } ?: emptyList()
     val groupsForRouting = routingGroupsOf(groups, primary?.name)
     // 未连接（内核未运行）时用订阅缓存名单兜底，见 offlineMembersOf 的注释
@@ -225,8 +228,9 @@ internal fun V5NodesScreen(
                         name = group.name,
                         nowLabel = groupExitLabel(group, primary?.name),
                         selectedName = group.now,
-                        // 分流组同样过滤「故障转移」，保留 now 命中项
-                        members = visibleGroupMembers(group.members, group.now),
+                        // 分流组同样过滤「故障转移」，保留 now 命中项；并套用与「节点选择」相同的
+                        // 面板顺序重排（此前漏了 orderMembers，导致两组排序不一致）
+                        members = orderMembers(visibleGroupMembers(group.members, group.now), nodeOrder),
                         collapsed = group.name in collapsedSections,
                         enabled = true,
                         isLoading = isLoadingGroups,
