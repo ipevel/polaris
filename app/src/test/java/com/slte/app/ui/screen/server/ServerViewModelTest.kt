@@ -64,7 +64,8 @@ class ServerViewModelTest {
     ) = ServerNode(id = id, name = name, type = ServerType.VMESS, host = "h.example.com", port = 443)
 
     @Test
-    fun `加载成功后填充节点并标注国家码`() = runTest(mainRule.dispatcher) {        coEvery { serverRepository.fetchServers(any()) } returns
+    fun `加载成功后填充节点并标注国家码`() = runTest(mainRule.dispatcher) {
+        coEvery { serverRepository.fetchServers(any()) } returns
             Result.success(listOf(node("香港01", 1), node("美国01", 2), node("香港01", 3)))
         val vm = viewModel()
 

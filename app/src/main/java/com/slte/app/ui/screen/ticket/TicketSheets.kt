@@ -338,7 +338,8 @@ private fun TicketMessageField(
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
             interactionSource = interactionSource,
-            textStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, color = c.text),            cursorBrush = SolidColor(c.accent),
+            textStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, color = c.text),
+            cursorBrush = SolidColor(c.accent),
         )
     }
 }

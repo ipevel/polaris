@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -31,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.slte.app.domain.model.Notice
 import com.slte.app.ui.component.RichText
 import com.slte.app.ui.component.SlteSheet
+import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5SheetShape
 import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.theme.V5ThemeColors
@@ -100,7 +99,7 @@ internal fun NoticeRow(
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    imageVector = Icons.Outlined.ChevronRight,
+                    imageVector = SlteIcons.ChevronRight,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                     tint = c.text3,

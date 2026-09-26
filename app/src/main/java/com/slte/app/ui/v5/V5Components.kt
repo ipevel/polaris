@@ -50,8 +50,8 @@ import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.WarningAmber
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -846,9 +846,9 @@ fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 // 标签行**不能**带 weight：Row 先量非加权子项，若标签是加权项，超长值
-                //（真机实测：IPv6 地址 39 字符）会先把剩余宽度吃光，标签被压成一个字一行
-                //（"当前IP"竖排）——正是用户说的"显示不开"。现在反过来：标签占固定列宽
-                //（最短 64dp、最长 140dp 用省略号收口），值取剩余宽度、可折行、右对齐。
+                // （真机实测：IPv6 地址 39 字符）会先把剩余宽度吃光，标签被压成一个字一行
+                // （"当前IP"竖排）——正是用户说的"显示不开"。现在反过来：标签占固定列宽
+                // （最短 64dp、最长 140dp 用省略号收口），值取剩余宽度、可折行、右对齐。
                 Row(
                     Modifier
                         .defaultMinSize(minWidth = 64.dp)

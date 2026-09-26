@@ -15,7 +15,6 @@ import com.slte.app.domain.model.InviteStat
 import com.slte.app.support.FakeAuthApi
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.theme.SlteTheme
-import com.slte.app.utils.FormatUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule

@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Receipt
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sms
@@ -143,6 +144,9 @@ object SlteIcons {
     val Delete: ImageVector = Icons.Outlined.Delete
 
     val ExportLog: ImageVector = Icons.Outlined.Description
+
+    /** 「检查更新」等刷新类动作（v5 页面也需走 SlteIcons，不能裸引 Icons.*）。 */
+    val Refresh: ImageVector = Icons.Outlined.Refresh
 
     val WithdrawMethod: ImageVector = Icons.Outlined.AccountBalance
     val AtSign: ImageVector = Icons.Outlined.AlternateEmail

@@ -78,8 +78,7 @@ import com.slte.app.ui.v5.V5TopIconButton
 private fun routingGroupsOf(
     all: List<KernelProxyGroupInfo>,
     primaryName: String?,
-): List<KernelProxyGroupInfo> =
-    all.filterNot { it.name in RoutingReservedNames || it.name == primaryName }
+): List<KernelProxyGroupInfo> = all.filterNot { it.name in RoutingReservedNames || it.name == primaryName }
 
 /** 面板节点顺序索引，用于把 include-all 的成员重排回订阅顺序。 */
 private fun nodeOrderIndex(data: ServerData): Map<String, Int> {
@@ -98,15 +97,14 @@ private fun nodeOrderIndex(data: ServerData): Map<String, Int> {
  * 延迟一律给 null（显示「未测」）：离线拿不到探测结果，编造数字比留空更糟。
  * 只读是刻意的——没有内核可切，点了不会生效，所以由调用方传 readOnlyHint 关掉交互。
  */
-internal fun offlineMembersOf(nodes: List<NodeItem>): List<KernelProxyMember> =
-    nodes.map {
-        KernelProxyMember(
-            name = it.name,
-            isGroup = false,
-            delay = null,
-            kind = KernelProxyMemberKind.NODE,
-        )
-    }
+internal fun offlineMembersOf(nodes: List<NodeItem>): List<KernelProxyMember> = nodes.map {
+    KernelProxyMember(
+        name = it.name,
+        isGroup = false,
+        delay = null,
+        kind = KernelProxyMemberKind.NODE,
+    )
+}
 
 @Composable
 private fun groupExitLabel(
@@ -174,11 +172,11 @@ internal fun V5NodesScreen(
                 Text(
                     // 未连接时"0 个分组"会与下方列出的节点名单自相矛盾，换成如实说明
                     text =
-                        if (offlineMembers.isNotEmpty()) {
-                            stringResource(R.string.v5_nodes_summary_offline, data.nodes.size)
-                        } else {
-                            stringResource(R.string.v5_nodes_summary, data.nodes.size, groupsForRouting.size)
-                        },
+                    if (offlineMembers.isNotEmpty()) {
+                        stringResource(R.string.v5_nodes_summary_offline, data.nodes.size)
+                    } else {
+                        stringResource(R.string.v5_nodes_summary, data.nodes.size, groupsForRouting.size)
+                    },
                     fontSize = 11.5.sp,
                     fontFamily = FontFamily.Monospace,
                     color = c.text3,
@@ -203,7 +201,7 @@ internal fun V5NodesScreen(
                 enabled = primary != null,
                 isLoading = isLoadingGroups,
                 readOnlyHint =
-                    if (offlineMembers.isNotEmpty()) stringResource(R.string.v5_nodes_offline_hint) else null,
+                if (offlineMembers.isNotEmpty()) stringResource(R.string.v5_nodes_offline_hint) else null,
                 onToggle = { onToggleSection(PRIMARY_SECTION_KEY) },
                 onSelect = { onSelectPrimary(it) },
             )
@@ -342,11 +340,11 @@ private fun NodeGroupCard(
                         member = member,
                         selected = member.name == selectedName,
                         onClick =
-                            if (readOnlyHint == null) {
-                                { onSelect(member.name) }
-                            } else {
-                                null
-                            },
+                        if (readOnlyHint == null) {
+                            { onSelect(member.name) }
+                        } else {
+                            null
+                        },
                     )
                 }
             }

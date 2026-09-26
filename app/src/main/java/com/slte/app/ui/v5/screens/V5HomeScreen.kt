@@ -241,7 +241,7 @@ internal fun V5HomeScreen(
     // 连接中再点 = 取消连接：必须**直接**走 onToggleConnection（MainViewModel.toggleConnection
     // 的 isConnecting 分支会停隧道并复位）。绝不能复用它下面的"套餐 / 通知权限 / VPN 授权"前置：
     // 连接中再弹一次 VPN 授权，用户一拒绝就会被置成未连接、而隧道可能已在途
-    //（历史缺陷"连不上也关不掉"）。
+    // （历史缺陷"连不上也关不掉"）。
     val handleToggle = {
         when {
             connecting -> onToggleConnection()
@@ -291,7 +291,7 @@ internal fun V5HomeScreen(
                 // fillMaxWidth 是必需的：卡片本身按内容宽收缩，而这里最宽的子树只有
                 // 176dp 圆钮（352px），少了它就只剩约一半屏宽、与下方通栏瓷片对不齐
                 // ——原来是卡片里那行状态 Row 自带 fillMaxWidth 在"撑"着宽度，删掉那行
-                //（整改要求 1）后必须自己撑。
+                // （整改要求 1）后必须自己撑。
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth(),

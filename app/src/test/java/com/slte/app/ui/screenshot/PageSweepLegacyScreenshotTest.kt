@@ -163,8 +163,7 @@ class PageSweepLegacyScreenshotTest {
      * 这样"空态"与"列表态"是同一个真实数据通路下的两种结果。
      */
     private val api = object : FakeAuthApi() {
-        override suspend fun fetchRegisterConfig(): RegisterConfig =
-            RegisterConfig(emailVerifyEnabled = true, inviteForceEnabled = false)
+        override suspend fun fetchRegisterConfig(): RegisterConfig = RegisterConfig(emailVerifyEnabled = true, inviteForceEnabled = false)
     }
 
     private val prefs = InMemoryPreferences()
@@ -292,8 +291,11 @@ class PageSweepLegacyScreenshotTest {
     fun `32a-订单-加载态-亮色`() {
         api.ordersError = null
         api.orders = emptyList()
+        // VM 必须在 composable 之外构造：一来 lint 的 ViewModelConstructorInComposable 会拦，
+        // 二来放在 lambda 里每次 recomposition 都会新建一个 VM，截图状态就不可复现了。
+        val vm = OrdersViewModel(orderRepository)
         snapshot("32a-orders-loading-light", dark = false) {
-            OrdersScreen(onBack = {}, viewModel = OrdersViewModel(orderRepository))
+            OrdersScreen(onBack = {}, viewModel = vm)
         }
     }
 
@@ -369,8 +371,11 @@ class PageSweepLegacyScreenshotTest {
     fun `35b-套餐-加载态-亮色`() {
         api.plansError = null
         api.plans = emptyList()
+        // 同 32a：VM 提到 composable 外面构造（lint 规则 + 避免每次重组新建 VM）。
+        val vm = PlansViewModel(orderRepository)
+        val purchase = purchaseViewModel()
         snapshot("35b-plans-loading-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = PlansViewModel(orderRepository), purchaseViewModel = purchaseViewModel())
+            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchase)
         }
     }
 
@@ -554,6 +559,7 @@ class PageSweepLegacyScreenshotTest {
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
         return vm
     }
+
     @Test
     fun `40-关于-亮色`() {
         val vm = aboutViewModel()

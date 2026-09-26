@@ -161,8 +161,7 @@ class PageSweepV5ScreenshotTest {
      * 与 ServerViewModel.syncCollapsedSections 的"首见即收起"一致——本组用例是纯屏幕渲染，
      * 不经过 ViewModel，所以这里显式给出真实默认态，用来把"打开节点页是什么样"钉进基线图。
      */
-    private fun defaultCollapsedOf(groups: List<KernelProxyGroupInfo>): Set<String> =
-        setOf(com.slte.app.kernel.PRIMARY_SECTION_KEY) + groups.map { it.name }
+    private fun defaultCollapsedOf(groups: List<KernelProxyGroupInfo>): Set<String> = setOf(com.slte.app.kernel.PRIMARY_SECTION_KEY) + groups.map { it.name }
 
     @Composable
     private fun nodes(
@@ -263,17 +262,17 @@ class PageSweepV5ScreenshotTest {
         withPlan: Boolean = true,
     ): ProfileData = ProfileData(
         subscribeInfo =
-            if (withPlan) {
-                SubscribeInfo(
-                    planName = "Pro 月付套餐",
-                    transferEnable = 1_024_000_000_000L,
-                    usedTraffic = 128_000_000_000L,
-                    expiredAt = futureEpoch(18),
-                    planId = 1,
-                )
-            } else {
-                null
-            },
+        if (withPlan) {
+            SubscribeInfo(
+                planName = "Pro 月付套餐",
+                transferEnable = 1_024_000_000_000L,
+                usedTraffic = 128_000_000_000L,
+                expiredAt = futureEpoch(18),
+                planId = 1,
+            )
+        } else {
+            null
+        },
         isLoading = false,
         email = email,
         balance = "25.00",
@@ -298,10 +297,9 @@ class PageSweepV5ScreenshotTest {
     fun `04-首页-连接中-亮色`() = snapshot("04-home-connecting-light", dark = false) { home(connected = false, connecting = true) }
 
     @Test
-    fun `05-首页-超长站点名-亮色`() =
-        snapshot("05-home-longsite-light", dark = false) {
-            home(siteName = "北极星加速器 · 全球专线 · 官方唯一直营站点 · 高速稳定")
-        }
+    fun `05-首页-超长站点名-亮色`() = snapshot("05-home-longsite-light", dark = false) {
+        home(siteName = "北极星加速器 · 全球专线 · 官方唯一直营站点 · 高速稳定")
+    }
 
     @Config(qualifiers = "zh-rCN-w320dp-h640dp-420dpi")
     @Test
@@ -328,8 +326,7 @@ class PageSweepV5ScreenshotTest {
     fun `11-节点-正常-暗色`() = snapshot("11-nodes-dark", dark = true) { nodes() }
 
     @Test
-    fun `12-节点-无策略组-亮色`() =
-        snapshot("12-nodes-empty-light", dark = false) { nodes(groups = emptyList(), nodes = emptyList()) }
+    fun `12-节点-无策略组-亮色`() = snapshot("12-nodes-empty-light", dark = false) { nodes(groups = emptyList(), nodes = emptyList()) }
 
     @Test
     fun `13-节点-测速中-亮色`() = snapshot("13-nodes-testing-light", dark = false) { nodes(isTestingAll = true, testingGroup = "🚀 节点选择") }
@@ -351,19 +348,16 @@ class PageSweepV5ScreenshotTest {
     fun `17-流量-有数据-暗色`() = snapshot("17-traffic-dark", dark = true) { traffic(trafficData()) }
 
     @Test
-    fun `18-流量-空态-亮色`() =
-        snapshot("18-traffic-empty-light", dark = false) { traffic(TrafficData(records = emptyList(), isLoading = false)) }
+    fun `18-流量-空态-亮色`() = snapshot("18-traffic-empty-light", dark = false) { traffic(TrafficData(records = emptyList(), isLoading = false)) }
 
     @Test
-    fun `19-流量-加载中-亮色`() =
-        snapshot("19-traffic-loading-light", dark = false) { traffic(TrafficData(records = emptyList(), isLoading = true)) }
+    fun `19-流量-加载中-亮色`() = snapshot("19-traffic-loading-light", dark = false) { traffic(TrafficData(records = emptyList(), isLoading = true)) }
 
     // 关键：UX 研究员称"流量页错误态无重试按钮、整页无刷新，失败即死路"。本图用于证实/证伪。
     @Test
-    fun `20-流量-加载失败-亮色`() =
-        snapshot("20-traffic-error-light", dark = false) {
-            traffic(TrafficData(records = emptyList(), isLoading = false, errorMessageRes = R.string.traffic_load_failed))
-        }
+    fun `20-流量-加载失败-亮色`() = snapshot("20-traffic-error-light", dark = false) {
+        traffic(TrafficData(records = emptyList(), isLoading = false, errorMessageRes = R.string.traffic_load_failed))
+    }
 
     @Config(qualifiers = "zh-rCN-w320dp-h640dp-420dpi")
     @Test
@@ -382,10 +376,9 @@ class PageSweepV5ScreenshotTest {
 
     // 关键：UX 研究员称邮箱 maxLines=1 且无 overflow，长邮箱会硬切。本图用于证实/证伪。
     @Test
-    fun `25-我的-超长邮箱-亮色`() =
-        snapshot("25-me-longmail-light", dark = false) {
-            me(profileData(email = "averyveryverylongaccountname.for.testing@subdomain.example.com"))
-        }
+    fun `25-我的-超长邮箱-亮色`() = snapshot("25-me-longmail-light", dark = false) {
+        me(profileData(email = "averyveryverylongaccountname.for.testing@subdomain.example.com"))
+    }
 
     @Config(qualifiers = "en-rUS-w411dp-h891dp-420dpi")
     @Test

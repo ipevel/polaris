@@ -66,43 +66,41 @@ class KernelConfigRoutingReloadTest {
         every { routingStateStore.removeCustomGroup(any()) } returns true
     }
 
-    private fun config(): KernelConfig =
-        KernelConfig(
-            reporter,
-            manager,
-            subscribeSource,
-            remoteConfig,
-            routingStateStore,
-            mainRule.dispatcher,
-            context,
-        )
+    private fun config(): KernelConfig = KernelConfig(
+        reporter,
+        manager,
+        subscribeSource,
+        remoteConfig,
+        routingStateStore,
+        mainRule.dispatcher,
+        context,
+    )
 
     @Test
-    fun `五个分流开关都发 OVERRIDE_CHANGED，且不发任何无 uuid 的 PROFILE_CHANGED`() =
-        runTest(mainRule.dispatcher) {
-            val cfg = config()
+    fun `五个分流开关都发 OVERRIDE_CHANGED，且不发任何无 uuid 的 PROFILE_CHANGED`() = runTest(mainRule.dispatcher) {
+        val cfg = config()
 
-            cfg.setLocalRoutingEnabled(false)
-            cfg.applyRoutingGroup("广告拦截", false)
-            cfg.resetRoutingGroups()
-            cfg.addRoutingCustomGroup(
-                RoutingCustomGroup(name = "自定义", url = "https://e.example.com/r.yaml", behavior = "classical"),
+        cfg.setLocalRoutingEnabled(false)
+        cfg.applyRoutingGroup("广告拦截", false)
+        cfg.resetRoutingGroups()
+        cfg.addRoutingCustomGroup(
+            RoutingCustomGroup(name = "自定义", url = "https://e.example.com/r.yaml", behavior = "classical"),
+        )
+        cfg.removeRoutingCustomGroup("自定义")
+
+        verify(exactly = 5) {
+            context.sendBroadcast(
+                match { it.action == Intents.ACTION_OVERRIDE_CHANGED },
+                any(),
             )
-            cfg.removeRoutingCustomGroup("自定义")
-
-            verify(exactly = 5) {
-                context.sendBroadcast(
-                    match { it.action == Intents.ACTION_OVERRIDE_CHANGED },
-                    any(),
-                )
-            }
-            // 这是本测试的核心断言：一旦有人把它改回 ACTION_PROFILE_CHANGED，
-            // 上面的 exactly = 5 会先红，这里会再红一次并指出后果。
-            verify(exactly = 0) {
-                context.sendBroadcast(
-                    match { it.action == Intents.ACTION_PROFILE_CHANGED },
-                    any(),
-                )
-            }
         }
+        // 这是本测试的核心断言：一旦有人把它改回 ACTION_PROFILE_CHANGED，
+        // 上面的 exactly = 5 会先红，这里会再红一次并指出后果。
+        verify(exactly = 0) {
+            context.sendBroadcast(
+                match { it.action == Intents.ACTION_PROFILE_CHANGED },
+                any(),
+            )
+        }
+    }
 }

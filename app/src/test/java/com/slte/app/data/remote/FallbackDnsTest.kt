@@ -3,14 +3,13 @@
 
 package com.slte.app.data.remote
 
+import com.slte.app.data.local.DnsFailureStore
+import com.slte.app.data.local.InMemoryPreferences
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
-import com.slte.app.data.local.DnsFailureStore
-import com.slte.app.data.local.InMemoryPreferences
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 

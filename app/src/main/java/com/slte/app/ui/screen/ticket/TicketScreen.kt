@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +40,7 @@ import com.slte.app.R
 import com.slte.app.domain.model.Ticket
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.component.ToastTip
+import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.V5CardFlat
@@ -107,7 +106,7 @@ fun TicketScreen(
             onBack = onBack,
             actions = {
                 V5TopIconButton(
-                    icon = Icons.Outlined.Add,
+                    icon = SlteIcons.Add,
                     onClick = { showCreate = true },
                 )
             },

@@ -4,12 +4,12 @@
 package com.slte.app.ui.screen.register
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.hasSetTextAction
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.theme.SlteTheme
 import io.mockk.every

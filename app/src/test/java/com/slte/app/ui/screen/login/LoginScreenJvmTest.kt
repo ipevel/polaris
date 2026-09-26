@@ -10,7 +10,6 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import com.slte.app.R
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.theme.SlteTheme
 import io.mockk.every

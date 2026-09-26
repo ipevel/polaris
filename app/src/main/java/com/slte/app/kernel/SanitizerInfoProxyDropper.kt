@@ -337,12 +337,11 @@ internal object SanitizerInfoProxyDropper {
         return null
     }
 
-    private fun unwrap(raw: String): String =
-        if (raw.length >= 2 && (raw.first() == '\'' || raw.first() == '"') && raw.last() == raw.first()) {
-            raw.substring(1, raw.length - 1).replace("''", "'")
-        } else {
-            raw
-        }
+    private fun unwrap(raw: String): String = if (raw.length >= 2 && (raw.first() == '\'' || raw.first() == '"') && raw.last() == raw.first()) {
+        raw.substring(1, raw.length - 1).replace("''", "'")
+    } else {
+        raw
+    }
 
     /** 块状列表项 `- 'node'` 的值；不是列表项时返回 null。 */
     private fun blockListItem(line: String): String? {

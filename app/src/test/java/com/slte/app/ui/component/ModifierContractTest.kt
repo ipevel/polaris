@@ -13,8 +13,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.theme.SlteTheme
-import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

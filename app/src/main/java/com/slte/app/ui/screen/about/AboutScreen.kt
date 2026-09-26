@@ -7,13 +7,10 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
@@ -142,7 +139,7 @@ private fun CheckUpdateRow(
     val c = V5ThemeColors.current
     V5RowItem(
         title = stringResource(R.string.about_check_update),
-        icon = Icons.Outlined.Refresh,
+        icon = SlteIcons.Refresh,
         highlight = true,
         chevron = !checking,
         onClick = onClick,

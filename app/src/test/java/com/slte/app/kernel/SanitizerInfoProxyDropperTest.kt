@@ -30,16 +30,14 @@ class SanitizerInfoProxyDropperTest {
     private fun doc(yaml: String) = Yaml().load<Any?>(yaml.trimMargin()) as Map<String, Any?>
 
     @Suppress("UNCHECKED_CAST")
-    private fun proxyNames(yaml: String): List<String> =
-        (doc(yaml)["proxies"] as List<Map<String, Any?>>).map { it["name"] as String }
+    private fun proxyNames(yaml: String): List<String> = (doc(yaml)["proxies"] as List<Map<String, Any?>>).map { it["name"] as String }
 
     @Suppress("UNCHECKED_CAST")
     private fun groupProxies(
         yaml: String,
         group: String,
-    ): List<String> =
-        (doc(yaml)["proxy-groups"] as List<Map<String, Any?>>)
-            .first { it["name"] == group }["proxies"] as List<String>
+    ): List<String> = (doc(yaml)["proxy-groups"] as List<Map<String, Any?>>)
+        .first { it["name"] == group }["proxies"] as List<String>
 
     private fun flowProxy(
         name: String,
