@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slte.app.R
@@ -54,6 +55,10 @@ internal fun V5MeScreen(
     onAbout: () -> Unit,
     onLogout: () -> Unit,
     onNavSelect: (NavTab) -> Unit,
+    // Telegram 讨论组入口。v5 重写（b5e3464）删掉 v4 ProfileScreen 时丢了挂载点：
+    // 数据层 telegramDiscussLink、图标 SlteIcons.Telegram、文案 profile_telegram 都还在，
+    // 但全仓没有消费点。传 null 表示当前拿不到可用链接，此时不渲染（不做点了没反应的死入口）。
+    onTelegram: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
     V5PageScaffold(tab = NavTab.ME, onNavSelect = onNavSelect) {
@@ -71,6 +76,9 @@ internal fun V5MeScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = c.text,
                                 maxLines = 1,
+                                // 长邮箱此前只有 maxLines 没有 overflow，溢出部分被硬切，
+                                // 看不出是邮箱被截断（默认 Clip）。
+                                overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 data.subscribeInfo?.planName?.takeIf { it.isNotBlank() }
@@ -143,6 +151,17 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onNotices,
                 )
+                // Telegram 讨论组入口（v4 ProfileScreen 有，v5 重写时丢失）。
+                // 链接由调用方做白名单校验后再交进来，见 ProfilePageContent。
+                onTelegram?.let { openTelegram ->
+                    HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                    V5RowItem(
+                        title = stringResource(R.string.profile_telegram),
+                        icon = SlteIcons.Telegram,
+                        chevron = true,
+                        onClick = openTelegram,
+                    )
+                }
             }
 
             V5CardFlat(Modifier.fillMaxWidth()) {

@@ -48,6 +48,26 @@ open class FakeAuthApi : AuthApi {
     var checkoutError: Throwable? = null
     var inviteInfo: InviteInfo? = null
     var inviteError: Throwable? = null
+    var notices: List<Notice> = emptyList()
+    var noticesError: Throwable? = null
+
+    // 工单：与 orders/plans 同构（可配置数据 + 可配置故障 + 记录最近一次写入参数）。
+    var tickets: List<Ticket> = emptyList()
+    var ticketsError: Throwable? = null
+    var ticketDetail: TicketDetail? = null
+    var ticketDetailError: Throwable? = null
+    var createTicketResult = false
+    var createTicketError: Throwable? = null
+    var replyTicketResult = false
+    var replyTicketError: Throwable? = null
+    var closeTicketResult = false
+    var closeTicketError: Throwable? = null
+
+    /** 最近一次 `createTicket` 的入参（主题、严重程度、正文）。 */
+    var createdTicket: Triple<String, Int, String>? = null
+
+    /** 最近一次 `replyTicket` 的入参（工单号、回复内容）。 */
+    var repliedTicket: Pair<Int, String>? = null
     var commissionRecords: List<CommissionRecord> = emptyList()
     var withdrawMethods: List<String> = emptyList()
     var withdrawMethodsError: Throwable? = null
@@ -176,30 +196,50 @@ open class FakeAuthApi : AuthApi {
     override suspend fun fetchNotices(
         page: Int,
         pageSize: Int,
-    ): List<Notice> = unsupported()
+    ): List<Notice> {
+        noticesError?.let { throw it }
+        return notices
+    }
 
     override suspend fun fetchSubscribeYaml(url: String): Response<ResponseBody>? = unsupported()
 
     override suspend fun fetchTrafficLog(): List<TrafficLogRecord> = emptyList()
 
-    override suspend fun fetchTickets(): List<Ticket> = unsupported()
+    override suspend fun fetchTickets(): List<Ticket> {
+        ticketsError?.let { throw it }
+        return tickets
+    }
 
     override suspend fun fetchTelegramDiscussLink(): String? = null
 
-    override suspend fun fetchTicketDetail(id: Int): TicketDetail = unsupported()
+    override suspend fun fetchTicketDetail(id: Int): TicketDetail {
+        ticketDetailError?.let { throw it }
+        return ticketDetail ?: unsupported()
+    }
 
     override suspend fun createTicket(
         subject: String,
         level: Int,
         message: String,
-    ): Boolean = unsupported()
+    ): Boolean {
+        createTicketError?.let { throw it }
+        createdTicket = Triple(subject, level, message)
+        return createTicketResult
+    }
 
     override suspend fun replyTicket(
         id: Int,
         message: String,
-    ): Boolean = unsupported()
+    ): Boolean {
+        replyTicketError?.let { throw it }
+        repliedTicket = id to message
+        return replyTicketResult
+    }
 
-    override suspend fun closeTicket(id: Int): Boolean = unsupported()
+    override suspend fun closeTicket(id: Int): Boolean {
+        closeTicketError?.let { throw it }
+        return closeTicketResult
+    }
 
     private fun unsupported(): Nothing = throw UnsupportedOperationException("测试未配置该接口")
 }

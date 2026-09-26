@@ -82,15 +82,26 @@ val RoutingReservedNames: Set<String> =
     linkedSetOf(PrimaryGroupName, AUTO_GROUP_NAME, FALLBACK_GROUP_NAME, "🐟 漏网之鱼")
 
 /**
+ * 节点页「节点选择」主组卡的折叠键。
+ *
+ * 刻意不用组名：主组在本地分流关闭 / 面板改名时会回退到"第一个 Selector 组"（见 [primaryGroupOf]），
+ * 用组名做键有两个坑——
+ * 1. 回退名恰好与某条分流组同名时，两张卡共用同一个键，收一张连带另一张；
+ * 2. 解析结果在刷新之间漂移时，用户刚收起的键对不上，卡片自己弹回展开。
+ * 该键含不可见字符，不可能与任何真实组名相等。
+ */
+const val PRIMARY_SECTION_KEY: String = "\u0000primary"
+
+/**
  * 节点页区块折叠集合的切换（纯函数，可单测）。集合内 = **已收起**。
  *
- * 语义刻意选"黑名单（收起集合）"而不是"白名单（展开集合）"：默认（不在集合里）
- * 即展开，于是"默认展开"这个决策只是一行初始值，而不是散落在 UI 里的 if-else；
- * 新出现的组也天然是展开的。
+ * 语义仍是"黑名单（收起集合）"：不在集合里 = 展开。但**初始值不再是空集**——
+ * 产品要求节点页分组"默认折叠"，由 ServerViewModel 在区块**首次出现**时把键写进集合
+ * （首见即收起）。所以 UI 侧只需要一次 `name in collapsed` 判断，不需要散落 if-else。
  *
- * key 必须是**组名**：每次测速/订阅更新都会整体重建组对象
+ * key 必须是**跨刷新稳定的标识**：每次测速/订阅更新都会整体重建组对象
  * （同名对象的 now/members 已变，data class 不相等），用对象或下标做 key
- * 会让折叠态在刷新后静默失效。
+ * 会让折叠态在刷新后静默失效。主组卡用 [PRIMARY_SECTION_KEY]，其余用组名。
  */
 fun toggleCollapsed(
     current: Set<String>,

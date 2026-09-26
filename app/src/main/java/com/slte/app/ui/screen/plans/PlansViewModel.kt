@@ -62,7 +62,9 @@ constructor(
                         it.copy(
                             phase = ContentPhase.Idle,
                             isEntering = false,
-                            errorMessageRes = ErrorMessages.forOrder(throwable),
+                            // 套餐页用自己的错误文案映射：原先复用 forOrder，导致订阅页
+                            // 加载失败时显示「订单操作失败」（文案与页面语义不符）。
+                            errorMessageRes = ErrorMessages.forPlans(throwable),
                         )
                     }
                 },
@@ -89,7 +91,9 @@ constructor(
                         it.copy(
                             phase = ContentPhase.Idle,
                             isEntering = false,
-                            errorMessageRes = ErrorMessages.forOrder(throwable),
+                            // 套餐页用自己的错误文案映射：原先复用 forOrder，导致订阅页
+                            // 加载失败时显示「订单操作失败」（文案与页面语义不符）。
+                            errorMessageRes = ErrorMessages.forPlans(throwable),
                         )
                     }
                 },

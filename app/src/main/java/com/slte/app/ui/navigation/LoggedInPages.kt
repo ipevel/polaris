@@ -9,8 +9,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.slte.app.BuildConfig
+import com.slte.app.ui.component.isSupportedTelegramUrl
+import com.slte.app.ui.component.openExternalUrl
 import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.screen.about.AboutScreen
 import com.slte.app.ui.screen.giftcard.GiftCardRedeemSheet
@@ -142,6 +146,22 @@ internal fun ProfilePageContent(
         if (giftCardRedeemed > 0) profileViewModel.refresh()
     }
 
+    // Telegram 讨论组入口：面板下发的链接必须过白名单（http(s) + t.me 等域名），
+    // 否则被劫持的面板可以下发 intent:// / file:// 做任意组件启动或本地文件外泄。
+    // 面板没配置时退回编译期常量 BuildConfig.TELEGRAM_GROUP_URL（v4 的兜底语义）。
+    // 两者都拿不到就不渲染该行——不做一个点了没反应的死入口。
+    val context = LocalContext.current
+    val telegramUrl: String? =
+        data.telegramDiscussLink?.takeIf { isSupportedTelegramUrl(it) }
+            ?: BuildConfig.TELEGRAM_GROUP_URL.takeIf { isSupportedTelegramUrl(it) }
+    val onTelegramClick: (() -> Unit)? =
+        telegramUrl?.let { url ->
+            {
+                openExternalUrl(context, url)
+                Unit
+            }
+        }
+
     V5MeScreen(
         data = data,
         onPlans = onRenew,
@@ -154,6 +174,7 @@ internal fun ProfilePageContent(
         onAbout = onAbout,
         onLogout = profileViewModel::logout,
         onNavSelect = onNavSelect,
+        onTelegram = onTelegramClick,
     )
 
     if (giftCardState.visible) {
@@ -210,6 +231,9 @@ internal fun ServerPageContent(
         localRoutingEnabled = settingsData.localRoutingEnabled,
         localRoutingBusy = settingsData.routingSync != com.slte.app.ui.screen.settings.RemindSync.Idle,
         onToggleLocalRouting = { settingsViewModel.setLocalRouting(!settingsData.localRoutingEnabled) },
+        // 首次进入节点页自动测速一次：不这样做节点行永远停在「未测」，用户无从判断
+        // "自动选择"凭什么选中某个节点（整改要求 3）。节流在 VM 内（每会话一次）。
+        onAutoTestOnce = serverViewModel::autoSpeedTestOnNodesPage,
     )
 }
 
@@ -331,6 +355,9 @@ internal fun TrafficPageContent(
     trafficViewModel: TrafficViewModel,
     onNavSelect: (com.slte.app.ui.v5.NavTab) -> Unit,
 ) {
+    // 流量页用的是 Activity 级 ViewModel（切 Tab 不重建），只在 init 里拉过一次；
+    // 不在这里主动拉，用户切走再切回看到的永远是进 App 那一刻的旧数据。
+    LaunchedEffect(Unit) { trafficViewModel.load() }
     val data by trafficViewModel.data.collectAsStateWithLifecycle()
-    V5TrafficScreen(data = data, onNavSelect = onNavSelect)
+    V5TrafficScreen(data = data, onNavSelect = onNavSelect, onRetry = trafficViewModel::load)
 }

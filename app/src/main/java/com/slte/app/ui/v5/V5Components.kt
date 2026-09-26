@@ -4,6 +4,7 @@
 
 package com.slte.app.ui.v5
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +51,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -69,6 +73,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -76,6 +81,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.slte.app.R
 import com.slte.app.ui.theme.LocalV5Colors
 import com.slte.app.ui.theme.TileColors
 import com.slte.app.ui.theme.V5Colors
@@ -151,8 +157,15 @@ fun Modifier.v5CardShadow(shape: Shape): Modifier {
     return shadow(6.dp, shape, clip = false, ambientColor = sc.cardShadow, spotColor = sc.cardShadow)
 }
 
+/**
+ * v5 统一的无涟漪点击（返回 `Modifier`，用法 `.then(noRippleClickable(onClick))`）。
+ *
+ * 对 `ui.screen.*` 下的 v5 化页面开放（internal）：节点/公告等页面的行容器不再走 v4 的
+ * `clickable(indication = null, interactionSource = remember { ... })` 手写形式，避免同一套
+ * 交互在仓库里出现两处实现、改一处漏一处。
+ */
 @Composable
-private fun noRippleClickable(onClick: (() -> Unit)?): Modifier = if (onClick != null) {
+internal fun noRippleClickable(onClick: (() -> Unit)?): Modifier = if (onClick != null) {
     // remember 隔离：composition 中直接创建 MutableInteractionSource 会被 lint 拦截
     val interactionSource = remember { MutableInteractionSource() }
     Modifier.clickable(interactionSource, null, onClick = onClick)
@@ -425,6 +438,14 @@ fun SegmentedPill(options: List<String>, active: Int, modifier: Modifier = Modif
 /** 按钮风格。 */
 enum class ButtonStyle { PRIMARY, MAGENTA, GREEN, TONAL, NEUTRAL, DANGER, SOLID_DANGER, GHOST }
 
+/**
+ * v5 按钮。
+ *
+ * @param onClickEnabled 按钮是否可点。与 [onClick] 分开是有意的：v4 的 `SlteButton(enabled = false)`
+ *   语义是「看得见、按不动」（如提现/转赠在金额为空时），而 v5 组件里 [onClick] 传 null 表示
+ *   「整块不可点、连按压反馈都没有」。迁移时必须保住前者的观感与语义，因此单列一个开关：
+ *   传 false 时组件仍渲染完整外观，只是不挂点击监听，并把前景/底色按 45% 透明弱化。
+ */
 @Composable
 fun V5Button(
     text: String,
@@ -433,6 +454,8 @@ fun V5Button(
     small: Boolean = false,
     hero: Boolean = false,
     leadingIcon: ImageVector? = null,
+    loading: Boolean = false,
+    onClickEnabled: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
@@ -451,6 +474,7 @@ fun V5Button(
     } else {
         46.dp
     }
+    val active = onClickEnabled && !loading
     var bg: Brush? = null
     var fg = c.text
     var spot = Color.Transparent
@@ -486,15 +510,27 @@ fun V5Button(
         ButtonStyle.SOLID_DANGER -> c.danger
         else -> Color.Transparent
     }
-    val clickable = noRippleClickable(onClick)
-    val m = if (style == ButtonStyle.GHOST) {
-        clickable
-    } else {
-        clickable
-            .shadow(if (spot == Color.Transparent) 0.dp else 8.dp, shape, clip = false, ambientColor = spot, spotColor = spot)
-            .clip(shape)
-            .then(if (bg != null) Modifier.background(bg) else Modifier.background(solidBg))
-    }
+    if (!active) fg = fg.copy(alpha = 0.45f)
+    val clickable = noRippleClickable(if (active) onClick else null)
+    // 调用方传入的 modifier 必须**最先**应用：里面通常带着 fillMaxWidth / weight 这类尺寸约束，
+    // 放到后面会被 shadow/clip/background 的顺序与默认最小尺寸挤掉。
+    //
+    // 这里曾经漏掉 `modifier`（参数声明了但整个函数体没用它），于是**调用方传的尺寸全部失效**：
+    // 真机实测登录页的「登录」按钮只占了内容的固有宽度（bounds 宽 196px ≈ 75dp，而不是满卡宽），
+    // 形成"按钮缩在左边一小块"的观感，而且自动化点击按满宽中心去点会直接点空。
+    // 单元测试查不出来（截图里按钮"看起来还在"），是雷电模拟器走查 + uiautomator 的
+    // clickable 节点 bounds 才把它钉死的。
+    val m = modifier.then(
+        if (style == ButtonStyle.GHOST) {
+            clickable
+        } else {
+            clickable
+                .shadow(if (spot == Color.Transparent || !active) 0.dp else 8.dp, shape, clip = false, ambientColor = spot, spotColor = spot)
+                .clip(shape)
+                .then(if (bg != null) Modifier.background(bg) else Modifier.background(solidBg))
+                .then(if (active) Modifier else Modifier.alpha(DISABLED_BUTTON_ALPHA))
+        },
+    )
     Row(
         modifier = m
             .defaultMinSize(minHeight = height)
@@ -502,7 +538,28 @@ fun V5Button(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
     ) {
-        leadingIcon?.let { Icon(it, null, modifier = Modifier.size(17.dp), tint = fg) }
+        if (loading) {
+            // 转圈容器给足尺寸并让指示器吃满：Material3 的默认尺寸策略在**极小尺寸**下会退化成
+            // 一两个像素的点（第 10 轮在关于页实测到 5×5px）。这里 18dp + fillMaxSize
+            // 能让静态帧至少画出可辨识的一段弧。
+            //
+            // 注意：认证三页的"提交中"用的是**全屏 LoadingOverlay**（scrim + 居中卡片），
+            // 按钮此时被 scrim 盖住，所以按钮内这枚转圈在那些页面的截图里本来就看不出来——
+            // 那不算缺陷，加载反馈由覆盖层承担。此处保留转圈是给"就地加载"的按钮
+            // （如工单提交、优惠券验证）用的。
+            Box(
+                modifier = Modifier.size(18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    color = fg,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else {
+            leadingIcon?.let { Icon(it, null, modifier = Modifier.size(17.dp), tint = fg) }
+        }
         Text(
             text,
             fontSize = when {
@@ -516,6 +573,9 @@ fun V5Button(
         )
     }
 }
+
+/** 不可用按钮的整体透明度（与 v4 `SlteButton(enabled = false)` 的观感对齐）。 */
+private const val DISABLED_BUTTON_ALPHA = 0.45f
 
 /** iOS 风格开关（on = 绿）。 */
 @Composable
@@ -539,12 +599,17 @@ fun V5Switch(checked: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/** 底部悬浮胶囊导航。 */
-enum class NavTab(val icon: ImageVector, val label: String) {
-    HOME(Icons.Outlined.Home, "首页"),
-    NODES(Icons.Outlined.Hub, "节点"),
-    TRAFFIC(Icons.Outlined.BarChart, "流量"),
-    ME(Icons.Outlined.Person, "我的"),
+/**
+ * 底部悬浮胶囊导航。
+ *
+ * 文案走资源而不是硬编码：v5 组件里曾写死简体中文，导致 en / zh-Hant 下整条导航仍显示中文
+ * （键 tab_home / tab_server / tab_traffic / tab_profile 三语早已存在，见 ResourceLocaleParityTest）。
+ */
+enum class NavTab(val icon: ImageVector, @StringRes val labelRes: Int) {
+    HOME(Icons.Outlined.Home, R.string.tab_home),
+    NODES(Icons.Outlined.Hub, R.string.tab_server),
+    TRAFFIC(Icons.Outlined.BarChart, R.string.tab_traffic),
+    ME(Icons.Outlined.Person, R.string.tab_profile),
 }
 
 @Composable
@@ -573,7 +638,7 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
             ) {
                 Icon(tab.icon, null, modifier = Modifier.size(21.dp), tint = if (on) c.accent else c.text3)
                 Text(
-                    tab.label,
+                    stringResource(tab.labelRes),
                     fontSize = 10.5.sp,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
                     letterSpacing = 0.3.sp,
@@ -584,11 +649,17 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
     }
 }
 
-/** 大圆连接钮：未连=蓝渐变+闪电，已连=绿渐变+电源+光晕呼吸环。 */
+/**
+ * 大圆连接钮：未连=蓝渐变+闪电，已连=绿渐变+电源+光晕呼吸环。
+ *
+ * [connecting] 时文案变「取消」——MainViewModel.toggleConnection 在 isConnecting 分支里执行
+ * 取消（停隧道 + 复位），所以这不是"置灰的等待按钮"，而是一个真实可点的取消入口。
+ */
 @Composable
 fun HeroConnectButton(
     connected: Boolean,
     modifier: Modifier = Modifier,
+    connecting: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
@@ -628,7 +699,11 @@ fun HeroConnectButton(
                 tint = Color.White,
             )
             Text(
-                if (connected) "断开" else "连接",
+                when {
+                    connected -> stringResource(R.string.v5_disconnect)
+                    connecting -> stringResource(R.string.v5_cancel)
+                    else -> stringResource(R.string.v5_connect)
+                },
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 3.sp,
@@ -737,42 +812,67 @@ fun V5RowItem(
     }
 }
 
-/** 账本行数据（label 左 / 等宽值 右）。 */
+/**
+ * 账本行数据（label 左 / 等宽值 右）。
+ *
+ * [tone] 非空时整行加马卡龙底色（圆角 + 内外边距同步放大）——用于首页会话信息：
+ * 形式沿用账本行（左标签 / 右等宽值），效果沿用瓷片（[MacaronTile] 的同色系底色与墨色）。
+ */
 data class LedgerData(
     val label: String,
     val value: String,
     val color: Color? = null,
     val icon: ImageVector? = null,
+    val tone: TileTone? = null,
 )
 
 @Composable
 fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
-    Column(modifier.fillMaxWidth()) {
+    // 带底色时行与行之间要留缝，否则两行底色连成一片、看不出是两行
+    val toned = rows.any { it.tone != null }
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (toned) 8.dp else 0.dp)) {
         rows.forEachIndexed { i, r ->
-            if (i > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+            // 分隔线只在"相邻两行都没有底色"时画；带底色的行靠留白区分
+            if (i > 0 && r.tone == null && rows[i - 1].tone == null) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+            val t = r.tone?.let { c.tile(it) }
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .defaultMinSize(minHeight = 46.dp)
-                    .padding(horizontal = 15.dp, vertical = 6.dp),
+                    .then(if (t != null) Modifier.clip(RoundedCornerShape(12.dp)).background(t.bg) else Modifier)
+                    .defaultMinSize(minHeight = if (t != null) 52.dp else 46.dp)
+                    .padding(horizontal = if (t != null) 14.dp else 15.dp, vertical = if (t != null) 10.dp else 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // 标签行**不能**带 weight：Row 先量非加权子项，若标签是加权项，超长值
+                //（真机实测：IPv6 地址 39 字符）会先把剩余宽度吃光，标签被压成一个字一行
+                //（"当前IP"竖排）——正是用户说的"显示不开"。现在反过来：标签占固定列宽
+                //（最短 64dp、最长 140dp 用省略号收口），值取剩余宽度、可折行、右对齐。
                 Row(
-                    Modifier.weight(1f),
+                    Modifier
+                        .defaultMinSize(minWidth = 64.dp)
+                        .widthIn(max = 140.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    r.icon?.let { Icon(it, null, modifier = Modifier.size(16.dp), tint = c.text2) }
-                    Text(r.label, fontSize = 12.5.sp, color = c.text2)
+                    r.icon?.let { Icon(it, null, modifier = Modifier.size(16.dp), tint = t?.ink ?: c.text2) }
+                    Text(
+                        r.label,
+                        fontSize = 12.5.sp,
+                        color = t?.ink ?: c.text2,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Text(
                     r.value,
-                    fontSize = 14.sp,
+                    fontSize = if (t != null) 15.sp else 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = FontFamily.Monospace,
                     color = r.color ?: c.text,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }

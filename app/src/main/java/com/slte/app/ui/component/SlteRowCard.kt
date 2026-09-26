@@ -75,8 +75,14 @@ fun SlteRow(
         }
 
     val haptic = LocalHapticFeedback.current
+    // 调用方的 modifier 必须**最先**应用。
+    //
+    // 这里曾漏掉 `modifier`（形参声明了但函数体从零拼 rowModifier），与第 14 轮在 `V5Button`
+    // 发现的是同一个缺陷形态：传进来的 `fillMaxWidth()`/`weight()` 会被静默丢弃。
+    // 当前没有调用方传 modifier，所以是**潜伏缺陷**而非线上问题；但留着就是下一个 V5Button，
+    // 顺手修掉并写清原因。
     val rowModifier =
-        Modifier
+        modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = Dimens.size.touchTarget)
             .then(

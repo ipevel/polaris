@@ -57,7 +57,8 @@ class PlansViewModelTest {
         advanceUntilIdle()
 
         assertEquals(ContentPhase.Idle, vm.data.value.phase)
-        assertEquals(com.slte.app.R.string.error_order_failed, vm.data.value.errorMessageRes)
+        // 套餐页用自己的错误文案（不再是订单语义的 error_order_failed），见 ErrorMessages.forPlans。
+        assertEquals(com.slte.app.R.string.error_plans_failed, vm.data.value.errorMessageRes)
     }
 
     @Test
@@ -87,6 +88,7 @@ class PlansViewModelTest {
         advanceUntilIdle()
 
         assertEquals(ContentPhase.Idle, vm.data.value.phase)
-        assertEquals(com.slte.app.R.string.error_order_failed, vm.data.value.errorMessageRes)
+        // 套餐页用自己的错误文案（不再是订单语义的 error_order_failed），见 ErrorMessages.forPlans。
+        assertEquals(com.slte.app.R.string.error_plans_failed, vm.data.value.errorMessageRes)
     }
 }

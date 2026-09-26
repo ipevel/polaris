@@ -56,29 +56,48 @@ class RememberMeRowTest {
         .onNode(isToggleable() and hasAnyDescendant(hasText(label)), useUnmergedTree = true)
         .fetchSemanticsNode()
 
+    /**
+     * 开关与文字间距。
+     *
+     * 这条断言**随 v5 迁移变过**，理由写清楚：
+     * v4 这里是 Material `Checkbox`（自带 48dp 触控框），所以原来是"间距应为 48dp"；
+     * v5 语言里没有方形复选框，改用 [com.slte.app.ui.v5.V5Switch]（48dp 宽 + 28dp 高 + 9dp 间距），
+     * 所以文字起点约在 57dp 处。断言改成"文字在开关右侧、且间距与开关宽度同量级"，
+     * 不再钉死某个 v4 专属尺寸。
+     *
+     * 触控标准的退化是**已知且已登记**的：用户本轮明确要求"不改变无障碍/触控目标"这项工作，
+     * 所以这里不假装它仍然达标（详见交付报告的「已知缺口」）。
+     */
     @Test
-    fun `勾选框与文字间距达到控件标签标准`() {
+    fun `开关与文字间距合理且文字在右侧`() {
         render()
 
         val row = rowNode()
         val text = composeRule.onNodeWithText(label, useUnmergedTree = true).fetchSemanticsNode()
         val gap = text.boundsInRoot.left - row.boundsInRoot.left
 
-        assertEquals(
-            "勾选框占用宽度应为 48dp 触控区，实际 $gap px",
-            dp(48).toFloat(),
-            gap,
-            dp(1).toFloat(),
+        assertTrue("文字应在开关右侧，实际间距 $gap px", gap > 0)
+        // V5Switch 宽 48dp、其后 9dp 间距 ⇒ 文字起点约 57dp；给 48..72dp 的容差区间。
+        assertTrue(
+            "间距应落在 48..72dp（开关宽 48dp + 间距），实际 $gap px = ${gap / composeRule.density.density}dp",
+            gap in dp(48)..dp(72),
         )
     }
 
+    /**
+     * 行高。
+     *
+     * 同 `开关与文字间距合理且文字在右侧`：v4 的 48dp 来自 Material Checkbox 的触控框，
+     * v5 换成 `V5Switch` + 文字后行高变矮。这里改为要求"行高不塌"（不低于 32dp），
+     * 而不是继续声称满足 48dp 触控标准——那是用户本轮明确不做的范围。
+     */
     @Test
-    fun `触控区高度不低于48dp`() {
+    fun `行高不塌陷`() {
         render()
 
         val row = rowNode()
 
-        assertTrue("触控区高度 ${row.boundsInRoot.height} px 低于 ${dp(48)} px", row.boundsInRoot.height >= dp(48))
+        assertTrue("行高 ${row.boundsInRoot.height} px 过小，可能塌陷", row.boundsInRoot.height >= dp(32))
     }
 
     @Test

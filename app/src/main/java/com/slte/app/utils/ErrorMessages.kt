@@ -33,6 +33,19 @@ object ErrorMessages {
         else -> R.string.error_order_failed
     }
 
+    /**
+     * 套餐（订阅商品）列表加载失败。
+     *
+     * 与 [forOrder] 分开的原因：套餐页原先复用了订单的映射，于是**套餐列表加载失败时显示的是
+     * 「订单操作失败」**——用户在看订阅页，却被告知订单出问题（视觉复核按像素定位到这一处文案泄漏：
+     * 套餐错误态与订单错误态的差异只在标题行）。这里给套餐自己的兜底文案，
+     * 后端返回的 `stringResId` 仍优先透传，语义不受影响。
+     */
+    fun forPlans(e: Throwable?): Int = when (e) {
+        is ApiException -> e.stringResId ?: R.string.error_plans_failed
+        else -> R.string.error_plans_failed
+    }
+
     fun forSubscribe(e: Throwable?): Int = when (e) {
         is ApiException -> e.stringResId ?: mapSubscribeError(e.message)
         else -> R.string.error_network

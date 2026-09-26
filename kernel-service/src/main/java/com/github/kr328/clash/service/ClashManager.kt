@@ -67,6 +67,20 @@ class ClashManager(private val context: Context) : IClashManager,
         val imported = ImportedDao().queryByUUID(active) ?: return
         Clash.setAgeSecretKey(imported.ageSecretKey?.takeIf { it.isNotBlank() })
         Clash.load(context.importedDir.resolve(active.toString())).await()
+
+        // 冷启动加载完配置后，必须把用户手动选择过的出口**回放**给内核。
+        //
+        // 内核 `Selector.Now()` 在缺省时会静默回退到 `proxies[0]`，不回放就等于
+        // "我选的节点，重启后自己变了"——用户看不出原因，只会觉得节点选择留不住。
+        // ConfigurationModule 在收到重载广播后是有这一步的（见其 select 分支），
+        // 唯独这条冷启动路径此前漏了；第 2 轮报告的 §6.1 把这条链标为"未验证"，本轮以代码证据确认。
+        // 与 ConfigurationModule 一致：回放失败的记录（组已不存在）直接清掉，避免越积越多。
+        val stale =
+            SelectionDao()
+                .querySelections(active)
+                .filterNot { Clash.patchSelector(it.proxy, it.selected) }
+                .map { it.proxy }
+        SelectionDao().removeSelections(active, stale)
     }
 
     override fun queryOverride(slot: Clash.OverrideSlot): ConfigurationOverride {

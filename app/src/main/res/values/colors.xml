@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 与 ui/theme/Color.kt 的 md_light_background / md_dark_background / md_light_primary 保持一致，
-         两侧修改时需同步，否则启动闪色 / Launcher 图标色漂移 -->
-    <color name="light_background">#FFF1F1F3</color>
-    <color name="dark_background">#FF0E1621</color>
+    <!--
+      启动窗口底色（`android:windowBackground`）。**必须与 v5 的底色逐位相同**：
+      v5 亮色 bg = #F1F0F6、暗色 bg = #0B0D15（见 ui/theme/V5Theme.kt 的 LightV5Colors/DarkV5Colors）。
+      两者的分工是「窗口底色先画，首帧 Compose 再接手」，只要不一致，冷启动就会闪一下异色。
+
+      这里原先的值是 #FFF1F1F3 / #FF0E1621，注释还指向已被删除的 ui/theme/Color.kt
+      （第三批清掉了那个 v4 遗留色板文件）——两处都漂了：既和 v5 底色不同，注释也失效。
+      现已按 V5Theme.kt 实际取值对齐，并加单测（PaletteConsistencyTest）防止再次漂移。
+    -->
+    <color name="light_background">#FFF1F0F6</color>
+    <color name="dark_background">#FF0B0D15</color>
     <!-- 启动图标渐变两端：与 app/icon-source.png（北辰深空渐变）同色，被 drawable/ic_launcher_background.xml 共用 -->
     <color name="ic_launcher_background">#FF0D1638</color>
     <color name="ic_launcher_background_end">#FF2A1B5E</color>

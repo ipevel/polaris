@@ -3,33 +3,38 @@
 
 package com.slte.app.ui.screen.plans
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.slte.app.R
-import com.slte.app.ui.component.LottieLoadingIcon
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.component.formatCurrency
 import com.slte.app.ui.component.formatNegCurrency
 import com.slte.app.ui.component.formatPlusCurrency
-import com.slte.app.ui.theme.SlteRadii
-import com.slte.app.ui.theme.SlteType
-import com.slte.app.utils.Dimens
+import com.slte.app.ui.theme.V5SheetShape
+import com.slte.app.ui.theme.V5SheetTitleStyle
+import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
+import com.slte.app.ui.v5.V5FieldHint
 import com.slte.app.utils.FormatUtils
 
 @Composable
@@ -39,102 +44,97 @@ internal fun OrderPaymentSheet(
     onConfirmPayment: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val c = V5ThemeColors.current
     SlteSheet(
         onDismiss = onDismiss,
         title = stringResource(R.string.purchase_order_info),
+        shape = V5SheetShape,
+        titleStyle = V5SheetTitleStyle,
     ) {
         val payAmount = step.payAmount
 
         if (step.isLoading) {
-            LottieLoadingIcon(
-                modifier = Modifier.align(Alignment.CenterHorizontally).size(Dimens.icon.lg),
-            )
-            Spacer(modifier = Modifier.height(Dimens.gap.xl))
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    color = c.accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
         } else {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(SlteRadii.inner),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurface,
+            Column(
+                modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(c.surface2)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                Column(
-                    modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = Dimens.gap.lg,
-                            vertical = Dimens.gap.md,
-                        ),
-                ) {
-                    OrderInfoRow(
-                        label = stringResource(R.string.purchase_product),
-                        value = step.planName,
-                        isValueEmphasize = true,
-                        valueMono = false,
-                    )
+                OrderInfoRow(
+                    label = stringResource(R.string.purchase_product),
+                    value = step.planName,
+                    isValueEmphasize = true,
+                    valueMono = false,
+                )
+                OrderInfoDivider()
+                OrderInfoRow(
+                    label = stringResource(R.string.purchase_product_price),
+                    value = formatCurrency(step.productPrice),
+                )
+                if (step.couponDiscount > 0) {
                     OrderInfoDivider()
                     OrderInfoRow(
-                        label = stringResource(R.string.purchase_product_price),
-                        value = formatCurrency(step.productPrice),
-                    )
-                    if (step.couponDiscount > 0) {
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_coupon_discount),
-                            value = formatNegCurrency(step.couponDiscount),
-                        )
-                    }
-                    if (step.surplusAmount > 0) {
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_surplus),
-                            value = formatNegCurrency(step.surplusAmount),
-                        )
-                    }
-                    if (step.balanceAmount > 0) {
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_balance),
-                            value = formatNegCurrency(step.balanceAmount),
-                        )
-                    }
-                    if (step.refundAmount > 0) {
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_refund),
-                            value = formatPlusCurrency(step.refundAmount),
-                        )
-                    }
-                    if (step.handlingAmount > 0) {
-                        OrderInfoDivider()
-                        OrderInfoRow(
-                            label = stringResource(R.string.purchase_handling),
-                            value = formatCurrency(step.handlingAmount),
-                        )
-                    }
-                    OrderInfoDivider()
-                    OrderInfoRow(
-                        label = stringResource(R.string.purchase_payable),
-                        value = formatCurrency(payAmount),
-                        isValueEmphasize = true,
+                        label = stringResource(R.string.purchase_coupon_discount),
+                        value = formatNegCurrency(step.couponDiscount),
                     )
                 }
+                if (step.surplusAmount > 0) {
+                    OrderInfoDivider()
+                    OrderInfoRow(
+                        label = stringResource(R.string.purchase_surplus),
+                        value = formatNegCurrency(step.surplusAmount),
+                    )
+                }
+                if (step.balanceAmount > 0) {
+                    OrderInfoDivider()
+                    OrderInfoRow(
+                        label = stringResource(R.string.purchase_balance),
+                        value = formatNegCurrency(step.balanceAmount),
+                    )
+                }
+                if (step.refundAmount > 0) {
+                    OrderInfoDivider()
+                    OrderInfoRow(
+                        label = stringResource(R.string.purchase_refund),
+                        value = formatPlusCurrency(step.refundAmount),
+                    )
+                }
+                if (step.handlingAmount > 0) {
+                    OrderInfoDivider()
+                    OrderInfoRow(
+                        label = stringResource(R.string.purchase_handling),
+                        value = formatCurrency(step.handlingAmount),
+                    )
+                }
+                OrderInfoDivider()
+                OrderInfoRow(
+                    label = stringResource(R.string.purchase_payable),
+                    value = formatCurrency(payAmount),
+                    isValueEmphasize = true,
+                )
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.lg))
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (!step.zeroPayable) {
-                Text(
-                    text = stringResource(R.string.purchase_payment_method),
-                    style = SlteType.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(Dimens.gap.sm))
+                V5FieldHint(text = stringResource(R.string.purchase_payment_method))
+                Spacer(modifier = Modifier.height(8.dp))
                 if (step.paymentMethods.isEmpty()) {
                     Text(
                         text = stringResource(R.string.purchase_payment_method_empty),
-                        style = SlteType.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.5.sp,
+                        color = c.text3,
                     )
                 } else {
                     PaymentMethodList(
@@ -145,19 +145,19 @@ internal fun OrderPaymentSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.xl))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                SlteButton(
+                V5Button(
                     text = stringResource(R.string.back),
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
-                    style = SlteButtonStyle.Neutral,
+                    style = ButtonStyle.NEUTRAL,
                 )
-                SlteButton(
+                V5Button(
                     text =
                     if (step.zeroPayable) {
                         stringResource(R.string.order_activate_now)
@@ -169,13 +169,13 @@ internal fun OrderPaymentSheet(
                     },
                     onClick = onConfirmPayment,
                     modifier = Modifier.weight(2f),
-                    style = SlteButtonStyle.Primary,
-                    enabled = !step.isPaying && (step.zeroPayable || step.selectedMethod != null),
+                    style = ButtonStyle.PRIMARY,
+                    onClickEnabled = step.zeroPayable || step.selectedMethod != null,
                     loading = step.isPaying,
                 )
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.xl))
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }

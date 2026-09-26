@@ -316,6 +316,11 @@
     <string name="v5_unprotected">未受保护</string>
     <string name="v5_connected_wait">已连接</string>
     <string name="v5_waiting">等待连接</string>
+    <string name="v5_connecting">连接中</string>
+    <string name="v5_connecting_wait">正在建立连接</string>
+    <string name="v5_connect">连接</string>
+    <string name="v5_disconnect">断开</string>
+    <string name="v5_cancel">取消</string>
     <string name="v5_connected_node">已连接 · %1$s</string>
     <string name="v5_ready_no_node">就绪 · 尚未选择节点</string>
     <string name="v5_down_speed">下行速率</string>
@@ -335,10 +340,18 @@
     <string name="v5_traffic_loading">加载中…</string>
     <string name="v5_traffic_empty">暂无流量记录</string>
     <string name="v5_traffic_hint">按日汇总，来自面板流量日志</string>
+    <!-- 结构项没有"延迟"这个概念，显示"未测"属于语义错误：直连/拦截没有远端可探（给不了 RTT），
+         组出口的延迟由内核按 interval=300 自行拨测产出，不由 App 测速决定。 -->
+    <string name="v5_delay_not_needed">无需测速</string>
+    <string name="v5_delay_auto">自动拨测</string>
     <string name="v5_days_left">剩 %1$d 天</string>
     <string name="v5_balance">余额</string>
     <string name="v5_all_nodes">全部节点</string>
     <string name="v5_no_nodes">暂无节点，请先更新订阅</string>
+    <string name="v5_nodes_offline_hint">尚未连接：以下是订阅里的节点，连接后即可切换</string>
+    <string name="v5_nodes_summary_offline">%1$d 个节点 · 未连接</string>
+    <string name="v5_state_loading">正在加载…</string>
+    <string name="v5_state_retry">重试</string>
     <string name="v5_routing_groups">分流规则组</string>
     <string name="v5_group_exit">当前出口</string>
     <string name="v5_group_exit_hint">选择该分类使用的出口（可指定具体节点）</string>
@@ -387,6 +400,7 @@
     <string name="plans_traffic_unit">GB</string>
     <string name="plans_traffic_label">流量</string>
     <string name="plans_subscribe">订阅</string>
+    <string name="plans_recommended">推荐</string>
 
     <!-- Purchase Flow -->
     <string name="purchase_coupon_hint">有优惠券？</string>
@@ -460,6 +474,7 @@
     <string name="api_error_unsupported_backend">不支持的后端类型: %s</string>
     <!-- Additional error messages -->
     <string name="error_order_failed">订单操作失败</string>
+    <string name="error_plans_failed">套餐加载失败</string>
     <string name="error_server_load">加载节点失败</string>
 
     <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->

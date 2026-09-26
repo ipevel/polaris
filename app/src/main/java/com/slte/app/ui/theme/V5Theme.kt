@@ -4,6 +4,7 @@
 package com.slte.app.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -15,6 +16,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 
 /**
@@ -82,7 +87,11 @@ val LightV5Colors = V5Colors(
     hairline2 = Color(0xFFEFEDF5),
     text = Color(0xFF191C26),
     text2 = Color(0xFF575E72),
-    text3 = Color(0xFF8E95A8),
+    // 三档灰度是"文字阶梯"，但 text3 承担的是**可读的次要信息**（日期、明细标签、字段说明），
+    // 不是装饰性的禁用态。原值 #8E95A8 在白卡上只有 2.99:1，低于 WCAG AA 小字 4.5:1——
+    // 第 12 轮的视觉复核在订单/套餐/公告多页都量到了同一处偏低。这里提到 #6B7385：
+    // 白卡上 4.76:1 达标，同时仍明显弱于 text2，层级没有被压平。
+    text3 = Color(0xFF6B7385),
     accent = Color(0xFF2F6BF6),
     accent2 = Color(0xFF5E8DFF),
     accentGrad = Brush.linearGradient(listOf(Color(0xFF5E8DFF), Color(0xFF2B5FF0))),
@@ -120,7 +129,8 @@ val DarkV5Colors = V5Colors(
     hairline2 = Color(0x0DFFFFFF),
     text = Color(0xFFEDF0F8),
     text2 = Color(0xFFA7AEC2),
-    text3 = Color(0xFF727A90),
+    // 暗色同理：#727A90 在卡面 #171A25 上是 4.05:1（临界偏低），提到 #8A93A8 → 5.63:1。
+    text3 = Color(0xFF8A93A8),
     accent = Color(0xFF6E97FF),
     accent2 = Color(0xFF8FB2FF),
     accentGrad = Brush.linearGradient(listOf(Color(0xFF5E85F8), Color(0xFF3E5FE0))),
@@ -156,59 +166,29 @@ object V5ThemeColors {
         @Composable get() = LocalV5Colors.current
 }
 
-private val LightV5Scheme = lightColorScheme(
-    primary = Color(0xFF2F6BF6),
-    onPrimary = Color.White,
-    background = Color(0xFFF1F0F6),
-    onBackground = Color(0xFF191C26),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF191C26),
-    surfaceVariant = Color(0xFFF6F5FA),
-    onSurfaceVariant = Color(0xFF575E72),
-    outline = Color(0xFFE8E6EF),
-    outlineVariant = Color(0xFFEFEDF5),
-    error = Color(0xFFE5484D),
-    secondary = Color(0xFF16AC6C),
-    tertiary = Color(0xFFEE8A2C),
-)
+/**
+ * v5 底部面板的公共形状与标题字号。
+ *
+ * v5 的面板语言是「26dp 顶圆角 + 17sp 粗标题」，与 v4 的 22dp/18sp 半粗不同。放在这里集中定义，
+ * 而不是让每个 v5 页面各写一遍 `RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)`——
+ * 否则改一处面板圆角就要全仓搜散落的字面量。
+ */
+val V5SheetShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
 
-private val DarkV5Scheme = darkColorScheme(
-    primary = Color(0xFF6E97FF),
-    onPrimary = Color.White,
-    background = Color(0xFF0B0D15),
-    onBackground = Color(0xFFEDF0F8),
-    surface = Color(0xFF171A25),
-    onSurface = Color(0xFFEDF0F8),
-    surfaceVariant = Color(0xFF1F2331),
-    onSurfaceVariant = Color(0xFFA7AEC2),
-    outline = Color(0x14FFFFFF),
-    outlineVariant = Color(0x0DFFFFFF),
-    error = Color(0xFFF4776D),
-    secondary = Color(0xFF3DCC8E),
-    tertiary = Color(0xFFF5A25B),
-)
+/** 见 [V5SheetShape]。 */
+val V5SheetTitleStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold)
 
-@Composable
-fun V5Theme(
-    darkTheme: Boolean,
-    content: @Composable () -> Unit,
-) {
-    val colors = if (darkTheme) DarkV5Colors else LightV5Colors
-    val scheme = if (darkTheme) DarkV5Scheme else LightV5Scheme
-
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as? Activity)?.window ?: return@SideEffect
-            WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
-            }
-            window.decorView.setBackgroundColor(colors.bg.toArgb())
-        }
-    }
-
-    CompositionLocalProvider(LocalV5Colors provides colors) {
-        MaterialTheme(colorScheme = scheme, content = content)
-    }
-}
+/*
+ * 这里原本还有一个 `@Composable fun V5Theme(darkTheme, content)`，**已删除**。
+ *
+ * 它是 v5 原型工程留下的独立主题入口，但全仓 **零调用**：实际的主题所有者是 Theme.kt 的
+ * `SlteTheme`，后者已经负责下发 `LocalV5Colors`（见 Theme.kt:86）。留着它有三个害处：
+ * 1. 它是个"第二个主题入口"，谁误用了就会在 SlteTheme 内部再套一层，出现两套明暗状态；
+ * 2. 它会 `SideEffect` 改写 window 的状态栏/导航栏外观与 decorView 底色，
+ *    与 SlteTheme 的同名逻辑**互相覆盖**——谁后执行谁说了算，属于难查的闪烁类缺陷；
+ * 3. 它把 `darkTheme` 当参数收，等于允许"App 内选择"与"系统明暗"两套信号同时存在，
+ *    而本项目从 v4 起就有一条铁律：**darkTheme 只能有一个信号源**（否则会复现
+ *    "App 内选亮色 + 系统暗色 = 白字压白底"的整屏不可见事故）。
+ *
+ * 删掉后 v5 取色仍由 `LocalV5Colors` + `V5ThemeColors.current` 提供，能力没有任何减少。
+ */

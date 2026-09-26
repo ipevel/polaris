@@ -10,16 +10,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.slte.app.ui.theme.SlteType
-import com.slte.app.utils.Dimens
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.slte.app.ui.theme.V5ThemeColors
 
-/** 订单信息行：左标签 / 右数值。金额一律走等宽数值样式，避免小数点错位。 */
+/** 订单信息行：左标签 / 右数值。金额一律等宽（同列小数点不错位）。 */
 @Composable
 internal fun OrderInfoRow(
     label: String,
@@ -27,69 +28,61 @@ internal fun OrderInfoRow(
     isValueEmphasize: Boolean = false,
     valueMono: Boolean = true,
 ) {
+    val c = V5ThemeColors.current
     Row(
-        modifier =
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = Dimens.gap.sm),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
-            style = SlteType.label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.5.sp,
+            color = c.text2,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Spacer(modifier = Modifier.width(Dimens.gap.sm))
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = value,
-            style = if (valueMono) SlteType.valueSmall else SlteType.bodySmall,
-            color =
-            if (isValueEmphasize) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            fontSize = if (valueMono) 13.5.sp else 13.sp,
+            fontWeight = if (isValueEmphasize) FontWeight.Bold else FontWeight.Medium,
+            color = if (isValueEmphasize) c.text else c.text2,
             maxLines = 1,
         )
     }
 }
 
+/** 订单信息行之间的发丝线（v5 令牌）。 */
 @Composable
 internal fun OrderInfoDivider() {
-    HorizontalDivider(
-        thickness = Dimens.dividerThickness,
-        color = MaterialTheme.colorScheme.outlineVariant,
-    )
+    HorizontalDivider(thickness = 1.dp, color = V5ThemeColors.current.hairline2)
 }
 
+/** 价格行：左标签 / 右等宽数值，`isBold` 用于最终价。 */
 @Composable
 internal fun PriceRow(
     label: String,
     value: String,
     isBold: Boolean = false,
 ) {
+    val c = V5ThemeColors.current
     Row(
-        modifier =
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = Dimens.gap.sm),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
-            style = SlteType.label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.5.sp,
+            color = c.text2,
             modifier = Modifier.weight(1f),
         )
         Text(
             text = value,
-            style = SlteType.valueSmall,
-            color = if (isBold) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isBold) c.accent else c.text,
         )
     }
 }

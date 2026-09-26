@@ -11,6 +11,7 @@ import com.slte.app.R
 import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
+import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.di.IoDispatcher
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelConfig
@@ -54,6 +55,7 @@ constructor(
     private val subscriptionUpdater: SubscriptionUpdater,
     private val dataWriter: DashboardDataWriter,
     private val authRepository: AuthRepository,
+    private val subscribeRepository: SubscribeRepository,
     private val siteInfoStore: SiteInfoStore,
     private val deviceEnvironment: DeviceEnvironmentSource,
     private val routingStateStore: com.slte.app.kernel.RoutingStateStore,
@@ -73,6 +75,20 @@ constructor(
         dataWriter.loadServers(viewModelScope, _data)
         observeKernelState()
         observeProfileLoaded()
+
+        // 面板套餐信息必须**跟着数据流走**，不能只在 init 读一次持久化缓存。
+        //
+        // 此前仪表盘只靠上面那行 applyCached 取套餐（套餐名/已用/总量/到期）：
+        // 而退出登录会 `sessionStore.clear()` 把那份缓存清掉，重新登录只更新
+        // SubscribeRepository 的内存流（`_subscribeInfo`）——于是"退出→重新登录"之后
+        // **首页套餐卡一直是空的**，直到用户手动下拉刷新。2026-09-26 雷电模拟器真机复现：
+        // 登录 200 成功、面板 getSubscribe 也返回 planId=8/planName=TEST，但首页仍无套餐卡。
+        // 与下方 siteInfoStore 的兜底同理：数据一到就上屏，不依赖某个调用点记得写。
+        viewModelScope.launch {
+            subscribeRepository.subscribeInfo.collect { info ->
+                if (info != null) dataWriter.applySubscribeInfo(_data, info, errorMessageRes = null)
+            }
+        }
         viewModelScope.launch { sampleDeviceEnvironment() }
         viewModelScope.launch { subscriptionUpdater.maybeSilentUpdate(_data, viewModelScope) }
 

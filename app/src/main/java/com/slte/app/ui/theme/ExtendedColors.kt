@@ -69,7 +69,9 @@ val LightExtendedColors =
         statusSuccessBg = Color(0x2116AC6C),
         statusWarning = Color(0xFFEE8A2C),
         statusWarningBg = Color(0x21EE8A2C),
-        statusDanger = md_light_error,
+        // 原本引用 Color.kt 的 md_light_error；该文件是 v4 遗留（48 个令牌里 46 个已无引用），
+        // 已整体删除，这里把用到的值就地内联。取值保持不变，纯搬家。
+        statusDanger = Color(0xFFC0342B),
         statusDangerBg = Color(0x1CE5484D),
         statusNeutral = Color(0xFF6B7280),
         statusNeutralBg = Color(0x1A6B7280),
@@ -94,7 +96,8 @@ val DarkExtendedColors =
         statusSuccessBg = Color(0x293DCC8E),
         statusWarning = Color(0xFFF5A25B),
         statusWarningBg = Color(0x26F5A25B),
-        statusDanger = md_dark_error,
+        // 同上：原 md_dark_error（其值与 v5 的 danger #F4776D 相同）
+        statusDanger = Color(0xFFF4776D),
         statusDangerBg = Color(0x26F4776D),
         statusNeutral = Color(0xFF8A9CB4),
         statusNeutralBg = Color(0x248A9CB4),

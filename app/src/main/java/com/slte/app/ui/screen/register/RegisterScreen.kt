@@ -6,6 +6,7 @@ package com.slte.app.ui.screen.register
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,9 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,17 +29,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.LoadingOverlay
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
-import com.slte.app.ui.component.SlteCard
-import com.slte.app.ui.component.SlteInput
-import com.slte.app.ui.component.SltePasswordInput
 import com.slte.app.ui.component.ToastTip
 import com.slte.app.ui.screen.login.AuthBrandHeader
 import com.slte.app.ui.screen.login.AuthField
@@ -48,12 +45,26 @@ import com.slte.app.ui.screen.login.AuthFieldBox
 import com.slte.app.ui.screen.login.AuthFieldError
 import com.slte.app.ui.screen.login.AuthFieldLabel
 import com.slte.app.ui.screen.login.AuthSendCodeButton
+import com.slte.app.ui.screen.login.V5TextAction
 import com.slte.app.ui.screen.login.authFieldErrorRes
+import com.slte.app.ui.screen.login.rememberCompactAuthLayout
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteType
-import com.slte.app.ui.theme.slteAuroraBackground
+import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
+import com.slte.app.ui.v5.V5Card
+import com.slte.app.ui.v5.V5Input
+import com.slte.app.ui.v5.V5PasswordInput
+import com.slte.app.ui.v5.v5Aurora
 import com.slte.app.utils.Dimens
 
+/**
+ * 注册页（v5 语言）。
+ *
+ * 迁移自 v4 的 `SlteCard` + `SlteInput` + `SlteButton` 版本；入口与行为逐项对齐
+ * （见交付报告的「注册页入口对账清单」）：账号、验证码（可开关）、密码、邀请码（必填/选填两态）、
+ * 注册、返回登录、倒计时、字段内联校验、全屏 Loading 遮罩、轻提示。
+ */
 @Composable
 fun RegisterScreen(
     emailVerifyEnabled: Boolean,
@@ -107,170 +118,168 @@ fun RegisterScreen(
             ?.takeIf { it == R.string.error_invite_required }
             ?.let { stringResource(it) }
 
+    val compact = rememberCompactAuthLayout()
+    val c = V5ThemeColors.current
+
     Box(
         modifier =
         Modifier
             .fillMaxSize()
-            .slteAuroraBackground(),
+            .v5Aurora(),
     ) {
         Column(
             modifier =
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = Dimens.gap.lg, vertical = Dimens.gap.xl)
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = if (compact) 8.dp else 22.dp,
+                )
                 .imePadding()
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.height(Dimens.gap.lg))
+            Spacer(modifier = Modifier.height(if (compact) 4.dp else 14.dp))
 
             AuthBrandHeader()
 
-            Spacer(modifier = Modifier.height(Dimens.gap.xl))
+            Spacer(modifier = Modifier.height(if (compact) 12.dp else 22.dp))
 
-            SlteCard(
+            V5Card(
                 modifier =
                 Modifier
                     .fillMaxWidth()
                     .widthIn(max = Dimens.maxContentWidth),
+                contentPadding = PaddingValues(if (compact) 14.dp else 18.dp),
             ) {
-                Column(
-                    modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(Dimens.gap.lg),
+                Text(
+                    text = stringResource(R.string.register_title),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.text,
+                )
+
+                Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
+
+                AuthField(
+                    label = stringResource(R.string.login_account_hint),
+                    error = emailError,
                 ) {
-                    Text(
-                        text = stringResource(R.string.register_title),
-                        style = SlteType.heading,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-
-                    Spacer(modifier = Modifier.height(Dimens.gap.lg))
-
-                    AuthField(
-                        label = stringResource(R.string.login_account_hint),
-                        error = emailError,
-                    ) {
-                        SlteInput(
-                            value = form.email,
-                            onValueChange = {
-                                if (fieldErrorRes == R.string.error_email_required) fieldErrorRes = null
-                                viewModel.onEmailChange(it)
-                            },
-                            placeholder = "",
-                            icon = SlteIcons.Account,
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next,
-                            enabled = !isRegistering,
-                        )
-                    }
-
-                    if (emailVerifyEnabled) {
-                        Spacer(modifier = Modifier.height(Dimens.gap.md))
-
-                        // 验证码：错误文案整行放在输入框下方，按钮才能与输入框底对齐
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.spacedBy(Dimens.gap.md),
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                AuthFieldLabel(text = stringResource(R.string.error_code_required))
-                                Spacer(modifier = Modifier.height(Dimens.gap.xs))
-                                AuthFieldBox(hasError = codeError != null) {
-                                    SlteInput(
-                                        value = form.verificationCode,
-                                        onValueChange = {
-                                            if (fieldErrorRes == R.string.error_code_required) fieldErrorRes = null
-                                            viewModel.onCodeChange(it)
-                                        },
-                                        placeholder = "",
-                                        icon = SlteIcons.VerificationCode,
-                                        keyboardType = KeyboardType.Number,
-                                        imeAction = ImeAction.Next,
-                                        enabled = !isRegistering,
-                                    )
-                                }
-                            }
-                            AuthSendCodeButton(
-                                isCountingDown = isCountingDown,
-                                countdownLabel = stringResource(R.string.format_countdown_s, countdownSeconds),
-                                loading = isLoading,
-                                onClick = viewModel::sendVerificationCode,
-                            )
-                        }
-                        AuthFieldError(text = codeError)
-                    }
-
-                    Spacer(modifier = Modifier.height(Dimens.gap.md))
-
-                    AuthField(
-                        label = stringResource(R.string.login_password_hint),
-                        error = passwordError,
-                    ) {
-                        SltePasswordInput(
-                            value = form.password,
-                            onValueChange = {
-                                if (fieldErrorRes == R.string.error_password_required) fieldErrorRes = null
-                                viewModel.onPasswordChange(it)
-                            },
-                            placeholder = "",
-                            icon = SlteIcons.Password,
-                            imeAction = ImeAction.Done,
-                            enabled = !isRegistering,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(Dimens.gap.md))
-
-                    AuthField(
-                        label =
-                        stringResource(
-                            if (inviteForceEnabled) R.string.register_invite_hint else R.string.register_invite_optional,
-                        ),
-                        error = inviteError,
-                    ) {
-                        SlteInput(
-                            value = form.inviteCode,
-                            onValueChange = {
-                                if (fieldErrorRes == R.string.error_invite_required) fieldErrorRes = null
-                                viewModel.onInviteCodeChange(it)
-                            },
-                            placeholder = "",
-                            icon = SlteIcons.InviteCode,
-                            keyboardType = KeyboardType.Text,
-                            imeAction = ImeAction.Done,
-                            enabled = !isRegistering,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(Dimens.gap.lg))
-
-                    SlteButton(
-                        text = stringResource(R.string.register_button),
-                        onClick = viewModel::register,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = SlteButtonStyle.Primary,
-                        height = Dimens.size.row,
-                        loading = isRegistering,
-                    )
-
-                    Spacer(modifier = Modifier.height(Dimens.gap.sm))
-
-                    TextButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onBackToLogin()
+                    V5Input(
+                        value = form.email,
+                        onValueChange = {
+                            if (fieldErrorRes == R.string.error_email_required) fieldErrorRes = null
+                            viewModel.onEmailChange(it)
                         },
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        placeholder = "",
+                        icon = SlteIcons.Account,
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Next,
+                        enabled = !isRegistering,
+                    )
+                }
+
+                if (emailVerifyEnabled) {
+                    Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
+
+                    // 验证码：错误文案整行放在输入框下方，按钮才能与输入框底对齐
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text(stringResource(R.string.register_back_to_login))
+                        Column(modifier = Modifier.weight(1f)) {
+                            AuthFieldLabel(text = stringResource(R.string.error_code_required))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            AuthFieldBox(hasError = codeError != null) {
+                                V5Input(
+                                    value = form.verificationCode,
+                                    onValueChange = {
+                                        if (fieldErrorRes == R.string.error_code_required) fieldErrorRes = null
+                                        viewModel.onCodeChange(it)
+                                    },
+                                    placeholder = "",
+                                    icon = SlteIcons.VerificationCode,
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next,
+                                    enabled = !isRegistering,
+                                )
+                            }
+                        }
+                        AuthSendCodeButton(
+                            isCountingDown = isCountingDown,
+                            countdownLabel = stringResource(R.string.format_countdown_s, countdownSeconds),
+                            loading = isLoading,
+                            onClick = viewModel::sendVerificationCode,
+                        )
+                    }
+                    AuthFieldError(text = codeError)
+                }
+
+                Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
+
+                AuthField(
+                    label = stringResource(R.string.login_password_hint),
+                    error = passwordError,
+                ) {
+                    V5PasswordInput(
+                        value = form.password,
+                        onValueChange = {
+                            if (fieldErrorRes == R.string.error_password_required) fieldErrorRes = null
+                            viewModel.onPasswordChange(it)
+                        },
+                        placeholder = "",
+                        icon = SlteIcons.Password,
+                        imeAction = ImeAction.Done,
+                        enabled = !isRegistering,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
+
+                AuthField(
+                    label =
+                    stringResource(
+                        if (inviteForceEnabled) R.string.register_invite_hint else R.string.register_invite_optional,
+                    ),
+                    error = inviteError,
+                ) {
+                    V5Input(
+                        value = form.inviteCode,
+                        onValueChange = {
+                            if (fieldErrorRes == R.string.error_invite_required) fieldErrorRes = null
+                            viewModel.onInviteCodeChange(it)
+                        },
+                        placeholder = "",
+                        icon = SlteIcons.InviteCode,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done,
+                        enabled = !isRegistering,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(if (compact) 14.dp else 20.dp))
+
+                V5Button(
+                    text = stringResource(R.string.register_button),
+                    onClick = viewModel::register,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ButtonStyle.PRIMARY,
+                    onClickEnabled = !isRegistering,
+                    loading = isRegistering,
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    V5TextAction(text = stringResource(R.string.register_back_to_login)) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onBackToLogin()
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.xl))
+            Spacer(modifier = Modifier.height(if (compact) 12.dp else 22.dp))
         }
     }
 

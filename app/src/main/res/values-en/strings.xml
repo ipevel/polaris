@@ -320,6 +320,11 @@
     <string name="v5_unprotected">Unprotected</string>
     <string name="v5_connected_wait">Connected</string>
     <string name="v5_waiting">Waiting to connect</string>
+    <string name="v5_connecting">Connecting</string>
+    <string name="v5_connecting_wait">Establishing connection</string>
+    <string name="v5_connect">Connect</string>
+    <string name="v5_disconnect">Disconnect</string>
+    <string name="v5_cancel">Cancel</string>
     <string name="v5_connected_node">Connected · %1$s</string>
     <string name="v5_ready_no_node">Ready · No node selected</string>
     <string name="v5_down_speed">Download</string>
@@ -339,10 +344,18 @@
     <string name="v5_traffic_loading">Loading…</string>
     <string name="v5_traffic_empty">No traffic records</string>
     <string name="v5_traffic_hint">Daily summary from panel traffic log</string>
+    <!-- Structural members have no latency of their own: DIRECT/REJECT have no remote peer,
+         and a group's delay comes from the kernel's own probing (interval=300). -->
+    <string name="v5_delay_not_needed">Not applicable</string>
+    <string name="v5_delay_auto">Auto-probed</string>
     <string name="v5_days_left">%1$d days left</string>
     <string name="v5_balance">Balance</string>
     <string name="v5_all_nodes">All nodes</string>
     <string name="v5_no_nodes">No nodes yet — update your subscription first</string>
+    <string name="v5_nodes_offline_hint">Not connected — these nodes come from your subscription; connect to switch</string>
+    <string name="v5_nodes_summary_offline">%1$d nodes · not connected</string>
+    <string name="v5_state_loading">Loading…</string>
+    <string name="v5_state_retry">Retry</string>
     <string name="v5_routing_groups">Routing rule groups</string>
     <string name="v5_group_exit">Exit</string>
     <string name="v5_group_exit_hint">Pick the exit for this category (a specific node is allowed)</string>
@@ -391,6 +404,7 @@
     <string name="plans_traffic_unit">GB</string>
     <string name="plans_traffic_label">Traffic</string>
     <string name="plans_subscribe">Subscribe</string>
+    <string name="plans_recommended">Recommended</string>
 
     <!-- Purchase Flow -->
     <string name="purchase_coupon_hint">Have a coupon?</string>
@@ -464,6 +478,7 @@
     <string name="api_error_unsupported_backend">Unsupported backend type: %s</string>
     <!-- Additional error messages -->
     <string name="error_order_failed">Order failed</string>
+    <string name="error_plans_failed">Failed to load plans</string>
     <string name="error_server_load">Failed to load nodes</string>
 
     <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->

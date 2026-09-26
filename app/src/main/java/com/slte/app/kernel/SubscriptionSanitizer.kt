@@ -31,6 +31,9 @@ object SubscriptionSanitizer {
         runStep("clearSubtitlePattern") { SanitizerNeutralizer.clearSubtitlePattern(lines) }
         // 重名节点会让内核拒绝加载整份配置，必须在交给内核前改成唯一名
         runStep("dedupeProxyNames") { SanitizerNameDeduper.dedupeProxyNames(lines) }
+        // 面板把账号信息伪装成真代理塞进组里，内核 url-test 会真的选中它们（连上却不通）。
+        // 必须在配置层剔除——只改 UI 没用，内核不知道 App 的排序。
+        runStep("dropInfoPseudoProxies") { SanitizerInfoProxyDropper.dropInfoProxies(lines) }
         runStep("injectHealthCheckConfig") { SanitizerInjector.injectHealthCheckConfig(lines) }
 
         var ruleInjected = true

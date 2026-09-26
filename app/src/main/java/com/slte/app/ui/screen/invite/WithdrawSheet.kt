@@ -16,15 +16,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.slte.app.R
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
-import com.slte.app.ui.component.SlteInput
-import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.utils.Dimens
+import com.slte.app.ui.theme.V5SheetShape
+import com.slte.app.ui.theme.V5SheetTitleStyle
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
+import com.slte.app.ui.v5.V5Input
 
+/** 提现面板（v5）：提现方式下拉 + 收款账号输入 + 确认。 */
 @Composable
 fun WithdrawSheet(
     methodsState: WithdrawMethodsState,
@@ -50,6 +52,8 @@ fun WithdrawSheet(
         title = stringResource(R.string.invite_withdraw_title),
         subtitle = stringResource(R.string.invite_withdraw_subtitle),
         onDismiss = onDismiss,
+        shape = V5SheetShape,
+        titleStyle = V5SheetTitleStyle,
     ) {
         WithdrawMethodField(
             methods = methods,
@@ -63,9 +67,9 @@ fun WithdrawSheet(
             },
         )
 
-        Spacer(modifier = Modifier.height(Dimens.gap.md))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        SlteInput(
+        V5Input(
             value = account,
             onValueChange = { input ->
                 account = input.filter { it.isLetterOrDigit() || it in "@.-_+" }.take(100)
@@ -73,17 +77,17 @@ fun WithdrawSheet(
             placeholder = stringResource(R.string.invite_withdraw_account_hint),
             icon = SlteIcons.AtSign,
             iconDesc = stringResource(R.string.invite_withdraw_account_label),
-            size = SlteInputSize.Compact,
+            small = true,
         )
 
-        Spacer(modifier = Modifier.height(Dimens.gap.xl))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        SlteButton(
+        V5Button(
             text = stringResource(R.string.invite_withdraw_confirm),
             onClick = { onConfirm(selectedMethod, account) },
             modifier = Modifier.fillMaxWidth(),
-            style = SlteButtonStyle.Primary,
-            enabled = selectedMethod.isNotBlank() && account.isNotBlank(),
+            style = ButtonStyle.PRIMARY,
+            onClickEnabled = selectedMethod.isNotBlank() && account.isNotBlank(),
             loading = isSubmitting,
         )
     }

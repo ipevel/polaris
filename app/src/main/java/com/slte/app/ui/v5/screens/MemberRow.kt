@@ -69,26 +69,50 @@ internal fun memberLabel(member: KernelProxyMember): String = when (member.kind)
 internal fun MemberRow(
     member: KernelProxyMember,
     selected: Boolean,
-    onClick: () -> Unit,
+    // 可为 null：内核未运行时的只读兜底名单没有任何可切换目标，
+    // 传 null 让整行不可点且无涟漪（V5RowItem 的 noRippleClickable 语义），
+    // 避免"点得动但什么都没发生"的假交互。
+    onClick: (() -> Unit)? = null,
 ) {
     val (mark, tone, label) = delayDisplayOf(member.delay)
+    // 结构项没有"延迟"这个概念（整改要求 3）：直连/拦截没有远端可探，给它显示"未测"
+    // 会让人以为"忘了测"；组出口的延迟由内核按 interval=300 自行拨测产出，与 App 测速无关。
+    val structuralRes =
+        when (member.kind) {
+            KernelProxyMemberKind.DIRECT, KernelProxyMemberKind.REJECT -> R.string.v5_delay_not_needed
+            KernelProxyMemberKind.GROUP -> R.string.v5_delay_auto
+            KernelProxyMemberKind.NODE -> null
+        }
     V5RowItem(
         title = memberLabel(member),
         sub = memberSubtitle(member),
         leading = { RadioDot(on = selected) },
         trailing = {
-            if (mark == DelayMark.MEASURED && label != null) {
-                LatencyText(label, tone)
-            } else {
-                // 「未测」与「超时」必须可区分：此前两者都显示"超时"
-                Text(
-                    text = stringResource(
-                        if (mark == DelayMark.TIMEOUT) R.string.server_timeout else R.string.server_untested,
-                    ),
-                    fontSize = 12.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = V5ThemeColors.current.text3,
-                )
+            when {
+                // 结构项若真拿到实测值（组拨测结果已回读）照样显示数字，不被占位符吞掉
+                mark == DelayMark.MEASURED && label != null -> LatencyText(label, tone)
+                // 超时是真实信号，优先于占位符
+                mark == DelayMark.TIMEOUT ->
+                    Text(
+                        text = stringResource(R.string.server_timeout),
+                        fontSize = 12.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = V5ThemeColors.current.text3,
+                    )
+                structuralRes != null ->
+                    Text(
+                        text = stringResource(structuralRes),
+                        fontSize = 12.5.sp,
+                        color = V5ThemeColors.current.text3,
+                    )
+                else ->
+                    // 节点未测/超时必须可区分：此前两者都显示"超时"
+                    Text(
+                        text = stringResource(R.string.server_untested),
+                        fontSize = 12.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = V5ThemeColors.current.text3,
+                    )
             }
         },
         onClick = onClick,

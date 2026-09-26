@@ -17,6 +17,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,10 +29,13 @@ import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.KernelProxyMember
+import com.slte.app.kernel.KernelProxyMemberKind
+import com.slte.app.kernel.PRIMARY_SECTION_KEY
 import com.slte.app.kernel.RoutingReservedNames
 import com.slte.app.kernel.orderMembers
 import com.slte.app.kernel.primaryGroupOf
 import com.slte.app.kernel.visibleGroupMembers
+import com.slte.app.ui.screen.server.NodeItem
 import com.slte.app.ui.screen.server.ServerData
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
@@ -65,17 +69,44 @@ import com.slte.app.ui.v5.V5TopIconButton
    （见下方 NodeGroupCard），此前的行内文字按钮 + GroupExitSheet 弹层已删除。
    ============================================================ */
 
-/** 分流规则组 = 除结构组（主选择/自动/故障转移/漏网之鱼）外的全部策略组。 */
-private fun routingGroupsOf(all: List<KernelProxyGroupInfo>): List<KernelProxyGroupInfo> {
-    val rest = all.filterNot { it.name in RoutingReservedNames }
-    return rest
-}
+/**
+ * 分流规则组 = 除结构组（主选择/自动/故障转移/漏网之鱼）与**已解析出的主组**外的全部策略组。
+ *
+ * 必须排除已解析主组：本地分流关闭 / 面板改名时主组会回退到"第一个 Selector 组"（非保留名），
+ * 不排除就会把同一个组渲染成两张卡（主卡 + 分流卡），且两张卡共用折叠键互相踩。
+ */
+private fun routingGroupsOf(
+    all: List<KernelProxyGroupInfo>,
+    primaryName: String?,
+): List<KernelProxyGroupInfo> =
+    all.filterNot { it.name in RoutingReservedNames || it.name == primaryName }
 
 /** 面板节点顺序索引，用于把 include-all 的成员重排回订阅顺序。 */
 private fun nodeOrderIndex(data: ServerData): Map<String, Int> {
     val indexed = data.nodes.withIndex()
     return indexed.associate { (index, node) -> node.name to index }
 }
+
+/**
+ * 内核未运行（未连接）时的**只读**兜底名单。
+ *
+ * 节点行只来自内核策略组，于是未连接时整页只剩「暂无节点，请先更新订阅」这句误导文案
+ * （用户实测反馈："首页那个连接不点，节点就全不显示"）。但订阅缓存在本地本来就有节点名单
+ * （[ServerData.nodes] 由 SubscribeRepository 解析并缓存，离线可用），把它映射成节点行，
+ * 用户至少**看得见自己买了哪些节点**。
+ *
+ * 延迟一律给 null（显示「未测」）：离线拿不到探测结果，编造数字比留空更糟。
+ * 只读是刻意的——没有内核可切，点了不会生效，所以由调用方传 readOnlyHint 关掉交互。
+ */
+internal fun offlineMembersOf(nodes: List<NodeItem>): List<KernelProxyMember> =
+    nodes.map {
+        KernelProxyMember(
+            name = it.name,
+            isGroup = false,
+            delay = null,
+            kind = KernelProxyMemberKind.NODE,
+        )
+    }
 
 @Composable
 private fun groupExitLabel(
@@ -113,6 +144,10 @@ internal fun V5NodesScreen(
     localRoutingEnabled: Boolean = false,
     localRoutingBusy: Boolean = false,
     onToggleLocalRouting: () -> Unit = {},
+    // 首次进入节点页自动跑一次测速（整改要求 3）：没有这一步，节点行永远停在「未测」，
+    // 用户无法判断"自动选择"凭什么选某个节点。真正的节流在 ServerViewModel（每个 App 会话
+    // 只自动跑一次）——切 Tab 会重建本屏组合，这里拦不住重复触发。
+    onAutoTestOnce: () -> Unit = {},
 ) {
     val c = V5ThemeColors.current
     val primary = primaryGroupOf(groups)
@@ -120,7 +155,11 @@ internal fun V5NodesScreen(
     val members = primary?.let {
         orderMembers(visibleGroupMembers(it.members, it.now), nodeOrderIndex(data))
     } ?: emptyList()
-    val groupsForRouting = routingGroupsOf(groups)
+    val groupsForRouting = routingGroupsOf(groups, primary?.name)
+    // 未连接（内核未运行）时用订阅缓存名单兜底，见 offlineMembersOf 的注释
+    val offlineMembers = if (primary == null && members.isEmpty()) offlineMembersOf(data.nodes) else emptyList()
+
+    LaunchedEffect(Unit) { onAutoTestOnce() }
 
     V5PageScaffold(tab = NavTab.NODES, onNavSelect = onNavSelect) {
         V5TopBar(stringResource(R.string.page_nodes)) {
@@ -133,7 +172,13 @@ internal fun V5NodesScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    stringResource(R.string.v5_nodes_summary, data.nodes.size, groupsForRouting.size),
+                    // 未连接时"0 个分组"会与下方列出的节点名单自相矛盾，换成如实说明
+                    text =
+                        if (offlineMembers.isNotEmpty()) {
+                            stringResource(R.string.v5_nodes_summary_offline, data.nodes.size)
+                        } else {
+                            stringResource(R.string.v5_nodes_summary, data.nodes.size, groupsForRouting.size)
+                        },
                     fontSize = 11.5.sp,
                     fontFamily = FontFamily.Monospace,
                     color = c.text3,
@@ -146,22 +191,28 @@ internal fun V5NodesScreen(
 
             // —— 节点选择：主组（🚀 节点选择）的全部成员
             // 结构项与具体节点同层可选，选中态完全由内核回读的 now 决定（不做乐观更新）。
+            // 折叠键用 PRIMARY_SECTION_KEY 而非组名：主组的解析结果会回退/漂移，
+            // 用组名做键会与"同名分流组"共用键互相踩（见 RoutingGroups.PRIMARY_SECTION_KEY）。
             NodeGroupCard(
                 name = primary?.name ?: stringResource(R.string.v5_all_nodes),
                 nowLabel = primary?.now ?: stringResource(R.string.v5_group_unset),
                 selectedName = primary?.now,
-                members = members,
-                collapsed = primary != null && primary.name in collapsedSections,
+                members = members.ifEmpty { offlineMembers },
+                // 兜底名单必须可见：若沿用折叠态，它会被藏在收起状态里，用户照样"什么都看不到"
+                collapsed = if (offlineMembers.isNotEmpty()) false else PRIMARY_SECTION_KEY in collapsedSections,
                 enabled = primary != null,
                 isLoading = isLoadingGroups,
-                onToggle = { primary?.let { onToggleSection(it.name) } },
+                readOnlyHint =
+                    if (offlineMembers.isNotEmpty()) stringResource(R.string.v5_nodes_offline_hint) else null,
+                onToggle = { onToggleSection(PRIMARY_SECTION_KEY) },
                 onSelect = { onSelectPrimary(it) },
             )
 
             // —— 分流规则组：与「节点选择」**同一套卡片 UI**（此前是 V5RowItem + 行内文字按钮 + 弹层，
             // 用户要求"分流规则组的 UI 不要，都沿用节点选择的 UI"）。
-            // 默认收起 + 单开手风琴（在 ServerViewModel.toggleSection 内保证）：每条分流组都
-            // include-all 了全部节点，而本页滚动体是非懒加载的 Column，全展开会组合出「组数 × 节点数」行。
+            // 默认收起（ServerViewModel.syncCollapsedSections 首见即收起）+ 单开手风琴
+            // （ServerViewModel.toggleSection 内保证）：每条分流组都 include-all 了全部节点，
+            // 而本页滚动体是非懒加载的 Column，全展开会组合出「组数 × 节点数」行。
             if (groupsForRouting.isNotEmpty()) {
                 Text(
                     stringResource(R.string.v5_routing_groups),
@@ -239,6 +290,9 @@ private fun NodeGroupCard(
     isLoading: Boolean,
     onToggle: () -> Unit,
     onSelect: (String) -> Unit,
+    // 非空 = 这份名单是**只读**兜底（内核未运行，来自订阅缓存）：顶部显示说明文字，
+    // 且每行不可点（没有内核可切，点了不会有任何效果，给交互反馈就是假交互）。
+    readOnlyHint: String? = null,
 ) {
     val c = V5ThemeColors.current
     V5CardFlat(Modifier.fillMaxWidth()) {
@@ -281,12 +335,18 @@ private fun NodeGroupCard(
             members.isEmpty() -> GroupPlaceholder(stringResource(R.string.v5_no_nodes))
             collapsed -> Unit
             else -> {
+                readOnlyHint?.let { GroupPlaceholder(it) }
                 members.forEachIndexed { index, member ->
                     if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
                     MemberRow(
                         member = member,
                         selected = member.name == selectedName,
-                        onClick = { onSelect(member.name) },
+                        onClick =
+                            if (readOnlyHint == null) {
+                                { onSelect(member.name) }
+                            } else {
+                                null
+                            },
                     )
                 }
             }

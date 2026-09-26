@@ -3,25 +3,21 @@
 
 package com.slte.app.ui.screen.ticket
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,32 +31,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.domain.model.Ticket
 import com.slte.app.ui.ContentPhase
-import com.slte.app.ui.component.CircleIconButton
-import com.slte.app.ui.component.EmptyState
-import com.slte.app.ui.component.ErrorState
-import com.slte.app.ui.component.LoadingBox
-import com.slte.app.ui.component.SlteCard
-import com.slte.app.ui.component.SltePullRefresh
-import com.slte.app.ui.component.SlteScaffold
 import com.slte.app.ui.component.ToastTip
-import com.slte.app.ui.theme.SlteColors
-import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.SlteRadii
-import com.slte.app.ui.theme.SlteType
-import com.slte.app.utils.Dimens
+import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.v5.ChipTone
+import com.slte.app.ui.v5.V5CardFlat
+import com.slte.app.ui.v5.V5Chip
+import com.slte.app.ui.v5.V5EmptyState
+import com.slte.app.ui.v5.V5ErrorState
+import com.slte.app.ui.v5.V5LoadingState
+import com.slte.app.ui.v5.V5PageScaffold
+import com.slte.app.ui.v5.V5PullRefresh
+import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.V5TopIconButton
+import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.utils.FormatUtils
 
-/** 状态徽标统一高度：24dp = 16dp 行高 + 上下各 4dp 内边距，胶囊形。 */
-private val ChipMinHeight = 24.dp
-
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 我的工单页（v5 语言）。
+ *
+ * 迁移自 v4 的 `SlteScaffold` + `SltePullRefresh` + `EmptyState/ErrorState/LoadingBox` 版本；
+ * 入口与行为逐项对齐（见本轮交付报告的「工单页入口对账清单」）：返回、右上「新建工单」、
+ * 下拉刷新、刷新失败提示、重试、空态、单卡去重列表、行点击开详情面板、
+ * 新建面板、详情面板（回复 / 关闭确认）、创建成功与关闭成功后的收尾。
+ */
 @Composable
 fun TicketScreen(
     onBack: () -> Unit,
@@ -98,38 +101,39 @@ fun TicketScreen(
         }
     }
 
-    SlteScaffold(
-        title = stringResource(R.string.ticket_title),
-        onBack = onBack,
-        actions = {
-            CircleIconButton(
-                icon = SlteIcons.Add,
-                description = stringResource(R.string.ticket_new),
-                onClick = { showCreate = true },
-            )
-        },
-    ) { innerPadding ->
+    V5PageScaffold(tab = null) {
+        V5TopBar(
+            title = stringResource(R.string.ticket_title),
+            onBack = onBack,
+            actions = {
+                V5TopIconButton(
+                    icon = Icons.Outlined.Add,
+                    onClick = { showCreate = true },
+                )
+            },
+        )
+
         if (uiState.phase == ContentPhase.Loading) {
-            LoadingContent(modifier = Modifier.padding(innerPadding))
+            StateScrollable { V5LoadingState() }
         } else {
             val errorRes = uiState.errorMessageRes
-            SltePullRefresh(
+            V5PullRefresh(
                 isRefreshing = uiState.phase == ContentPhase.Refreshing,
                 onRefresh = viewModel::refresh,
-                modifier = Modifier.padding(innerPadding),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 when {
                     errorRes != null ->
-                        PullRefreshScrollable {
-                            ErrorState(
+                        StateScrollable {
+                            V5ErrorState(
                                 message = uiState.errorMessage ?: stringResource(errorRes),
                                 onRetry = viewModel::loadTickets,
                             )
                         }
 
                     uiState.tickets.isEmpty() ->
-                        PullRefreshScrollable {
-                            EmptyContent()
+                        StateScrollable {
+                            V5EmptyState(title = stringResource(R.string.ticket_empty))
                         }
 
                     else ->
@@ -166,22 +170,25 @@ fun TicketScreen(
     }
 }
 
+/**
+ * 工单列表：一张卡装全部工单，行间 1dp 发丝线。
+ *
+ * 保留 v4 的这个决定：多张等亮卡片竖排时相邻边界只有 1.25:1，分组几乎不可见。
+ * 用 `LazyColumn` 而不是 `V5PageBody`：工单条数由面板决定，可能很长，需要惰性渲染。
+ */
 @Composable
 private fun TicketList(
     tickets: List<Ticket>,
     onClick: (Ticket) -> Unit,
 ) {
-    // 一张卡装全部工单，行间 1dp 发丝线：多张等亮卡片竖排时相邻边界只有 1.25:1，分组几乎不可见。
     val unique = remember(tickets) { tickets.distinctBy { it.id } }
     LazyColumn(
-        modifier =
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = Dimens.dashboardScreenPaddingH),
-        contentPadding = PaddingValues(vertical = Dimens.dashboardScreenPaddingV),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SlteCard(modifier = Modifier.fillMaxWidth()) {
+            V5CardFlat(modifier = Modifier.fillMaxWidth()) {
                 unique.forEachIndexed { index, ticket ->
                     TicketRow(
                         ticket = ticket,
@@ -200,94 +207,77 @@ private fun TicketRow(
     topDivider: Boolean,
     onClick: () -> Unit,
 ) {
+    val c = V5ThemeColors.current
     val haptic = LocalHapticFeedback.current
+    val rowClick: () -> Unit = {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        onClick()
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (topDivider) {
-            HorizontalDivider(
-                thickness = Dimens.dividerThickness,
-                color = MaterialTheme.colorScheme.outlineVariant,
-            )
-        }
+        if (topDivider) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
         Column(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onClick()
-                }
-                .padding(
-                    horizontal = Dimens.gap.lg,
-                    vertical = Dimens.gap.md,
-                ),
+                .then(noRippleClickable(rowClick))
+                .padding(horizontal = 15.dp, vertical = 13.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
                     text = ticket.subject,
-                    style = SlteType.cardTitle,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(modifier = Modifier.width(Dimens.gap.sm))
                 TicketStatusChip(closed = ticket.isClosed)
             }
 
-            Spacer(modifier = Modifier.height(Dimens.gap.sm))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = stringResource(R.string.ticket_created_at),
-                    style = SlteType.label,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.5.sp,
+                    color = c.text3,
                 )
-                Spacer(modifier = Modifier.width(Dimens.gap.xs))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = FormatUtils.formatDate(ticket.createdAt),
-                    style = SlteType.valueSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.5.sp,
+                    color = c.text3,
                 )
             }
         }
     }
 }
 
-/** 工单状态徽标：待处理走警示色、已关闭走中性色，胶囊形。 */
+/** 工单状态徽标：待处理走警示色、已关闭走中性色（v5 统一胶囊）。 */
 @Composable
 private fun TicketStatusChip(closed: Boolean) {
-    val fg = if (closed) SlteColors.current.statusNeutral else SlteColors.current.statusWarning
-    val bg = if (closed) SlteColors.current.statusNeutralBg else SlteColors.current.statusWarningBg
-
-    Surface(
-        shape = RoundedCornerShape(SlteRadii.pill),
-        color = bg,
-    ) {
-        Text(
-            text = stringResource(if (closed) R.string.ticket_status_closed else R.string.ticket_status_open),
-            style = SlteType.caption,
-            color = fg,
-            modifier =
-            Modifier
-                .defaultMinSize(minHeight = ChipMinHeight)
-                .padding(
-                    horizontal = Dimens.noticeTagPaddingH,
-                    vertical = Dimens.gap.xs,
-                ),
-        )
-    }
+    V5Chip(
+        tone = if (closed) ChipTone.NEUTRAL else ChipTone.WARN,
+        text = stringResource(if (closed) R.string.ticket_status_closed else R.string.ticket_status_open),
+    )
 }
 
+/** 不滚动内容的脚手架（保持可滚动，否则空/错态下拉刷新失效，理由同公告页）。 */
 @Composable
-private fun PullRefreshScrollable(content: @Composable () -> Unit) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+private fun StateScrollable(
+    horizontalPadding: Dp = 16.dp,
+    content: @Composable () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = horizontalPadding),
+    ) {
         item {
             Box(
                 modifier = Modifier.fillParentMaxSize(),
@@ -297,22 +287,4 @@ private fun PullRefreshScrollable(content: @Composable () -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun LoadingContent(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        LoadingBox()
-    }
-}
-
-@Composable
-private fun EmptyContent(modifier: Modifier = Modifier) {
-    EmptyState(
-        title = stringResource(R.string.ticket_empty),
-        modifier = modifier,
-    )
 }

@@ -8,7 +8,9 @@ import com.slte.app.data.local.InMemoryPreferences
 import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
+import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.domain.model.SessionState
+import com.slte.app.domain.model.SubscribeInfo
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
@@ -42,6 +44,13 @@ class MainViewModelTest {
     private val subscriptionUpdater = mockk<SubscriptionUpdater>(relaxed = true)
     private val dataWriter = mockk<DashboardDataWriter>(relaxed = true)
     private val authRepository = mockk<AuthRepository>(relaxed = true)
+    private val subscribeRepository = mockk<SubscribeRepository>(relaxed = true)
+
+    /**
+     * 面板套餐信息的真实流：仪表盘订阅它（退出→重新登录后套餐卡不再空白）。
+     * relaxed mock 的 StateFlow.collect 会抛 KotlinNothingValueException，必须显式打桩。
+     */
+    private val subscribeInfoFlow = MutableStateFlow<SubscribeInfo?>(null)
     private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
     private val deviceEnvironment = mockk<DeviceEnvironmentSource>(relaxed = true)
     private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
@@ -67,8 +76,9 @@ class MainViewModelTest {
         coEvery { authRepository.fetchSiteInfo(any()) } returns com.slte.app.domain.model.SiteInfo()
         every { deviceEnvironment.appMemoryUsageMb() } returns 0
         every { deviceEnvironment.lanIpv4() } returns null
+        every { subscribeRepository.subscribeInfo } returns subscribeInfoFlow
         stubNoRoutingDegraded()
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, siteInfoStore, deviceEnvironment, routingStateStore)
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, subscribeRepository, siteInfoStore, deviceEnvironment, routingStateStore)
     }
 
     /**
@@ -178,6 +188,7 @@ class MainViewModelTest {
         stubAuthSession()
         every { deviceEnvironment.appMemoryUsageMb() } returns 0
         every { deviceEnvironment.lanIpv4() } returns null
+        every { subscribeRepository.subscribeInfo } returns subscribeInfoFlow
         val vm =
             MainViewModel(
                 mainRule.dispatcher,
@@ -188,6 +199,7 @@ class MainViewModelTest {
                 subscriptionUpdater,
                 dataWriter,
                 authRepository,
+                subscribeRepository,
                 siteInfoStore,
                 deviceEnvironment,
                 routingStateStore,
@@ -216,6 +228,7 @@ class MainViewModelTest {
         stubAuthSession()
         every { deviceEnvironment.appMemoryUsageMb() } returns 0
         every { deviceEnvironment.lanIpv4() } returns null
+        every { subscribeRepository.subscribeInfo } returns subscribeInfoFlow
         stubNoRoutingDegraded()
         val vm =
             MainViewModel(
@@ -227,6 +240,7 @@ class MainViewModelTest {
                 subscriptionUpdater,
                 dataWriter,
                 authRepository,
+                subscribeRepository,
                 siteInfoStore,
                 deviceEnvironment,
                 routingStateStore,
@@ -239,5 +253,31 @@ class MainViewModelTest {
         assertTrue("内核未就绪时不得显示已连接", !vm.data.value.isConnected)
         assertEquals(R.string.error_vpn_kernel_unavailable, vm.data.value.errorMessageRes)
         verify(exactly = 0) { fallbackDns.clearCache() }
+    }
+
+    /**
+     * 回归：退出登录会 `sessionStore.clear()` 清掉本地套餐缓存，重新登录只更新
+     * SubscribeRepository 的内存流；仪表盘必须订阅这条流，否则"退出→重新登录"之后
+     * 首页套餐卡（套餐名/已用/总量/到期）一直是空的，直到用户手动下拉刷新。
+     * （2026-09-26 雷电模拟器真机复现：登录成功、面板 getSubscribe 返回
+     * planId=8/planName=TEST，首页仍无套餐卡。）
+     */
+    @Test
+    fun `订阅信息到位后首页套餐卡自动填充`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val info =
+            SubscribeInfo(
+                planName = "TEST",
+                transferEnable = 4_398_046_511_104L,
+                usedTraffic = 121_800_000_000L,
+                expiredAt = 1_871_309_415L,
+                planId = 8,
+            )
+        subscribeInfoFlow.value = info
+        advanceUntilIdle()
+
+        verify { dataWriter.applySubscribeInfo(any(), info, null) }
     }
 }

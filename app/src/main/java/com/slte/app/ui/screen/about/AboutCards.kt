@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,78 +21,62 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.slte.app.ui.component.SlteCard
-import com.slte.app.ui.component.SlteRowCard
-import com.slte.app.ui.theme.SlteColors
-import com.slte.app.ui.theme.SlteType
-import com.slte.app.utils.Dimens
+import androidx.compose.ui.unit.sp
+import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.v5.V5CardFlat
 import kotlin.math.cos
 import kotlin.math.sin
 
-@Composable
-internal fun AboutRowCard(
-    icon: ImageVector,
-    title: String,
-    value: String? = null,
-    subtitle: String? = null,
-    onClick: (() -> Unit)? = null,
-) = SlteRowCard(
-    icon = icon,
-    title = title,
-    value = value,
-    subtitle = subtitle,
-    chevron = onClick != null,
-    onClick = onClick,
-)
-
-/** 应用标识卡：静态极星标识 + 应用名 + 一句话说明（原先 96dp Lottie 纯装饰，静态标识更稳且省电）。 */
+/** 应用标识卡（v5）：静态极星标识 + 应用名 + 一句话说明。 */
 @Composable
 internal fun AboutIdentityCard(
     appName: String,
     description: String,
     modifier: Modifier = Modifier,
 ) {
-    SlteCard(modifier = modifier.fillMaxWidth()) {
+    val c = V5ThemeColors.current
+    V5CardFlat(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(Dimens.gap.xl),
+                .padding(vertical = 22.dp, horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            AboutBrandMark(markSize = 72.dp)
-            Spacer(modifier = Modifier.height(Dimens.gap.md))
+            AboutBrandMark(markSize = 68.dp)
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = appName,
-                style = SlteType.display,
-                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = c.text,
                 textAlign = TextAlign.Center,
             )
-            Spacer(modifier = Modifier.height(Dimens.gap.sm))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = description,
-                style = SlteType.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.5.sp,
+                lineHeight = 18.sp,
+                color = c.text3,
                 textAlign = TextAlign.Center,
             )
         }
     }
 }
 
-/** 极星标识：轨道环 + 四角星，纯 Compose 绘制（对齐认证页，不引入图片资源）。 */
+/** 极星标识：轨道环 + 四角星，纯 Compose 绘制（不引入图片资源），取色走 v5 令牌。 */
 @Composable
 internal fun AboutBrandMark(
     markSize: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val accent = SlteColors.current.accentInteractive
-    val ring = MaterialTheme.colorScheme.onSurfaceVariant
+    val c = V5ThemeColors.current
     Canvas(modifier = modifier.size(markSize)) {
-        drawPolarisMark(accent = accent, ring = ring)
+        drawPolarisMark(accent = c.accent, ring = c.text3)
     }
 }
 

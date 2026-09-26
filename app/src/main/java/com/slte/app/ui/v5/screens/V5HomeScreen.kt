@@ -78,10 +78,12 @@ private fun SpeedTile(
         Text(
             buildAnnotatedString {
                 withStyle(SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
-                    append(FormatUtils.traffic(bps) + " ")
+                    append(FormatUtils.traffic(bps))
                 }
                 withStyle(SpanStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
-                    append("bps")
+                    // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
+                    // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。等价的现成写法见 FormatUtils.speed()。
+                    append("/s")
                 }
             },
         )
@@ -169,50 +171,35 @@ private fun SessionCard(data: DashboardData) {
                     color = c.text3,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MacaronTile(
-                    TileTone.BLUE,
-                    stringResource(R.string.session_current_ip),
-                    Modifier.weight(1f),
-                    icon = Icons.Outlined.Public,
-                    small = true,
-                ) {
-                    Text(
-                        data.currentIp,
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = c.text,
-                    )
-                }
-                MacaronTile(
-                    TileTone.ORANGE,
-                    stringResource(R.string.session_used),
-                    Modifier.weight(1f),
-                    icon = Icons.Outlined.BarChart,
-                    small = true,
-                ) {
-                    Text(
-                        FormatUtils.traffic(data.sessionDownloadBytes + data.sessionUploadBytes),
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = c.text,
-                    )
-                }
-            }
+            // 四项一行一项（整改要求 5）：形式照「内网IP / 内存占用」的账本行（左标签 + 右等宽值），
+            // 效果照「当前IP / 本次用量」的瓷片（同色系底色）。此前 IP 与用量挤在两个并排瓷片里，
+            // 窄屏下 IPv6 这类长值必然被截断——一行一项才显示得开。
             V5Ledger(
                 listOf(
+                    LedgerData(
+                        stringResource(R.string.session_current_ip),
+                        data.currentIp,
+                        icon = Icons.Outlined.Public,
+                        tone = TileTone.BLUE,
+                    ),
+                    LedgerData(
+                        stringResource(R.string.session_used),
+                        FormatUtils.traffic(data.sessionDownloadBytes + data.sessionUploadBytes),
+                        icon = Icons.Outlined.BarChart,
+                        tone = TileTone.ORANGE,
+                    ),
                     LedgerData(
                         stringResource(R.string.session_lan_ip),
                         data.lanIp,
                         icon = Icons.Outlined.Memory,
                         color = if (connected) c.text else c.text3,
+                        tone = TileTone.CYAN,
                     ),
                     LedgerData(
                         stringResource(R.string.session_memory),
                         stringResource(R.string.session_memory_mb, data.appMemoryUsedMb),
                         icon = Icons.Outlined.Cloud,
+                        tone = TileTone.PURPLE,
                     ),
                 ),
             )
@@ -232,6 +219,9 @@ internal fun V5HomeScreen(
 ) {
     val c = V5ThemeColors.current
     val connected = data.isConnected
+    // 连接中态：v5 改造时把这个字段丢了（isConnecting 在 ui/v5/ 下零命中），
+    // 导致"点连接"到"连上"之间界面与未连接完全一致（截图逐字节相同）。
+    val connecting = data.isConnecting
     val context = LocalContext.current
     val vpnPermissionLauncher =
         rememberLauncherForActivityResult(
@@ -248,26 +238,32 @@ internal fun V5HomeScreen(
             ActivityResultContracts.RequestPermission(),
         ) { }
 
-    // 与 v4 MainScreen 相同的连接开关流程：无套餐引导续费；通知权限请求；
-    // VPN 授权意图先于实际开关
+    // 连接中再点 = 取消连接：必须**直接**走 onToggleConnection（MainViewModel.toggleConnection
+    // 的 isConnecting 分支会停隧道并复位）。绝不能复用它下面的"套餐 / 通知权限 / VPN 授权"前置：
+    // 连接中再弹一次 VPN 授权，用户一拒绝就会被置成未连接、而隧道可能已在途
+    //（历史缺陷"连不上也关不掉"）。
     val handleToggle = {
-        if (!data.hasPlan) {
-            android.widget.Toast
-                .makeText(context, context.getString(R.string.dashboard_no_plan_tip), android.widget.Toast.LENGTH_SHORT)
-                .show()
-            onRenew()
-        } else {
-            if (Build.VERSION.SDK_INT >= 33 &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        when {
+            connecting -> onToggleConnection()
+            !data.hasPlan -> {
+                android.widget.Toast
+                    .makeText(context, context.getString(R.string.dashboard_no_plan_tip), android.widget.Toast.LENGTH_SHORT)
+                    .show()
+                onRenew()
             }
-            val request = vpnRequestIntent()
-            if (request != null) {
-                vpnPermissionLauncher.launch(request)
-            } else {
-                onToggleConnection()
+            else -> {
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                val request = vpnRequestIntent()
+                if (request != null) {
+                    vpnPermissionLauncher.launch(request)
+                } else {
+                    onToggleConnection()
+                }
             }
         }
         Unit
@@ -280,36 +276,37 @@ internal fun V5HomeScreen(
         // 未配置/未拉到才回退应用名。v5 改造时这里被写成固定 app_name，导致
         // DashboardData.siteName 一直是死数据（v4 首页的契约见 git 历史 MainScreen.kt）。
         V5TopBar(siteDisplayName(data.siteName, stringResource(R.string.app_name))) {
-            if (connected) {
-                V5Chip(ChipTone.OK, stringResource(R.string.v5_connected_rule), icon = Icons.Outlined.Shield, large = true)
-            } else {
-                V5Chip(ChipTone.NEUTRAL, stringResource(R.string.v5_not_connected), icon = Icons.Outlined.Cloud, large = true)
+            when {
+                connected ->
+                    V5Chip(ChipTone.OK, stringResource(R.string.v5_connected_rule), icon = Icons.Outlined.Shield, large = true)
+                connecting ->
+                    V5Chip(ChipTone.ACCENT, stringResource(R.string.v5_connecting), icon = Icons.Outlined.Cloud, large = true)
+                else ->
+                    V5Chip(ChipTone.NEUTRAL, stringResource(R.string.v5_not_connected), icon = Icons.Outlined.Cloud, large = true)
             }
         }
         V5ScrollBody(NavTab.HOME) {
             // —— 主角：大圆连接钮卡
             V5Card {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        V5Chip(
-                            if (connected) ChipTone.OK else ChipTone.NEUTRAL,
-                            if (connected) stringResource(R.string.v5_protected) else stringResource(R.string.v5_unprotected),
-                            dot = true,
-                            large = true,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            if (connected) stringResource(R.string.v5_connected_wait) else stringResource(R.string.v5_waiting),
-                            fontSize = 11.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = c.text3,
-                        )
-                    }
-                    // 节点（含延迟）移到按钮**上方**：此前它在大圆钮下方，而圆钮的光环
-                    // 向下溢出约 13~23dp，视觉上正好压住节点行——即用户反馈的"按钮挡住节点"。
+                // fillMaxWidth 是必需的：卡片本身按内容宽收缩，而这里最宽的子树只有
+                // 176dp 圆钮（352px），少了它就只剩约一半屏宽、与下方通栏瓷片对不齐
+                // ——原来是卡片里那行状态 Row 自带 fillMaxWidth 在"撑"着宽度，删掉那行
+                //（整改要求 1）后必须自己撑。
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    // 卡片内不再放「未受保护 / 等待连接」那一组状态：顶栏已经有唯一的连接状态，
+                    // 两者重复（整改要求 1：两个都取消掉）。
+                    HeroConnectButton(
+                        connected = connected,
+                        connecting = connecting,
+                        onClick = handleToggle,
+                    )
+                    // 节点（含延迟）在按钮**下方**（整改要求 2：按钮在前、节点状态在后）。
+                    // 32dp 是硬约束而非审美取值：圆钮的光环/脉冲环向下溢出约 23dp
+                    // （V5Components.kt 的 drawBehind r+13dp、脉冲环 r+23dp），余量不足会
+                    // 重新出现"按钮挡住节点"的历史缺陷。
                     // 延迟取自测速缓存（未测过则不显示，不写"未测"以免误导）；出口是
                     // 「自动选择」时 serverName 已被 serverInfo() 解析为其当前选中的叶子节点，
                     // 因此这里显示的确实是那个节点的延迟。
@@ -325,12 +322,7 @@ internal fun V5HomeScreen(
                         dot = !connected,
                         icon = if (connected) Icons.Outlined.Shield else null,
                         large = true,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                    HeroConnectButton(
-                        connected = connected,
-                        modifier = Modifier.padding(top = 20.dp),
-                        onClick = handleToggle,
+                        modifier = Modifier.padding(top = 32.dp),
                     )
                 }
             }

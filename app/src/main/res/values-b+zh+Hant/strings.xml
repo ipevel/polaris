@@ -316,6 +316,11 @@
     <string name="v5_unprotected">未受保護</string>
     <string name="v5_connected_wait">已連線</string>
     <string name="v5_waiting">等待連線</string>
+    <string name="v5_connecting">連線中</string>
+    <string name="v5_connecting_wait">正在建立連線</string>
+    <string name="v5_connect">連線</string>
+    <string name="v5_disconnect">斷開</string>
+    <string name="v5_cancel">取消</string>
     <string name="v5_connected_node">已連線 · %1$s</string>
     <string name="v5_ready_no_node">就緒 · 尚未選擇節點</string>
     <string name="v5_down_speed">下行速率</string>
@@ -335,10 +340,16 @@
     <string name="v5_traffic_loading">載入中…</string>
     <string name="v5_traffic_empty">暫無流量記錄</string>
     <string name="v5_traffic_hint">按日彙總，來自面板流量日誌</string>
+    <string name="v5_delay_not_needed">無需測速</string>
+    <string name="v5_delay_auto">自動撥測</string>
     <string name="v5_days_left">剩 %1$d 天</string>
     <string name="v5_balance">餘額</string>
     <string name="v5_all_nodes">全部節點</string>
     <string name="v5_no_nodes">暫無節點，請先更新訂閱</string>
+    <string name="v5_nodes_offline_hint">尚未連線：以下是訂閱裡的節點，連線後即可切換</string>
+    <string name="v5_nodes_summary_offline">%1$d 個節點 · 未連線</string>
+    <string name="v5_state_loading">正在載入…</string>
+    <string name="v5_state_retry">重試</string>
     <string name="v5_routing_groups">分流規則組</string>
     <string name="v5_group_exit">當前出口</string>
     <string name="v5_group_exit_hint">選擇該分類使用的出口（可指定具體節點）</string>
@@ -387,6 +398,7 @@
     <string name="plans_traffic_unit">GB</string>
     <string name="plans_traffic_label">流量</string>
     <string name="plans_subscribe">訂閱</string>
+    <string name="plans_recommended">推薦</string>
 
     <!-- Purchase Flow -->
     <string name="purchase_coupon_hint">有優惠券？</string>
@@ -460,6 +472,7 @@
     <string name="api_error_unsupported_backend">不支援的後端類型: %s</string>
     <!-- Additional error messages -->
     <string name="error_order_failed">訂單操作失敗</string>
+    <string name="error_plans_failed">套餐載入失敗</string>
     <string name="error_server_load">載入節點失敗</string>
 
     <!-- Language（语言选项标签使用各语言自身名称，不翻译，便于后续新增语言） -->

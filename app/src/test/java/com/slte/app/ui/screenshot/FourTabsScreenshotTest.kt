@@ -345,7 +345,7 @@ class FourTabsScreenshotTest {
                 onRefreshSubscription = {},
                 onRoutingRules = {},
                 onNavSelect = {},
-                collapsedSections = setOf("🚀 节点选择"),
+                collapsedSections = setOf(com.slte.app.kernel.PRIMARY_SECTION_KEY),
             )
         }
     }
@@ -366,7 +366,7 @@ class FourTabsScreenshotTest {
                 onRefreshSubscription = {},
                 onRoutingRules = {},
                 onNavSelect = {},
-                collapsedSections = setOf("🚀 节点选择"),
+                collapsedSections = setOf(com.slte.app.kernel.PRIMARY_SECTION_KEY),
             )
         }
     }

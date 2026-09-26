@@ -242,11 +242,26 @@ constructor(
      * 设置页开关：写入 routing.json 并广播触发内核重载（内核运行中时立即
      * 生效；未运行时文件持久化，下次连接首次 load 即读取）。
      */
+    /**
+     * 分流配置（routing.json）变更后请求内核重载。
+     *
+     * **必须用 ACTION_OVERRIDE_CHANGED，绝不能再用 ACTION_PROFILE_CHANGED**：
+     * 后者在 ConfigurationModule 里被当作"切换到 EXTRA_UUID 指定的配置"来解析
+     * （`UUID.fromString(getStringExtra(EXTRA_UUID))`）。而这里根本没有 profile 变更、
+     * 也就不带 uuid——历史上的写法让它抛 NPE，异常穿出 `select{}` 变成 LoadException，
+     * 直接把 TunService 销毁重建：用户**每改一次分流规则就掉一次线**，节点页分组同时清空
+     * （真机栈回溯已确认，见 ConfigurationModule.parseProfileChangeUuid 的注释）。
+     *
+     * ACTION_OVERRIDE_CHANGED 的语义正是"非 profile 的配置变了 → 重载当前激活配置"，
+     * 与本仓库既有的重载路径（KernelProxy.ensurePersistedMode）一致。
+     */
+    private fun requestReload() {
+        context.sendBroadcastSelf(Intent(Intents.ACTION_OVERRIDE_CHANGED))
+    }
+
     suspend fun setLocalRoutingEnabled(enabled: Boolean): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.setEnabled(enabled)
-        if (written) {
-            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
-        }
+        if (written) requestReload()
         written
     }
 
@@ -256,36 +271,28 @@ constructor(
         enabled: Boolean,
     ): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.setGroupEnabled(name, enabled)
-        if (written) {
-            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
-        }
+        if (written) requestReload()
         written
     }
 
     /** 分流规则管理页：恢复全部组的内置默认开关，写盘后广播重载。 */
     suspend fun resetRoutingGroups(): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.resetGroups()
-        if (written) {
-            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
-        }
+        if (written) requestReload()
         written
     }
 
     /** 分流规则管理页：新增自定义规则组，写盘后广播重载。 */
     suspend fun addRoutingCustomGroup(group: RoutingCustomGroup): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.addCustomGroup(group)
-        if (written) {
-            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
-        }
+        if (written) requestReload()
         written
     }
 
     /** 分流规则管理页：删除自定义规则组，写盘后广播重载。 */
     suspend fun removeRoutingCustomGroup(name: String): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.removeCustomGroup(name)
-        if (written) {
-            context.sendBroadcastSelf(Intent(Intents.ACTION_PROFILE_CHANGED))
-        }
+        if (written) requestReload()
         written
     }
 

@@ -8,6 +8,7 @@
 package com.github.kr328.clash.service.clash.module
 
 import android.app.Service
+import android.content.Intent
 import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.common.log.Log
 import com.github.kr328.clash.core.Clash
@@ -27,6 +28,24 @@ class ConfigurationModule(service: Service) : Module<ConfigurationModule.LoadExc
     private val store = ServiceStore(service)
     private val reload = Channel<Unit>(Channel.CONFLATED)
 
+    /**
+     * 解析 PROFILE_CHANGED 广播携带的 profile UUID。
+     *
+     * **这里绝对不能抛异常**：本方法在 `select {}` 的 clause 内被调用，异常会穿过 `run()`
+     * 的 `try` → `enqueueEvent(LoadException)` → **整个 TunService 销毁重建**，用户侧
+     * 表现为"VPN 无声断开"（历史缺陷：分流规则开关发的广播不带 EXTRA_UUID，
+     * `UUID.fromString(null)` 抛 NPE，改一次分流规则就掉一次线，节点页分组同时清空）。
+     *
+     * EXTRA_UUID 缺失/空白/非法一律返回 null，语义为"重载当前激活配置"——与
+     * ACTION_OVERRIDE_CHANGED 的处理一致，即忽略广播里那个"要切到哪个配置"的意图，
+     * 只当作一次普通的配置重载请求。
+     */
+    private fun parseProfileChangeUuid(intent: Intent): UUID? {
+        val raw = intent.getStringExtra(Intents.EXTRA_UUID) ?: return null
+        if (raw.isBlank()) return null
+        return runCatching { UUID.fromString(raw) }.getOrNull()
+    }
+
     override suspend fun run() {
         val broadcasts = receiveBroadcast {
             addAction(Intents.ACTION_PROFILE_CHANGED)
@@ -41,10 +60,7 @@ class ConfigurationModule(service: Service) : Module<ConfigurationModule.LoadExc
         while (true) {
             val changed: UUID? = select {
                 broadcasts.onReceive {
-                    if (it.action == Intents.ACTION_PROFILE_CHANGED)
-                        UUID.fromString(it.getStringExtra(Intents.EXTRA_UUID))
-                    else
-                        null
+                    if (it.action == Intents.ACTION_PROFILE_CHANGED) parseProfileChangeUuid(it) else null
                 }
                 reload.onReceive {
                         null

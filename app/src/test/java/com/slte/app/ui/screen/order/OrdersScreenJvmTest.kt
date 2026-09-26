@@ -5,6 +5,7 @@ package com.slte.app.ui.screen.order
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.slte.app.data.remote.api.dto.OrderInfoDto
@@ -13,6 +14,7 @@ import com.slte.app.support.FakeAuthApi
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.theme.SlteTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +36,17 @@ class OrdersScreenJvmTest {
         planName = "进阶套餐",
         totalAmount = 5_000,
         status = 3,
+        createdAt = 1_700_000_000L,
+        expiredAt = 1_800_000_000L,
+    )
+
+    /** 待支付订单（`status = 0` ⇒ `OrderStatus.PENDING`）。 */
+    private fun pendingOrder(id: Int) = OrderInfoDto(
+        id = id,
+        tradeNo = "TN-$id",
+        planName = "进阶套餐",
+        totalAmount = 5_000,
+        status = 0,
         createdAt = 1_700_000_000L,
         expiredAt = 1_800_000_000L,
     )
@@ -81,5 +94,60 @@ class OrdersScreenJvmTest {
         composeRule.waitUntil(5_000) { viewModel.data.value.orders.isNotEmpty() }
 
         composeRule.onNodeWithText("TN-2").assertIsDisplayed()
+    }
+
+    @Test
+    fun 订单明细渲染套餐名金额日期与订单号() {
+        api.ordersError = null
+        api.orders = listOf(order(1))
+        viewModel.enterAndRefresh()
+        content()
+        composeRule.waitUntil(5_000) { viewModel.data.value.orders.isNotEmpty() }
+
+        composeRule.onNodeWithText("进阶套餐").assertIsDisplayed()
+        composeRule.onNodeWithText("订单号").assertIsDisplayed()
+        composeRule.onNodeWithText("创建于").assertIsDisplayed()
+    }
+
+    /**
+     * 待支付订单才有「取消订单 / 继续支付」两个按钮；已完成订单没有。
+     *
+     * 这是迁移最容易丢的一组入口（两个按钮在 `if (isPending)` 分支里），必须钉住。
+     */
+    @Test
+    fun 待支付订单显示取消与支付按钮而已完成订单不显示() {
+        api.ordersError = null
+        api.orders = listOf(pendingOrder(1))
+        viewModel.enterAndRefresh()
+        content()
+        composeRule.waitUntil(5_000) { viewModel.data.value.orders.isNotEmpty() }
+
+        composeRule.onNodeWithText("取消").assertIsDisplayed()
+        composeRule.onNodeWithText("支付").assertIsDisplayed()
+        composeRule.onNodeWithText("待支付").assertIsDisplayed()
+    }
+
+    @Test
+    fun 已完成订单不显示操作按钮() {
+        api.ordersError = null
+        api.orders = listOf(order(1))
+        viewModel.enterAndRefresh()
+        content()
+        composeRule.waitUntil(5_000) { viewModel.data.value.orders.isNotEmpty() }
+
+        composeRule.onNodeWithText("已完成").assertIsDisplayed()
+        composeRule.onNodeWithText("取消").assertDoesNotExist()
+        composeRule.onNodeWithText("支付").assertDoesNotExist()
+    }
+
+    @Test
+    fun 同一订单号重复只渲染一行() {
+        api.ordersError = null
+        api.orders = listOf(order(1), order(1))
+        viewModel.enterAndRefresh()
+        content()
+        composeRule.waitUntil(5_000) { viewModel.data.value.orders.isNotEmpty() }
+
+        assertEquals(1, composeRule.onAllNodesWithText("TN-1").fetchSemanticsNodes().size)
     }
 }
