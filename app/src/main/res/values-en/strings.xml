@@ -189,6 +189,7 @@
     <string name="traffic_download">Download</string>
     <string name="traffic_total">Total %1$s</string>
     <string name="traffic_load_failed">Failed to load traffic details</string>
+    <string name="traffic_load_failed_detail">Error detail: %1$s</string>
 
     <!-- Ticket -->
     <string name="ticket_title">My Tickets</string>

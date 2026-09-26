@@ -37,6 +37,8 @@ data class TrafficData(
     val isLoading: Boolean = true,
     @StringRes val errorMessageRes: Int? = null,
     @StringRes val toastRes: Int? = null,
+    /** 失败的具体原因（HTTP 状态码 / 服务端 message），仅用于诊断展示；写入前已脱敏。 */
+    val errorDetail: String? = null,
 )
 
 @HiltViewModel
@@ -58,7 +60,7 @@ constructor(
         // 在途守卫：重试按钮可以连点，切 Tab 又会再触发一次 load()，
         // 不守卫就会出现并发请求 + 状态互相覆盖（后到的失败会把先到的成功结果盖掉）。
         if (loadJob?.isActive == true) return
-        _data.update { it.copy(isLoading = true, errorMessageRes = null) }
+        _data.update { it.copy(isLoading = true, errorMessageRes = null, errorDetail = null) }
         loadJob =
             viewModelScope.launch {
                 // withTimeoutOrNull 而不是 withTimeout：超时是**预期分支**，不该抛
@@ -70,16 +72,22 @@ constructor(
                 result.fold(
                     onSuccess = { records ->
                         AppLog.d("Polaris-Traffic", "fetchTrafficLog: ${records.size} 条")
-                        _data.update { it.copy(records = records, isLoading = false, errorMessageRes = null, toastRes = null) }
+                        _data.update {
+                            it.copy(records = records, isLoading = false, errorMessageRes = null, toastRes = null, errorDetail = null)
+                        }
                     },
                     onFailure = { e ->
                         AppLog.w("Polaris-Traffic", "fetchTrafficLog 失败: ${sanitizeLog(e.message ?: "Unknown")}")
                         val hasData = _data.value.records.isNotEmpty()
+                        // 展示失败的真实原因：此前只显示通用文案，用户和我们拿不到 HTTP 状态码 /
+                        // 服务端 message，排查成本极高（见 AdapterExecute 的同款注释）。
+                        val detail = sanitizeLog(e.message.orEmpty()).trim().takeIf { it.isNotEmpty() }
                         _data.update {
                             it.copy(
                                 isLoading = false,
                                 errorMessageRes = if (hasData) null else R.string.traffic_load_failed,
                                 toastRes = if (hasData) R.string.traffic_load_failed else null,
+                                errorDetail = detail,
                             )
                         }
                     },

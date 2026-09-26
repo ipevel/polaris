@@ -185,6 +185,7 @@
     <string name="traffic_download">下行</string>
     <string name="traffic_total">合计 %1$s</string>
     <string name="traffic_load_failed">获取流量明细失败</string>
+    <string name="traffic_load_failed_detail">错误详情：%1$s</string>
 
     <!-- Ticket -->
     <string name="ticket_title">我的工单</string>

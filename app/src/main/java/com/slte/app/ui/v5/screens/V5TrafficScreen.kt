@@ -142,6 +142,13 @@ internal fun V5TrafficScreen(
                     V5Card {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             V5Banner(ChipTone.DANGER, stringResource(res))
+                            data.errorDetail?.let { detail ->
+                                Text(
+                                    text = stringResource(R.string.traffic_load_failed_detail, detail),
+                                    fontSize = 11.5.sp,
+                                    color = c.text3,
+                                )
+                            }
                             V5Button(stringResource(R.string.notice_retry), ButtonStyle.TONAL, small = true, onClick = onRetry)
                         }
                     }
@@ -152,6 +159,13 @@ internal fun V5TrafficScreen(
             data.toastRes?.let { res ->
                 if (hasRecords) {
                     V5Banner(ChipTone.DANGER, stringResource(res))
+                    data.errorDetail?.let { detail ->
+                        Text(
+                            text = stringResource(R.string.traffic_load_failed_detail, detail),
+                            fontSize = 11.sp,
+                            color = c.text3,
+                        )
+                    }
                 }
             }
             if (!hasRecords && !data.isLoading && data.errorMessageRes == null) {
