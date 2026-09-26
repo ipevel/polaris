@@ -15,6 +15,7 @@ import (
 	"github.com/dlclark/regexp2"
 
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
+	"github.com/metacubex/mihomo/component/profile/cachefile"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/log"
@@ -199,8 +200,13 @@ func PatchSelector(selector, name string) bool {
 		return false
 	}
 
+	// 只有 Set 成功才落盘：cachefile.SetSelected 内部自带 profile.StoreSelected 门控，
+	// 与内核启动时的恢复路径（executor.patchSelectGroup → ForceSet）条件一致。
+	// 缺了这一步，选择只留在内存，重启/重登后 SelectedMap() 为空，选中态即丢失。
 	if err := s.Set(name); err != nil {
 		log.Warnln("Patch selector `%s`: %s", selector, err.Error())
+	} else {
+		cachefile.Cache().SetSelected(selector, name)
 	}
 
 	log.Infoln("Patch selector %s -> %s", selector, name)

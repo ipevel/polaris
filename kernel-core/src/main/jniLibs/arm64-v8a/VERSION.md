@@ -57,6 +57,20 @@
   通过；`go test ./native/config/routing/...` 通过（含新增的测速 URL / 命名冲突 /
   字符集校验 / 预算默认值断言）；`:app:verifyKernelBinary` 与 `:app:testDebugUnitTest` 见 CI 记录。
 
+## 2026-09-26 重建记录（节点选择持久化修复）
+
+- 变更：`native/tunnel/proxies.go` 的 `PatchSelector` 在 `s.Set(name)` 成功后再调用
+  `cachefile.Cache().SetSelected(selector, name)`。此前该函数只改内存选中态，
+  从不写 cachefile（写盘逻辑仅存在于 mihomo REST 路由层 `hub/route/proxies.go`），
+  而 App 切节点完全走 JNI，导致 `SelectedMap()` 恒为空、重启/重登后选中态丢失。
+  `SetSelected` 内部自带 `profile.StoreSelected` 门控，与内核启动时的恢复路径
+  （`executor.patchSelectGroup` → `ForceSet`）条件一致；仅 `Set` 成功时落盘。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+- 头文件：新构建的 `libclash.h` 与本目录既有 `libclash.h` 逐字节一致，未替换；
+  `.so` 摘要见同目录 SHA256SUMS。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。
