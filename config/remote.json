@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.10 更新",
   "update_changelog": "### 1.5.10\n\n- **界面全面美化**：连接按钮改为波纹扩散 + 细密粒子，氛围光随连接状态呼吸，页面区块错峰入场，底部导航选中胶囊改为平滑位移\n- **流量页图表重做**：用量环形改为双环（外环下行 / 内环上行）并配右侧统计，30 天趋势去掉网格与纵轴刻度、柱子改纵向渐变\n- **视觉语言统一**：节点 / 流量 / 我的 / 设置 / 分流规则页补上统一的竖线小标题与入场编排\n- **登录后即时拉取**：流量页与我的页跟随登录立即取数，不用再等一会儿才显示\n- **流量更耐抖**：切页先显示上次结果再静默刷新，偶发超时自动重试，已有数据时不再弹「获取失败」",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.9/Polaris-1.5.9.apk",
-  "update_apk_sha256": "553572022a556c3abe799a291029c7f90bbaf2fac3a6d8627d3358111d07a351"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.10/Polaris-1.5.10.apk",
+  "update_apk_sha256": "546867f252b1446d09c4fbe726bf3baeda85b28b0f6dd2c0cea3836dc7486d62"
 }
