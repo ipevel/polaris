@@ -139,9 +139,41 @@ Closes #42
 
 ---
 
-## 三、提交前自查清单
+## 三、格式化工具的时序铁律（血泪教训）
+
+**门禁验证的是工作区，push 的是索引快照。两者不一致时，绿的门禁会给出错误的安心感。**
+
+典型事故：跑 `:app:ktlintFormat` 修好工作区 → 但未重新 `git add` → 提交/推送的仍是修复前的版本 → GitHub CI 的 `ktlintCheck` 必然失败。本地门禁刚刚全绿，却掩盖了这个问题。
+
+### 3.1 铁律
+
+任何**自动修复类命令**（`:app:ktlintFormat`、IDE "Optimize Imports"、批量脚本重写文件）执行后，必须按顺序完成：
+
+1. **重新暂存**：`git add -A`（格式化改变了文件内容，之前暂存的快照已过期）。
+2. **确认工作区与快照一致**：`git diff HEAD --stat` 与 `git diff --cached --stat` 都不应有预期之外的输出；最直接的判据是 `git status --short` 里没有被 `M` 修饰的、你刚格式化过的文件。
+3. **验证"快照"而非"工作区"**：提交后把 HEAD 内容当作工作区再跑一次关键门禁，例如：
+
+   ```bash
+   git stash push -- <刚格式化的文件>   # 让工作区等于 HEAD
+   ./gradlew :app:ktlintCheck           # 验证的是即将推送的内容
+   git stash pop
+   ```
+
+   等价且更省的替代：先 `git add` 到干净工作区，再直接跑门禁——此时工作区==快照，门禁结果即代表推送内容。
+
+4. 只有第 3 步通过，才允许 `git push`。
+
+### 3.2 顺序要求
+
+- **版本号等构建输入必须在构建命令启动之前改完**。先启动构建、后改 `app/build.gradle.kts`，会产出旧版本号的包；必须用 `adb shell dumpsys package <应用 ID>` 交叉确认 `versionCode`/`versionName`，不能只看文件名。
+- 行尾：仓库 `core.autocrlf=true`，索引存 LF。用脚本批量改文件时保持 LF，否则暂存后会被归一化从而显示成整文件改动。用 `git diff --numstat --ignore-cr-at-eol` 剥离纯行尾差异来判读真实改动量。
+
+---
+
+## 四、提交前自查清单
 
 - [ ] 提交信息符合[第一节](#一提交信息规范)：`type(scope): 摘要`、标题 ≤ 50 字符、无 BOM、一次只做一件事。
 - [ ] 关联文档已同步更新（`README.md` / `CONTRIBUTING.md` / `CONFIG.md` / `docs/`）。
 - [ ] 文档内无密钥、真实域名、本机路径、测试截图。
-- [ ] 本地全量门禁全绿（见 [CONTRIBUTING.md](CONTRIBUTING.md)）。
+- [ ] 本地全量门禁全绿（见 [CONTRIBUTING.md](CONTRIBUTING.md)），且**验证对象是即将推送的索引快照**（见[第三节](#三格式化工具的时序铁律血泪教训)）。
+- [ ] 若本次跑过自动格式化，已重新 `git add` 并复核 `git status --short` 无残留改动。
