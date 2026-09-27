@@ -4,7 +4,6 @@
 package com.slte.app.ui.screen.order
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,7 +25,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +48,7 @@ import com.slte.app.ui.v5.V5ErrorState
 import com.slte.app.ui.v5.V5LoadingState
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5PullRefresh
+import com.slte.app.ui.v5.V5StateScrollable
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.utils.FormatUtils
 
@@ -86,11 +85,11 @@ fun OrdersScreen(
         val errorRes = data.errorMessageRes
         when {
             data.phase == ContentPhase.Loading && data.orders.isEmpty() -> {
-                StateScrollable { V5LoadingState() }
+                V5StateScrollable { V5LoadingState() }
             }
 
             errorRes != null && data.orders.isEmpty() -> {
-                StateScrollable {
+                V5StateScrollable {
                     V5ErrorState(
                         message = stringResource(errorRes),
                         onRetry = viewModel::retry,
@@ -99,7 +98,7 @@ fun OrdersScreen(
             }
 
             data.orders.isEmpty() -> {
-                StateScrollable {
+                V5StateScrollable {
                     V5EmptyState(title = stringResource(R.string.order_empty))
                 }
             }
@@ -282,25 +281,4 @@ private fun OrderStatusChip(status: OrderStatus) {
         }
 
     V5Chip(tone = tone, text = label, icon = icon)
-}
-
-/** 不滚动内容的脚手架（保持可滚动，否则空/错态下拉刷新失效，理由同公告页）。 */
-@Composable
-private fun StateScrollable(
-    horizontalPadding: Dp = 16.dp,
-    content: @Composable () -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = horizontalPadding),
-    ) {
-        item {
-            Box(
-                modifier = Modifier.fillParentMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                content()
-            }
-        }
-    }
 }

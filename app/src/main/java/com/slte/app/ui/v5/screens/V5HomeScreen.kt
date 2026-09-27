@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.slte.app.R
 import com.slte.app.ui.screen.main.DashboardData
+import com.slte.app.ui.screen.main.proxyModeLabelRes
 import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.theme.V5Type
@@ -56,9 +57,11 @@ import com.slte.app.ui.v5.ProgressTrack
 import com.slte.app.ui.v5.TileTone
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Card
+import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
 import com.slte.app.ui.v5.V5Ledger
 import com.slte.app.ui.v5.V5PageScaffold
+import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.utils.FormatUtils
@@ -257,6 +260,7 @@ internal fun V5HomeScreen(
     onRenew: () -> Unit,
     onNavSelect: (NavTab) -> Unit,
     refreshKernelInfo: () -> Unit,
+    onProxyModeClick: () -> Unit = {},
 ) {
     val connected = data.isConnected
     // 连接中态：v5 改造时把这个字段丢了（isConnecting 在 ui/v5/ 下零命中），
@@ -276,7 +280,17 @@ internal fun V5HomeScreen(
     val notificationPermissionLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
-        ) { }
+        ) { granted ->
+            if (!granted) {
+                android.widget.Toast
+                    .makeText(
+                        context,
+                        context.getString(R.string.notification_permission_denied),
+                        android.widget.Toast.LENGTH_SHORT,
+                    )
+                    .show()
+            }
+        }
 
     // 连接中再点 = 取消连接：必须**直接**走 onToggleConnection（MainViewModel.toggleConnection
     // 的 isConnecting 分支会停隧道并复位）。绝不能复用它下面的"套餐 / 通知权限 / VPN 授权"前置：
@@ -370,6 +384,16 @@ internal fun V5HomeScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                 SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, connected, Modifier.weight(1f))
                 SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, connected, Modifier.weight(1f))
+            }
+            // —— 代理模式（出口策略：规则/全局/直连）：v5 改造时入口丢失、功能整体不可达，
+            //    这里在首页接回入口，复用既有 ProxyModeSheet 与 MainViewModel.setProxyMode。
+            V5CardFlat(Modifier) {
+                V5RowItem(
+                    title = stringResource(R.string.action_proxy_mode),
+                    value = proxyModeLabelRes(data.proxyMode)?.let { stringResource(it) },
+                    chevron = true,
+                    onClick = onProxyModeClick,
+                )
             }
             SessionCard(data)
             PlanUsageCard(data, onRenew)

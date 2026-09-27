@@ -20,7 +20,7 @@ import com.slte.app.ui.theme.V5ThemeColors
  * ——否则 v5 页面上会出现一枚 v4 配色的转圈。
  *
  * 注意：`PullToRefreshBox` 依赖子节点的嵌套滚动来接收下拉手势，因此**内容不可滚动时下拉无效**。
- * 空态/错态这类不滚动的居中内容，必须包一层可滚动的脚手架（见公告页 `StateScrollable`）。
+ * 空态/错态这类不滚动的居中内容，必须包一层可滚动的脚手架（见 `V5StateScrollable`）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

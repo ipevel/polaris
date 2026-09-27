@@ -52,6 +52,9 @@ fun V5PageScaffold(
     }
 }
 
+/** 悬浮胶囊导航为可滚动主体预留的底部高度（导航 52dp + 外边距 + 视觉呼吸，显式常量替代魔数）。 */
+private val BottomNavContentInset = 118.dp
+
 /** 页签页的可滚动主体（自动为悬浮导航留出底部空间）。 */
 @Composable
 fun V5ScrollBody(
@@ -64,7 +67,7 @@ fun V5ScrollBody(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = V5Spacing.dp16, end = V5Spacing.dp16, bottom = (if (tab != null) 118.dp else V5Spacing.dp20) + navInset),
+            .padding(start = V5Spacing.dp16, end = V5Spacing.dp16, bottom = (if (tab != null) BottomNavContentInset else V5Spacing.dp20) + navInset),
         verticalArrangement = Arrangement.spacedBy(V5Spacing.dp14),
         content = content,
     )

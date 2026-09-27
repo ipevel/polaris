@@ -134,7 +134,6 @@ object SlteIcons {
     val Settings: ImageVector = Icons.Outlined.Settings
     val About: ImageVector = Icons.Outlined.Info
 
-    val TunStack: ImageVector = Icons.Outlined.Lan
     val Language: ImageVector = Icons.Outlined.Public
     val ChangePassword: ImageVector = Icons.Outlined.Key
     val DarkMode: ImageVector = Icons.Outlined.DarkMode

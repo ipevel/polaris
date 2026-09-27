@@ -117,6 +117,7 @@
     <string name="dashboard_no_plan_badge">No plan</string>
     <string name="dashboard_no_plan_tip">Buy a plan first</string>
     <string name="dashboard_refresh_done">Subscription updated</string>
+    <string name="notification_permission_denied">Notifications are off; connection status reminders may not appear</string>
 
     <!-- Server -->
     <string name="server_title">Nodes</string>

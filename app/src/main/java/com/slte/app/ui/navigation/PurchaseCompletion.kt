@@ -34,7 +34,7 @@ internal fun PurchaseCompletionHost(
         val tradeNo = createdTradeNo
         if (tradeNo != null) {
             viewModels.orders.refresh()
-            if (pageStack.last() != Page.Orders) pageStack.add(Page.Orders)
+            if (pageStack.lastOrNull() != Page.Orders) pageStack.add(Page.Orders)
             viewModels.purchase.clearCreatedTradeNo()
             onPendingPaymentTradeNo(tradeNo)
         }

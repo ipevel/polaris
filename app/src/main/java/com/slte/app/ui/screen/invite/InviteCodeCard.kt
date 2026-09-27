@@ -146,13 +146,11 @@ private fun InviteCodeItem(
             color = c.text3,
             maxLines = 1,
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        // 触摸目标 ≥48dp（外层），内层 30dp 保持原视觉尺寸，避免复制按钮点不中。
         Box(
             modifier =
             Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(c.accentBg)
+                .size(48.dp)
                 .then(
                     noRippleClickable {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -162,12 +160,21 @@ private fun InviteCodeItem(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = SlteIcons.Copy,
-                contentDescription = stringResource(R.string.invite_code_copy),
-                modifier = Modifier.size(17.dp),
-                tint = c.accent,
-            )
+            Box(
+                modifier =
+                Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(c.accentBg),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = SlteIcons.Copy,
+                    contentDescription = stringResource(R.string.invite_code_copy),
+                    modifier = Modifier.size(17.dp),
+                    tint = c.accent,
+                )
+            }
         }
     }
 }

@@ -4,7 +4,6 @@
 package com.slte.app.ui.screen.ticket
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,7 +30,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,6 +48,7 @@ import com.slte.app.ui.v5.V5ErrorState
 import com.slte.app.ui.v5.V5LoadingState
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5PullRefresh
+import com.slte.app.ui.v5.V5StateScrollable
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.V5TopIconButton
 import com.slte.app.ui.v5.noRippleClickable
@@ -108,12 +107,13 @@ fun TicketScreen(
                 V5TopIconButton(
                     icon = SlteIcons.Add,
                     onClick = { showCreate = true },
+                    contentDescription = stringResource(R.string.ticket_new),
                 )
             },
         )
 
         if (uiState.phase == ContentPhase.Loading) {
-            StateScrollable { V5LoadingState() }
+            V5StateScrollable { V5LoadingState() }
         } else {
             val errorRes = uiState.errorMessageRes
             V5PullRefresh(
@@ -123,7 +123,7 @@ fun TicketScreen(
             ) {
                 when {
                     errorRes != null ->
-                        StateScrollable {
+                        V5StateScrollable {
                             V5ErrorState(
                                 message = uiState.errorMessage ?: stringResource(errorRes),
                                 onRetry = viewModel::loadTickets,
@@ -131,7 +131,7 @@ fun TicketScreen(
                         }
 
                     uiState.tickets.isEmpty() ->
-                        StateScrollable {
+                        V5StateScrollable {
                             V5EmptyState(title = stringResource(R.string.ticket_empty))
                         }
 
@@ -265,25 +265,4 @@ private fun TicketStatusChip(closed: Boolean) {
         tone = if (closed) ChipTone.NEUTRAL else ChipTone.WARN,
         text = stringResource(if (closed) R.string.ticket_status_closed else R.string.ticket_status_open),
     )
-}
-
-/** 不滚动内容的脚手架（保持可滚动，否则空/错态下拉刷新失效，理由同公告页）。 */
-@Composable
-private fun StateScrollable(
-    horizontalPadding: Dp = 16.dp,
-    content: @Composable () -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = horizontalPadding),
-    ) {
-        item {
-            Box(
-                modifier = Modifier.fillParentMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                content()
-            }
-        }
-    }
 }

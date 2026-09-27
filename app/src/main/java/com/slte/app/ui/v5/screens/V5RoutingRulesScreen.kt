@@ -13,6 +13,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
+import com.slte.app.kernel.OUTBOUND_CONFIG_BLOCK
+import com.slte.app.kernel.OUTBOUND_CONFIG_DIRECT
+import com.slte.app.kernel.OUTBOUND_CONFIG_PROXY
 import com.slte.app.ui.screen.settings.RoutingRulesViewModel
 import com.slte.app.ui.screen.settings.RoutingSync
 import com.slte.app.ui.theme.SlteIcons
@@ -127,7 +130,8 @@ internal fun V5RoutingRulesScreen(
 }
 
 private fun outboundLabelOf(defaultOut: String): Int = when (defaultOut) {
-    "direct" -> R.string.routing_outbound_direct
-    "block" -> R.string.routing_outbound_block
+    OUTBOUND_CONFIG_DIRECT -> R.string.routing_outbound_direct
+    OUTBOUND_CONFIG_BLOCK -> R.string.routing_outbound_block
+    OUTBOUND_CONFIG_PROXY -> R.string.routing_outbound_proxy
     else -> R.string.routing_outbound_proxy
 }

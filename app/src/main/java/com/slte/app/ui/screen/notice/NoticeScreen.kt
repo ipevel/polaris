@@ -4,7 +4,6 @@
 package com.slte.app.ui.screen.notice
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,10 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,6 +28,7 @@ import com.slte.app.ui.v5.V5ErrorState
 import com.slte.app.ui.v5.V5LoadingState
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5PullRefresh
+import com.slte.app.ui.v5.V5StateScrollable
 import com.slte.app.ui.v5.V5TopBar
 
 /**
@@ -60,7 +58,7 @@ fun NoticeScreen(
         )
 
         if (uiState.phase == ContentPhase.Loading) {
-            StateScrollable { V5LoadingState() }
+            V5StateScrollable { V5LoadingState() }
         } else {
             val errorRes = uiState.errorMessageRes
             V5PullRefresh(
@@ -70,7 +68,7 @@ fun NoticeScreen(
             ) {
                 when {
                     errorRes != null ->
-                        StateScrollable {
+                        V5StateScrollable {
                             V5ErrorState(
                                 message = uiState.errorMessage ?: stringResource(errorRes),
                                 onRetry = viewModel::loadNotices,
@@ -78,7 +76,7 @@ fun NoticeScreen(
                         }
 
                     uiState.notices.isEmpty() ->
-                        StateScrollable {
+                        V5StateScrollable {
                             V5EmptyState(title = stringResource(R.string.notice_empty))
                         }
 
@@ -127,32 +125,6 @@ private fun NoticeList(
                         onClick = { onClick(notice) },
                     )
                 }
-            }
-        }
-    }
-}
-
-/**
- * 不滚动内容的脚手架：把空态/错态/加载态卡片在视口里居中，同时**保持可滚动**。
- *
- * 必须有这一层：[V5PullRefresh] 靠子节点的嵌套滚动接收下拉手势，直接放一个 `Box` 会让
- * 空态/错态页面下拉失效（v4 的 `PullRefreshScrollable` 就是为此存在的）。
- */
-@Composable
-private fun StateScrollable(
-    horizontalPadding: Dp = 16.dp,
-    content: @Composable () -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = horizontalPadding),
-    ) {
-        item {
-            Box(
-                modifier = Modifier.fillParentMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                content()
             }
         }
     }

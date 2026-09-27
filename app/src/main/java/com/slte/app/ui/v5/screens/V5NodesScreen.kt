@@ -29,6 +29,8 @@ import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.KernelProxyMember
 import com.slte.app.kernel.KernelProxyMemberKind
+import com.slte.app.kernel.OUTBOUND_DIRECT
+import com.slte.app.kernel.OUTBOUND_REJECT
 import com.slte.app.kernel.PRIMARY_SECTION_KEY
 import com.slte.app.kernel.RoutingReservedNames
 import com.slte.app.kernel.orderMembers
@@ -115,8 +117,8 @@ private fun groupExitLabel(
     val now = group.now ?: return stringResource(R.string.v5_group_unset)
     return when (now) {
         primaryName -> stringResource(R.string.v5_group_follow_primary)
-        "DIRECT" -> stringResource(R.string.routing_outbound_direct)
-        "REJECT" -> stringResource(R.string.routing_outbound_block)
+        OUTBOUND_DIRECT -> stringResource(R.string.routing_outbound_direct)
+        OUTBOUND_REJECT -> stringResource(R.string.routing_outbound_block)
         else -> now
     }
 }
@@ -165,8 +167,8 @@ internal fun V5NodesScreen(
 
     V5PageScaffold(tab = NavTab.NODES, onNavSelect = onNavSelect) {
         V5TopBar(stringResource(R.string.page_nodes)) {
-            V5TopIconButton(Icons.Outlined.Sync, onRefreshSubscription)
-            V5TopIconButton(Icons.Outlined.Speed, onStartSpeedTest)
+            V5TopIconButton(Icons.Outlined.Sync, onRefreshSubscription, contentDescription = stringResource(R.string.dashboard_update_subscription))
+            V5TopIconButton(Icons.Outlined.Speed, onStartSpeedTest, contentDescription = stringResource(R.string.server_speed_test))
         }
         V5ScrollBody(NavTab.NODES) {
             Row(

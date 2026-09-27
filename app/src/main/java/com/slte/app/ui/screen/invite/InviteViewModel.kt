@@ -90,7 +90,10 @@ constructor(
                         )
                     }
                 }.onFailure {
-                    _data.update { it.copy(isRefreshing = false, isEntering = false) }
+                    // 邀请信息加载失败必须让用户可感知：只复位 loading 会留下空白页且无任何反馈。
+                    _data.update {
+                        it.copy(isRefreshing = false, isEntering = false, toastRes = R.string.error_network)
+                    }
                 }
 
             recordsResult.onSuccess { records ->

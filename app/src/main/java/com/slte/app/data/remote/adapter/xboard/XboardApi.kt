@@ -174,7 +174,11 @@ interface XboardUserRetrofit {
         @Body request: XboardCloseTicketRequest,
     ): XboardResponse<Boolean>
 
+    // 流量明细是相对路径 GET，必须走统一 failover / 熔断路径：
+    // 面板主机瞬断时能与其它接口一样切换候选并上报健康度。此前照搬 @Url 订阅下载加了
+    // NO_FAILOVER 豁免（cbbae21），导致它既不能切换候选、也不参与熔断，主地址一抖就整页失败
+    // （2026-09-27 真机日志定位）。返回的顶层 JSON 数组由 FailoverPolicy.isJsonMismatch 正确
+    // 接受（'[' 合法），无需豁免。
     @GET("user/stat/getTrafficLog")
-    @Headers(ApiHeaders.NO_FAILOVER_HEADER)
     suspend fun getTrafficLog(): okhttp3.ResponseBody
 }

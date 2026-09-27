@@ -5,7 +5,6 @@ package com.slte.app.ui.screen.plans
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -49,6 +48,7 @@ import com.slte.app.ui.v5.V5ErrorState
 import com.slte.app.ui.v5.V5LoadingState
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5PullRefresh
+import com.slte.app.ui.v5.V5StateScrollable
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.utils.FormatUtils
 
@@ -83,11 +83,11 @@ fun PlansScreen(
         val errorRes = data.errorMessageRes
         when {
             data.phase == ContentPhase.Loading -> {
-                StateScrollable { V5LoadingState() }
+                V5StateScrollable { V5LoadingState() }
             }
 
             errorRes != null && data.plans.isEmpty() -> {
-                StateScrollable {
+                V5StateScrollable {
                     V5ErrorState(
                         message = stringResource(errorRes),
                         onRetry = viewModel::retry,
@@ -96,7 +96,7 @@ fun PlansScreen(
             }
 
             data.plans.isEmpty() -> {
-                StateScrollable {
+                V5StateScrollable {
                     V5EmptyState(title = stringResource(R.string.plan_empty))
                 }
             }
@@ -270,23 +270,5 @@ private fun PlanPill(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-/** 不滚动内容的脚手架（保持可滚动，否则空/错态下拉刷新失效，理由同公告页）。 */
-@Composable
-private fun StateScrollable(content: @Composable () -> Unit) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-    ) {
-        item {
-            Box(
-                modifier = Modifier.fillParentMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                content()
-            }
-        }
     }
 }

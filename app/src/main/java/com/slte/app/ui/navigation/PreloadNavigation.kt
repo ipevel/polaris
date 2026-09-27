@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,7 +28,7 @@ internal fun rememberPreloadNavigation(
     val ordersData by viewModels.orders.data.collectAsStateWithLifecycle()
     val plansData by viewModels.plans.data.collectAsStateWithLifecycle()
 
-    var pending by remember { mutableStateOf<PendingNav?>(null) }
+    var pending by rememberSaveable { mutableStateOf<PendingNav?>(null) }
 
     fun enterPage(target: PendingNav) {
         pending = target

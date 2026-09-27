@@ -13,7 +13,9 @@ import com.slte.app.di.IoDispatcher
 import com.slte.app.domain.model.RegisterConfig
 import com.slte.app.domain.model.SessionState
 import com.slte.app.domain.model.User
+import com.slte.app.utils.AppLog
 import com.slte.app.utils.ErrorMessages
+import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.HttpURLConnection
 import java.net.URL
@@ -27,6 +29,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONObject
+
+private const val LOGIN_TAG = "Polaris-Login"
 
 sealed interface LoginUiState {
     data class Form(
@@ -406,7 +410,11 @@ constructor(
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AppLog.w(
+                LOGIN_TAG,
+                "detectBackendType: 面板连通性探测失败: ${sanitizeLog(e.message ?: e.javaClass.simpleName)}",
+            )
             return ""
         }
         return try {
@@ -419,7 +427,11 @@ constructor(
                 data.has("turnstile_site_key") ||
                 data.has("recaptcha_v3_site_key")
             if (isXboard) "xboard" else "xiaov2b"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AppLog.w(
+                LOGIN_TAG,
+                "detectBackendType: 面板类型解析失败: ${sanitizeLog(e.message ?: e.javaClass.simpleName)}",
+            )
             ""
         } finally {
             conn.disconnect()

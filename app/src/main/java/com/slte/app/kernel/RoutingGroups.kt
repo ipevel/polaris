@@ -53,6 +53,11 @@ const val PrimaryGroupName: String = "🚀 节点选择"
 const val OUTBOUND_DIRECT: String = "DIRECT"
 const val OUTBOUND_REJECT: String = "REJECT"
 
+/** 配置层 rule 的默认出口值（[RoutingGroupInfo.defaultOut]）。注意与上面的内核内建名大小写不同。 */
+const val OUTBOUND_CONFIG_PROXY: String = "proxy"
+const val OUTBOUND_CONFIG_DIRECT: String = "direct"
+const val OUTBOUND_CONFIG_BLOCK: String = "block"
+
 /** 主组的自动测速组名（内核 GroupNameAuto），保留为用户可选出口。 */
 const val AUTO_GROUP_NAME: String = "自动选择"
 

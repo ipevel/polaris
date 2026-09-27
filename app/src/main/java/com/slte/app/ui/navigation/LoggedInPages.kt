@@ -23,6 +23,7 @@ import com.slte.app.ui.screen.invite.InviteScreen
 import com.slte.app.ui.screen.invite.InviteViewModel
 import com.slte.app.ui.screen.main.DashboardData
 import com.slte.app.ui.screen.main.MainViewModel
+import com.slte.app.ui.screen.main.ProxyModeSheet
 import com.slte.app.ui.screen.notice.NoticeScreen
 import com.slte.app.ui.screen.notice.NoticeViewModel
 import com.slte.app.ui.screen.order.OrdersScreen
@@ -104,6 +105,7 @@ internal fun DashboardPageContent(
     onRenew: () -> Unit,
     onNavSelect: (com.slte.app.ui.v5.NavTab) -> Unit,
 ) {
+    var showProxyMode by rememberSaveable { mutableStateOf(false) }
     V5HomeScreen(
         data = mainData,
         onToggleConnection = mainViewModel::toggleConnection,
@@ -112,7 +114,15 @@ internal fun DashboardPageContent(
         onRenew = onRenew,
         onNavSelect = onNavSelect,
         refreshKernelInfo = mainViewModel::refreshKernelInfo,
+        onProxyModeClick = { showProxyMode = true },
     )
+    if (showProxyMode) {
+        ProxyModeSheet(
+            currentMode = mainData.proxyMode,
+            onDismiss = { showProxyMode = false },
+            onSelect = mainViewModel::setProxyMode,
+        )
+    }
 }
 
 @Composable

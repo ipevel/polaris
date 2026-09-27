@@ -28,7 +28,6 @@ android {
 
     defaultConfig {
         minSdk = 28
-        consumerProguardFiles("consumer-rules.pro")
 
         // 通知栏：标题（空 = 跟随应用名）与流量显示开关
         buildConfigField("String", "NOTIFICATION_TITLE", "\"$slteNotificationTitle\"")

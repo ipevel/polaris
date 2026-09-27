@@ -42,9 +42,10 @@ fun slteHost(url: String): String? = url
 
 val slteAppName = slteValue("POLARIS_APP_NAME") ?: "Polaris"
 val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
-val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 41
-val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.5.8"
+val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 42
+val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.5.9"
 
+// 占位回退值：真实面板地址由用户在登录时输入，构建时无需（也不应）写入生产地址。
 val slteApiBaseUrl = slteValue("POLARIS_API_BASE_URL")?.let(::slteHttps) ?: "https://api.example.com"
 val slteApiType = slteValue("POLARIS_API_TYPE") ?: "xiaov2b"
 val slteSubscribePath = slteValue("POLARIS_SUBSCRIBE_PATH") ?: "/api/v1/client/subscribe"

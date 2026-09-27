@@ -210,6 +210,12 @@ fun V5CardFlat(
     )
 }
 
+/** 发丝分隔线（清单行之间统一用它，避免各处重复写 thickness/color）。 */
+@Composable
+fun V5Divider(modifier: Modifier = Modifier) {
+    HorizontalDivider(modifier = modifier, thickness = V5Spacing.dp1, color = V5ThemeColors.current.hairline2)
+}
+
 /** 顶栏：大标题 + 返回 + 动作位。 */
 @Composable
 fun V5TopBar(
@@ -225,7 +231,7 @@ fun V5TopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
     ) {
-        if (onBack != null) V5TopIconButton(Icons.AutoMirrored.Outlined.ArrowBack, onBack)
+        if (onBack != null) V5TopIconButton(Icons.AutoMirrored.Outlined.ArrowBack, onBack, contentDescription = stringResource(R.string.back))
         // 标题用 weight 吃掉全部剩余宽度、空出的空间由它承担，这样 actions（如首页的
         // 「已连接/未连接」胶囊）保持内在宽度并始终贴右。
         // 注意两点：
@@ -247,20 +253,37 @@ fun V5TopBar(
     }
 }
 
-/** 顶栏圆形动作按钮。 */
+/**
+ * 顶栏圆形动作按钮。
+ *
+ * 触摸目标固定 48dp（无障碍最小可点尺寸），视觉方块仍为 37dp：外框只负责命中区域，
+ * 内框负责外观，二者分离后放大可点范围不会改变按钮本身的大小观感。
+ * [contentDescription] 供无障碍读屏；调用点必须传入与动作等价的文案。
+ */
 @Composable
-fun V5TopIconButton(icon: ImageVector, onClick: (() -> Unit)? = null, tint: Color? = null) {
+fun V5TopIconButton(
+    icon: ImageVector,
+    onClick: (() -> Unit)? = null,
+    tint: Color? = null,
+    contentDescription: String? = null,
+) {
     val c = V5ThemeColors.current
     Box(
         modifier = Modifier
-            .size(37.dp)
-            .v5CardShadow(RoundedCornerShape(V5Radius.r13))
-            .clip(RoundedCornerShape(V5Radius.r13))
-            .background(c.surface)
+            .size(48.dp)
             .then(noRippleClickable(onClick)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, modifier = Modifier.size(19.dp), tint = tint ?: c.accent)
+        Box(
+            modifier = Modifier
+                .size(37.dp)
+                .v5CardShadow(RoundedCornerShape(V5Radius.r13))
+                .clip(RoundedCornerShape(V5Radius.r13))
+                .background(c.surface),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription, modifier = Modifier.size(19.dp), tint = tint ?: c.accent)
+        }
     }
 }
 

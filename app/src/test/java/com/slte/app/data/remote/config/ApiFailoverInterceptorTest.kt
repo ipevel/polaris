@@ -100,6 +100,23 @@ class ApiFailoverInterceptorTest {
     }
 
     @Test
+    fun `声明JSON返回顶层数组不误判为劫持`() {
+        server1.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""[{"id":1,"download":1024}]"""),
+        )
+        server2.enqueue(ok())
+        client
+            .newCall(Request.Builder().url(server1.url("/api/v1/user/stat/getTrafficLog")).build())
+            .execute()
+            .use { assertEquals(200, it.code) }
+        assertEquals(1, server1.requestCount)
+        assertEquals(0, server2.requestCount)
+    }
+
+    @Test
     fun `声明JSON返回HTML视为劫持并failover`() {
         server1.enqueue(
             MockResponse()

@@ -88,7 +88,7 @@ internal fun WithdrawMethodField(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(48.dp)
                 .clip(shape)
                 .background(c.surface2)
                 .then(noRippleClickable(clickAction))

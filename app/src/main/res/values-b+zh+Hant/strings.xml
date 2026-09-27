@@ -114,6 +114,7 @@
     <string name="dashboard_no_plan_badge">無方案</string>
     <string name="dashboard_no_plan_tip">請先購買方案</string>
     <string name="dashboard_refresh_done">訂閱已更新</string>
+    <string name="notification_permission_denied">未開啟通知權限，連線狀態提醒可能收不到</string>
 
     <!-- Server -->
     <string name="server_title">節點</string>

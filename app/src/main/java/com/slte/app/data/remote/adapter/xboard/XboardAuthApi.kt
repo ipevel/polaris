@@ -419,6 +419,10 @@ class XboardAuthApi(
         } catch (e: ApiException) {
             AppLog.w("Polaris-Traffic", "getTrafficLog ApiException: ${sanitizeLog(e.message ?: "Unknown")}")
             throw e
+        } catch (e: CancellationException) {
+            // 取消（含 ViewModel 的 15s withTimeoutOrNull）必须继续向上传播：
+            // 吞掉它既破坏结构化并发取消，又会让超时被误判成「请求成功但零条记录」。
+            throw e
         } catch (e: Exception) {
             AppLog.w("Polaris-Traffic", "getTrafficLog 异常: ${e.javaClass.simpleName}: ${sanitizeLog(e.message ?: "Unknown")}")
             emptyList()

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Wallet
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,6 +32,7 @@ import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
+import com.slte.app.ui.v5.V5Divider
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
@@ -114,7 +114,7 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onPlans,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 // 礼品卡（兑换码）入口：v5 重写 b5e3464 删掉 v4 ProfileScreen 时丢掉了挂载点，
                 // 组件与 ViewModel 一直保留但全仓无调用点；这里按 v4 原样恢复入口，
                 // 复用既有 R.string.gift_card_title，不新增字符串（三语键集合无需改动）。
@@ -124,28 +124,28 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onGiftCard,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.me_orders),
                     icon = SlteIcons.Orders,
                     chevron = true,
                     onClick = onOrders,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.me_invite),
                     icon = SlteIcons.Invite,
                     chevron = true,
                     onClick = onInvite,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.me_tickets),
                     icon = SlteIcons.Ticket,
                     chevron = true,
                     onClick = onTickets,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.me_notices),
                     icon = SlteIcons.Notifications,
@@ -155,7 +155,7 @@ internal fun V5MeScreen(
                 // Telegram 讨论组入口（v4 ProfileScreen 有，v5 重写时丢失）。
                 // 链接由调用方做白名单校验后再交进来，见 ProfilePageContent。
                 onTelegram?.let { openTelegram ->
-                    HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                    V5Divider()
                     V5RowItem(
                         title = stringResource(R.string.profile_telegram),
                         icon = SlteIcons.Telegram,
@@ -172,14 +172,14 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onSettings,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.me_about),
                     icon = Icons.Outlined.Info,
                     chevron = true,
                     onClick = onAbout,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.profile_logout),
                     icon = SlteIcons.Logout,
