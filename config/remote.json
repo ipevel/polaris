@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.8 更新",
   "update_changelog": "### 1.5.8\n\n- **一键导出诊断**：设置页与流量页失败时可直接导出脱敏日志（含版本、设备、后端类型、面板地址），反馈问题不必再靠描述复现\n- **流量页诚实降级**：面板本身没有每日流量接口时，明确提示「面板不支持流量明细」，不再显示成空白或失败\n- **错误提示更具体**：流量页失败时同时给出具体原因与「导出诊断」入口\n- **界面一致性整理**：间距、圆角、字号收敛为设计令牌，空态 / 错误态 / 加载态统一走同一套组件（本次不改视觉）",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.7/Polaris-1.5.7.apk",
-  "update_apk_sha256": "28d8b0bb7fb25275b38fc7b943f90ac3b52a92a7e0dace5cf8c7dc74f877003a"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.8/Polaris-1.5.8.apk",
+  "update_apk_sha256": "cfaeb7adcf2c00cd960071626e775495520d4a2b27cab69aa259492f064ba38b"
 }
