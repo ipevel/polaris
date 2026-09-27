@@ -52,6 +52,7 @@ import com.slte.app.ui.v5.screens.V5NodesScreen
 import com.slte.app.ui.v5.screens.V5RoutingRulesScreen
 import com.slte.app.ui.v5.screens.V5SettingsScreen
 import com.slte.app.ui.v5.screens.V5TrafficScreen
+import com.slte.app.utils.LogExport
 
 @Composable
 internal fun OrdersPageContent(
@@ -359,5 +360,12 @@ internal fun TrafficPageContent(
     // 不在这里主动拉，用户切走再切回看到的永远是进 App 那一刻的旧数据。
     LaunchedEffect(Unit) { trafficViewModel.load() }
     val data by trafficViewModel.data.collectAsStateWithLifecycle()
-    V5TrafficScreen(data = data, onNavSelect = onNavSelect, onRetry = trafficViewModel::load)
+    val context = LocalContext.current
+    V5TrafficScreen(
+        data = data,
+        onNavSelect = onNavSelect,
+        onRetry = trafficViewModel::load,
+        // 失败时一键导出诊断（含后端类型/面板），用户不必先跑到「我的 → 关于」再复述问题。
+        onExportDiagnostics = { LogExport.exportAndShare(context, trafficViewModel.diagnosticsExtra()) },
+    )
 }

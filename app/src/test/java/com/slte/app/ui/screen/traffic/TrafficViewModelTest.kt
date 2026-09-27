@@ -7,7 +7,10 @@ import com.slte.app.R
 import com.slte.app.data.repository.TrafficRepository
 import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.support.MainDispatcherRule
+import com.slte.app.utils.Diagnostics
 import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -23,6 +26,14 @@ class TrafficViewModelTest {
     val mainRule = MainDispatcherRule()
 
     private val repository = mockk<TrafficRepository>(relaxed = true)
+
+    private val diagnostics = mockk<Diagnostics>(relaxed = true)
+
+    init {
+        // relaxed mock 的 Boolean 默认是 false，而 false 在流量页意味着"面板不支持明细"，
+        // 会让下面两个用例直接走能力缺失分支。默认桩成支持，「不支持」的分支单独用例覆盖。
+        every { repository.supportsTrafficLog() } returns true
+    }
 
     /**
      * 面板长时间不响应时必须落到失败态，而不是把「加载中…」一直挂在页面上。
@@ -40,7 +51,7 @@ class TrafficViewModelTest {
             Result.success(listOf(TrafficLogRecord("2026-09-26", 1L, 2L)))
         }
 
-        val vm = TrafficViewModel(repository)
+        val vm = TrafficViewModel(repository, diagnostics)
         advanceUntilIdle()
 
         assertFalse("不能停在加载中（用户看到的就是这个）", vm.data.value.isLoading)
@@ -52,11 +63,29 @@ class TrafficViewModelTest {
         coEvery { repository.fetchTrafficLog() } returns
             Result.success(listOf(TrafficLogRecord("2026-09-26", 320_000_000L, 2_400_000_000L)))
 
-        val vm = TrafficViewModel(repository)
+        val vm = TrafficViewModel(repository, diagnostics)
         advanceUntilIdle()
 
         assertEquals(1, vm.data.value.records.size)
         assertFalse(vm.data.value.isLoading)
         assertNull(vm.data.value.errorMessageRes)
+    }
+
+    /**
+     * 面板不支持每日流量明细（xiaov2b 系列没有该路由）时：不发请求、不报错，
+     * 只把能力缺失告诉 UI。否则页面会显示「暂无流量记录」，把"面板没这个接口"
+     * 伪装成"你没有流量"。
+     */
+    @Test
+    fun `面板不支持流量明细时不发请求且标记能力缺失`() = runTest(mainRule.dispatcher) {
+        every { repository.supportsTrafficLog() } returns false
+
+        val vm = TrafficViewModel(repository, diagnostics)
+        advanceUntilIdle()
+
+        assertFalse("不能停在加载中", vm.data.value.isLoading)
+        assertFalse("要标记面板不支持，UI 才能给出正确说明", vm.data.value.backendSupportsLog)
+        assertNull("这不是失败，不该显示错误态", vm.data.value.errorMessageRes)
+        coVerify(exactly = 0) { repository.fetchTrafficLog() }
     }
 }

@@ -7,12 +7,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyMember
 import com.slte.app.kernel.KernelProxyMemberKind
 import com.slte.app.kernel.PrimaryGroupName
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.LatencyText
 import com.slte.app.ui.v5.RadioDot
@@ -95,21 +95,21 @@ internal fun MemberRow(
                 mark == DelayMark.TIMEOUT ->
                     Text(
                         text = stringResource(R.string.server_timeout),
-                        fontSize = 12.5.sp,
+                        fontSize = V5Type.sp12_5,
                         fontFamily = FontFamily.Monospace,
                         color = V5ThemeColors.current.text3,
                     )
                 structuralRes != null ->
                     Text(
                         text = stringResource(structuralRes),
-                        fontSize = 12.5.sp,
+                        fontSize = V5Type.sp12_5,
                         color = V5ThemeColors.current.text3,
                     )
                 else ->
                     // 节点未测/超时必须可区分：此前两者都显示"超时"
                     Text(
                         text = stringResource(R.string.server_untested),
-                        fontSize = 12.5.sp,
+                        fontSize = V5Type.sp12_5,
                         fontFamily = FontFamily.Monospace,
                         color = V5ThemeColors.current.text3,
                     )

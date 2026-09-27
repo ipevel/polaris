@@ -339,6 +339,9 @@
     <string name="v5_traffic_up">上行</string>
     <string name="v5_traffic_loading">加载中…</string>
     <string name="v5_traffic_empty">暂无流量记录</string>
+    <string name="v5_traffic_unsupported_title">面板不支持流量明细</string>
+    <string name="v5_traffic_unsupported">当前面板未提供每日流量接口，仅能统计整包用量</string>
+    <string name="diag_export">导出诊断</string>
     <string name="v5_traffic_hint">按日汇总，来自面板流量日志</string>
     <!-- 结构项没有"延迟"这个概念，显示"未测"属于语义错误：直连/拦截没有远端可探（给不了 RTT），
          组出口的延迟由内核按 interval=300 自行拨测产出，不由 App 测速决定。 -->

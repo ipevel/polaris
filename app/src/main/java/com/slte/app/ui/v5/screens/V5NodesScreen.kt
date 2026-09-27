@@ -25,7 +25,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyGroupInfo
 import com.slte.app.kernel.KernelProxyMember
@@ -38,7 +37,9 @@ import com.slte.app.kernel.visibleGroupMembers
 import com.slte.app.ui.screen.server.NodeItem
 import com.slte.app.ui.screen.server.ServerData
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.V5Card
@@ -169,7 +170,7 @@ internal fun V5NodesScreen(
         }
         V5ScrollBody(NavTab.NODES) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = V5Spacing.dp4),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -180,7 +181,7 @@ internal fun V5NodesScreen(
                     } else {
                         stringResource(R.string.v5_nodes_summary, data.nodes.size, groupsForRouting.size)
                     },
-                    fontSize = 11.5.sp,
+                    fontSize = V5Type.sp11_5,
                     fontFamily = FontFamily.Monospace,
                     color = c.text3,
                 )
@@ -217,11 +218,11 @@ internal fun V5NodesScreen(
             if (groupsForRouting.isNotEmpty()) {
                 Text(
                     stringResource(R.string.v5_routing_groups),
-                    fontSize = 11.sp,
+                    fontSize = V5Type.sp11,
                     fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.1.sp,
+                    letterSpacing = V5Type.trackingWide,
                     color = c.text3,
-                    modifier = Modifier.padding(horizontal = 4.dp),
+                    modifier = Modifier.padding(horizontal = V5Spacing.dp4),
                 )
                 groupsForRouting.forEach { group ->
                     NodeGroupCard(
@@ -242,9 +243,9 @@ internal fun V5NodesScreen(
                 V5Card {
                     Text(
                         stringResource(R.string.v5_groups_loading),
-                        fontSize = 12.5.sp,
+                        fontSize = V5Type.sp12_5,
                         color = c.text3,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = V5Spacing.dp14),
                     )
                 }
             }
@@ -259,7 +260,7 @@ internal fun V5NodesScreen(
                     chevron = true,
                     onClick = onRoutingRules,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.settings_local_routing),
                     trailing = {
@@ -303,12 +304,12 @@ private fun NodeGroupCard(
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 48.dp)
                 .clickable(enabled = enabled) { onToggle() }
-                .padding(start = 15.dp, end = 12.dp, top = 13.dp, bottom = 9.dp),
+                .padding(start = 15.dp, end = V5Spacing.dp12, top = 13.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 name,
-                fontSize = 15.sp,
+                fontSize = V5Type.sp15,
                 fontWeight = FontWeight.SemiBold,
                 color = c.text,
                 maxLines = 1,
@@ -317,7 +318,7 @@ private fun NodeGroupCard(
             )
             Text(
                 nowLabel,
-                fontSize = 11.5.sp,
+                fontSize = V5Type.sp11_5,
                 fontFamily = FontFamily.Monospace,
                 color = c.accent,
                 maxLines = 1,
@@ -328,7 +329,7 @@ private fun NodeGroupCard(
                     if (collapsed) SlteIcons.ExpandMore else SlteIcons.ExpandLess,
                     contentDescription = null,
                     tint = c.text3,
-                    modifier = Modifier.padding(start = 4.dp).size(20.dp),
+                    modifier = Modifier.padding(start = V5Spacing.dp4).size(V5Spacing.dp20),
                 )
             }
         }
@@ -339,7 +340,7 @@ private fun NodeGroupCard(
             else -> {
                 readOnlyHint?.let { GroupPlaceholder(it) }
                 members.forEachIndexed { index, member ->
-                    if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                    if (index > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                     MemberRow(
                         member = member,
                         selected = member.name == selectedName,
@@ -360,8 +361,8 @@ private fun NodeGroupCard(
 private fun GroupPlaceholder(text: String) {
     Text(
         text = text,
-        fontSize = 12.5.sp,
+        fontSize = V5Type.sp12_5,
         color = V5ThemeColors.current.text3,
-        modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
+        modifier = Modifier.padding(horizontal = 15.dp, vertical = V5Spacing.dp14),
     )
 }

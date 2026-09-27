@@ -39,10 +39,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.V5Radius
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 
 /**
  * v5 输入框。
@@ -74,7 +76,7 @@ fun V5Input(
     val c = V5ThemeColors.current
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(if (small) 14.dp else 16.dp)
+    val shape = RoundedCornerShape(if (small) V5Radius.r14 else V5Radius.r16)
 
     Row(
         modifier =
@@ -97,17 +99,17 @@ fun V5Input(
                     Modifier
                 },
             )
-            .padding(horizontal = 15.dp, vertical = if (small) 10.dp else 14.dp),
+            .padding(horizontal = 15.dp, vertical = if (small) V5Spacing.dp10 else V5Spacing.dp14),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let {
             Icon(
                 imageVector = it,
                 contentDescription = iconDesc,
-                modifier = Modifier.size(if (small) 18.dp else 20.dp),
+                modifier = Modifier.size(if (small) V5Spacing.dp18 else V5Spacing.dp20),
                 tint = if (enabled) c.accent else c.text3,
             )
-            Box(Modifier.size(10.dp))
+            Box(Modifier.size(V5Spacing.dp10))
         }
         BasicTextField(
             value = value,
@@ -121,7 +123,7 @@ fun V5Input(
             visualTransformation = visualTransformation,
             textStyle =
             TextStyle(
-                fontSize = if (small) 14.sp else 15.sp,
+                fontSize = if (small) V5Type.sp14 else V5Type.sp15,
                 color = c.text,
             ),
             cursorBrush = SolidColor(c.accent),
@@ -130,7 +132,7 @@ fun V5Input(
                     if (value.isEmpty()) {
                         Text(
                             text = placeholder,
-                            fontSize = if (small) 14.sp else 15.sp,
+                            fontSize = if (small) V5Type.sp14 else V5Type.sp15,
                             color = c.text3,
                             maxLines = 1,
                         )
@@ -149,7 +151,7 @@ fun V5FieldHint(text: String, modifier: Modifier = Modifier, danger: Boolean = f
     Text(
         text = text,
         modifier = modifier,
-        fontSize = 11.5.sp,
+        fontSize = V5Type.sp11_5,
         fontWeight = FontWeight.Medium,
         color = if (danger) V5ThemeColors.current.danger else V5ThemeColors.current.text3,
     )
@@ -170,23 +172,23 @@ fun V5ReadOnlyField(
         modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 44.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(V5Radius.r14))
             .background(c.surface3)
-            .padding(horizontal = 15.dp, vertical = 10.dp),
+            .padding(horizontal = 15.dp, vertical = V5Spacing.dp10),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let {
-            Icon(it, iconDesc, modifier = Modifier.size(18.dp), tint = c.accent)
-            Box(Modifier.size(10.dp))
+            Icon(it, iconDesc, modifier = Modifier.size(V5Spacing.dp18), tint = c.accent)
+            Box(Modifier.size(V5Spacing.dp10))
         }
         Text(
             value,
-            fontSize = 15.sp,
+            fontSize = V5Type.sp15,
             fontWeight = FontWeight.Bold,
             color = c.text,
             modifier = Modifier.weight(1f),
         )
-        Text(label, fontSize = 11.5.sp, color = c.text3)
+        Text(label, fontSize = V5Type.sp11_5, color = c.text3)
     }
 }
 
@@ -229,7 +231,7 @@ fun V5PasswordInput(
                 modifier =
                 Modifier
                     .size(30.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(V5Radius.r10))
                     .then(
                         noRippleClickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)

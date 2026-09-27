@@ -10,14 +10,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.screen.settings.AppearanceMode
 import com.slte.app.ui.screen.settings.LanguageMode
 import com.slte.app.ui.screen.settings.SettingsViewModel
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5PageBody
 import com.slte.app.ui.v5.V5PageScaffold
@@ -55,21 +55,21 @@ internal fun V5SettingsScreen(
                     chevron = true,
                     onClick = onAppearance,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.settings_language),
                     value = stringResource(languageLabel(viewModel)),
                     chevron = true,
                     onClick = onLanguage,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.settings_tun_stack),
                     value = stringResource(data.tunStackMode.labelRes),
                     chevron = true,
                     onClick = onTunStack,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.settings_change_password),
                     chevron = true,
@@ -91,7 +91,7 @@ internal fun V5SettingsScreen(
                         null
                     },
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.settings_traffic_remind),
                     trailing = {
@@ -109,9 +109,9 @@ internal fun V5SettingsScreen(
             data.errorMessageRes?.let { res ->
                 Text(
                     text = stringResource(res),
-                    fontSize = 12.5.sp,
+                    fontSize = V5Type.sp12_5,
                     color = c.danger,
-                    modifier = Modifier.padding(horizontal = 4.dp),
+                    modifier = Modifier.padding(horizontal = V5Spacing.dp4),
                 )
             }
         }

@@ -23,9 +23,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slte.app.domain.model.TrafficLogRecord
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.utils.FormatUtils
 
 /* ============================================================
@@ -60,14 +61,14 @@ fun BarsChart(
     val count = days.size
     val peak = days.maxOfOrNull { it.totalBytes } ?: 0L
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(fontSize = 9.5.sp, fontFamily = FontFamily.Monospace)
+    val labelStyle = TextStyle(fontSize = V5Type.sp9_5, fontFamily = FontFamily.Monospace)
 
     Canvas(modifier.fillMaxWidth().height(height)) {
         if (count == 0) return@Canvas
         val maxLabel = measurer.measure(FormatUtils.traffic(peak), labelStyle)
         val zeroLabel = measurer.measure("0", labelStyle)
         val labelHeight = zeroLabel.size.height.toFloat()
-        val labelGap = 2.dp.toPx()
+        val labelGap = V5Spacing.dp2.toPx()
         // 上下各让出一条标签带：峰值数字待在顶带内，日期待在底带内，都不压柱子
         val plotTop = labelHeight + labelGap
         val plotBottom = size.height - labelHeight - labelGap
@@ -75,13 +76,13 @@ fun BarsChart(
         val plotRight = size.width
         val plotHeight = (plotBottom - plotTop).coerceAtLeast(1f)
         val scale = peak.coerceAtLeast(1L)
-        val barGap = 2.dp.toPx()
+        val barGap = V5Spacing.dp2.toPx()
         val barWidth = ((plotRight - plotLeft - barGap * (count - 1)) / count).coerceAtLeast(1f)
         val corner = 2.5.dp.toPx().coerceAtMost(barWidth / 2f)
 
         // 基线 + 50% / 100% 虚线网格
-        val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
-        val hair = 1.dp.toPx()
+        val dash = PathEffect.dashPathEffect(floatArrayOf(V5Spacing.dp4.toPx(), V5Spacing.dp4.toPx()))
+        val hair = V5Spacing.dp1.toPx()
         drawLine(c.hairline2, Offset(plotLeft, plotTop), Offset(plotRight, plotTop), hair, pathEffect = dash)
         drawLine(
             c.hairline2,
@@ -115,7 +116,7 @@ fun BarsChart(
 
         // 纵轴只标基线 0：顶端刻度与峰值柱标注必然是同一个数字（峰值就是最大值），
         // 两处都画会在图上并排出现两个相同的数（真机截图实测），故只留贴柱的那一处。
-        val gutterRight = plotLeft - 2.dp.toPx()
+        val gutterRight = plotLeft - V5Spacing.dp2.toPx()
         drawText(zeroLabel, color = c.text3, topLeft = Offset(gutterRight - zeroLabel.size.width, plotBottom - labelHeight))
 
         // 峰值柱数值：标在柱顶上方（已预留的顶带内），横向夹在绘图区内

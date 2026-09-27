@@ -10,6 +10,7 @@ import com.slte.app.R
 import com.slte.app.data.repository.TrafficRepository
 import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.utils.AppLog
+import com.slte.app.utils.Diagnostics
 import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
@@ -39,6 +40,8 @@ data class TrafficData(
     @StringRes val toastRes: Int? = null,
     /** 失败的具体原因（HTTP 状态码 / 服务端 message），仅用于诊断展示；写入前已脱敏。 */
     val errorDetail: String? = null,
+    /** 当前面板是否提供每日流量明细；false 时页面说明「面板不支持」，而不是伪装成「暂无记录」。 */
+    val backendSupportsLog: Boolean = true,
 )
 
 @HiltViewModel
@@ -46,9 +49,13 @@ class TrafficViewModel
 @Inject
 constructor(
     private val trafficRepository: TrafficRepository,
+    private val diagnostics: Diagnostics,
 ) : ViewModel() {
     private val _data = MutableStateFlow(TrafficData())
     val data: StateFlow<TrafficData> = _data.asStateFlow()
+
+    /** 导出诊断时附带的上下文（后端类型/面板/构建类型/ABI）；失败时用户一键就能把它发出来。 */
+    fun diagnosticsExtra(): Map<String, String> = diagnostics.extra()
 
     private var loadJob: Job? = null
 
@@ -60,7 +67,25 @@ constructor(
         // 在途守卫：重试按钮可以连点，切 Tab 又会再触发一次 load()，
         // 不守卫就会出现并发请求 + 状态互相覆盖（后到的失败会把先到的成功结果盖掉）。
         if (loadJob?.isActive == true) return
-        _data.update { it.copy(isLoading = true, errorMessageRes = null, errorDetail = null) }
+        // 面板没有每日明细接口时不去发一个注定为空的请求：直接落到"能力缺失"态，由 UI 说明原因。
+        // 此前 xiaov2b 的空实现返回空列表，页面显示「暂无流量记录」——把"面板没这个接口"
+        // 伪装成"你没有流量"，用户无从判断是面板问题还是自己没用量。
+        if (!trafficRepository.supportsTrafficLog()) {
+            _data.update {
+                it.copy(
+                    records = emptyList(),
+                    isLoading = false,
+                    errorMessageRes = null,
+                    toastRes = null,
+                    errorDetail = null,
+                    backendSupportsLog = false,
+                )
+            }
+            return
+        }
+        _data.update {
+            it.copy(isLoading = true, errorMessageRes = null, errorDetail = null, backendSupportsLog = true)
+        }
         loadJob =
             viewModelScope.launch {
                 // withTimeoutOrNull 而不是 withTimeout：超时是**预期分支**，不该抛

@@ -3,9 +3,6 @@
 
 package com.slte.app.ui.screen.about
 
-import android.content.ClipData
-import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +20,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
@@ -35,9 +31,8 @@ import com.slte.app.ui.v5.V5PageBody
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5TopBar
-import com.slte.app.utils.AppLog
 import com.slte.app.utils.Constants
-import com.slte.app.utils.sanitizeLog
+import com.slte.app.utils.LogExport
 
 /**
  * 关于页（v5 语言）。
@@ -101,7 +96,7 @@ fun AboutScreen(
                     title = stringResource(R.string.about_log_export),
                     icon = SlteIcons.ExportLog,
                     chevron = true,
-                    onClick = { exportLogs(context) },
+                    onClick = { LogExport.exportAndShare(context, viewModel.diagnosticsExtra()) },
                 )
             }
         }
@@ -157,39 +152,5 @@ private fun CheckUpdateRow(
     )
 }
 
-/**
- * 导出日志：导出成功弹提示并把文件交给系统分享面板。
- *
- * 行为与 v4 逐行一致（三条提示文案、FileProvider authority、`FLAG_GRANT_READ_URI_PERMISSION`）；
- * 只是把 catch 里的静默吞掉补上一条日志，便于用户反馈时定位（原先这里没有任何记录）。
- */
-private fun exportLogs(context: Context) {
-    val file = AppLog.export(context)
-    if (file == null) {
-        Toast.makeText(context, context.getString(R.string.about_log_export_failed), Toast.LENGTH_SHORT).show()
-        return
-    }
-    Toast.makeText(context, context.getString(R.string.about_log_exported), Toast.LENGTH_SHORT).show()
-    try {
-        val uri =
-            FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file,
-            )
-        val send =
-            Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                clipData = ClipData.newRawUri(null, uri)
-                putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.about_log_export))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        context.startActivity(
-            Intent.createChooser(send, context.getString(R.string.about_log_export_share)),
-        )
-    } catch (e: Exception) {
-        AppLog.w("Polaris-About", "导出日志分享失败: ${sanitizeLog(e.message ?: "Unknown")}")
-        Toast.makeText(context, context.getString(R.string.about_log_share_failed), Toast.LENGTH_SHORT).show()
-    }
-}
+// 导出逻辑已抽到 utils/LogExport：关于页与流量页失败卡片共用同一套「导出 + 系统分享」流程，
+// 避免两处实现各自漂移（提示文案 / FileProvider authority / 权限位必须一致）。

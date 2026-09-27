@@ -27,10 +27,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.V5Radius
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 
 /**
  * v5 状态三件套（空 / 错 / 加载）。
@@ -59,30 +61,30 @@ fun V5EmptyState(
     val c = V5ThemeColors.current
     V5CardFlat(modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 26.dp, horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = V5Spacing.dp26, horizontal = V5Spacing.dp16),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             StateTile(SlteIcons.Folder, c.accent.copy(alpha = 0.14f), c.accent)
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(V5Spacing.dp14))
             Text(
                 text = title,
-                fontSize = 13.5.sp,
+                fontSize = V5Type.sp13_5,
                 fontWeight = FontWeight.Medium,
                 color = c.text,
                 textAlign = TextAlign.Center,
             )
             if (description != null) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(V5Spacing.dp6))
                 Text(
                     text = description,
-                    fontSize = 11.5.sp,
+                    fontSize = V5Type.sp11_5,
                     color = c.text3,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.widthIn(max = StateTextMaxWidth),
                 )
             }
             if (actionText != null && onAction != null) {
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(V5Spacing.dp18))
                 V5Button(
                     text = actionText,
                     style = ButtonStyle.TONAL,
@@ -103,24 +105,39 @@ fun V5ErrorState(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     retryText: String = stringResource(R.string.v5_state_retry),
+    detail: String? = null,
+    secondaryText: String? = null,
+    onSecondary: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
     V5CardFlat(modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 26.dp, horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = V5Spacing.dp26, horizontal = V5Spacing.dp16),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             StateTile(SlteIcons.OrderAbnormal, c.danger.copy(alpha = 0.14f), c.danger)
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(V5Spacing.dp14))
             Text(
                 text = message,
-                fontSize = 13.5.sp,
+                fontSize = V5Type.sp13_5,
                 fontWeight = FontWeight.Medium,
                 color = c.text,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.widthIn(max = StateTextMaxWidth),
             )
-            Spacer(Modifier.height(18.dp))
+            // 具体原因（HTTP 状态码 / 服务端 message）：通用文案说不出问题在哪，
+            // 诊断成本极高，所以错误态必须能承载一行细节。
+            if (detail != null) {
+                Spacer(Modifier.height(V5Spacing.dp6))
+                Text(
+                    text = detail,
+                    fontSize = V5Type.sp11_5,
+                    color = c.text3,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = StateTextMaxWidth),
+                )
+            }
+            Spacer(Modifier.height(V5Spacing.dp18))
             V5Button(
                 text = retryText,
                 style = ButtonStyle.TONAL,
@@ -128,6 +145,17 @@ fun V5ErrorState(
                 small = true,
                 onClick = onRetry,
             )
+            // 次操作（如「导出诊断」）用 GHOST：错误卡片的主行动永远是重试，
+            // 导出不能被画成同等重量的第二个主按钮。
+            if (secondaryText != null && onSecondary != null) {
+                Spacer(Modifier.height(V5Spacing.dp8))
+                V5Button(
+                    text = secondaryText,
+                    style = ButtonStyle.GHOST,
+                    small = true,
+                    onClick = onSecondary,
+                )
+            }
         }
     }
 }
@@ -141,19 +169,19 @@ fun V5LoadingState(
     val c = V5ThemeColors.current
     V5CardFlat(modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 26.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = V5Spacing.dp26),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(V5Spacing.dp22), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     color = c.accent,
-                    strokeWidth = 2.dp,
+                    strokeWidth = V5Spacing.dp2,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            Text(text = text, fontSize = 12.5.sp, color = c.text3)
+            Spacer(Modifier.height(V5Spacing.dp12))
+            Text(text = text, fontSize = V5Type.sp12_5, color = c.text3)
         }
     }
 }
@@ -168,7 +196,7 @@ private fun StateTile(
         modifier =
         Modifier
             .size(StateTileSize)
-            .background(container, RoundedCornerShape(18.dp)),
+            .background(container, RoundedCornerShape(V5Radius.r18)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

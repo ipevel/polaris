@@ -145,5 +145,14 @@ interface AuthApi {
 
     suspend fun closeTicket(id: Int): Boolean
 
+    /**
+     * 当前后端是否提供「每日流量明细」。
+     *
+     * 面板能力差异属于适配器事实，不能让 UI 去猜：xiaov2b 系列面板没有流量日志路由，
+     * 它的 [fetchTrafficLog] 只能返回空列表。UI 用本标志把「面板没有这个接口」与
+     * 「确实没有记录」区分开，避免把能力缺失伪装成空数据。默认 true。
+     */
+    fun supportsTrafficLog(): Boolean = true
+
     suspend fun fetchTrafficLog(): List<TrafficLogRecord>
 }

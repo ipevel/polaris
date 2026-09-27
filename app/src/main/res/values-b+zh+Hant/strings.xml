@@ -339,6 +339,9 @@
     <string name="v5_traffic_up">上行</string>
     <string name="v5_traffic_loading">載入中…</string>
     <string name="v5_traffic_empty">暫無流量記錄</string>
+    <string name="v5_traffic_unsupported_title">面板不支援流量明細</string>
+    <string name="v5_traffic_unsupported">目前面板未提供每日流量介面，僅能統計整包用量</string>
+    <string name="diag_export">匯出診斷</string>
     <string name="v5_traffic_hint">按日彙總，來自面板流量日誌</string>
     <string name="v5_delay_not_needed">無需測速</string>
     <string name="v5_delay_auto">自動撥測</string>

@@ -10,8 +10,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.slte.app.ui.theme.V5Radius
+import com.slte.app.ui.theme.V5Type
 
 /**
  * Polaris UI v5（VmShell 风）设计令牌。
@@ -161,13 +161,13 @@ object V5ThemeColors {
  * v5 底部面板的公共形状与标题字号。
  *
  * v5 的面板语言是「26dp 顶圆角 + 17sp 粗标题」，与 v4 的 22dp/18sp 半粗不同。放在这里集中定义，
- * 而不是让每个 v5 页面各写一遍 `RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)`——
+ * 而不是让每个 v5 页面各写一遍 `RoundedCornerShape(topStart = V5Radius.r26, topEnd = V5Radius.r26)`——
  * 否则改一处面板圆角就要全仓搜散落的字面量。
  */
-val V5SheetShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
+val V5SheetShape = RoundedCornerShape(topStart = V5Radius.r26, topEnd = V5Radius.r26)
 
 /** 见 [V5SheetShape]。 */
-val V5SheetTitleStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold)
+val V5SheetTitleStyle = TextStyle(fontSize = V5Type.sp17, fontWeight = FontWeight.Bold)
 
 /*
  * 这里原本还有一个 `@Composable fun V5Theme(darkTheme, content)`，**已删除**。

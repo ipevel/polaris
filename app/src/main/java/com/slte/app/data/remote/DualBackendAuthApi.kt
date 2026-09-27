@@ -159,5 +159,7 @@ class DualBackendAuthApi(
 
     override suspend fun closeTicket(id: Int): Boolean = active().closeTicket(id)
 
+    override fun supportsTrafficLog(): Boolean = active().supportsTrafficLog()
+
     override suspend fun fetchTrafficLog(): List<TrafficLogRecord> = active().fetchTrafficLog()
 }

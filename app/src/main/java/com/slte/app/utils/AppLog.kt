@@ -53,20 +53,26 @@ object AppLog {
         return "$header\n\n$body"
     }
 
-    fun export(context: android.content.Context): java.io.File? {
+    fun export(
+        context: android.content.Context,
+        extra: Map<String, String> = emptyMap(),
+    ): java.io.File? {
         val header =
             buildString {
-                appendLine("SLTE 日志导出")
+                appendLine("Polaris 诊断日志")
                 appendLine("时间: ${now()}")
                 appendLine("应用版本: ${com.slte.app.BuildConfig.VERSION_NAME} (${com.slte.app.BuildConfig.VERSION_CODE})")
                 appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
                 appendLine("设备: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
-                appendLine("说明: 含应用层 + mihomo 内核日志；已脱敏（token/密码/邮箱等打码），可直接发送给客服")
+                // 附加诊断字段（后端类型/面板/构建类型/ABI 等）由调用方按需提供：
+                // 让"只有某个面板才复现"的问题也能一眼分诊。值会被下面的 sanitize 再脱敏一次。
+                extra.forEach { (key, value) -> appendLine("$key: $value") }
+                appendLine("说明: 含应用层 + mihomo 内核日志；已脱敏（token/密码/邮箱/面板主机等打码），可直接发送给客服")
             }
         val content = sanitize(dump(header))
         return try {
             val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-            val file = java.io.File(dir, "SLTE_log_${System.currentTimeMillis()}.txt")
+            val file = java.io.File(dir, "Polaris_log_${System.currentTimeMillis()}.txt")
             file.writeText(content)
             file
         } catch (e: Exception) {

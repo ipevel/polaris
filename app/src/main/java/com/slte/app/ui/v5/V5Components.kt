@@ -85,7 +85,10 @@ import com.slte.app.R
 import com.slte.app.ui.theme.LocalV5Colors
 import com.slte.app.ui.theme.TileColors
 import com.slte.app.ui.theme.V5Colors
+import com.slte.app.ui.theme.V5Radius
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 
 /* ============================================================
    v5 通用组件（VmShell 设计语言：白卡 + 马卡龙瓷片 + 渐变方块图标
@@ -154,7 +157,7 @@ fun Modifier.v5Aurora(): Modifier {
 @Composable
 fun Modifier.v5CardShadow(shape: Shape): Modifier {
     val sc = LocalV5Colors.current
-    return shadow(6.dp, shape, clip = false, ambientColor = sc.cardShadow, spotColor = sc.cardShadow)
+    return shadow(V5Spacing.dp6, shape, clip = false, ambientColor = sc.cardShadow, spotColor = sc.cardShadow)
 }
 
 /**
@@ -177,14 +180,14 @@ internal fun noRippleClickable(onClick: (() -> Unit)?): Modifier = if (onClick !
 @Composable
 fun V5Card(
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(16.dp),
+    contentPadding: PaddingValues = PaddingValues(V5Spacing.dp16),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = V5ThemeColors.current
     Column(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp))
+            .v5CardShadow(RoundedCornerShape(V5Radius.r22))
+            .clip(RoundedCornerShape(V5Radius.r22))
             .background(c.surface)
             .padding(contentPadding),
         content = content,
@@ -200,8 +203,8 @@ fun V5CardFlat(
     val c = V5ThemeColors.current
     Column(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp))
+            .v5CardShadow(RoundedCornerShape(V5Radius.r22))
+            .clip(RoundedCornerShape(V5Radius.r22))
             .background(c.surface),
         content = content,
     )
@@ -218,9 +221,9 @@ fun V5TopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 12.dp),
+            .padding(start = V5Spacing.dp18, end = V5Spacing.dp18, top = V5Spacing.dp6, bottom = V5Spacing.dp12),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
     ) {
         if (onBack != null) V5TopIconButton(Icons.AutoMirrored.Outlined.ArrowBack, onBack)
         // 标题用 weight 吃掉全部剩余宽度、空出的空间由它承担，这样 actions（如首页的
@@ -233,7 +236,7 @@ fun V5TopBar(
         Box(Modifier.weight(1f)) {
             Text(
                 title,
-                fontSize = 21.sp,
+                fontSize = V5Type.sp21,
                 fontWeight = FontWeight.Bold,
                 color = V5ThemeColors.current.text,
                 maxLines = 1,
@@ -251,8 +254,8 @@ fun V5TopIconButton(icon: ImageVector, onClick: (() -> Unit)? = null, tint: Colo
     Box(
         modifier = Modifier
             .size(37.dp)
-            .v5CardShadow(RoundedCornerShape(13.dp))
-            .clip(RoundedCornerShape(13.dp))
+            .v5CardShadow(RoundedCornerShape(V5Radius.r13))
+            .clip(RoundedCornerShape(V5Radius.r13))
             .background(c.surface)
             .then(noRippleClickable(onClick)),
         contentAlignment = Alignment.Center,
@@ -266,10 +269,10 @@ fun V5TopIconButton(icon: ImageVector, onClick: (() -> Unit)? = null, tint: Colo
 fun SectionTitle(label: String, modifier: Modifier = Modifier) {
     Text(
         label,
-        modifier = modifier.padding(horizontal = 4.dp),
-        fontSize = 11.sp,
+        modifier = modifier.padding(horizontal = V5Spacing.dp4),
+        fontSize = V5Type.sp11,
         fontWeight = FontWeight.SemiBold,
-        letterSpacing = 1.1.sp,
+        letterSpacing = V5Type.trackingWide,
         color = V5ThemeColors.current.text3,
     )
 }
@@ -288,17 +291,17 @@ fun V5Chip(
     val (ink, bg) = c.chip(tone)
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
+            .clip(RoundedCornerShape(V5Radius.pill))
             .background(bg)
-            .padding(horizontal = if (large) 12.dp else 10.dp, vertical = if (large) 5.dp else 4.dp),
+            .padding(horizontal = if (large) V5Spacing.dp12 else V5Spacing.dp10, vertical = if (large) V5Spacing.dp5 else V5Spacing.dp4),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp5),
     ) {
-        if (dot) Box(Modifier.size(6.dp).clip(CircleShape).background(ink))
+        if (dot) Box(Modifier.size(V5Spacing.dp6).clip(CircleShape).background(ink))
         icon?.let { Icon(it, null, modifier = Modifier.size(13.dp), tint = ink) }
         Text(
             text,
-            fontSize = if (large) 12.sp else 11.5.sp,
+            fontSize = if (large) V5Type.sp12 else V5Type.sp11_5,
             fontWeight = FontWeight.SemiBold,
             color = ink,
         )
@@ -316,9 +319,9 @@ fun LiveDot(modifier: Modifier = Modifier) {
 fun LatencyText(value: String, tone: ChipTone, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
     val (ink, _) = c.chip(tone)
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Icon(Icons.Outlined.MonitorHeart, null, modifier = Modifier.size(14.dp), tint = ink)
-        Text(value, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, color = ink)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp4)) {
+        Icon(Icons.Outlined.MonitorHeart, null, modifier = Modifier.size(V5Spacing.dp14), tint = ink)
+        Text(value, fontSize = V5Type.sp12_5, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, color = ink)
     }
 }
 
@@ -339,7 +342,7 @@ fun RadioDot(on: Boolean, modifier: Modifier = Modifier) {
             ),
         contentAlignment = Alignment.Center,
     ) {
-        if (on) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(12.dp), tint = Color.White)
+        if (on) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(V5Spacing.dp12), tint = Color.White)
     }
 }
 
@@ -370,7 +373,7 @@ fun MacaronTile(
     MacaronTile(tone, label, modifier, icon, small) {
         Text(
             value,
-            fontSize = if (small) 13.5.sp else 16.sp,
+            fontSize = if (small) V5Type.sp13_5 else V5Type.sp16,
             fontWeight = FontWeight.Bold,
             color = V5ThemeColors.current.text,
         )
@@ -392,13 +395,13 @@ fun MacaronTile(
     val t = c.tile(tone)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(V5Radius.r14))
             .background(t.bg)
             .padding(horizontal = 13.dp, vertical = 11.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp5)) {
             icon?.let { Icon(it, null, modifier = Modifier.size(13.dp), tint = t.ink) }
-            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp, color = t.ink)
+            Text(label, fontSize = V5Type.sp11, fontWeight = FontWeight.SemiBold, letterSpacing = V5Type.tracking, color = t.ink)
             // 实时指示：柔和呼吸的绿点。首页移除实时曲线后，用它表明速率仍在按秒刷新，
             // 既保留"数据是活的"这一信息，又不占额外版面、不喧宾夺主。
             if (live) {
@@ -409,10 +412,10 @@ fun MacaronTile(
                     animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
                     label = "tile-live-alpha",
                 )
-                Box(Modifier.size(6.dp).clip(CircleShape).background(c.ok.copy(alpha = alpha)))
+                Box(Modifier.size(V5Spacing.dp6).clip(CircleShape).background(c.ok.copy(alpha = alpha)))
             }
         }
-        Box(Modifier.padding(top = 2.dp)) { value() }
+        Box(Modifier.padding(top = V5Spacing.dp2)) { value() }
     }
 }
 
@@ -422,24 +425,24 @@ fun SegmentedPill(options: List<String>, active: Int, modifier: Modifier = Modif
     val c = V5ThemeColors.current
     Row(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(50))
-            .clip(RoundedCornerShape(50))
+            .v5CardShadow(RoundedCornerShape(V5Radius.pill))
+            .clip(RoundedCornerShape(V5Radius.pill))
             .background(c.surface)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(V5Spacing.dp4),
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp4),
     ) {
         options.forEachIndexed { i, opt ->
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(37.dp)
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(V5Radius.pill))
                     .then(if (i == active) Modifier.background(c.accentGrad) else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     opt,
-                    fontSize = 12.5.sp,
+                    fontSize = V5Type.sp12_5,
                     fontWeight = FontWeight.SemiBold,
                     color = if (i == active) Color.White else c.text2,
                 )
@@ -538,7 +541,7 @@ fun V5Button(
             clickable
         } else {
             clickable
-                .shadow(if (spot == Color.Transparent || !active) 0.dp else 8.dp, shape, clip = false, ambientColor = spot, spotColor = spot)
+                .shadow(if (spot == Color.Transparent || !active) 0.dp else V5Spacing.dp8, shape, clip = false, ambientColor = spot, spotColor = spot)
                 .clip(shape)
                 .then(if (bg != null) Modifier.background(bg) else Modifier.background(solidBg))
                 .then(if (active) Modifier else Modifier.alpha(DISABLED_BUTTON_ALPHA))
@@ -547,7 +550,7 @@ fun V5Button(
     Row(
         modifier = m
             .defaultMinSize(minHeight = height)
-            .padding(horizontal = if (style == ButtonStyle.GHOST) 4.dp else 18.dp),
+            .padding(horizontal = if (style == ButtonStyle.GHOST) V5Spacing.dp4 else V5Spacing.dp18),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
     ) {
@@ -561,12 +564,12 @@ fun V5Button(
             // 那不算缺陷，加载反馈由覆盖层承担。此处保留转圈是给"就地加载"的按钮
             // （如工单提交、优惠券验证）用的。
             Box(
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(V5Spacing.dp18),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
                     color = fg,
-                    strokeWidth = 2.dp,
+                    strokeWidth = V5Spacing.dp2,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -576,9 +579,9 @@ fun V5Button(
         Text(
             text,
             fontSize = when {
-                hero -> 16.sp
-                small -> 13.sp
-                else -> 14.sp
+                hero -> V5Type.sp16
+                small -> V5Type.sp13
+                else -> V5Type.sp14
             },
             fontWeight = if (style == ButtonStyle.GHOST) FontWeight.SemiBold else FontWeight.Bold,
             color = fg,
@@ -594,12 +597,12 @@ private const val DISABLED_BUTTON_ALPHA = 0.45f
 @Composable
 fun V5Switch(checked: Boolean, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
-    val x by animateDpAsState(if (checked) 20.dp else 0.dp, label = "switchKnob")
+    val x by animateDpAsState(if (checked) V5Spacing.dp20 else 0.dp, label = "switchKnob")
     Box(
         modifier = modifier
             .width(48.dp)
             .height(28.dp)
-            .clip(RoundedCornerShape(50))
+            .clip(RoundedCornerShape(V5Radius.pill))
             .background(if (checked) c.ok else c.surface3),
     ) {
         Box(
@@ -630,8 +633,8 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
     val c = V5ThemeColors.current
     Row(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(50))
-            .clip(RoundedCornerShape(50))
+            .v5CardShadow(RoundedCornerShape(V5Radius.pill))
+            .clip(RoundedCornerShape(V5Radius.pill))
             .background(c.navBg)
             .padding(7.dp)
             .height(52.dp),
@@ -643,7 +646,7 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(V5Radius.pill))
                     .then(if (on) Modifier.background(c.navOn) else Modifier)
                     .then(noRippleClickable { onSelect(tab) }),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -652,9 +655,9 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
                 Icon(tab.icon, null, modifier = Modifier.size(21.dp), tint = if (on) c.accent else c.text3)
                 Text(
                     stringResource(tab.labelRes),
-                    fontSize = 10.5.sp,
+                    fontSize = V5Type.sp10_5,
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                    letterSpacing = 0.3.sp,
+                    letterSpacing = V5Type.tracking,
                     color = if (on) c.accent else c.text3,
                 )
             }
@@ -695,7 +698,7 @@ fun HeroConnectButton(
                 drawCircle(halo, radius = r + 13.dp.toPx())
                 drawCircle(
                     ring,
-                    radius = r + 13.dp.toPx() + t * 10.dp.toPx(),
+                    radius = r + 13.dp.toPx() + t * V5Spacing.dp10.toPx(),
                     style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round),
                     alpha = (1f - t) * 0.5f,
                 )
@@ -704,7 +707,7 @@ fun HeroConnectButton(
             .background(grad),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(V5Spacing.dp5)) {
             Icon(
                 if (connected) Icons.Outlined.PowerSettingsNew else Icons.Filled.Bolt,
                 null,
@@ -717,7 +720,7 @@ fun HeroConnectButton(
                     connecting -> stringResource(R.string.v5_cancel)
                     else -> stringResource(R.string.v5_connect)
                 },
-                fontSize = 15.sp,
+                fontSize = V5Type.sp15,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 3.sp,
                 color = Color.White,
@@ -734,18 +737,18 @@ fun V5Banner(tone: ChipTone, text: String, modifier: Modifier = Modifier, icon: 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(V5Radius.r14))
             .background(bg)
-            .padding(12.dp),
+            .padding(V5Spacing.dp12),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Icon(
             icon ?: if (tone == ChipTone.DANGER) Icons.Outlined.WarningAmber else Icons.Outlined.Info,
             null,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(V5Spacing.dp16),
             tint = ink,
         )
-        Text(text, fontSize = 12.sp, lineHeight = 18.sp, color = ink)
+        Text(text, fontSize = V5Type.sp12, lineHeight = V5Type.sp18, color = ink)
     }
 }
 
@@ -770,10 +773,10 @@ fun V5RowItem(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 58.dp)
-            .padding(horizontal = 15.dp, vertical = 10.dp)
+            .padding(horizontal = 15.dp, vertical = V5Spacing.dp10)
             .then(noRippleClickable(onClick)),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12),
     ) {
         if (leading != null) {
             leading()
@@ -781,7 +784,7 @@ fun V5RowItem(
             Box(
                 Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(V5Radius.r12))
                     .background(if (highlight) c.accentBg else c.surface2),
                 contentAlignment = Alignment.Center,
             ) {
@@ -802,26 +805,26 @@ fun V5RowItem(
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                fontSize = 14.sp,
+                fontSize = V5Type.sp14,
                 fontWeight = FontWeight.Medium,
                 color = if (danger) c.danger else c.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             sub?.let {
-                Text(it, fontSize = 11.5.sp, color = c.text3, modifier = Modifier.padding(top = 1.dp))
+                Text(it, fontSize = V5Type.sp11_5, color = c.text3, modifier = Modifier.padding(top = V5Spacing.dp1))
             }
         }
         value?.let {
             Text(
                 it,
-                fontSize = 13.sp,
+                fontSize = V5Type.sp13,
                 color = c.text2,
                 fontFamily = if (valueMono) FontFamily.Monospace else null,
             )
         }
         trailing?.invoke(this)
-        if (chevron) Icon(Icons.Outlined.ChevronRight, null, modifier = Modifier.size(18.dp), tint = c.text3)
+        if (chevron) Icon(Icons.Outlined.ChevronRight, null, modifier = Modifier.size(V5Spacing.dp18), tint = c.text3)
     }
 }
 
@@ -844,19 +847,19 @@ fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
     // 带底色时行与行之间要留缝，否则两行底色连成一片、看不出是两行
     val toned = rows.any { it.tone != null }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (toned) 8.dp else 0.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (toned) V5Spacing.dp8 else 0.dp)) {
         rows.forEachIndexed { i, r ->
             // 分隔线只在"相邻两行都没有底色"时画；带底色的行靠留白区分
-            if (i > 0 && r.tone == null && rows[i - 1].tone == null) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+            if (i > 0 && r.tone == null && rows[i - 1].tone == null) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
             val t = r.tone?.let { c.tile(it) }
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .then(if (t != null) Modifier.clip(RoundedCornerShape(12.dp)).background(t.bg) else Modifier)
+                    .then(if (t != null) Modifier.clip(RoundedCornerShape(V5Radius.r12)).background(t.bg) else Modifier)
                     .defaultMinSize(minHeight = if (t != null) 52.dp else 46.dp)
-                    .padding(horizontal = if (t != null) 14.dp else 15.dp, vertical = if (t != null) 10.dp else 6.dp),
+                    .padding(horizontal = if (t != null) V5Spacing.dp14 else 15.dp, vertical = if (t != null) V5Spacing.dp10 else V5Spacing.dp6),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12),
             ) {
                 // 标签行**不能**带 weight：Row 先量非加权子项，若标签是加权项，超长值
                 // （真机实测：IPv6 地址 39 字符）会先把剩余宽度吃光，标签被压成一个字一行
@@ -869,10 +872,10 @@ fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    r.icon?.let { Icon(it, null, modifier = Modifier.size(16.dp), tint = t?.ink ?: c.text2) }
+                    r.icon?.let { Icon(it, null, modifier = Modifier.size(V5Spacing.dp16), tint = t?.ink ?: c.text2) }
                     Text(
                         r.label,
-                        fontSize = 12.5.sp,
+                        fontSize = V5Type.sp12_5,
                         color = t?.ink ?: c.text2,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -880,7 +883,7 @@ fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
                 }
                 Text(
                     r.value,
-                    fontSize = if (t != null) 15.sp else 14.sp,
+                    fontSize = if (t != null) V5Type.sp15 else V5Type.sp14,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = FontFamily.Monospace,
                     color = r.color ?: c.text,
@@ -900,14 +903,14 @@ fun ProgressTrack(fraction: Float, modifier: Modifier = Modifier, brush: Brush? 
         modifier
             .fillMaxWidth()
             .height(7.dp)
-            .clip(RoundedCornerShape(50))
+            .clip(RoundedCornerShape(V5Radius.pill))
             .background(c.surface3),
     ) {
         Box(
             Modifier
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(50))
+                .clip(RoundedCornerShape(V5Radius.pill))
                 .background(brush ?: c.accentGrad),
         )
     }
@@ -934,17 +937,17 @@ fun SheetOverlay(
             modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                .clip(RoundedCornerShape(topStart = V5Radius.r26, topEnd = V5Radius.r26))
                 .background(c.surface)
                 .navigationBarsPadding()
-                .padding(start = 22.dp, end = 22.dp, top = 10.dp, bottom = 28.dp),
+                .padding(start = V5Spacing.dp22, end = V5Spacing.dp22, top = V5Spacing.dp10, bottom = 28.dp),
         ) {
             Box(
                 Modifier
                     .align(Alignment.CenterHorizontally)
                     .width(40.dp)
                     .height(4.5.dp)
-                    .clip(RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(V5Radius.pill))
                     .background(c.surface3),
             )
             stickerIcon?.let {
@@ -953,7 +956,7 @@ fun SheetOverlay(
                     null,
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
-                        .padding(top = 8.dp)
+                        .padding(top = V5Spacing.dp8)
                         .size(40.dp),
                     tint = c.accent,
                 )
@@ -962,8 +965,8 @@ fun SheetOverlay(
                 title,
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .padding(top = 6.dp),
-                fontSize = 17.sp,
+                    .padding(top = V5Spacing.dp6),
+                fontSize = V5Type.sp17,
                 fontWeight = FontWeight.Bold,
                 color = c.text,
                 textAlign = TextAlign.Center,
@@ -974,13 +977,13 @@ fun SheetOverlay(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .padding(top = 7.dp),
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp,
+                    fontSize = V5Type.sp12,
+                    lineHeight = V5Type.sp18,
                     color = c.text3,
                     textAlign = TextAlign.Center,
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(V5Spacing.dp16))
             content()
         }
     }
@@ -998,10 +1001,10 @@ fun SheetOption(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(V5Radius.r14))
             .background(if (selected) c.accentBg else c.surface2)
-            .then(if (selected) Modifier.border(1.5.dp, c.accent, RoundedCornerShape(14.dp)) else Modifier)
-            .padding(horizontal = 13.dp, vertical = 8.dp)
+            .then(if (selected) Modifier.border(1.5.dp, c.accent, RoundedCornerShape(V5Radius.r14)) else Modifier)
+            .padding(horizontal = 13.dp, vertical = V5Spacing.dp8)
             .defaultMinSize(minHeight = 50.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
@@ -1022,13 +1025,13 @@ fun SheetOption(
             if (selected) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(11.dp), tint = Color.White)
         }
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.text)
-            sub?.let { Text(it, fontSize = 11.5.sp, color = c.text3, modifier = Modifier.padding(top = 1.dp)) }
+            Text(title, fontSize = V5Type.sp14, fontWeight = FontWeight.SemiBold, color = c.text)
+            sub?.let { Text(it, fontSize = V5Type.sp11_5, color = c.text3, modifier = Modifier.padding(top = V5Spacing.dp1)) }
         }
         if (selected) {
             Box(
                 Modifier
-                    .size(20.dp)
+                    .size(V5Spacing.dp20)
                     .clip(CircleShape)
                     .background(c.accent),
                 contentAlignment = Alignment.Center,

@@ -15,6 +15,7 @@ import com.slte.app.di.IoDispatcher
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.utils.AppLog
+import com.slte.app.utils.Diagnostics
 import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -127,6 +128,7 @@ constructor(
     private val kernelProxy: KernelProxy,
     private val siteInfoStore: SiteInfoStore,
     @ApplicationContext private val context: Context,
+    private val diagnostics: Diagnostics,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
     val state: StateFlow<UpdateUiState> = _state.asStateFlow()
@@ -136,6 +138,9 @@ constructor(
 
     private val _kernelVersion = MutableStateFlow<String?>(null)
     val kernelVersion: StateFlow<String?> = _kernelVersion.asStateFlow()
+
+    /** 导出诊断时附带的上下文；内核版本由本页负责查询，所以在基础字段上补一条。 */
+    fun diagnosticsExtra(): Map<String, String> = diagnostics.extra() + mapOf("内核版本" to (_kernelVersion.value ?: "-"))
 
     private var dismissedInSession = false
 

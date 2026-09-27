@@ -14,6 +14,9 @@ class TrafficRepository
 constructor(
     private val authApi: AuthApi,
 ) {
+    /** 当前后端是否提供每日流量明细（能力探测，不发请求）。 */
+    fun supportsTrafficLog(): Boolean = authApi.supportsTrafficLog()
+
     suspend fun fetchTrafficLog(): Result<List<TrafficLogRecord>> = runApi {
         authApi.fetchTrafficLog()
     }

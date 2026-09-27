@@ -387,5 +387,9 @@ class XiaoV2bAuthApi(
         return response.data.orFalseLogged("closeTicket")
     }
 
+    // xiaov2b 面板没有流量日志路由（适配器接口面已全量核对），故明确标记能力缺失：
+    // UI 据此显示「面板不提供流量明细」，而不是把空实现伪装成「暂无记录」。
+    override fun supportsTrafficLog(): Boolean = false
+
     override suspend fun fetchTrafficLog(): List<TrafficLogRecord> = emptyList()
 }

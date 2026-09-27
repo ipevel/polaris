@@ -21,11 +21,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.ui.screen.profile.ProfileData
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.AvatarP
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.NavTab
@@ -66,13 +67,13 @@ internal fun V5MeScreen(
         V5ScrollBody(NavTab.ME) {
             // —— 账号卡
             V5Card {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12)) {
                         AvatarP(46.dp)
                         Column(Modifier.weight(1f)) {
                             Text(
                                 data.email.ifBlank { stringResource(R.string.app_name) },
-                                fontSize = 15.sp,
+                                fontSize = V5Type.sp15,
                                 fontWeight = FontWeight.SemiBold,
                                 color = c.text,
                                 maxLines = 1,
@@ -83,7 +84,7 @@ internal fun V5MeScreen(
                             Text(
                                 data.subscribeInfo?.planName?.takeIf { it.isNotBlank() }
                                     ?: stringResource(R.string.usage_no_plan),
-                                fontSize = 12.sp,
+                                fontSize = V5Type.sp12,
                                 color = c.text3,
                             )
                         }
@@ -91,11 +92,11 @@ internal fun V5MeScreen(
                             V5Chip(if (days > 0) ChipTone.OK else ChipTone.DANGER, stringResource(R.string.v5_days_left, days))
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.v5_balance), fontSize = 12.5.sp, color = c.text2)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8)) {
+                        Text(stringResource(R.string.v5_balance), fontSize = V5Type.sp12_5, color = c.text2)
                         Text(
                             data.balance,
-                            fontSize = 15.sp,
+                            fontSize = V5Type.sp15,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = c.accent,
@@ -113,7 +114,7 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onPlans,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 // 礼品卡（兑换码）入口：v5 重写 b5e3464 删掉 v4 ProfileScreen 时丢掉了挂载点，
                 // 组件与 ViewModel 一直保留但全仓无调用点；这里按 v4 原样恢复入口，
                 // 复用既有 R.string.gift_card_title，不新增字符串（三语键集合无需改动）。
@@ -123,28 +124,28 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onGiftCard,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.me_orders),
                     icon = SlteIcons.Orders,
                     chevron = true,
                     onClick = onOrders,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.me_invite),
                     icon = SlteIcons.Invite,
                     chevron = true,
                     onClick = onInvite,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.me_tickets),
                     icon = SlteIcons.Ticket,
                     chevron = true,
                     onClick = onTickets,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.me_notices),
                     icon = SlteIcons.Notifications,
@@ -154,7 +155,7 @@ internal fun V5MeScreen(
                 // Telegram 讨论组入口（v4 ProfileScreen 有，v5 重写时丢失）。
                 // 链接由调用方做白名单校验后再交进来，见 ProfilePageContent。
                 onTelegram?.let { openTelegram ->
-                    HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                    HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                     V5RowItem(
                         title = stringResource(R.string.profile_telegram),
                         icon = SlteIcons.Telegram,
@@ -171,14 +172,14 @@ internal fun V5MeScreen(
                     chevron = true,
                     onClick = onSettings,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.me_about),
                     icon = Icons.Outlined.Info,
                     chevron = true,
                     onClick = onAbout,
                 )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                 V5RowItem(
                     title = stringResource(R.string.profile_logout),
                     icon = SlteIcons.Logout,

@@ -10,15 +10,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.screen.settings.RoutingRulesViewModel
 import com.slte.app.ui.screen.settings.RoutingSync
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.V5Banner
 import com.slte.app.ui.v5.V5CardFlat
@@ -46,15 +46,15 @@ internal fun V5RoutingRulesScreen(
         V5PageBody {
             Text(
                 text = stringResource(R.string.routing_rules_desc),
-                fontSize = 12.sp,
+                fontSize = V5Type.sp12,
                 color = c.text3,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                modifier = Modifier.padding(horizontal = V5Spacing.dp4),
             )
 
             // —— 内置分流组
             V5CardFlat(Modifier) {
                 data.items.forEachIndexed { index, item ->
-                    if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                    if (index > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                     V5RowItem(
                         title = item.name,
                         sub = stringResource(outboundLabelOf(item.defaultOut)),
@@ -88,7 +88,7 @@ internal fun V5RoutingRulesScreen(
                     onClick = viewModel::showAddCustomGroup,
                 )
                 data.custom.forEach { custom ->
-                    HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                    HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                     V5RowItem(
                         title = custom.name,
                         sub = custom.url,

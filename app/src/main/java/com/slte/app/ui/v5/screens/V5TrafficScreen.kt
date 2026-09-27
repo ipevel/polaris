@@ -24,20 +24,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.ui.screen.traffic.TrafficData
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.BarsChart
-import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.V5Banner
-import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
 import com.slte.app.ui.v5.V5Donut
+import com.slte.app.ui.v5.V5EmptyState
+import com.slte.app.ui.v5.V5ErrorState
+import com.slte.app.ui.v5.V5LoadingState
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5TopBar
@@ -57,6 +59,7 @@ internal fun V5TrafficScreen(
     data: TrafficData,
     onNavSelect: (NavTab) -> Unit,
     onRetry: () -> Unit = {},
+    onExportDiagnostics: () -> Unit = {},
 ) {
     val c = V5ThemeColors.current
     val totalDown = data.records.sumOf { it.downloadBytes }
@@ -75,7 +78,7 @@ internal fun V5TrafficScreen(
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp18),
                     ) {
                         Box(Modifier.size(DonutSize), contentAlignment = Alignment.Center) {
                             V5Donut(
@@ -85,10 +88,10 @@ internal fun V5TrafficScreen(
                                 up = if (total > 0L) totalUp.toFloat() / total else 0f,
                             )
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(stringResource(R.string.v5_traffic_total), fontSize = 10.5.sp, color = c.text2)
+                                Text(stringResource(R.string.v5_traffic_total), fontSize = V5Type.sp10_5, color = c.text2)
                                 Text(
                                     FormatUtils.traffic(total),
-                                    fontSize = 17.sp,
+                                    fontSize = V5Type.sp17,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
                                     color = c.text,
@@ -114,10 +117,10 @@ internal fun V5TrafficScreen(
                 // —— 每日柱状图：全部来自 records（此前 V5Charts.BarsChart 是硬编码假数据，
                 // 无论真实用量多少都画同一张图）
                 V5Card {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                         Text(
                             stringResource(R.string.traffic_chart_title),
-                            fontSize = 13.sp,
+                            fontSize = V5Type.sp13,
                             fontWeight = FontWeight.SemiBold,
                             color = c.text,
                         )
@@ -126,32 +129,20 @@ internal fun V5TrafficScreen(
                 }
             }
             if (data.isLoading) {
-                V5Card {
-                    Text(
-                        stringResource(R.string.v5_traffic_loading),
-                        fontSize = 12.5.sp,
-                        color = c.text3,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                    )
-                }
+                V5LoadingState(text = stringResource(R.string.v5_traffic_loading))
             }
             // 加载失败且一条记录都没有 = 死路：此前只有一行红字，没有任何出口。
-            // 现在给错误态 + 可点重试（与订单页 ErrorState(onRetry) 同一约定）。
+            // 现在走统一错误态：重试（主行动）+ 错误详情 + 一键导出诊断（次行动）。
             data.errorMessageRes?.let { res ->
                 if (!hasRecords && !data.isLoading) {
-                    V5Card {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            V5Banner(ChipTone.DANGER, stringResource(res))
-                            data.errorDetail?.let { detail ->
-                                Text(
-                                    text = stringResource(R.string.traffic_load_failed_detail, detail),
-                                    fontSize = 11.5.sp,
-                                    color = c.text3,
-                                )
-                            }
-                            V5Button(stringResource(R.string.notice_retry), ButtonStyle.TONAL, small = true, onClick = onRetry)
-                        }
-                    }
+                    V5ErrorState(
+                        message = stringResource(res),
+                        onRetry = onRetry,
+                        retryText = stringResource(R.string.notice_retry),
+                        detail = data.errorDetail?.let { stringResource(R.string.traffic_load_failed_detail, it) },
+                        secondaryText = stringResource(R.string.diag_export),
+                        onSecondary = onExportDiagnostics,
+                    )
                 }
             }
             // 已有数据但刷新失败：内联横幅。此前这种失败写进了 toastRes，而 toastRes 全仓无消费者
@@ -162,26 +153,28 @@ internal fun V5TrafficScreen(
                     data.errorDetail?.let { detail ->
                         Text(
                             text = stringResource(R.string.traffic_load_failed_detail, detail),
-                            fontSize = 11.sp,
+                            fontSize = V5Type.sp11,
                             color = c.text3,
                         )
                     }
                 }
             }
             if (!hasRecords && !data.isLoading && data.errorMessageRes == null) {
-                V5Card {
-                    Text(
-                        stringResource(R.string.v5_traffic_empty),
-                        fontSize = 12.5.sp,
-                        color = c.text3,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                // 区分「确实没有记录」与「面板没有这个接口」：后者此前显示成「暂无流量记录」，
+                // 等于告诉用户"你没用过流量"，与事实相反。
+                if (data.backendSupportsLog) {
+                    V5EmptyState(title = stringResource(R.string.v5_traffic_empty))
+                } else {
+                    V5EmptyState(
+                        title = stringResource(R.string.v5_traffic_unsupported_title),
+                        description = stringResource(R.string.v5_traffic_unsupported),
                     )
                 }
             }
             if (data.records.isNotEmpty()) {
                 V5CardFlat(Modifier.fillMaxWidth()) {
                     data.records.forEachIndexed { index, record ->
-                        if (index > 0) HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                        if (index > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -189,10 +182,10 @@ internal fun V5TrafficScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(record.date, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = c.text)
+                                Text(record.date, fontSize = V5Type.sp13_5, fontWeight = FontWeight.SemiBold, color = c.text)
                                 Text(
                                     stringResource(R.string.v5_traffic_down) + " " + FormatUtils.traffic(record.downloadBytes),
-                                    fontSize = 11.5.sp,
+                                    fontSize = V5Type.sp11_5,
                                     fontFamily = FontFamily.Monospace,
                                     color = c.text3,
                                 )
@@ -200,14 +193,14 @@ internal fun V5TrafficScreen(
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     FormatUtils.traffic(record.totalBytes),
-                                    fontSize = 14.sp,
+                                    fontSize = V5Type.sp14,
                                     fontWeight = FontWeight.SemiBold,
                                     fontFamily = FontFamily.Monospace,
                                     color = c.text,
                                 )
                                 Text(
                                     stringResource(R.string.v5_traffic_up) + " " + FormatUtils.traffic(record.uploadBytes),
-                                    fontSize = 11.5.sp,
+                                    fontSize = V5Type.sp11_5,
                                     fontFamily = FontFamily.Monospace,
                                     color = c.text3,
                                 )
@@ -215,7 +208,7 @@ internal fun V5TrafficScreen(
                         }
                     }
                 }
-                Spacer(Modifier.padding(top = 4.dp))
+                Spacer(Modifier.padding(top = V5Spacing.dp4))
                 V5Chip(ChipTone.NEUTRAL, stringResource(R.string.v5_traffic_hint))
             }
         }
@@ -238,19 +231,19 @@ private fun TrafficLegend(
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8),
     ) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-        Text(label, fontSize = 12.5.sp, color = c.text2)
+        Box(Modifier.size(V5Spacing.dp8).clip(CircleShape).background(color))
+        Text(label, fontSize = V5Type.sp12_5, color = c.text2)
         Spacer(Modifier.weight(1f))
         Text(
             value,
-            fontSize = 13.5.sp,
+            fontSize = V5Type.sp13_5,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
             color = c.text,
         )
-        Text(percent, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = c.text3)
+        Text(percent, fontSize = V5Type.sp12, fontFamily = FontFamily.Monospace, color = c.text3)
     }
 }
 

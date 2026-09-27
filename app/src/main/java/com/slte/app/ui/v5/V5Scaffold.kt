@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.slte.app.ui.theme.V5Spacing
 
 /** 页面骨架：氛围底 + 状态栏避让 + 可选悬浮胶囊导航。 */
 @Composable
@@ -43,7 +44,7 @@ fun V5PageScaffold(
                 active = tab,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 14.dp, end = 14.dp, bottom = 16.dp)
+                    .padding(start = V5Spacing.dp14, end = V5Spacing.dp14, bottom = V5Spacing.dp16)
                     .navigationBarsPadding(),
                 onSelect = onNavSelect,
             )
@@ -63,8 +64,8 @@ fun V5ScrollBody(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, bottom = (if (tab != null) 118.dp else 20.dp) + navInset),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(start = V5Spacing.dp16, end = V5Spacing.dp16, bottom = (if (tab != null) 118.dp else V5Spacing.dp20) + navInset),
+        verticalArrangement = Arrangement.spacedBy(V5Spacing.dp14),
         content = content,
     )
 }
@@ -80,8 +81,8 @@ fun V5PageBody(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp + navInset),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(start = V5Spacing.dp16, end = V5Spacing.dp16, bottom = 24.dp + navInset),
+        verticalArrangement = Arrangement.spacedBy(V5Spacing.dp14),
         content = content,
     )
 }

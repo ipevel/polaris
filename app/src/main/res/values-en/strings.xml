@@ -343,6 +343,9 @@
     <string name="v5_traffic_up">Up</string>
     <string name="v5_traffic_loading">Loading…</string>
     <string name="v5_traffic_empty">No traffic records</string>
+    <string name="v5_traffic_unsupported_title">Panel does not support traffic details</string>
+    <string name="v5_traffic_unsupported">This panel has no per-day traffic API; only total usage is available</string>
+    <string name="diag_export">Export diagnostics</string>
     <string name="v5_traffic_hint">Daily summary from panel traffic log</string>
     <!-- Structural members have no latency of their own: DIRECT/REJECT have no remote peer,
          and a group's delay comes from the kernel's own probing (interval=300). -->

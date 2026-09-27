@@ -38,11 +38,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.slte.app.R
 import com.slte.app.ui.screen.main.DashboardData
+import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.GradientIcon
@@ -81,17 +82,17 @@ private fun SpeedTile(
             // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
             Text(
                 "--",
-                fontSize = 16.sp,
+                fontSize = V5Type.sp16,
                 fontWeight = FontWeight.Bold,
                 color = V5ThemeColors.current.text3,
             )
         } else {
             Text(
                 buildAnnotatedString {
-                    withStyle(SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
+                    withStyle(SpanStyle(fontSize = V5Type.sp16, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
                         append(FormatUtils.traffic(bps))
                     }
-                    withStyle(SpanStyle(fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
+                    withStyle(SpanStyle(fontSize = V5Type.sp11, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
                         // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
                         // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。等价的现成写法见 FormatUtils.speed()。
                         append("/s")
@@ -131,11 +132,11 @@ private fun PlanUsageCard(
     val usedColor = if (nearLimit) c.danger else c.accent
     V5Card(modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                 GradientIcon(IconTone.BLUE, Icons.Outlined.CreditCard)
                 Text(
                     data.planName.ifBlank { stringResource(R.string.usage_no_plan) },
-                    fontSize = 15.sp,
+                    fontSize = V5Type.sp15,
                     fontWeight = FontWeight.SemiBold,
                     color = c.text,
                 )
@@ -145,28 +146,28 @@ private fun PlanUsageCard(
                     if (data.isValid) stringResource(R.string.usage_valid) else stringResource(R.string.usage_expired),
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.usage_used), fontSize = 12.5.sp, color = c.text2)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp6)) {
+                Text(stringResource(R.string.usage_used), fontSize = V5Type.sp12_5, color = c.text2)
                 Text(
                     FormatUtils.traffic(data.usedBytes),
-                    fontSize = 14.sp,
+                    fontSize = V5Type.sp14,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = usedColor,
                 )
-                Text(stringResource(R.string.usage_total, FormatUtils.traffic(data.totalBytes)), fontSize = 12.5.sp, color = c.text3)
+                Text(stringResource(R.string.usage_total, FormatUtils.traffic(data.totalBytes)), fontSize = V5Type.sp12_5, color = c.text3)
                 Spacer(Modifier.weight(1f))
                 Text(
                     "${(fraction * 100).toInt()}%",
-                    fontSize = 12.5.sp,
+                    fontSize = V5Type.sp12_5,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = usedColor,
                 )
             }
             ProgressTrack(fraction, brush = if (nearLimit) SolidColor(c.danger) else null)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(expiryText, fontSize = 12.5.sp, color = c.text3)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8)) {
+                Text(expiryText, fontSize = V5Type.sp12_5, color = c.text3)
                 Spacer(Modifier.weight(1f))
                 V5Button(
                     stringResource(if (data.hasPlan) R.string.plan_renew_button else R.string.plan_buy_button),
@@ -200,13 +201,13 @@ private fun SessionCard(data: DashboardData) {
             stringResource(R.string.session_not_running)
         }
     V5Card {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp12)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.session_title), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = c.text)
+                Text(stringResource(R.string.session_title), fontSize = V5Type.sp15, fontWeight = FontWeight.SemiBold, color = c.text)
                 Spacer(Modifier.weight(1f))
                 Text(
                     statusText,
-                    fontSize = 11.5.sp,
+                    fontSize = V5Type.sp11_5,
                     fontFamily = FontFamily.Monospace,
                     color = c.text3,
                 )
@@ -366,7 +367,7 @@ internal fun V5HomeScreen(
                 }
             }
             // —— 速率瓷片
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                 SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, connected, Modifier.weight(1f))
                 SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, connected, Modifier.weight(1f))
             }
