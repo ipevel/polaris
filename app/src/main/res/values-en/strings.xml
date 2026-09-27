@@ -372,6 +372,7 @@
     <string name="me_invite">Invite</string>
     <string name="me_tickets">Tickets</string>
     <string name="me_notices">Notices</string>
+    <string name="me_services">My services</string>
     <string name="me_about">About</string>
     <string name="usage_no_plan">No plan</string>
     <string name="usage_valid">Valid</string>
@@ -379,6 +380,7 @@
     <string name="usage_used">Used</string>
     <string name="usage_total">/ %1$s</string>
     <string name="usage_expired_on">Expired on %1$s</string>
+    <string name="usage_title">Plan usage</string>
     <string name="session_title">Session</string>
     <string name="session_running">Running</string>
     <string name="session_not_running">Not running</string>
@@ -526,4 +528,6 @@
     <string name="traffic_detail_section">Daily breakdown</string>
 
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_group_general">General</string>
+    <string name="settings_group_remind">Reminders</string>
 </resources>

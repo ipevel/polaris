@@ -368,6 +368,7 @@
     <string name="me_invite">邀请返利</string>
     <string name="me_tickets">我的工单</string>
     <string name="me_notices">公告通知</string>
+    <string name="me_services">我的服务</string>
     <string name="me_about">关于软件</string>
     <string name="usage_no_plan">暂无套餐</string>
     <string name="usage_valid">有效</string>
@@ -375,6 +376,7 @@
     <string name="usage_used">已用</string>
     <string name="usage_total">/ %1$s</string>
     <string name="usage_expired_on">已于 %1$s 到期</string>
+    <string name="usage_title">套餐用量</string>
     <string name="session_title">会话信息</string>
     <string name="session_running">运行中</string>
     <string name="session_not_running">未运行</string>
@@ -522,4 +524,6 @@
     <string name="traffic_detail_section">每日明细</string>
 
     <string name="settings_appearance">外观</string>
+    <string name="settings_group_general">通用</string>
+    <string name="settings_group_remind">提醒</string>
 </resources>

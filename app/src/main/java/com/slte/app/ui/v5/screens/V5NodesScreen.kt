@@ -4,6 +4,8 @@
 package com.slte.app.ui.v5.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,15 +45,18 @@ import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.NavTab
+import com.slte.app.ui.v5.SectionTitle
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
+import com.slte.app.ui.v5.V5Divider
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.V5TopIconButton
+import com.slte.app.ui.v5.v5Enter
 
 /* ============================================================
    v5 节点页（组 → 成员两层）
@@ -172,7 +176,7 @@ internal fun V5NodesScreen(
         }
         V5ScrollBody(NavTab.NODES) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = V5Spacing.dp4),
+                Modifier.fillMaxWidth().padding(horizontal = V5Spacing.dp4).v5Enter(0),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -198,6 +202,7 @@ internal fun V5NodesScreen(
             // 折叠键用 PRIMARY_SECTION_KEY 而非组名：主组的解析结果会回退/漂移，
             // 用组名做键会与"同名分流组"共用键互相踩（见 RoutingGroups.PRIMARY_SECTION_KEY）。
             NodeGroupCard(
+                modifier = Modifier.v5Enter(1),
                 name = primary?.name ?: stringResource(R.string.v5_all_nodes),
                 nowLabel = primary?.now ?: stringResource(R.string.v5_group_unset),
                 selectedName = primary?.now,
@@ -218,28 +223,26 @@ internal fun V5NodesScreen(
             // （ServerViewModel.toggleSection 内保证）：每条分流组都 include-all 了全部节点，
             // 而本页滚动体是非懒加载的 Column，全展开会组合出「组数 × 节点数」行。
             if (groupsForRouting.isNotEmpty()) {
-                Text(
-                    stringResource(R.string.v5_routing_groups),
-                    fontSize = V5Type.sp11,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = V5Type.trackingWide,
-                    color = c.text3,
-                    modifier = Modifier.padding(horizontal = V5Spacing.dp4),
-                )
-                groupsForRouting.forEach { group ->
-                    NodeGroupCard(
-                        name = group.name,
-                        nowLabel = groupExitLabel(group, primary?.name),
-                        selectedName = group.now,
-                        // 分流组同样过滤「故障转移」，保留 now 命中项；并套用与「节点选择」相同的
-                        // 面板顺序重排（此前漏了 orderMembers，导致两组排序不一致）
-                        members = orderMembers(visibleGroupMembers(group.members, group.now), nodeOrder),
-                        collapsed = group.name in collapsedSections,
-                        enabled = true,
-                        isLoading = isLoadingGroups,
-                        onToggle = { onToggleSection(group.name) },
-                        onSelect = { onSelectInGroup(group.name, it) },
-                    )
+                Column(
+                    modifier = Modifier.v5Enter(2),
+                    verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+                ) {
+                    SectionTitle(stringResource(R.string.v5_routing_groups))
+                    groupsForRouting.forEach { group ->
+                        NodeGroupCard(
+                            name = group.name,
+                            nowLabel = groupExitLabel(group, primary?.name),
+                            selectedName = group.now,
+                            // 分流组同样过滤「故障转移」，保留 now 命中项；并套用与「节点选择」相同的
+                            // 面板顺序重排（此前漏了 orderMembers，导致两组排序不一致）
+                            members = orderMembers(visibleGroupMembers(group.members, group.now), nodeOrder),
+                            collapsed = group.name in collapsedSections,
+                            enabled = true,
+                            isLoading = isLoadingGroups,
+                            onToggle = { onToggleSection(group.name) },
+                            onSelect = { onSelectInGroup(group.name, it) },
+                        )
+                    }
                 }
             } else if (isLoadingGroups) {
                 V5Card {
@@ -254,7 +257,7 @@ internal fun V5NodesScreen(
 
             // —— 底部：分流规则管理（方块入口）+ 本地分流方案开关（按产品要求不加小字描述）
             // 这两项原先在「设置」页，已迁到本页（设置页不再出现，避免同一设置两处入口）。
-            V5CardFlat(Modifier.fillMaxWidth()) {
+            V5CardFlat(Modifier.fillMaxWidth().v5Enter(3)) {
                 V5RowItem(
                     title = stringResource(R.string.settings_routing_rules),
                     icon = SlteIcons.Route,
@@ -262,7 +265,7 @@ internal fun V5NodesScreen(
                     chevron = true,
                     onClick = onRoutingRules,
                 )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.settings_local_routing),
                     trailing = {
@@ -298,9 +301,10 @@ private fun NodeGroupCard(
     // 非空 = 这份名单是**只读**兜底（内核未运行，来自订阅缓存）：顶部显示说明文字，
     // 且每行不可点（没有内核可切，点了不会有任何效果，给交互反馈就是假交互）。
     readOnlyHint: String? = null,
+    modifier: Modifier = Modifier,
 ) {
     val c = V5ThemeColors.current
-    V5CardFlat(Modifier.fillMaxWidth()) {
+    V5CardFlat(modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -342,7 +346,7 @@ private fun NodeGroupCard(
             else -> {
                 readOnlyHint?.let { GroupPlaceholder(it) }
                 members.forEachIndexed { index, member ->
-                    if (index > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                    if (index > 0) V5Divider()
                     MemberRow(
                         member = member,
                         selected = member.name == selectedName,

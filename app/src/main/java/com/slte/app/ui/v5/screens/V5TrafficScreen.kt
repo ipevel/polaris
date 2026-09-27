@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,10 +32,12 @@ import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.BarsChart
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.NavTab
+import com.slte.app.ui.v5.SectionTitle
 import com.slte.app.ui.v5.V5Banner
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
+import com.slte.app.ui.v5.V5Divider
 import com.slte.app.ui.v5.V5Donut
 import com.slte.app.ui.v5.V5EmptyState
 import com.slte.app.ui.v5.V5ErrorState
@@ -43,6 +45,7 @@ import com.slte.app.ui.v5.V5LoadingState
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.v5Enter
 import com.slte.app.utils.FormatUtils
 import kotlin.math.roundToInt
 
@@ -51,8 +54,8 @@ import kotlin.math.roundToInt
    （数据接线：TrafficViewModel 的 TrafficData）
    ============================================================ */
 
-/** 环形图直径；中心要放得下「合计流量」+ 数值两行，故不能更小。 */
-private val DonutSize = 116.dp
+/** 环形直径。中心不放文字（合计已移到右侧），环可以做得更粗；但也不能太大——右侧统计栏要放得下「116.57GB 90%」这种最长的一行。 */
+private val DonutSize = 132.dp
 
 @Composable
 internal fun V5TrafficScreen(
@@ -69,36 +72,35 @@ internal fun V5TrafficScreen(
     V5PageScaffold(tab = NavTab.TRAFFIC, onNavSelect = onNavSelect) {
         V5TopBar(stringResource(R.string.page_traffic))
         V5ScrollBody(NavTab.TRAFFIC) {
-            // —— 用量环形（整改要求 4）：此前只有「合计」一个大数字加两块并排瓷片，
-            // 上下行占比要靠心算。现在环形图 + 中心合计 + 右侧图例一次说清比例与数值。
+            // —— 用量环形：双环（外环下行 / 内环上行）+ 右侧统计。
+            // 合计数字原本压在环心，会限制环的尺寸；挪到右侧后环心留空，双环可以做得更粗更大。
             // 仍然只在**确有记录**时渲染：否则会把"没拿到数据"伪装成"流量为 0"
             // （无套餐 / 加载失败时尤其误导）。
             if (hasRecords) {
-                V5Card {
+                V5Card(Modifier.v5Enter(0)) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp18),
+                        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp16),
                     ) {
-                        Box(Modifier.size(DonutSize), contentAlignment = Alignment.Center) {
-                            V5Donut(
-                                size = DonutSize,
-                                stroke = 13.dp,
-                                down = if (total > 0L) totalDown.toFloat() / total else 0f,
-                                up = if (total > 0L) totalUp.toFloat() / total else 0f,
-                            )
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(stringResource(R.string.v5_traffic_total), fontSize = V5Type.sp10_5, color = c.text2)
+                        V5Donut(
+                            size = DonutSize,
+                            down = if (total > 0L) totalDown.toFloat() / total else 0f,
+                            up = if (total > 0L) totalUp.toFloat() / total else 0f,
+                        )
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
+                            // 合计是头条数字：置顶、加大，再一条细分隔线把它与两个方向分开。
+                            Column {
+                                Text(stringResource(R.string.v5_traffic_total), fontSize = V5Type.sp11_5, color = c.text3)
                                 Text(
                                     FormatUtils.traffic(total),
-                                    fontSize = V5Type.sp17,
+                                    fontSize = V5Type.sp16,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
                                     color = c.text,
                                 )
                             }
-                        }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                            V5Divider()
                             TrafficLegend(
                                 c.accent,
                                 stringResource(R.string.v5_traffic_down),
@@ -116,14 +118,12 @@ internal fun V5TrafficScreen(
                 }
                 // —— 每日柱状图：全部来自 records（此前 V5Charts.BarsChart 是硬编码假数据，
                 // 无论真实用量多少都画同一张图）
-                V5Card {
-                    Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
-                        Text(
-                            stringResource(R.string.traffic_chart_title),
-                            fontSize = V5Type.sp13,
-                            fontWeight = FontWeight.SemiBold,
-                            color = c.text,
-                        )
+                Column(
+                    modifier = Modifier.v5Enter(1),
+                    verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+                ) {
+                    SectionTitle(stringResource(R.string.traffic_chart_title))
+                    V5Card {
                         BarsChart(records = data.records)
                     }
                 }
@@ -172,38 +172,44 @@ internal fun V5TrafficScreen(
                 }
             }
             if (data.records.isNotEmpty()) {
-                V5CardFlat(Modifier.fillMaxWidth()) {
-                    data.records.forEachIndexed { index, record ->
-                        if (index > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 15.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(record.date, fontSize = V5Type.sp13_5, fontWeight = FontWeight.SemiBold, color = c.text)
-                                Text(
-                                    stringResource(R.string.v5_traffic_down) + " " + FormatUtils.traffic(record.downloadBytes),
-                                    fontSize = V5Type.sp11_5,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = c.text3,
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    FormatUtils.traffic(record.totalBytes),
-                                    fontSize = V5Type.sp14,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = c.text,
-                                )
-                                Text(
-                                    stringResource(R.string.v5_traffic_up) + " " + FormatUtils.traffic(record.uploadBytes),
-                                    fontSize = V5Type.sp11_5,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = c.text3,
-                                )
+                Column(
+                    modifier = Modifier.v5Enter(2),
+                    verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+                ) {
+                    SectionTitle(stringResource(R.string.traffic_detail_section))
+                    V5CardFlat(Modifier.fillMaxWidth()) {
+                        data.records.forEachIndexed { index, record ->
+                            if (index > 0) V5Divider()
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 15.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(record.date, fontSize = V5Type.sp13_5, fontWeight = FontWeight.SemiBold, color = c.text)
+                                    Text(
+                                        stringResource(R.string.v5_traffic_down) + " " + FormatUtils.traffic(record.downloadBytes),
+                                        fontSize = V5Type.sp11_5,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = c.text3,
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        FormatUtils.traffic(record.totalBytes),
+                                        fontSize = V5Type.sp14,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = c.text,
+                                    )
+                                    Text(
+                                        stringResource(R.string.v5_traffic_up) + " " + FormatUtils.traffic(record.uploadBytes),
+                                        fontSize = V5Type.sp11_5,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = c.text3,
+                                    )
+                                }
                             }
                         }
                     }
@@ -231,19 +237,22 @@ private fun TrafficLegend(
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8),
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp6),
     ) {
-        Box(Modifier.size(V5Spacing.dp8).clip(CircleShape).background(color))
-        Text(label, fontSize = V5Type.sp12_5, color = c.text2)
+        Box(Modifier.size(V5Spacing.dp6).clip(CircleShape).background(color))
+        Text(label, fontSize = V5Type.sp11_5, color = c.text2)
         Spacer(Modifier.weight(1f))
         Text(
             value,
-            fontSize = V5Type.sp13_5,
+            fontSize = V5Type.sp12_5,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
             color = c.text,
         )
-        Text(percent, fontSize = V5Type.sp12, fontFamily = FontFamily.Monospace, color = c.text3)
+        // 值与占比之间留一道硬间隙：靠 Spacer(weight) 分配时，最长的一行
+        // （116.57GB 90%）会把弹性间距压成 0，两个数字贴在一起读不出来。
+        Spacer(Modifier.width(V5Spacing.dp8))
+        Text(percent, fontSize = V5Type.sp11, fontFamily = FontFamily.Monospace, color = c.text3)
     }
 }
 

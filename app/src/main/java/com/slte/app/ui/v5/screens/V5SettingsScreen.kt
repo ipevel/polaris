@@ -3,8 +3,9 @@
 
 package com.slte.app.ui.v5.screens
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,12 +19,15 @@ import com.slte.app.ui.screen.settings.SettingsViewModel
 import com.slte.app.ui.theme.V5Spacing
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.theme.V5Type
+import com.slte.app.ui.v5.SectionTitle
 import com.slte.app.ui.v5.V5CardFlat
+import com.slte.app.ui.v5.V5Divider
 import com.slte.app.ui.v5.V5PageBody
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.v5Enter
 
 /* ============================================================
    v5 设置页：分流规则入口 + 本地分流开关 + 外观/语言/TUN/提醒/改密
@@ -48,62 +52,74 @@ internal fun V5SettingsScreen(
             // 分流相关的两个入口（分流规则管理 / 本地分流方案开关）已迁到节点页底部，
             // 这里不再出现，避免同一设置项两处入口。
             // —— 通用
-            V5CardFlat(Modifier) {
-                V5RowItem(
-                    title = stringResource(R.string.settings_appearance),
-                    value = stringResource(appearanceLabel(viewModel)),
-                    chevron = true,
-                    onClick = onAppearance,
-                )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
-                V5RowItem(
-                    title = stringResource(R.string.settings_language),
-                    value = stringResource(languageLabel(viewModel)),
-                    chevron = true,
-                    onClick = onLanguage,
-                )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
-                V5RowItem(
-                    title = stringResource(R.string.settings_tun_stack),
-                    value = stringResource(data.tunStackMode.labelRes),
-                    chevron = true,
-                    onClick = onTunStack,
-                )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
-                V5RowItem(
-                    title = stringResource(R.string.settings_change_password),
-                    chevron = true,
-                    onClick = onChangePassword,
-                )
+            Column(
+                modifier = Modifier.v5Enter(0),
+                verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+            ) {
+                SectionTitle(stringResource(R.string.settings_group_general))
+                V5CardFlat(Modifier) {
+                    V5RowItem(
+                        title = stringResource(R.string.settings_appearance),
+                        value = stringResource(appearanceLabel(viewModel)),
+                        chevron = true,
+                        onClick = onAppearance,
+                    )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.settings_language),
+                        value = stringResource(languageLabel(viewModel)),
+                        chevron = true,
+                        onClick = onLanguage,
+                    )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.settings_tun_stack),
+                        value = stringResource(data.tunStackMode.labelRes),
+                        chevron = true,
+                        onClick = onTunStack,
+                    )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.settings_change_password),
+                        chevron = true,
+                        onClick = onChangePassword,
+                    )
+                }
             }
 
             // —— 提醒
-            V5CardFlat(Modifier) {
-                V5RowItem(
-                    title = stringResource(R.string.settings_expire_remind),
-                    trailing = {
-                        V5Switch(checked = data.expireRemindEnabled)
-                    },
-                    onClick =
-                    if (data.remindSync == com.slte.app.ui.screen.settings.RemindSync.Idle) {
-                        { viewModel.setExpireRemind(!data.expireRemindEnabled) }
-                    } else {
-                        null
-                    },
-                )
-                HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
-                V5RowItem(
-                    title = stringResource(R.string.settings_traffic_remind),
-                    trailing = {
-                        V5Switch(checked = data.trafficRemindEnabled)
-                    },
-                    onClick =
-                    if (data.remindSync == com.slte.app.ui.screen.settings.RemindSync.Idle) {
-                        { viewModel.setTrafficRemind(!data.trafficRemindEnabled) }
-                    } else {
-                        null
-                    },
-                )
+            Column(
+                modifier = Modifier.v5Enter(1),
+                verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+            ) {
+                SectionTitle(stringResource(R.string.settings_group_remind))
+                V5CardFlat(Modifier) {
+                    V5RowItem(
+                        title = stringResource(R.string.settings_expire_remind),
+                        trailing = {
+                            V5Switch(checked = data.expireRemindEnabled)
+                        },
+                        onClick =
+                        if (data.remindSync == com.slte.app.ui.screen.settings.RemindSync.Idle) {
+                            { viewModel.setExpireRemind(!data.expireRemindEnabled) }
+                        } else {
+                            null
+                        },
+                    )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.settings_traffic_remind),
+                        trailing = {
+                            V5Switch(checked = data.trafficRemindEnabled)
+                        },
+                        onClick =
+                        if (data.remindSync == com.slte.app.ui.screen.settings.RemindSync.Idle) {
+                            { viewModel.setTrafficRemind(!data.trafficRemindEnabled) }
+                        } else {
+                            null
+                        },
+                    )
+                }
             }
 
             data.errorMessageRes?.let { res ->

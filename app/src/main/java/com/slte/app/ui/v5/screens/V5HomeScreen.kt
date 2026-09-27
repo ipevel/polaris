@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -54,6 +57,7 @@ import com.slte.app.ui.v5.LedgerData
 import com.slte.app.ui.v5.MacaronTile
 import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.ProgressTrack
+import com.slte.app.ui.v5.SectionTitle
 import com.slte.app.ui.v5.TileTone
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Card
@@ -64,6 +68,7 @@ import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.v5Enter
 import com.slte.app.utils.FormatUtils
 
 /* ============================================================
@@ -71,6 +76,12 @@ import com.slte.app.utils.FormatUtils
    （数据接线：MainViewModel 的 DashboardData）
    ============================================================ */
 
+/**
+ * 速率瓷片：数值用 [animateFloatAsState] 平滑过渡。
+ *
+ * 连接后速率每秒刷新，直接换字符串会让数字"跳"；用动画插值的数值做格式化，
+ * 读数在刷新之间连续滑动，长时间盯着看不会觉得界面在抖。
+ */
 @Composable
 private fun SpeedTile(
     tone: TileTone,
@@ -80,6 +91,12 @@ private fun SpeedTile(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val animatedBps by
+        animateFloatAsState(
+            targetValue = bps.toFloat(),
+            animationSpec = tween(650),
+            label = "speedTileBps",
+        )
     MacaronTile(tone, label, modifier, icon = icon, live = active) {
         if (!active) {
             // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
@@ -93,7 +110,7 @@ private fun SpeedTile(
             Text(
                 buildAnnotatedString {
                     withStyle(SpanStyle(fontSize = V5Type.sp16, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
-                        append(FormatUtils.traffic(bps))
+                        append(FormatUtils.traffic(animatedBps.toLong()))
                     }
                     withStyle(SpanStyle(fontSize = V5Type.sp11, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
                         // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
@@ -203,10 +220,14 @@ private fun SessionCard(data: DashboardData) {
         } else {
             stringResource(R.string.session_not_running)
         }
+    // 会话信息：页面上唯一的实体卡（第三级"实体卡"层的代表）。内部账本行自带浅底，
+    // 外层保留一张白卡把"这一段是会话信息"框起来，与上方无卡片的舞台区、下方扁平行拉开层次。
     V5Card {
         Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp12)) {
+            // 卡内不再重复「会话信息」标题：卡片上方的 SectionTitle 已经承担了这段的命名，
+            // 卡里再写一遍就是同一句话说两次（观感上像标题的残影）。这里只留状态文字，
+            // 靠右对齐顶在第一行，卡片的"标题行"由状态本身充当。
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.session_title), fontSize = V5Type.sp15, fontWeight = FontWeight.SemiBold, color = c.text)
                 Spacer(Modifier.weight(1f))
                 Text(
                     statusText,
@@ -218,6 +239,9 @@ private fun SessionCard(data: DashboardData) {
             // 四项一行一项（整改要求 5）：形式照「内网IP / 内存占用」的账本行（左标签 + 右等宽值），
             // 效果照「当前IP / 本次用量」的瓷片（同色系底色）。此前 IP 与用量挤在两个并排瓷片里，
             // 窄屏下 IPv6 这类长值必然被截断——一行一项才显示得开。
+            // 这些账本行自带浅色底与圆角，**不再外套白色 V5Card/V5CardFlat**：
+            // 卡里再套一层白底会形成"卡中卡"，同一块信息被两层边界圈住，层级反而含糊
+            // （frontend-design 点名的 SaaS 卡套件观感）。
             V5Ledger(
                 listOf(
                     LedgerData(
@@ -227,17 +251,17 @@ private fun SessionCard(data: DashboardData) {
                         tone = TileTone.BLUE,
                     ),
                     LedgerData(
-                        stringResource(R.string.session_used),
-                        FormatUtils.traffic(data.sessionDownloadBytes + data.sessionUploadBytes),
-                        icon = Icons.Outlined.BarChart,
-                        tone = TileTone.ORANGE,
-                    ),
-                    LedgerData(
                         stringResource(R.string.session_lan_ip),
                         data.lanIp,
                         icon = Icons.Outlined.Memory,
                         color = if (connected) c.text else c.text3,
                         tone = TileTone.CYAN,
+                    ),
+                    LedgerData(
+                        stringResource(R.string.session_used),
+                        FormatUtils.traffic(data.sessionDownloadBytes + data.sessionUploadBytes),
+                        icon = Icons.Outlined.BarChart,
+                        tone = TileTone.ORANGE,
                     ),
                     LedgerData(
                         stringResource(R.string.session_memory),
@@ -325,7 +349,7 @@ internal fun V5HomeScreen(
 
     LaunchedEffect(Unit) { refreshKernelInfo() }
 
-    V5PageScaffold(tab = NavTab.HOME, onNavSelect = onNavSelect) {
+    V5PageScaffold(tab = NavTab.HOME, breathing = connected, connected = connected, onNavSelect = onNavSelect) {
         // 站点名由数据层合并（面板 comm/config → 面板域名 → 订阅 profile-title），
         // 未配置/未拉到才回退应用名。v5 改造时这里被写成固定 app_name，导致
         // DashboardData.siteName 一直是死数据（v4 首页的契约见 git 历史 MainScreen.kt）。
@@ -340,54 +364,50 @@ internal fun V5HomeScreen(
             }
         }
         V5ScrollBody(NavTab.HOME) {
-            // —— 主角：大圆连接钮卡
-            V5Card {
-                // fillMaxWidth 是必需的：卡片本身按内容宽收缩，而这里最宽的子树只有
-                // 176dp 圆钮（352px），少了它就只剩约一半屏宽、与下方通栏瓷片对不齐
-                // ——原来是卡片里那行状态 Row 自带 fillMaxWidth 在"撑"着宽度，删掉那行
-                // （整改要求 1）后必须自己撑。
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    // 卡片内不再放「未受保护 / 等待连接」那一组状态：顶栏已经有唯一的连接状态，
-                    // 两者重复（整改要求 1：两个都取消掉）。
-                    HeroConnectButton(
-                        connected = connected,
-                        connecting = connecting,
-                        onClick = handleToggle,
-                    )
-                    // 节点（含延迟）在按钮**下方**（整改要求 2：按钮在前、节点状态在后）。
-                    // 32dp 是硬约束而非审美取值：圆钮的光环/脉冲环向下溢出约 23dp
-                    // （V5Components.kt 的 drawBehind r+13dp、脉冲环 r+23dp），余量不足会
-                    // 重新出现"按钮挡住节点"的历史缺陷。
-                    // 延迟取自测速缓存（未测过则不显示，不写"未测"以免误导）；出口是
-                    // 「自动选择」时 serverName 已被 serverInfo() 解析为其当前选中的叶子节点，
-                    // 因此这里显示的确实是那个节点的延迟。
-                    V5Chip(
-                        if (connected) ChipTone.OK else ChipTone.ACCENT,
-                        if (connected) {
-                            val base = stringResource(R.string.v5_connected_node, data.serverName)
-                            val delay = data.exitDelay
-                            if (delay != null && delay > 0) "$base · $delay ms" else base
-                        } else {
-                            stringResource(R.string.v5_ready_no_node)
-                        },
-                        dot = !connected,
-                        icon = if (connected) Icons.Outlined.Shield else null,
-                        large = true,
-                        modifier = Modifier.padding(top = 32.dp),
-                    )
-                }
+            // —— 第一级：舞台区。连接钮是首页的主角，**不给它套卡片**。
+            // 卡片边界会把主角降格成"又一个白块"，与下面真正的信息卡抢层级；
+            // 去掉后连接钮直接坐在氛围底上，只有它和状态胶囊占据这块空间。
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.v5Enter(0).fillMaxWidth(),
+            ) {
+                // 卡片内不再放「未受保护 / 等待连接」那一组状态：顶栏已经有唯一的连接状态，
+                // 两者重复（整改要求 1：两个都取消掉）。
+                HeroConnectButton(
+                    connected = connected,
+                    connecting = connecting,
+                    onClick = handleToggle,
+                )
+                // 节点（含延迟）在按钮**下方**（整改要求 2：按钮在前、节点状态在后）。
+                // 圆钮向下偏移 10dp，光弧紧贴外缘、粒子再向外飞约 18dp，因此这里留 32dp
+                // 作为硬约束而非审美取值——余量不足会重现"按钮挡住节点"的历史缺陷。
+                // 延迟取自测速缓存（未测过则不显示，不写"未测"以免误导）；出口是
+                // 「自动选择」时 serverName 已被 serverInfo() 解析为其当前选中的叶子节点，
+                // 因此这里显示的确实是那个节点的延迟。
+                V5Chip(
+                    if (connected) ChipTone.OK else ChipTone.ACCENT,
+                    if (connected) {
+                        val base = stringResource(R.string.v5_connected_node, data.serverName)
+                        val delay = data.exitDelay
+                        if (delay != null && delay > 0) "$base · $delay ms" else base
+                    } else {
+                        stringResource(R.string.v5_ready_no_node)
+                    },
+                    dot = !connected,
+                    icon = if (connected) Icons.Outlined.Shield else null,
+                    large = true,
+                    modifier = Modifier.padding(top = 32.dp),
+                )
             }
-            // —— 速率瓷片
-            Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
+            // —— 第二级：速率瓷片（扁平的并排小块，不套卡片）
+            Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10), modifier = Modifier.v5Enter(1)) {
                 SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, connected, Modifier.weight(1f))
                 SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, connected, Modifier.weight(1f))
             }
             // —— 代理模式（出口策略：规则/全局/直连）：v5 改造时入口丢失、功能整体不可达，
             //    这里在首页接回入口，复用既有 ProxyModeSheet 与 MainViewModel.setProxyMode。
-            V5CardFlat(Modifier) {
+            //    它是最轻的一级（扁平行），夹在瓷片与实体卡之间，承担"过渡层"。
+            V5CardFlat(Modifier.v5Enter(2)) {
                 V5RowItem(
                     title = stringResource(R.string.action_proxy_mode),
                     value = proxyModeLabelRes(data.proxyMode)?.let { stringResource(it) },
@@ -395,8 +415,15 @@ internal fun V5HomeScreen(
                     onClick = onProxyModeClick,
                 )
             }
-            SessionCard(data)
-            PlanUsageCard(data, onRenew)
+            // —— 第三级：实体卡。用 SectionTitle 起头，把"这一段是什么"讲清楚。
+            Column(Modifier.v5Enter(3), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
+                SectionTitle(stringResource(R.string.session_title))
+                SessionCard(data)
+            }
+            Column(Modifier.v5Enter(4), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
+                SectionTitle(stringResource(R.string.usage_title))
+                PlanUsageCard(data, onRenew)
+            }
         }
     }
 }

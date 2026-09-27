@@ -106,8 +106,11 @@ val LightV5Colors = V5Colors(
     tileCyan = TileColors(Color(0xFFE4F6FB), Color(0xFF119FC7)),
     navBg = Color(0xE6FFFFFF),
     navOn = Color(0xFFEFF1F7),
-    auroraGlow1 = Color(0x136366F1),
-    auroraGlow2 = Color(0x0BEC4899),
+    // 氛围光晕：原值 0x13/0x0B 在 1080p 屏上几乎不可见（整屏读起来就是一块灰白），
+    // 品牌色因此进不到空间感里、页面显"平"。提到 0x2E/0x1C 后光晕仍属"氛围"量级
+    // （不干扰白卡上的文字对比度），但能撑起顶部蓝、右上粉紫两处色彩落点。
+    auroraGlow1 = Color(0x2E6366F1),
+    auroraGlow2 = Color(0x1CEC4899),
     cardShadow = Color(0x2E262E50),
 )
 
@@ -145,8 +148,9 @@ val DarkV5Colors = V5Colors(
     tileCyan = TileColors(Color(0x2138BDF8), Color(0xFF6FD0F2)),
     navBg = Color(0xEB171A25),
     navOn = Color(0xFF2A3042),
-    auroraGlow1 = Color(0x1F6366F1),
-    auroraGlow2 = Color(0x0FEC4899),
+    // 暗色底本来就深，光晕只需比亮色略强一点点就能被看见（见亮色处注释）。
+    auroraGlow1 = Color(0x3D6366F1),
+    auroraGlow2 = Color(0x24EC4899),
     cardShadow = Color(0x14000000),
 )
 

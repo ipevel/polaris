@@ -3,7 +3,10 @@
 
 package com.slte.app.domain.model
 
+import kotlinx.serialization.Serializable
+
 /** 单日流量记录 */
+@Serializable
 data class TrafficLogRecord(
     val date: String = "",
     val uploadBytes: Long = 0L,

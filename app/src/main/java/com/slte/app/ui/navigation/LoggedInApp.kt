@@ -14,6 +14,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,9 @@ fun LoggedInApp(
 ) {
     val context = LocalContext.current
     val viewModels = rememberLoggedInViewModels(accountKey)
+    // 登录后立即拉取「我的」页数据：ProfileViewModel.init 只读缓存、不发网络，
+    // 若不在登录时触发，用户要切到我的页才刷新，刚登录时会看到空/加载态。
+    LaunchedEffect(accountKey) { viewModels.profile.refresh() }
     val mainData by viewModels.main.data.collectAsStateWithLifecycle()
     val purchaseStep by viewModels.purchase.step.collectAsStateWithLifecycle()
     val purchaseToast by viewModels.purchase.toastRes.collectAsStateWithLifecycle()

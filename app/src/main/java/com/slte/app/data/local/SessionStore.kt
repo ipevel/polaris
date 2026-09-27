@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.slte.app.domain.model.ServerNode
 import com.slte.app.domain.model.SubscribeInfo
+import com.slte.app.domain.model.TrafficLogRecord
 import com.slte.app.domain.model.User
 import com.slte.app.kernel.SpeedResultStore
 import com.slte.app.utils.AppLog
@@ -112,6 +113,14 @@ constructor(
 
     override fun getSpeedResults(): Map<String, Int>? = readCached(KEY_SPEED_RESULTS) { Json.decodeFromString<Map<String, Int>>(it) }
 
+    fun saveTrafficLog(records: List<TrafficLogRecord>) {
+        prefs.edit {
+            putString(KEY_TRAFFIC_LOG, Json.encodeToString(records))
+        }
+    }
+
+    fun getTrafficLog(): List<TrafficLogRecord>? = readCached(KEY_TRAFFIC_LOG) { Json.decodeFromString<List<TrafficLogRecord>>(it) }
+
     fun clear() {
         prefs.edit {
             remove(KEY_AUTH_DATA)
@@ -124,6 +133,7 @@ constructor(
             remove(KEY_SERVER_NODES)
             remove(KEY_SERVER_NODES_FETCHED_AT)
             remove(KEY_SPEED_RESULTS)
+            remove(KEY_TRAFFIC_LOG)
         }
     }
 
@@ -136,6 +146,7 @@ constructor(
             remove(KEY_SERVER_NODES)
             remove(KEY_SERVER_NODES_FETCHED_AT)
             remove(KEY_SPEED_RESULTS)
+            remove(KEY_TRAFFIC_LOG)
         }
     }
 
@@ -153,5 +164,6 @@ constructor(
         private const val KEY_SERVER_NODES = "server_nodes"
         private const val KEY_SERVER_NODES_FETCHED_AT = "server_nodes_fetched_at"
         private const val KEY_SPEED_RESULTS = "speed_results"
+        private const val KEY_TRAFFIC_LOG = "traffic_log"
     }
 }

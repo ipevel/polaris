@@ -29,6 +29,7 @@ import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.AvatarP
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.NavTab
+import com.slte.app.ui.v5.SectionTitle
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
@@ -37,6 +38,7 @@ import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.v5Enter
 
 /* ============================================================
    v5 我的页：账号卡 + 功能清单 + 退出
@@ -65,8 +67,8 @@ internal fun V5MeScreen(
     V5PageScaffold(tab = NavTab.ME, onNavSelect = onNavSelect) {
         V5TopBar(stringResource(R.string.page_me))
         V5ScrollBody(NavTab.ME) {
-            // —— 账号卡
-            V5Card {
+            // —— 账号卡（本页唯一的实体卡：身份信息密度高，卡片边界用于聚焦）
+            V5Card(Modifier.v5Enter(0)) {
                 Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12)) {
                         AvatarP(46.dp)
@@ -106,66 +108,72 @@ internal fun V5MeScreen(
                 }
             }
 
-            // —— 功能清单
-            V5CardFlat(Modifier.fillMaxWidth()) {
-                V5RowItem(
-                    title = stringResource(R.string.me_plans),
-                    icon = Icons.Outlined.Wallet,
-                    chevron = true,
-                    onClick = onPlans,
-                )
-                V5Divider()
-                // 礼品卡（兑换码）入口：v5 重写 b5e3464 删掉 v4 ProfileScreen 时丢掉了挂载点，
-                // 组件与 ViewModel 一直保留但全仓无调用点；这里按 v4 原样恢复入口，
-                // 复用既有 R.string.gift_card_title，不新增字符串（三语键集合无需改动）。
-                V5RowItem(
-                    title = stringResource(R.string.gift_card_title),
-                    icon = SlteIcons.InviteCode,
-                    chevron = true,
-                    onClick = onGiftCard,
-                )
-                V5Divider()
-                V5RowItem(
-                    title = stringResource(R.string.me_orders),
-                    icon = SlteIcons.Orders,
-                    chevron = true,
-                    onClick = onOrders,
-                )
-                V5Divider()
-                V5RowItem(
-                    title = stringResource(R.string.me_invite),
-                    icon = SlteIcons.Invite,
-                    chevron = true,
-                    onClick = onInvite,
-                )
-                V5Divider()
-                V5RowItem(
-                    title = stringResource(R.string.me_tickets),
-                    icon = SlteIcons.Ticket,
-                    chevron = true,
-                    onClick = onTickets,
-                )
-                V5Divider()
-                V5RowItem(
-                    title = stringResource(R.string.me_notices),
-                    icon = SlteIcons.Notifications,
-                    chevron = true,
-                    onClick = onNotices,
-                )
-                // Telegram 讨论组入口（v4 ProfileScreen 有，v5 重写时丢失）。
-                // 链接由调用方做白名单校验后再交进来，见 ProfilePageContent。
-                onTelegram?.let { openTelegram ->
+            // —— 我的服务
+            Column(
+                modifier = Modifier.v5Enter(1),
+                verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+            ) {
+                SectionTitle(stringResource(R.string.me_services))
+                V5CardFlat(Modifier.fillMaxWidth()) {
+                    V5RowItem(
+                        title = stringResource(R.string.me_plans),
+                        icon = Icons.Outlined.Wallet,
+                        chevron = true,
+                        onClick = onPlans,
+                    )
+                    V5Divider()
+                    // 礼品卡（兑换码）入口：v5 重写 b5e3464 删掉 v4 ProfileScreen 时丢掉了挂载点，
+                    // 组件与 ViewModel 一直保留但全仓无调用点；这里按 v4 原样恢复入口，
+                    // 复用既有 R.string.gift_card_title，不新增字符串（三语键集合无需改动）。
+                    V5RowItem(
+                        title = stringResource(R.string.gift_card_title),
+                        icon = SlteIcons.InviteCode,
+                        chevron = true,
+                        onClick = onGiftCard,
+                    )
                     V5Divider()
                     V5RowItem(
-                        title = stringResource(R.string.profile_telegram),
-                        icon = SlteIcons.Telegram,
+                        title = stringResource(R.string.me_orders),
+                        icon = SlteIcons.Orders,
                         chevron = true,
-                        onClick = openTelegram,
+                        onClick = onOrders,
                     )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.me_invite),
+                        icon = SlteIcons.Invite,
+                        chevron = true,
+                        onClick = onInvite,
+                    )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.me_tickets),
+                        icon = SlteIcons.Ticket,
+                        chevron = true,
+                        onClick = onTickets,
+                    )
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.me_notices),
+                        icon = SlteIcons.Notifications,
+                        chevron = true,
+                        onClick = onNotices,
+                    )
+                    // Telegram 讨论组入口（v4 ProfileScreen 有，v5 重写时丢失）。
+                    // 链接由调用方做白名单校验后再交进来，见 ProfilePageContent。
+                    onTelegram?.let { openTelegram ->
+                        V5Divider()
+                        V5RowItem(
+                            title = stringResource(R.string.profile_telegram),
+                            icon = SlteIcons.Telegram,
+                            chevron = true,
+                            onClick = openTelegram,
+                        )
+                    }
                 }
             }
 
-            V5CardFlat(Modifier.fillMaxWidth()) {
+            V5CardFlat(Modifier.fillMaxWidth().v5Enter(2)) {
                 V5RowItem(
                     title = stringResource(R.string.settings_title),
                     icon = SlteIcons.Settings,

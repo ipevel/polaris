@@ -12,6 +12,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -33,6 +34,8 @@ class TrafficViewModelTest {
         // relaxed mock 的 Boolean 默认是 false，而 false 在流量页意味着"面板不支持明细"，
         // 会让下面两个用例直接走能力缺失分支。默认桩成支持，「不支持」的分支单独用例覆盖。
         every { repository.supportsTrafficLog() } returns true
+        // 默认无磁盘缓存；「有缓存先渲染」的分支单独用例覆盖。
+        every { repository.getCachedTrafficLog() } returns null
     }
 
     /**
@@ -87,5 +90,47 @@ class TrafficViewModelTest {
         assertFalse("要标记面板不支持，UI 才能给出正确说明", vm.data.value.backendSupportsLog)
         assertNull("这不是失败，不该显示错误态", vm.data.value.errorMessageRes)
         coVerify(exactly = 0) { repository.fetchTrafficLog() }
+    }
+
+    /**
+     * 有磁盘缓存时先渲染缓存（登录后立即有数据），再发请求静默刷新，不把页面打回「加载中」。
+     */
+    @Test
+    fun `有磁盘缓存时先渲染缓存再静默刷新`() = runTest(mainRule.dispatcher) {
+        val cached = TrafficLogRecord("2026-09-25", 10L, 20L)
+        every { repository.getCachedTrafficLog() } returns listOf(cached)
+        coEvery { repository.fetchTrafficLog() } returns
+            Result.success(listOf(TrafficLogRecord("2026-09-26", 320_000_000L, 2_400_000_000L)))
+
+        val vm = TrafficViewModel(repository, diagnostics)
+
+        assertEquals("构造后应立刻显示缓存，不等网络", 1, vm.data.value.records.size)
+        assertEquals("2026-09-25", vm.data.value.records.first().date)
+        assertFalse("有缓存时不应停在加载中", vm.data.value.isLoading)
+
+        advanceUntilIdle()
+
+        assertEquals("刷新后应换成网络结果", 1, vm.data.value.records.size)
+        assertEquals("2026-09-26", vm.data.value.records.first().date)
+        assertFalse(vm.data.value.isLoading)
+        assertNull(vm.data.value.errorMessageRes)
+    }
+
+    /**
+     * 登录后首次拉取可能撞上面板冷启动：无缓存可展示时应自动重试，重试成功即自愈。
+     */
+    @Test
+    fun `首次失败后自动重试成功`() = runTest(mainRule.dispatcher) {
+        coEvery { repository.fetchTrafficLog() } returns
+            Result.failure(IOException("boom")) andThen
+            Result.success(listOf(TrafficLogRecord("2026-09-26", 1L, 2L)))
+
+        val vm = TrafficViewModel(repository, diagnostics)
+        advanceUntilIdle()
+
+        assertEquals(1, vm.data.value.records.size)
+        assertFalse(vm.data.value.isLoading)
+        assertNull("重试成功后不该显示错误", vm.data.value.errorMessageRes)
+        coVerify(exactly = 2) { repository.fetchTrafficLog() }
     }
 }

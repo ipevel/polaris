@@ -5,6 +5,7 @@
 package com.slte.app.ui.v5
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -56,7 +57,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -69,10 +72,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -130,22 +134,47 @@ fun V5Colors.chip(tone: ChipTone): Pair<Color, Color> = when (tone) {
     ChipTone.ACCENT -> accent to accentBg
 }
 
-/** 页面氛围底：浅紫灰底 + 两处径向光晕（颜色由主题单源下发）。 */
+/**
+ * 页面氛围底：主题底色 + 两处径向光晕（颜色由主题单源下发）。
+ *
+ * [breathing] 为 true 时光晕以极慢速度呼吸（透明度 0.72→1.0，6.5 秒一轮）：连接页用它让
+ * "已连接"这件事被感知到——氛围光只在有状态时才动，静止页保持完全静态（非用户触发的
+ * 循环动画越少越好）。
+ *
+ * [connected] 为 true 时把左侧光晕换成连接成功的绿色（`ok`）：未连接是品牌蓝、已连接转绿，
+ * 让"连上了"这件事在**整屏氛围**上就能感知到，而不只是顶栏一个胶囊。
+ */
 @Composable
-fun Modifier.v5Aurora(): Modifier {
+fun Modifier.v5Aurora(breathing: Boolean = false, connected: Boolean = false): Modifier {
     val c = V5ThemeColors.current
+    val glowAlpha =
+        if (breathing) {
+            val transition = rememberInfiniteTransition(label = "aurora")
+            val a by transition.animateFloat(
+                initialValue = 0.72f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(6500), RepeatMode.Reverse),
+                label = "auroraAlpha",
+            )
+            a
+        } else {
+            1f
+        }
+    // 已连接时主光晕改用品牌绿：与顶栏「已连接」胶囊、连接钮的 okGrad 同色系，
+    // 三处一起把"连接成功"讲清楚。未连接保持品牌蓝，呼应连接钮的 accentGrad。
+    val glowPrimary = if (connected) c.ok.copy(alpha = 0.30f) else c.auroraGlow1
     return drawBehind {
         drawRect(c.bg)
         drawRect(
             brush = Brush.radialGradient(
-                colors = listOf(c.auroraGlow1, Color.Transparent),
+                colors = listOf(glowPrimary.copy(alpha = glowPrimary.alpha * glowAlpha), Color.Transparent),
                 center = Offset(size.width * 0.16f, -size.height * 0.06f),
                 radius = size.width * 0.78f,
             ),
         )
         drawRect(
             brush = Brush.radialGradient(
-                colors = listOf(c.auroraGlow2, Color.Transparent),
+                colors = listOf(c.auroraGlow2.copy(alpha = c.auroraGlow2.alpha * glowAlpha), Color.Transparent),
                 center = Offset(size.width * 0.88f, 0f),
                 radius = size.width * 0.68f,
             ),
@@ -287,17 +316,35 @@ fun V5TopIconButton(
     }
 }
 
-/** 区块标题（11sp 大写字距）。 */
+/**
+ * 区块标题：12sp 半粗 + 前置 2dp 品牌蓝短竖线。
+ *
+ * 原版是 11sp 大写字距的纯文字标签，与正文同色系、无结构，读起来像一段被加粗的小字。
+ * 加一条 2dp 品牌蓝竖线后，标题有了"这是新的一段"的结构信号，也把品牌色带进了层级表达
+ * （不是靠全大写 eyebrow——那是生成式界面最常见的套路，见 frontend-design）。
+ */
 @Composable
 fun SectionTitle(label: String, modifier: Modifier = Modifier) {
-    Text(
-        label,
+    val c = V5ThemeColors.current
+    Row(
         modifier = modifier.padding(horizontal = V5Spacing.dp4),
-        fontSize = V5Type.sp11,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = V5Type.trackingWide,
-        color = V5ThemeColors.current.text3,
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8),
+    ) {
+        Box(
+            Modifier
+                .size(width = 2.dp, height = 12.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(c.accent),
+        )
+        Text(
+            label,
+            fontSize = V5Type.sp12,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = V5Type.trackingWide,
+            color = c.text2,
+        )
+    }
 }
 
 /** 徽标胶囊。 */
@@ -654,42 +701,78 @@ enum class NavTab(val icon: ImageVector, @StringRes val labelRes: Int) {
 @Composable
 fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (NavTab) -> Unit = {}) {
     val c = V5ThemeColors.current
-    Row(
+    // 选中胶囊用一层可位移的高亮背景：切换 tab 时滑过去而不是硬切，让"谁被选中"这件事
+    // 有一个可跟随的动作（状态变化回应）。位置用 animateDpAsState 表达，不引入 third-party 动画库。
+    val tabs = NavTab.entries
+    val activeIndex = tabs.indexOf(active).coerceAtLeast(0)
+    // 分区宽度必须来自实际测量：每个 tab 是 weight(1f)，其宽 =（导航栏内容宽）/ 4，
+    // 随屏幕宽度变化（1080px@480dpi 上约 80dp）。曾写死 52dp 猜宽度，导致高亮块比分区窄、
+    // 且与选中项文字错位——只有实测才能对齐。
+    var segmentWidthPx by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val segmentWidthDp = with(density) { segmentWidthPx.toDp() }
+    val offsetX by animateDpAsState(
+        targetValue = segmentWidthDp * activeIndex,
+        animationSpec = tween(320),
+        label = "navIndicator",
+    )
+    Box(
         modifier = modifier
             .v5CardShadow(RoundedCornerShape(V5Radius.pill))
             .clip(RoundedCornerShape(V5Radius.pill))
             .background(c.navBg)
             .padding(7.dp)
             .height(52.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        NavTab.entries.forEach { tab ->
-            val on = tab == active
-            Column(
-                modifier = Modifier
-                    .weight(1f)
+        if (segmentWidthPx > 0f) {
+            Box(
+                Modifier
+                    .offset(x = offsetX)
+                    .width(segmentWidthDp)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(V5Radius.pill))
-                    .then(if (on) Modifier.background(c.navOn) else Modifier)
-                    .then(noRippleClickable { onSelect(tab) }),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(tab.icon, null, modifier = Modifier.size(21.dp), tint = if (on) c.accent else c.text3)
-                Text(
-                    stringResource(tab.labelRes),
-                    fontSize = V5Type.sp10_5,
-                    fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                    letterSpacing = V5Type.tracking,
-                    color = if (on) c.accent else c.text3,
-                )
+                    .background(c.navOn),
+            )
+        }
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            tabs.forEachIndexed { index, tab ->
+                val on = tab == active
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(V5Radius.pill))
+                        // 只测量第一个 tab 的宽度：四个分区等宽（weight(1f)），拿到一个即可推
+                        // 出其余三个的位置，避免每个都缓存一份测量值。
+                        .then(
+                            if (index == 0) {
+                                Modifier.onGloballyPositioned { coordinates ->
+                                    segmentWidthPx = coordinates.size.width.toFloat()
+                                }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .then(noRippleClickable { onSelect(tab) }),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(tab.icon, null, modifier = Modifier.size(21.dp), tint = if (on) c.accent else c.text3)
+                    Text(
+                        stringResource(tab.labelRes),
+                        fontSize = V5Type.sp10_5,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                        letterSpacing = V5Type.tracking,
+                        color = if (on) c.accent else c.text3,
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * 大圆连接钮：未连=蓝渐变+闪电，已连=绿渐变+电源+光晕呼吸环。
+ * 大圆连接钮：未连=蓝渐变+闪电，已连=绿渐变+电源，外圈有波纹扩散环并向外散细密粒子。
  *
  * [connecting] 时文案变「取消」——MainViewModel.toggleConnection 在 isConnecting 分支里执行
  * 取消（停隧道 + 复位），所以这不是"置灰的等待按钮"，而是一个真实可点的取消入口。
@@ -703,28 +786,67 @@ fun HeroConnectButton(
 ) {
     val c = V5ThemeColors.current
     val grad = if (connected) c.okGrad else c.accentGrad
-    val halo = if (connected) c.okBg else c.accentBg
     val ring = if (connected) c.ok else c.accent
+    val halo = if (connected) c.okBg else c.accentBg
+    // 波纹扩散：一圈细环从按钮外缘匀速向外推开、边推边淡出，推到最远时循环重来。
     val transition = rememberInfiniteTransition(label = "pulse")
-    val t by transition.animateFloat(
+    val pulse by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2400), RepeatMode.Restart),
-        label = "pulseT",
+        animationSpec = infiniteRepeatable(tween(3600, easing = LinearEasing), RepeatMode.Restart),
+        label = "pulsePhase",
+    )
+    // 粒子相位：独立于波纹，让细密碎点持续向外飘散，与波纹叠成两层动态。
+    val particlePhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
+        label = "particlePhase",
     )
     Box(
         modifier = modifier
-            .size(176.dp)
+            .size(150.dp)
+            .offset(y = 10.dp)
             .then(noRippleClickable(onClick))
             .drawBehind {
                 val r = size.minDimension / 2f
-                drawCircle(halo, radius = r + 13.dp.toPx())
-                drawCircle(
-                    ring,
-                    radius = r + 13.dp.toPx() + t * V5Spacing.dp10.toPx(),
-                    style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round),
-                    alpha = (1f - t) * 0.5f,
-                )
+                // 柔光底：按钮外一层极淡的色晕，让波纹推开时有"承托"。
+                drawCircle(halo, radius = r + 6.dp.toPx())
+                // 波纹：连续两道错相位的细环，向外推开 26dp，越远越淡。
+                for (wave in 0 until 2) {
+                    val p = (pulse + wave * 0.5f) % 1f
+                    drawCircle(
+                        color = ring,
+                        radius = r + p * 26.dp.toPx(),
+                        style = Stroke(width = 2.dp.toPx()),
+                        alpha = (1f - p) * 0.45f,
+                    )
+                }
+                // 星屑：细密小点从按钮边缘沿径向向外飘散。
+                // 要点是"细碎尘屑"而不是"一颗颗圆球"：数量多、半径极小、不随飞行变大，
+                // 飞得越远越淡（平方衰减），形成环带状的尘屑扩散。
+                val particleCount = 60
+                for (i in 0 until particleCount) {
+                    val life = (particlePhase + i.toFloat() / particleCount) % 1f
+                    // 角度均匀铺满整圈，并按序号轻微错开，避免形成规则条纹。
+                    val angle = i * (360f / particleCount) + i * 1.7f
+                    val rad = Math.toRadians(angle.toDouble())
+                    val cosA = kotlin.math.cos(rad).toFloat()
+                    val sinA = kotlin.math.sin(rad).toFloat()
+                    // 起点贴按钮边缘（r），沿径向向外飘散最多 30dp。
+                    val dist = r + life * 30.dp.toPx()
+                    val cx = center.x + cosA * dist
+                    val cy = center.y + sinA * dist
+                    // 半径恒定在 0.3~0.7dp 之间（更小的碎点），不随生命变大。
+                    val dotRadius = (0.3f + (i % 3) * 0.2f).dp.toPx()
+                    val fade = (1f - life) * (1f - life)
+                    drawCircle(
+                        color = ring,
+                        radius = dotRadius,
+                        center = Offset(cx, cy),
+                        alpha = fade * 0.85f,
+                    )
+                }
             }
             .clip(CircleShape)
             .background(grad),

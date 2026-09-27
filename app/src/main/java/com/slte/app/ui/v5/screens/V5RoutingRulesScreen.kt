@@ -4,7 +4,6 @@
 package com.slte.app.ui.v5.screens
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,11 +24,13 @@ import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.V5Banner
 import com.slte.app.ui.v5.V5CardFlat
+import com.slte.app.ui.v5.V5Divider
 import com.slte.app.ui.v5.V5PageBody
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.v5Enter
 
 /**
  * v5 分流规则管理页（Karing 式每条规则组独立开关 + 自定义规则组）。
@@ -51,13 +52,13 @@ internal fun V5RoutingRulesScreen(
                 text = stringResource(R.string.routing_rules_desc),
                 fontSize = V5Type.sp12,
                 color = c.text3,
-                modifier = Modifier.padding(horizontal = V5Spacing.dp4),
+                modifier = Modifier.padding(horizontal = V5Spacing.dp4).v5Enter(0),
             )
 
-            // —— 内置分流组
-            V5CardFlat(Modifier) {
+            // —— 内置分流组（上方说明文案即本区小标题，不重复加 SectionTitle）
+            V5CardFlat(Modifier.v5Enter(1)) {
                 data.items.forEachIndexed { index, item ->
-                    if (index > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                    if (index > 0) V5Divider()
                     V5RowItem(
                         title = item.name,
                         sub = stringResource(outboundLabelOf(item.defaultOut)),
@@ -80,8 +81,8 @@ internal fun V5RoutingRulesScreen(
                 V5Banner(ChipTone.DANGER, stringResource(res))
             }
 
-            // —— 自定义规则组
-            V5CardFlat(Modifier) {
+            // —— 自定义规则组（首行本身就是带高亮的"添加"入口，即本区小标题）
+            V5CardFlat(Modifier.v5Enter(2)) {
                 V5RowItem(
                     title = stringResource(R.string.routing_custom_add),
                     sub = stringResource(R.string.routing_custom_add_desc),
@@ -91,7 +92,7 @@ internal fun V5RoutingRulesScreen(
                     onClick = viewModel::showAddCustomGroup,
                 )
                 data.custom.forEach { custom ->
-                    HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
+                    V5Divider()
                     V5RowItem(
                         title = custom.name,
                         sub = custom.url,
@@ -104,7 +105,7 @@ internal fun V5RoutingRulesScreen(
             }
 
             // —— 恢复默认
-            V5CardFlat(Modifier) {
+            V5CardFlat(Modifier.v5Enter(3)) {
                 V5RowItem(
                     title = stringResource(R.string.routing_rules_reset),
                     sub = stringResource(R.string.routing_rules_reset_desc),
