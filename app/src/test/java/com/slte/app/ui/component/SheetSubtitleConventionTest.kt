@@ -4,7 +4,6 @@
 package com.slte.app.ui.component
 
 import java.io.File
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,13 +59,5 @@ class SheetSubtitleConventionTest {
         val source = sheet.readText()
         assertTrue("SlteSheet 应保留 subtitle 参数以统一副标题间距", source.contains("subtitle: String?"))
         assertTrue("SlteSheet 应使用统一的副标题间距", source.contains("Dimens.gap.sm"))
-    }
-
-    @Test
-    fun `退出弹窗使用 subtitle`() {
-        val file = uiDir().walkTopDown().first { it.name == "ProfileSheets.kt" }
-        val source = file.readText()
-        val block = Regex("SlteSheet\\(([\\s\\S]{0,300}?)\\{").find(source)?.groupValues?.get(1).orEmpty()
-        assertEquals("退出弹窗应通过 subtitle 渲染说明文字", true, block.contains("subtitle ="))
     }
 }

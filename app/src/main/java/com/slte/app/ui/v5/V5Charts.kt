@@ -33,7 +33,7 @@ import com.slte.app.utils.FormatUtils
    v5 图表：近 30 天柱状图 / 用量环形
    ============================================================ */
 
-/** 柱状图最多画多少天（与 v4 侧 TrafficTrendChart 同口径）。 */
+/** 柱状图最多画多少天。 */
 private const val BARS_MAX_DAYS = 30
 
 /** 纵轴刻度槽宽：刻度数字占左侧，柱子不压数字。 */
@@ -45,7 +45,7 @@ private val BarsYGutter = 40.dp
  * 此前这里是硬编码假数据：固定 30 根 `BARS` 配固定 "6GB"/"08-26"/"09-09" 标签，
  * 无论真实用量多少都画同一张图——图表说谎比没有图表更糟，故整体替换为按 [records] 绘制：
  * 纵轴刻度取峰值本身、横轴日期取首/中/末三天的真实 MM-DD、峰值柱顶标注具体流量。
- * 布局口径与 v4 侧 TrafficTrendChart 一致（同一套轴带 / 柱宽 / 峰值标注 / 最新一天满不透明），
+ * 布局口径沿用原 v4 侧趋势图的同一套轴带 / 柱宽 / 峰值标注 / 最新一天满不透明，
  * 只是换成 v5 配色，且卡片外壳由调用方给（本组件只画图）。
  *
  * [records] 正序倒序都接受，内部统一按 date 正序取最近 [BARS_MAX_DAYS] 天。
@@ -143,7 +143,7 @@ fun BarsChart(
     }
 }
 
-/** ISO 日期转 MM-DD 轴标签（与 v4 侧 TrafficTrendChart 同口径）。 */
+/** ISO 日期转 MM-DD 轴标签。 */
 private fun shortDate(iso: String): String = if (iso.length >= 10) iso.substring(5) else iso
 
 /** 用量环形（下行主色 + 上行琥珀），可选中心文字。 */
