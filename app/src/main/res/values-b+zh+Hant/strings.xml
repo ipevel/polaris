@@ -242,10 +242,6 @@
     <string name="about_log_export_failed">匯出失敗</string>
     <string name="about_log_export_share">分享日誌</string>
     <string name="about_log_share_failed">無法分享日誌</string>
-    <string name="about_terms">使用者條款</string>
-    <string name="about_privacy">隱私政策</string>
-    <string name="about_licenses">開源授權</string>
-    <string name="about_link_open_failed">無法開啟連結，請檢查網路或瀏覽器</string>
 
     <!-- Update (检查更新) -->
     <string name="update_force_title">需更新後可用</string>
@@ -288,10 +284,11 @@
     <string name="settings_traffic_remind">流量提醒</string>
     <string name="settings_remind_save_failed">提醒設定儲存失敗</string>
     <string name="settings_local_routing">本地分流方案</string>
-    <string name="settings_local_routing_desc">啟用 App 內建分流規則並忽略面板下發設定（Karing 式）</string>
+    <string name="settings_local_routing_desc">啟用 App 內建分流規則並忽略面板下發設定</string>
     <string name="settings_local_routing_failed">分流設定儲存失敗</string>
     <string name="settings_routing_rules">分流規則管理</string>
-    <string name="routing_rules_desc">內建分流規則組（移植自 Karing 預設）。關閉的組不再產生對應分流規則；改動即時生效。</string>
+    <string name="routing_rules_desc">內建分流規則組。拖動右側手柄可調整順序，順序決定規則匹配的優先級；關閉的組不再產生對應分流規則；改動即時生效。</string>
+    <string name="routing_rules_drag_handle">拖動排序</string>
     <string name="routing_outbound_proxy">預設走代理</string>
     <string name="routing_outbound_direct">預設直連</string>
     <string name="routing_outbound_block">預設攔截</string>

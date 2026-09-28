@@ -246,10 +246,6 @@
     <string name="about_log_export_failed">Export failed</string>
     <string name="about_log_export_share">Share logs</string>
     <string name="about_log_share_failed">Couldn\'t share the log</string>
-    <string name="about_terms">User Agreement</string>
-    <string name="about_privacy">Privacy Policy</string>
-    <string name="about_licenses">Open-source licenses</string>
-    <string name="about_link_open_failed">Couldn\'t open the link, please check your network or browser</string>
 
     <!-- Update (检查更新) -->
     <string name="update_force_title">Available after update</string>
@@ -292,10 +288,11 @@
     <string name="settings_traffic_remind">Traffic alert</string>
     <string name="settings_remind_save_failed">Failed to save alerts</string>
     <string name="settings_local_routing">Local routing rules</string>
-    <string name="settings_local_routing_desc">Use built-in routing rules and ignore panel-issued config (Karing-style)</string>
+    <string name="settings_local_routing_desc">Use built-in routing rules and ignore panel-issued config</string>
     <string name="settings_local_routing_failed">Failed to save routing settings</string>
     <string name="settings_routing_rules">Routing rule groups</string>
-    <string name="routing_rules_desc">Built-in routing rule groups (ported from the Karing preset). Disabled groups generate no rules; changes apply immediately.</string>
+    <string name="routing_rules_desc">Built-in routing rule groups. Drag the handle on the right to reorder; the order sets rule matching priority. Disabled groups generate no rules; changes apply immediately.</string>
+    <string name="routing_rules_drag_handle">Drag to reorder</string>
     <string name="routing_outbound_proxy">Proxy by default</string>
     <string name="routing_outbound_direct">Direct by default</string>
     <string name="routing_outbound_block">Block by default</string>

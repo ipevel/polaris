@@ -213,3 +213,35 @@ var Table = []RuleGroup{
 	{Name: "🌏 国外穿墙", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_geolocation_ncn", "acl_proxygfwlist", "acl_proxymedia"}},
 }
+
+// OrderedTable 按用户自定义顺序返回内置分流表。
+//
+// order 中出现的组名按给定次序排在前，未出现的组按 Table 的默认顺序追加在后；
+// 未知、重复、空名一律忽略，绝不丢组。空 order 直接返回 Table。
+// 顺序决定「规则匹配优先级」与 App 侧展示顺序，不影响各组开关。
+func OrderedTable(order []string) []RuleGroup {
+	if len(order) == 0 {
+		return Table
+	}
+	byName := make(map[string]RuleGroup, len(Table))
+	for _, item := range Table {
+		byName[item.Name] = item
+	}
+	picked := make(map[string]bool, len(order))
+	out := make([]RuleGroup, 0, len(Table))
+	for _, name := range order {
+		item, ok := byName[name]
+		if !ok || picked[name] {
+			continue
+		}
+		picked[name] = true
+		out = append(out, item)
+	}
+	for _, item := range Table {
+		if picked[item.Name] {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}

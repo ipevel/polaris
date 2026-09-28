@@ -32,6 +32,10 @@ type State struct {
 	Enabled bool `json:"enabled"`
 	Groups  map[string]bool `json:"groups"` // 内置分流组名 -> 启用；缺省 = 内置默认
 	Custom  []CustomGroup   `json:"custom"`
+	// Order 内置分流组的用户自定义顺序（组名列表，App 侧拖动排序写入）。
+	// 空 = 沿用 Table 默认顺序；只影响组与规则的排列（即规则匹配优先级
+	// 与 App 侧展示顺序），不影响各组开关。未知/重复名由 OrderedTable 忽略。
+	Order []string `json:"order"`
 	// DirectDomains 自家后端域名（App 构建期注入清单），作为生成规则最前
 	// 的直连白名单。为空时内核退回编译期占位清单。
 	DirectDomains []string `json:"direct_domains"`

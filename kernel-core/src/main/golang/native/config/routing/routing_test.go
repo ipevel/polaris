@@ -506,3 +506,57 @@ func TestBuildSkipsInvalidDirectDomains(t *testing.T) {
 		}
 	}
 }
+
+func TestOrderedTable(t *testing.T) {
+	if got := OrderedTable(nil); len(got) != len(Table) || got[0].Name != Table[0].Name {
+		t.Fatalf("empty order must fall back to Table, got %d groups first=%q", len(got), got[0].Name)
+	}
+
+	first := Table[len(Table)-1].Name
+	second := Table[len(Table)-2].Name
+	got := OrderedTable([]string{first, "不存在的组", second, first})
+	if len(got) != len(Table) {
+		t.Fatalf("len=%d, want %d（不得丢组）", len(got), len(Table))
+	}
+	if got[0].Name != first || got[1].Name != second {
+		t.Fatalf("head=%q,%q, want %q,%q", got[0].Name, got[1].Name, first, second)
+	}
+	if got[0].DefaultOut != Table[len(Table)-1].DefaultOut {
+		t.Fatalf("组内容被篡改: %+v", got[0])
+	}
+
+	want := make([]string, 0, len(Table)-2)
+	for _, item := range Table {
+		if item.Name == first || item.Name == second {
+			continue
+		}
+		want = append(want, item.Name)
+	}
+	rest := got[2:]
+	if len(rest) != len(want) {
+		t.Fatalf("rest len=%d, want %d", len(rest), len(want))
+	}
+	for i, item := range rest {
+		if item.Name != want[i] {
+			t.Fatalf("rest[%d]=%q, want %q", i, item.Name, want[i])
+		}
+	}
+}
+
+func TestBuildAppliesGroupOrder(t *testing.T) {
+	state := defaultEnabledState()
+	last := Table[len(Table)-1].Name
+	state.Order = []string{last}
+	cfg := testRawConfig()
+	if err := Build(cfg, state, nil); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	names := groupNames(cfg)
+	// 前三个是结构组（选择器/自动选择/故障转移），其后才是内置分流组。
+	if len(names) < 4 {
+		t.Fatalf("groups=%v", names)
+	}
+	if names[3] != last {
+		t.Fatalf("group[3]=%q, want %q (names=%v)", names[3], last, names)
+	}
+}

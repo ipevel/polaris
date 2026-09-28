@@ -282,6 +282,18 @@ constructor(
         written
     }
 
+    /**
+     * 分流规则管理页：写入内置分流组顺序，写盘后广播重载。
+     *
+     * 顺序会同时改变「生成配置里组与规则的排列」——即规则匹配优先级，
+     * 以及节点页/分流页展示的组顺序。
+     */
+    suspend fun applyRoutingOrder(names: List<String>): Boolean = withContext(ioDispatcher) {
+        val written = routingStateStore.setGroupOrder(names)
+        if (written) requestReload()
+        written
+    }
+
     /** 分流规则管理页：新增自定义规则组，写盘后广播重载。 */
     suspend fun addRoutingCustomGroup(group: RoutingCustomGroup): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.addCustomGroup(group)

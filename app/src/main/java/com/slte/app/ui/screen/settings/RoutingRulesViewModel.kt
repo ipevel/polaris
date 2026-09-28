@@ -9,9 +9,9 @@ import com.slte.app.R
 import com.slte.app.data.remote.config.ConfigValidation
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.RoutingCustomGroup
-import com.slte.app.kernel.RoutingGroups
 import com.slte.app.kernel.RoutingInputValidator
 import com.slte.app.kernel.RoutingStateStore
+import com.slte.app.kernel.orderedGroups
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
 import javax.inject.Inject
@@ -79,7 +79,7 @@ constructor(
         val sanitized = routingStateStore.loadSanitized()
         val state = sanitized.state
         val items =
-            RoutingGroups.map { group ->
+            orderedGroups(state.order).map { group ->
                 RoutingRuleItem(
                     name = group.name,
                     defaultOn = group.defaultOn,
@@ -131,6 +131,39 @@ constructor(
                         state.items.map {
                             if (it.name == name) it.copy(enabled = previous) else it
                         },
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 拖动排序：把第 [from] 项移到第 [to] 位。
+     *
+     * 乐观更新 UI 后落盘（内核会按新顺序重排组与规则），失败则回滚。
+     * 顺序同时决定规则匹配优先级与节点页/分流页的组顺序。
+     */
+    fun moveGroup(
+        from: Int,
+        to: Int,
+    ) {
+        if (_data.value.sync == RoutingSync.Saving) return
+        val previous = _data.value.items
+        if (from == to || from !in previous.indices || to !in previous.indices) return
+        val reordered = previous.toMutableList().apply { add(to, removeAt(from)) }
+        _data.update {
+            it.copy(sync = RoutingSync.Saving, errorMessageRes = null, items = reordered)
+        }
+        viewModelScope.launch {
+            val written = kernelConfig.applyRoutingOrder(reordered.map { it.name })
+            if (written) {
+                _data.update { it.copy(sync = RoutingSync.Idle, savedCount = it.savedCount + 1) }
+            } else {
+                _data.update {
+                    it.copy(
+                        sync = RoutingSync.Idle,
+                        errorMessageRes = R.string.settings_local_routing_failed,
+                        items = previous,
                     )
                 }
             }

@@ -71,6 +71,23 @@
 - 头文件：新构建的 `libclash.h` 与本目录既有 `libclash.h` 逐字节一致，未替换；
   `.so` 摘要见同目录 SHA256SUMS。
 
+## 2026-09-28 重建记录（分流组拖动排序 order 支持）
+
+- 变更：`routing.json` 新增 `order`（内置分流组名的用户自定义顺序，App 侧拖动排序写入）。
+  `native/config/routing/routing.go` 的 `State` 增加 `Order []string`（`json:"order"`）；
+  `routing_table.go` 新增纯函数 `OrderedTable(order)`：order 中出现的组名按给定次序排在前，
+  未出现的按 `Table` 默认顺序追加在后，未知/重复/空名一律忽略且绝不丢组，空 order 直接返回 `Table`；
+  `routing_build.go` 的 `Build` 改为 `for _, item := range OrderedTable(state.Order)`。
+  顺序同时决定「规则匹配优先级」与 App 侧（节点页 / 分流规则页）的组展示顺序，不影响各组开关。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+- 头文件：新构建的 `libclash.h` 与本目录既有 `libclash.h` 逐字节一致，未替换；
+  `.so` 摘要见同目录 SHA256SUMS。
+- 验证：`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags "android cmfa with_gvisor" ./native/...`
+  通过；`go test ./native/config/routing/...` 通过（含新增的 `TestOrderedTable` /
+  `TestBuildAppliesGroupOrder`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。

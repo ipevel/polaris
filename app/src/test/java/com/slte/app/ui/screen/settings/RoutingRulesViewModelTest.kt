@@ -6,6 +6,7 @@ package com.slte.app.ui.screen.settings
 import com.slte.app.R
 import com.slte.app.kernel.KernelConfig
 import com.slte.app.kernel.RoutingCustomGroup
+import com.slte.app.kernel.RoutingGroups
 import com.slte.app.kernel.RoutingState
 import com.slte.app.kernel.RoutingStateStore
 import com.slte.app.support.MainDispatcherRule
@@ -13,6 +14,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -163,6 +165,50 @@ class RoutingRulesViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { kernelConfig.removeRoutingCustomGroup("x") }
+    }
+
+    @Test
+    fun `列表顺序按 order 覆盖内置默认顺序`() = runTest(mainRule.dispatcher) {
+        val vm =
+            viewModel(
+                RoutingState(order = listOf("🌏 国外穿墙", "🛑 广告拦截")),
+            )
+
+        val names = vm.data.value.items.map { it.name }
+        assertEquals(RoutingGroups.size, names.size) // 重排不得丢组
+        assertEquals("🌏 国外穿墙", names[0])
+        assertEquals("🛑 广告拦截", names[1])
+        assertEquals("🍃 应用净化", names[2]) // 未指定的组按内置默认顺序追加在后
+    }
+
+    @Test
+    fun `拖动排序成功后落盘并计数`() = runTest(mainRule.dispatcher) {
+        val orderSlot = slot<List<String>>()
+        coEvery { kernelConfig.applyRoutingOrder(capture(orderSlot)) } returns true
+        val vm = viewModel()
+        val before = vm.data.value.items.map { it.name }
+
+        vm.moveGroup(0, 2)
+        advanceUntilIdle()
+
+        assertEquals(RoutingSync.Idle, vm.data.value.sync)
+        assertEquals(1, vm.data.value.savedCount)
+        assertEquals(before[0], vm.data.value.items[2].name)
+        assertEquals(listOf(before[1], before[2], before[0]) + before.drop(3), orderSlot.captured)
+    }
+
+    @Test
+    fun `拖动排序失败回滚顺序并提示`() = runTest(mainRule.dispatcher) {
+        coEvery { kernelConfig.applyRoutingOrder(any()) } returns false
+        val vm = viewModel()
+        val before = vm.data.value.items.map { it.name }
+
+        vm.moveGroup(0, 2)
+        advanceUntilIdle()
+
+        assertEquals(before, vm.data.value.items.map { it.name })
+        assertEquals(RoutingSync.Idle, vm.data.value.sync)
+        assertEquals(R.string.settings_local_routing_failed, vm.data.value.errorMessageRes)
     }
 
     private fun editingError(vm: RoutingRulesViewModel): Int? = (vm.customGroupState.value as? CustomGroupState.Editing)?.errorMessageRes

@@ -74,7 +74,7 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 	}
 	rules = append(rules, lanDirectRules...)
 
-	for _, item := range Table {
+	for _, item := range OrderedTable(state.Order) {
 		if !state.GroupEnabled(item) {
 			continue
 		}

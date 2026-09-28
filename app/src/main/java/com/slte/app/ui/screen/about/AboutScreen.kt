@@ -15,7 +15,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -25,7 +24,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
 import com.slte.app.R
-import com.slte.app.ui.component.openExternalUrl
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.V5CardFlat
@@ -101,27 +99,6 @@ fun AboutScreen(
                     onClick = { LogExport.exportAndShare(context, viewModel.diagnosticsExtra()) },
                 )
             }
-
-            // 法务与许可：GPL-3.0 要求分发二进制时随附许可文本，这里给出可核对的入口。
-            V5CardFlat(modifier = Modifier.fillMaxWidth()) {
-                LegalRow(
-                    title = stringResource(R.string.about_terms),
-                    icon = SlteIcons.Terms,
-                    url = LegalLinks.TERMS,
-                )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
-                LegalRow(
-                    title = stringResource(R.string.about_privacy),
-                    icon = SlteIcons.Privacy,
-                    url = LegalLinks.PRIVACY,
-                )
-                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
-                LegalRow(
-                    title = stringResource(R.string.about_licenses),
-                    icon = SlteIcons.License,
-                    url = LegalLinks.LICENSES,
-                )
-            }
         }
     }
 
@@ -170,35 +147,6 @@ private fun CheckUpdateRow(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-            }
-        },
-    )
-}
-
-/**
- * 「法务与许可」入口行：跳到仓库中对应的文档。
- *
- * 用系统浏览器打开而不是内嵌 WebView：文档与代码同仓分发，浏览器里还能直接看到原始 Markdown
- * 与修订历史；也避免为三行入口引入 WebView 这层攻击面。
- *
- * 打开失败（无浏览器 / 系统拒答）时给一次可见提示，不能让用户「点了没反应」。
- */
-@Composable
-private fun LegalRow(
-    title: String,
-    icon: ImageVector,
-    url: String,
-) {
-    val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-    V5RowItem(
-        title = title,
-        icon = icon,
-        chevron = true,
-        onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            if (!openExternalUrl(context, url)) {
-                Toast.makeText(context, R.string.about_link_open_failed, Toast.LENGTH_SHORT).show()
             }
         },
     )

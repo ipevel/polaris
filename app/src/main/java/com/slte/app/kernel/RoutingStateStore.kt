@@ -39,6 +39,9 @@ data class RoutingState(
     val enabled: Boolean = false,
     val groups: Map<String, Boolean> = emptyMap(),
     val custom: List<RoutingCustomGroup> = emptyList(),
+    // 内置分流组的用户自定义顺序（组名列表）；空 = 沿用内置默认顺序。
+    // 只影响「组与规则的排列」（即规则匹配优先级与 App 侧展示顺序），不影响开关。
+    val order: List<String> = emptyList(),
     // 字段名必须与 Go State 的 json tag 逐字一致（snake_case）
     @SerialName("direct_domains") val directDomains: List<String> = emptyList(),
 )
@@ -188,6 +191,19 @@ constructor(
 
     /** 清空全部组开关（恢复内置默认）；返回写入是否成功。 */
     fun resetGroups(): Boolean = write(load().copy(groups = emptyMap()))
+
+    /**
+     * 置内置分流组顺序并落盘；返回写入是否成功。
+     *
+     * 只记录**合法且存在**的组名（去重、保序），避免把未知名写进 `routing.json`；
+     * 未列出的组由内核按内置默认顺序补在末尾，因此这里不做补全。
+     */
+    fun setGroupOrder(order: List<String>): Boolean {
+        val known = RoutingGroups.mapTo(HashSet()) { it.name }
+        val clean = LinkedHashSet<String>()
+        order.forEach { name -> if (name in known) clean += name }
+        return write(load().copy(order = clean.toList()))
+    }
 
     /**
      * 追加自定义规则组（名称非法 / 同名 / 与内置保留组同名一律拒绝）；

@@ -82,6 +82,25 @@ fun visibleGroupMembers(
     member.name != FALLBACK_GROUP_NAME || member.name == now
 }
 
+/**
+ * 按用户自定义顺序重排内置分流表（纯函数，便于单测）。
+ *
+ * 规则：
+ * - [order] 中出现的组名按给定次序排在前（重复只取首次出现）；
+ * - [order] 里没有的组，按 [RoutingGroups] 的内置默认顺序追加在后；
+ * - [order] 里的未知名一律忽略——**绝不丢组**。
+ *
+ * 未传 [order]（空列表）时返回 [RoutingGroups] 本身，即内置默认顺序。
+ */
+fun orderedGroups(order: List<String> = emptyList()): List<RoutingGroupInfo> {
+    if (order.isEmpty()) return RoutingGroups
+    val byName = RoutingGroups.associateBy { it.name }
+    val picked = LinkedHashMap<String, RoutingGroupInfo>()
+    order.forEach { name -> byName[name]?.let { picked.putIfAbsent(name, it) } }
+    RoutingGroups.forEach { picked.putIfAbsent(it.name, it) }
+    return picked.values.toList()
+}
+
 /** 内核保留组名（结构组 + 兜底组），与 Go 侧 GroupName* 常量一致，自定义组不得占用。 */
 val RoutingReservedNames: Set<String> =
     linkedSetOf(PrimaryGroupName, AUTO_GROUP_NAME, FALLBACK_GROUP_NAME, "🐟 漏网之鱼")

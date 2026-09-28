@@ -14,9 +14,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.AttachMoney
-import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.CardGiftcard
@@ -29,6 +27,7 @@ import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -41,7 +40,6 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lan
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Refresh
@@ -145,6 +143,8 @@ object SlteIcons {
     val Route: ImageVector = Icons.AutoMirrored.Rounded.AltRoute
     val Delete: ImageVector = Icons.Outlined.Delete
 
+    val DragHandle: ImageVector = Icons.Outlined.DragHandle
+
     val ExportLog: ImageVector = Icons.Outlined.Description
 
     /** 「检查更新」等刷新类动作（v5 页面也需走 SlteIcons，不能裸引 Icons.*）。 */
@@ -166,7 +166,4 @@ object SlteIcons {
     val InviteCode: ImageVector = Icons.Outlined.CardGiftcard
     val VisibilityOn: ImageVector = Icons.Outlined.Visibility
     val VisibilityOff: ImageVector = Icons.Outlined.VisibilityOff
-    val Terms: ImageVector = Icons.Outlined.Article
-    val Privacy: ImageVector = Icons.Outlined.Policy
-    val License: ImageVector = Icons.Outlined.Balance
 }

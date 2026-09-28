@@ -33,6 +33,7 @@ class RoutingStateStoreContractTest {
                     enabled = true,
                     groups = mapOf("📺 哔哩哔哩" to false),
                     directDomains = listOf("panel.example.cn"),
+                    order = listOf("📺 哔哩哔哩"),
                     custom = listOf(RoutingCustomGroup(name = "x", url = "https://a/b.yaml", behavior = "domain", interval = 3600)),
                 ),
             )
@@ -40,6 +41,7 @@ class RoutingStateStoreContractTest {
         assertTrue(text.contains("\"version\":1"))
         assertTrue(text.contains("\"enabled\":true"))
         assertTrue(text.contains("\"groups\":"))
+        assertTrue(text.contains("\"order\":[\"📺 哔哩哔哩\"]"))
         assertTrue(text.contains("\"custom\":"))
         assertTrue(text.contains("\"direct_domains\":[\"panel.example.cn\"]"))
         assertTrue(text.contains("\"name\":\"x\""))
@@ -69,6 +71,7 @@ class RoutingStateStoreContractTest {
             RoutingState(
                 enabled = false,
                 groups = mapOf("🛑 广告拦截" to true, "📲 电报消息" to false),
+                order = listOf("📲 电报消息", "🛑 广告拦截"),
                 custom = listOf(
                     RoutingCustomGroup(name = "我的规则", url = "https://example.com/r.yaml"),
                 ),

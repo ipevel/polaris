@@ -25,6 +25,10 @@ AGENTS.md
 # 构建发布产物
 dist/
 
+# Go 内核构建中间产物（正式产物在 kernel-core/src/main/jniLibs/arm64-v8a/）
+kernel-core/src/main/golang/libclash.so
+kernel-core/src/main/golang/libclash.h
+
 # 密钥材料（上游 mkcert 测试夹具除外，见 THIRD-PARTY-NOTICES.md）
 *.pem
 !kernel-core/src/foss/golang/clash/test/config/*.pem

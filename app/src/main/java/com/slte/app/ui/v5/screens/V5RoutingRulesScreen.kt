@@ -3,18 +3,38 @@
 
 package com.slte.app.ui.v5.screens
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.kernel.OUTBOUND_CONFIG_BLOCK
 import com.slte.app.kernel.OUTBOUND_CONFIG_DIRECT
 import com.slte.app.kernel.OUTBOUND_CONFIG_PROXY
+import com.slte.app.ui.screen.settings.RoutingRuleItem
 import com.slte.app.ui.screen.settings.RoutingRulesViewModel
 import com.slte.app.ui.screen.settings.RoutingSync
 import com.slte.app.ui.theme.SlteIcons
@@ -31,6 +51,7 @@ import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.v5Enter
+import kotlin.math.roundToInt
 
 /**
  * v5 分流规则管理页（Karing 式每条规则组独立开关 + 自定义规则组）。
@@ -57,25 +78,12 @@ internal fun V5RoutingRulesScreen(
 
             // —— 内置分流组（上方说明文案即本区小标题，不重复加 SectionTitle）
             V5CardFlat(Modifier.v5Enter(1)) {
-                data.items.forEachIndexed { index, item ->
-                    if (index > 0) V5Divider()
-                    V5RowItem(
-                        title = item.name,
-                        sub = stringResource(outboundLabelOf(item.defaultOut)),
-                        icon = SlteIcons.Route,
-                        value = if (item.enabled) stringResource(R.string.switch_state_on) else stringResource(R.string.switch_state_off),
-                        switchState = item.enabled,
-                        trailing = {
-                            V5Switch(checked = item.enabled)
-                        },
-                        onClick =
-                        if (data.sync == RoutingSync.Idle) {
-                            { viewModel.setEnabled(item.name, !item.enabled) }
-                        } else {
-                            null
-                        },
-                    )
-                }
+                ReorderableRoutingGroups(
+                    items = data.items,
+                    enabled = data.sync == RoutingSync.Idle,
+                    onToggle = viewModel::setEnabled,
+                    onMove = viewModel::moveGroup,
+                )
             }
 
             data.errorMessageRes?.let { res ->
@@ -128,6 +136,120 @@ internal fun V5RoutingRulesScreen(
             onSubmit = viewModel::submitCustomGroup,
             onDismiss = viewModel::dismissCustomGroup,
         )
+    }
+}
+
+/**
+ * 可拖动排序的内置分流组列表。
+ *
+ * 拖动只发生在右侧手柄（独立指针节点）上，避免与行内点击手势冲突；拖动过程中
+ * 按实测行距换算目标下标并实时让位，松手后回调 [onMove] 落盘（顺序决定规则匹配优先级）。
+ */
+@Composable
+private fun ReorderableRoutingGroups(
+    items: List<RoutingRuleItem>,
+    enabled: Boolean,
+    onToggle: (String, Boolean) -> Unit,
+    onMove: (Int, Int) -> Unit,
+) {
+    val c = V5ThemeColors.current
+    var draggingIndex by remember { mutableIntStateOf(-1) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var pitchPx by remember { mutableFloatStateOf(0f) }
+
+    fun targetFor(index: Int): Int = if (index < 0 || pitchPx <= 0f) {
+        index
+    } else {
+        (index + (dragOffset / pitchPx).roundToInt()).coerceIn(0, items.lastIndex)
+    }
+
+    val targetIndex = targetFor(draggingIndex)
+
+    Column(Modifier.fillMaxWidth()) {
+        items.forEachIndexed { index, item ->
+            val isDragging = index == draggingIndex
+            val shift =
+                when {
+                    draggingIndex < 0 -> 0f
+                    isDragging -> dragOffset
+                    index > draggingIndex && index <= targetIndex -> -pitchPx
+                    index < draggingIndex && index >= targetIndex -> pitchPx
+                    else -> 0f
+                }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        // 该项含分割线，故任意非首项的高度即整行的「步距」
+                        if (index > 0) pitchPx = coordinates.size.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = shift
+                        if (isDragging) shadowElevation = 8.dp.toPx()
+                    }
+                    .zIndex(if (isDragging) 1f else 0f),
+            ) {
+                if (index > 0) V5Divider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    V5RowItem(
+                        title = item.name,
+                        sub = stringResource(outboundLabelOf(item.defaultOut)),
+                        icon = SlteIcons.Route,
+                        value = if (item.enabled) stringResource(R.string.switch_state_on) else stringResource(R.string.switch_state_off),
+                        switchState = item.enabled,
+                        trailing = {
+                            V5Switch(checked = item.enabled)
+                        },
+                        onClick =
+                        if (enabled) {
+                            { onToggle(item.name, !item.enabled) }
+                        } else {
+                            null
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .height(48.dp)
+                            .pointerInput(item.name) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        draggingIndex = index
+                                        dragOffset = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffset += dragAmount.y
+                                    },
+                                    onDragEnd = {
+                                        val from = draggingIndex
+                                        val to = targetFor(from)
+                                        draggingIndex = -1
+                                        dragOffset = 0f
+                                        if (from >= 0 && to != from) onMove(from, to)
+                                    },
+                                    onDragCancel = {
+                                        draggingIndex = -1
+                                        dragOffset = 0f
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = SlteIcons.DragHandle,
+                            contentDescription = stringResource(R.string.routing_rules_drag_handle),
+                            tint = c.text3,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
