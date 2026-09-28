@@ -34,7 +34,9 @@ internal fun isSupportedTelegramUrl(url: String?): Boolean {
  *    `javascript:` 一律拒绝，否则被劫持的远端可以任意启动组件或读取本地文件；
  * 2. 不抛异常、不崩。这里**不用** `Intent.resolveActivity` 预判：API 30+ 的包可见性会让它在
  *    明明有浏览器时也返回 null（需要 `<queries>` 声明），从而把正常的 Telegram 入口变成
- *    "点了没反应"。改用 try/catch 捕获 `ActivityNotFoundException` 等，行为更可靠。
+ *    "点了没反应"。改用 try/catch 捕获 `ActivityNotFoundException` 等，行为更可靠；
+ * 3. **必须带 `FLAG_ACTIVITY_NEW_TASK`**：调用方可能是 Application Context，缺这个 flag 时
+ *    `startActivity` 会抛 `AndroidRuntimeException`（回归护栏见 `ExternalLinksTest`）。
  */
 internal fun openExternalUrl(context: Context, url: String?): Boolean {
     val trimmed = url?.trim().orEmpty()
@@ -43,7 +45,13 @@ internal fun openExternalUrl(context: Context, url: String?): Boolean {
         return false
     }
     return runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)))
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trimmed))
+        // 调用方可能持有 Application Context（例如 `UpdateViewModel` 注入的 `@ApplicationContext`）。
+        // 非 Activity 上下文启动 Activity 必须带 `FLAG_ACTIVITY_NEW_TASK`，否则系统抛
+        // `AndroidRuntimeException`，被下面的 runCatching 吞掉后表现为「点了没反应」——
+        // 真机 1.5.12 的更新按钮正是栽在这里（日志：`Polaris-Link: 打开链接失败: AndroidRuntimeException`）。
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
         true
     }.getOrElse { e ->
         AppLog.w("Polaris-Link", "打开链接失败: ${e.javaClass.simpleName}")
