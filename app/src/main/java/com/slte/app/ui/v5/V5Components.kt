@@ -15,8 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,9 +75,22 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -217,19 +230,98 @@ fun Modifier.v5CardShadow(shape: Shape): Modifier {
 }
 
 /**
- * v5 统一的无涟漪点击（返回 `Modifier`，用法 `.then(noRippleClickable(onClick))`）。
+ * v5 统一的无涟漪点击（返回 `Modifier`，用法 `.then(noRippleClickable(onClick = onClick))`，
+ * 或直接尾随 lambda `.then(noRippleClickable { ... })`）。
  *
  * 对 `ui.screen.*` 下的 v5 化页面开放（internal）：节点/公告等页面的行容器不再走 v4 的
  * `clickable(indication = null, interactionSource = remember { ... })` 手写形式，避免同一套
  * 交互在仓库里出现两处实现、改一处漏一处。
+ *
+ * 无障碍（真机实测修复）：**名称/角色/开关状态与点击动作必须落在同一个 a11y 节点上**。
+ * 改造前真机 a11y 树上设置页 7 个可点击行的 `text` 与 `content-desc` 全为空，读屏只会念出
+ * 一个没有名字的空块（行内文字挂在不可点击的子 TextView 上）。
+ *
+ * 两次失败方案（均为真机复验证据，勿回退）：
+ * 1. `Modifier.semantics(mergeDescendants = true).then(Modifier.clickable(...))`：每行裂成两个节点——
+ *    外层 `clickable=true / focusable=true` 却 `content-desc` 为空，带名字的内层 `focusable=false`，
+ *    读屏聚焦的正是没有名字的那个。根因是 `Modifier.clickable` 会另建自己的语义节点
+ *    （并套一层 `minimumInteractiveComponentSize`）。
+ * 2. 弃用 `clickable`、改为手写 `semantics` + `pointerInput` 后，只要带 `mergeDescendants` 仍会裂成
+ *    两个节点（外层 `clickable/checkable/checked` 无名字，内层有 `content-desc` 却 `clickable=false`）；
+ *    把语义挪到修饰符链最外层也无法合并（只是把内层 bounds 变成整行），反而让开关行的
+ *    `checkable/checked` 动作从 a11y 树上消失。
+ *
+ * 最终方案：**`clearAndSetSemantics`**——它**替换整个子树的语义**而不是合并，所以无论修饰符链上
+ * 还有什么，都只暴露一个节点，名称/角色/状态/点击动作全在它上面。
+ * - [label] 挂 `contentDescription`，是读屏播报的名字（行类控件用 `title, sub, value` 拼接）。
+ * - [texts] 挂 `SemanticsProperties.Text`（列表，逐条保留原文）：子节点语义被隐藏后，靠它保留
+ *   「按文本定位」能力，`onNodeWithText("外观")` 这类精确匹配仍可用（未显式传 `texts` 时退回 `label`）。
+ * - `clearAndSetSemantics` 只在**有名称或状态**（[label]/[texts]/[toggleState]/[selected]）时启用；
+ *   否则（只传了角色/点击，子节点自带 `Icon` 的 `contentDescription` 或本身就是输入框）退回普通
+ *   `semantics`，避免把子节点语义清掉而破坏读屏与既有测试断言。
+ * - `indication` 本来就是 null（无涟漪），对触摸用户行为等价；代价是失去 `Modifier.clickable`
+ *   自带的方向键/回车激活，本应用无键盘导航，读屏可用性收益远大于此。
+ *
+ * 开关状态用 [toggleState] 而不是 `stateDescription`：前者落到
+ * `AccessibilityNodeInfo.setCheckable/setChecked`，在 minSdk 28 上就能被 TalkBack 播报，且能直接
+ * 从 `uiautomator` 层级里读到 `checkable=true` / `checked=true` 作为回归证据；后者是 API 30+
+ * 才有的自由文本，低版本会被静默忽略。
+ *
+ * [onClick] 必须留在**最后一个形参**：Kotlin 的尾随 lambda 只能落到位居末位的函数类型形参上，
+ * 仓库里有 6 处 `noRippleClickable { ... }` 惯用法依赖这一点。
  */
 @Composable
-internal fun noRippleClickable(onClick: (() -> Unit)?): Modifier = if (onClick != null) {
-    // remember 隔离：composition 中直接创建 MutableInteractionSource 会被 lint 拦截
-    val interactionSource = remember { MutableInteractionSource() }
-    Modifier.clickable(interactionSource, null, onClick = onClick)
-} else {
-    Modifier
+internal fun noRippleClickable(
+    role: Role? = null,
+    toggleState: Boolean? = null,
+    selected: Boolean? = null,
+    label: String? = null,
+    texts: List<String>? = null,
+    onClick: (() -> Unit)? = null,
+): Modifier {
+    val action = onClick
+    // 手势块用 Unit 作 key、动作经 rememberUpdatedState 取最新值，避免每次重组重启手势检测
+    val currentAction = rememberUpdatedState(action)
+    // 子节点语义会被 clearAndSetSemantics 隐藏，所以把行内文字显式挂到本节点上，
+    // 保证 `onNodeWithText(...)` 仍能定位（未显式传 texts 时退回 label）。
+    val nodeTexts = texts ?: listOfNotNull(label)
+    // 只有「有可暴露的名称或状态」时才用 clearAndSetSemantics 收敛成单节点；
+    // 否则（例如调用方只传了 onClick，子节点自带 Icon 的 contentDescription、
+    // 或子节点本身是输入框）退回普通 semantics，避免把子节点语义一并清掉。
+    val shouldClear = label != null ||
+        nodeTexts.isNotEmpty() ||
+        toggleState != null ||
+        selected != null
+    val semanticsBlock: SemanticsPropertyReceiver.() -> Unit = {
+        if (role != null) this.role = role
+        if (toggleState != null) this.toggleableState = ToggleableState(toggleState)
+        if (selected != null) this.selected = selected
+        if (label != null) this.contentDescription = label
+        // 直接写 SemanticsProperties.Text（List<AnnotatedString>）：`text` 属性只接受单个
+        // AnnotatedString，拼接后 `onNodeWithText("外观")` 这类精确匹配会失效。
+        if (nodeTexts.isNotEmpty()) {
+            this[SemanticsProperties.Text] = nodeTexts.map { AnnotatedString(it) }
+        }
+        if (action != null) {
+            this.onClick(label = label) {
+                action()
+                true
+            }
+        }
+    }
+    val base = if (shouldClear) {
+        Modifier.clearAndSetSemantics(properties = semanticsBlock)
+    } else {
+        Modifier.semantics(properties = semanticsBlock)
+    }
+    return base
+        .then(
+            if (action != null) {
+                Modifier.pointerInput(Unit) { detectTapGestures { currentAction.value?.invoke() } }
+            } else {
+                Modifier
+            },
+        )
 }
 
 /** 白色大圆角卡片（22dp 圆角）。 */
@@ -327,7 +419,7 @@ fun V5TopIconButton(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .then(noRippleClickable(onClick)),
+            .then(noRippleClickable(role = Role.Button, label = contentDescription, onClick = onClick)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -634,7 +726,7 @@ fun V5Button(
     // 注：WCAG 1.4.3 对 inactive 组件有豁免，所以这属于可用性修复，不是合规义务。
     val disabled = !active
     if (disabled) fg = c.text3
-    val clickable = noRippleClickable(if (active) onClick else null)
+    val clickable = noRippleClickable(role = Role.Button, label = text, onClick = if (active) onClick else null)
     // 调用方传入的 modifier 必须**最先**应用：里面通常带着 fillMaxWidth / weight 这类尺寸约束，
     // 放到后面会被 shadow/clip/background 的顺序与默认最小尺寸挤掉。
     //
@@ -782,6 +874,7 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEachIndexed { index, tab ->
                 val on = tab == active
+                val tabLabel = stringResource(tab.labelRes)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -798,13 +891,20 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
                                 Modifier
                             },
                         )
-                        .then(noRippleClickable { onSelect(tab) }),
+                        .then(
+                            noRippleClickable(
+                                role = Role.Tab,
+                                selected = on,
+                                label = tabLabel,
+                                onClick = { onSelect(tab) },
+                            ),
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Icon(tab.icon, null, modifier = Modifier.size(21.dp), tint = if (on) c.accent else c.text3)
                     Text(
-                        stringResource(tab.labelRes),
+                        tabLabel,
                         fontSize = V5Type.sp10_5,
                         fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
                         letterSpacing = V5Type.tracking,
@@ -833,6 +933,12 @@ fun HeroConnectButton(
     val grad = if (connected) c.okGrad else c.accentGrad
     val ring = if (connected) c.ok else c.accent
     val halo = if (connected) c.okBg else c.accentBg
+    // 大圆钮同样必须自带可访问名称，否则读屏只能念出一个"无名按钮"。
+    val connectLabel = when {
+        connected -> stringResource(R.string.v5_disconnect)
+        connecting -> stringResource(R.string.v5_cancel)
+        else -> stringResource(R.string.v5_connect)
+    }
     // 波纹扩散：一圈细环从按钮外缘匀速向外推开、边推边淡出，推到最远时循环重来。
     val transition = rememberInfiniteTransition(label = "pulse")
     val pulse by transition.animateFloat(
@@ -852,7 +958,7 @@ fun HeroConnectButton(
         modifier = modifier
             .size(150.dp)
             .offset(y = 10.dp)
-            .then(noRippleClickable(onClick))
+            .then(noRippleClickable(role = Role.Button, label = connectLabel, onClick = onClick))
             .drawBehind {
                 val r = size.minDimension / 2f
                 // 柔光底：按钮外一层极淡的色晕，让波纹推开时有"承托"。
@@ -905,11 +1011,7 @@ fun HeroConnectButton(
                 tint = Color.White,
             )
             Text(
-                when {
-                    connected -> stringResource(R.string.v5_disconnect)
-                    connecting -> stringResource(R.string.v5_cancel)
-                    else -> stringResource(R.string.v5_connect)
-                },
+                connectLabel,
                 fontSize = V5Type.sp15,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 3.sp,
@@ -956,15 +1058,29 @@ fun V5RowItem(
     trailing: (@Composable RowScope.() -> Unit)? = null,
     chevron: Boolean = false,
     danger: Boolean = false,
+    switchState: Boolean? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
+    // 行类控件必须自带可访问名称与文本：真机实测行节点的 text 为空（详见 noRippleClickable 的 KDoc）。
+    val a11yTexts = if (onClick != null || switchState != null) listOfNotNull(title, sub, value) else emptyList()
+    val a11yLabel = a11yTexts.joinToString(", ").ifEmpty { null }
     Row(
         modifier = modifier
+            // 语义挂在修饰符链最外层：`clearAndSetSemantics` 会替换整个子树的语义，
+            // 放在链首才能让「整行」成为唯一暴露的节点（bounds 覆盖整行）。
+            .then(
+                noRippleClickable(
+                    role = if (switchState != null) Role.Switch else null,
+                    toggleState = switchState,
+                    label = a11yLabel,
+                    texts = a11yTexts,
+                    onClick = onClick,
+                ),
+            )
             .fillMaxWidth()
             .defaultMinSize(minHeight = 58.dp)
-            .padding(horizontal = 15.dp, vertical = V5Spacing.dp10)
-            .then(noRippleClickable(onClick)),
+            .padding(horizontal = 15.dp, vertical = V5Spacing.dp10),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12),
     ) {

@@ -91,7 +91,7 @@ internal fun WithdrawMethodField(
                 .height(48.dp)
                 .clip(shape)
                 .background(c.surface2)
-                .then(noRippleClickable(clickAction))
+                .then(noRippleClickable(onClick = clickAction))
                 .padding(horizontal = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

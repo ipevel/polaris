@@ -404,7 +404,7 @@ internal fun V5TextAction(
         modifier =
         modifier
             .clip(RoundedCornerShape(10.dp))
-            .then(noRippleClickable(onClick))
+            .then(noRippleClickable(onClick = onClick))
             .padding(horizontal = 8.dp, vertical = 7.dp),
     ) {
         Text(text = text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = c.accent)

@@ -35,7 +35,8 @@
 | MikePenz multiplatform-markdown-renderer | Apache-2.0 |
 | airbnb/lottie-android | Apache-2.0 |
 | com.maxmind.db:maxmind-db | Apache-2.0 |
-| com.github.kr328:kaidl / rikkax-multiprocess | Apache-2.0 |
+| com.github.kr328.kaidl（kaidl / kaidl-runtime）1.15 | MIT |
+| dev.rikka.rikkax.preference:multiprocess 1.0.0（RikkaX） | MIT |
 | androidx.security:security-crypto | Apache-2.0 |
 
 仅构建/测试期（不进入分发物）：JUnit 4（EPL-1.0）、MockK（Apache-2.0）、Robolectric（MIT）、SnakeYAML（Apache-2.0）、ktlint Gradle 插件（MIT）。

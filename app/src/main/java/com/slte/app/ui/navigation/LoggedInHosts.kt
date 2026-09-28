@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.slte.app.ui.component.rememberToast
 import com.slte.app.ui.screen.about.ForceUpdateDialog
-import com.slte.app.ui.screen.about.UpdateDownloadingDialog
 import com.slte.app.ui.screen.about.UpdateSheet
 import com.slte.app.ui.screen.about.UpdateUiState
 import com.slte.app.ui.screen.about.UpdateViewModel
@@ -37,7 +36,6 @@ internal fun GlobalToastHosts(
     }
     LaunchedEffect(updateState) {
         val failedRes = (updateState as? UpdateUiState.Failed)?.messageRes
-            ?: (updateState as? UpdateUiState.DownloadFailed)?.messageRes
         if (failedRes != null) {
             toast.show(failedRes)
             onUpdateTipShown()
@@ -50,18 +48,14 @@ internal fun UpdateHost(
     updateState: UpdateUiState,
     updateViewModel: UpdateViewModel,
 ) {
-    if (updateState is UpdateUiState.Downloading) {
-        UpdateDownloadingDialog(progress = updateState.progress)
-        return
-    }
     val available = updateState as? UpdateUiState.Available ?: return
     if (available.force) {
-        ForceUpdateDialog(onUpdateNow = updateViewModel::updateNow)
+        ForceUpdateDialog(onOpenRelease = updateViewModel::openReleasePage)
     } else {
         UpdateSheet(
             state = available,
             onDismiss = updateViewModel::dismiss,
-            onUpdateNow = updateViewModel::updateNow,
+            onOpenRelease = updateViewModel::openReleasePage,
             onLater = updateViewModel::later,
         )
     }

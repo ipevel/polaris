@@ -5,7 +5,7 @@ package com.slte.app.ui.screen.plans
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -60,7 +60,7 @@ class PlansScreenTest {
         composeRule.waitUntil(5_000) { viewModel.data.value.plans.isNotEmpty() }
 
         composeRule.onNodeWithText("进阶套餐").assertIsDisplayed()
-        composeRule.onNode(hasText("订阅") and hasClickAction()).performClick()
+        composeRule.onNode(hasContentDescription("订阅") and hasClickAction()).performClick()
 
         composeRule.onNodeWithText("有优惠券？").assertIsDisplayed()
     }

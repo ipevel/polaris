@@ -81,7 +81,7 @@ internal fun NoticeRow(
                 .fillMaxWidth()
                 // `noRippleClickable` 是返回 Modifier 的普通 @Composable（不是 Modifier 扩展），
                 // 所以走 `.then(...)`——与 V5Components 内部所有调用点保持一致。
-                .then(noRippleClickable(rowClick))
+                .then(noRippleClickable(onClick = rowClick))
                 .padding(horizontal = 15.dp, vertical = 13.dp),
         ) {
             Row(

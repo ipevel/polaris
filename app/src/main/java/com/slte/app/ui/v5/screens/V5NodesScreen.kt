@@ -3,7 +3,6 @@
 
 package com.slte.app.ui.v5.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,6 +56,7 @@ import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.V5TopIconButton
+import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.ui.v5.v5Enter
 
 /* ============================================================
@@ -268,6 +269,7 @@ internal fun V5NodesScreen(
                 V5Divider()
                 V5RowItem(
                     title = stringResource(R.string.settings_local_routing),
+                    switchState = localRoutingEnabled,
                     trailing = {
                         V5Switch(checked = localRoutingEnabled)
                     },
@@ -309,7 +311,13 @@ private fun NodeGroupCard(
             Modifier
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 48.dp)
-                .clickable(enabled = enabled) { onToggle() }
+                .then(
+                    noRippleClickable(
+                        role = Role.Button,
+                        label = name,
+                        onClick = if (enabled) onToggle else null,
+                    ),
+                )
                 .padding(start = 15.dp, end = V5Spacing.dp12, top = 13.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -96,6 +96,7 @@ internal fun V5SettingsScreen(
                 V5CardFlat(Modifier) {
                     V5RowItem(
                         title = stringResource(R.string.settings_expire_remind),
+                        switchState = data.expireRemindEnabled,
                         trailing = {
                             V5Switch(checked = data.expireRemindEnabled)
                         },
@@ -109,6 +110,7 @@ internal fun V5SettingsScreen(
                     V5Divider()
                     V5RowItem(
                         title = stringResource(R.string.settings_traffic_remind),
+                        switchState = data.trafficRemindEnabled,
                         trailing = {
                             V5Switch(checked = data.trafficRemindEnabled)
                         },

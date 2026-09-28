@@ -196,7 +196,7 @@ internal fun CouponInput(
                     .background(if (enabled) c.accentBg else c.surface3)
                     .then(
                         noRippleClickable(
-                            if (enabled) {
+                            onClick = if (enabled) {
                                 {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onVerify()

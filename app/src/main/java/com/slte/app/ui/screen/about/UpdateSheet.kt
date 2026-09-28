@@ -4,13 +4,11 @@
 package com.slte.app.ui.screen.about
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -33,12 +31,18 @@ import com.slte.app.ui.theme.SlteType
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.Stickers
 
+/**
+ * 发现新版本的底部弹窗（非强制）。
+ *
+ * 「立即更新」已改为「前往 GitHub 下载」：点击后跳到 Release 页由用户自行下载覆盖安装，
+ * 因此额外给出「不要先卸载」的提示，避免用户卸载重装导致配置清空。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdateSheet(
     state: UpdateUiState.Available,
     onDismiss: () -> Unit,
-    onUpdateNow: () -> Unit,
+    onOpenRelease: () -> Unit,
     onLater: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -83,9 +87,19 @@ fun UpdateSheet(
 
         Spacer(modifier = Modifier.height(Dimens.gap.lg))
 
+        Text(
+            text = stringResource(R.string.update_keep_config_hint),
+            style = SlteType.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+
+        Spacer(modifier = Modifier.height(Dimens.gap.sm))
+
         SlteButton(
             text = stringResource(R.string.update_now),
-            onClick = onUpdateNow,
+            onClick = onOpenRelease,
             modifier = Modifier.fillMaxWidth(),
             style = SlteButtonStyle.Primary,
         )
@@ -102,60 +116,8 @@ fun UpdateSheet(
 }
 
 @Composable
-fun UpdateDownloadingDialog(progress: Int) {
-    LocaleAwareAlertDialog(
-        onDismissRequest = {},
-        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
-        containerColor = MaterialTheme.colorScheme.surface,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        icon = {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center,
-            ) {
-                AnimatedSticker(
-                    assetPath = Stickers.UPDATE,
-                    modifier = Modifier.size(Dimens.logoSize),
-                )
-            }
-        },
-        title = {
-            Text(
-                text = stringResource(R.string.update_downloading),
-                style = SlteType.heading,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                LinearProgressIndicator(
-                    progress = { progress / 100f },
-                    modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(Dimens.gap.sm),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(Dimens.gap.sm))
-                Text(
-                    text = "$progress%",
-                    style = SlteType.valueSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {},
-    )
-}
-
-@Composable
 fun ForceUpdateDialog(
-    onUpdateNow: () -> Unit,
+    onOpenRelease: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     LocaleAwareAlertDialog(
@@ -182,12 +144,21 @@ fun ForceUpdateDialog(
                 textAlign = TextAlign.Center,
             )
         },
+        text = {
+            Text(
+                text = stringResource(R.string.update_keep_config_hint),
+                style = SlteType.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+        },
         confirmButton = {
             SlteButton(
                 text = stringResource(R.string.update_now),
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onUpdateNow()
+                    onOpenRelease()
                 },
                 modifier = Modifier.fillMaxWidth(),
                 style = SlteButtonStyle.Primary,

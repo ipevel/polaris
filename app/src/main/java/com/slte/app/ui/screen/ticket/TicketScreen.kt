@@ -219,7 +219,7 @@ private fun TicketRow(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .then(noRippleClickable(rowClick))
+                .then(noRippleClickable(onClick = rowClick))
                 .padding(horizontal = 15.dp, vertical = 13.dp),
         ) {
             Row(

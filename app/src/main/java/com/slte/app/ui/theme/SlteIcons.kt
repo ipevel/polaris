@@ -14,7 +14,9 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.CardGiftcard
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lan
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Refresh
@@ -163,4 +166,7 @@ object SlteIcons {
     val InviteCode: ImageVector = Icons.Outlined.CardGiftcard
     val VisibilityOn: ImageVector = Icons.Outlined.Visibility
     val VisibilityOff: ImageVector = Icons.Outlined.VisibilityOff
+    val Terms: ImageVector = Icons.Outlined.Article
+    val Privacy: ImageVector = Icons.Outlined.Policy
+    val License: ImageVector = Icons.Outlined.Balance
 }

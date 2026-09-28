@@ -64,6 +64,7 @@ internal fun V5RoutingRulesScreen(
                         sub = stringResource(outboundLabelOf(item.defaultOut)),
                         icon = SlteIcons.Route,
                         value = if (item.enabled) stringResource(R.string.switch_state_on) else stringResource(R.string.switch_state_off),
+                        switchState = item.enabled,
                         trailing = {
                             V5Switch(checked = item.enabled)
                         },

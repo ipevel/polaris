@@ -5,6 +5,7 @@ package com.slte.app.ui.screen.invite
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -64,7 +65,7 @@ class InviteScreenTest {
         }
         composeRule.waitUntil(5_000) { viewModel.data.value.stat.availableBalance == 56_700 }
 
-        composeRule.onNodeWithText("申请提现").performClick()
+        composeRule.onNodeWithContentDescription("申请提现").performClick()
 
         composeRule.onNodeWithText("USDT").assertIsDisplayed()
         composeRule.onNodeWithText("请输入提现账号").assertIsDisplayed()
@@ -82,7 +83,7 @@ class InviteScreenTest {
         }
         composeRule.waitUntil(5_000) { viewModel.data.value.stat.availableBalance == 56_700 }
 
-        composeRule.onNodeWithText("佣金划转").performClick()
+        composeRule.onNodeWithContentDescription("佣金划转").performClick()
 
         composeRule.onNodeWithText("确认划转").assertIsDisplayed()
     }

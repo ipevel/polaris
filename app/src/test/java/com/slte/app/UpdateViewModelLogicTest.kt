@@ -5,9 +5,11 @@ package com.slte.app
 
 import com.slte.app.ui.screen.about.compareVersions
 import com.slte.app.ui.screen.about.isUpdatePayloadConsistent
+import com.slte.app.ui.screen.about.releasePageUrl
 import com.slte.app.ui.screen.about.shouldShowUpdateDialog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,5 +98,36 @@ class UpdateViewModelLogicTest {
 
         assertTrue(compareVersions("abc", "1.0.0") < 0)
         assertTrue(compareVersions("", "0.0.1") < 0)
+    }
+
+    @Test
+    fun releasePageUrl_从APK直链推导Releases页() {
+        assertEquals(
+            "https://github.com/ipevel/polaris/releases",
+            releasePageUrl("https://github.com/ipevel/polaris/releases/download/v1.5.11/Polaris-1.5.11.apk"),
+        )
+        // 已是 /releases/tag 形式的地址同样归一到列表页
+        assertEquals(
+            "https://github.com/ipevel/polaris/releases",
+            releasePageUrl("https://github.com/ipevel/polaris/releases/tag/v1.5.11"),
+        )
+        // 自定义 releaseTag 下的资产也落在同一个列表页（直链 tag 与版本号可不一致）
+        assertEquals(
+            "https://github.com/ipevel/polaris/releases",
+            releasePageUrl("https://github.com/ipevel/polaris/releases/download/custom-tag/Polaris-1.5.11.apk"),
+        )
+    }
+
+    @Test
+    fun releasePageUrl_非法或缺失输入返回null() {
+        assertNull(releasePageUrl(null))
+        assertNull(releasePageUrl(""))
+        assertNull(releasePageUrl("   "))
+        // 非 https
+        assertNull(releasePageUrl("http://github.com/ipevel/polaris/releases"))
+        // 不含 /releases 段
+        assertNull(releasePageUrl("https://github.com/ipevel/polaris"))
+        // 主机名里含 releases（路径段必须位于主机之后），不能被误当成 release 路径
+        assertNull(releasePageUrl("https://releases.example.com/polaris"))
     }
 }

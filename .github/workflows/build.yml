@@ -203,9 +203,10 @@ jobs:
           POLARIS_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
           POLARIS_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
 
-          # 应用内更新依赖 remote.json（版本/变更/APK 直链+SHA-256）。
+          # 应用内更新提示依赖 remote.json（版本/变更/APK 直链+SHA-256）。直链与校验和用于判定
+          # 所声明版本的 Release 是否真实存在（自洽性），App 侧不再下载，而是跳转 Release 页由用户下载。
           # 远程配置源与 APK 直链域名必须进编译期白名单，否则 RemoteConfigParser
-          # 会静默拒绝 update_apk_url，更新功能形同虚设（SEC-2 教训）。
+          # 会静默拒绝 update_apk_url，更新提示形同虚设（SEC-2 教训）。
           POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls != '' && inputs.remoteConfigUrls || 'https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json' }}
           POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains != '' && inputs.allowedDomains || 'github.com,raw.githubusercontent.com,objects.githubusercontent.com' }}
 
@@ -266,6 +267,15 @@ jobs:
           mkdir -p dist
           cp "$APK" dist/
           ( cd dist && sha256sum ./*.apk > SHA256SUMS.txt )
+          # GPL-3.0 要求分发二进制时随附许可文本；隐私政策与用户协议一并附上，用户无需进仓库即可查阅。
+          for doc in LICENSE THIRD-PARTY-NOTICES.md PRIVACY.md TERMS.md; do
+            if [ -f "$doc" ]; then
+              cp "$doc" dist/
+            else
+              echo "::error::缺少随发布分发的文档：$doc"
+              exit 1
+            fi
+          done
           APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner"
           if [ -x "$APKSIGNER" ]; then
             "$APKSIGNER" verify --print-certs "$APK" > dist/SIGNING.txt 2>&1 || true
@@ -298,6 +308,10 @@ jobs:
             app/build/outputs/apk/*/Polaris-*.apk
             dist/SHA256SUMS.txt
             dist/SIGNING.txt
+            dist/LICENSE
+            dist/THIRD-PARTY-NOTICES.md
+            dist/PRIVACY.md
+            dist/TERMS.md
           if-no-files-found: error
           retention-days: 90
 
@@ -319,7 +333,7 @@ jobs:
           set -e
           mkdir -p out
           find incoming -name 'Polaris-*.apk' -exec cp -v {} out/ \;
-          for f in SHA256SUMS.txt SIGNING.txt; do
+          for f in SHA256SUMS.txt SIGNING.txt LICENSE THIRD-PARTY-NOTICES.md PRIVACY.md TERMS.md; do
             src=$(find incoming -name "$f" -print -quit)
             if [ -n "$src" ]; then cp "$src" out/; fi
           done
@@ -367,6 +381,12 @@ jobs:
             echo '```'
             echo ""
             echo "> 安装前请核对上述 SHA-256，确认安装包未被篡改。"
+            echo ""
+            echo "> 请直接覆盖安装，不要先卸载，以保留你已有的配置与数据。"
+            echo ""
+            echo "### 许可"
+            echo ""
+            echo "本应用以 GPL-3.0 分发，附件中的 \`LICENSE\` 为许可正文，\`THIRD-PARTY-NOTICES.md\` 列出全部第三方组件与许可；\`PRIVACY.md\`、\`TERMS.md\` 分别为隐私政策与用户协议。源代码见 [本仓库](https://github.com/${GITHUB_REPOSITORY})。"
           } > notes.md
           cat notes.md
 
@@ -422,8 +442,9 @@ jobs:
           APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/Polaris-${VERSION}.apk"
           # 必须显式 export：Python 子进程经 os.environ 读取，未导出时 update_apk_url 恒为空串
           export APK_URL
-          # 从构建产物校验文件中提取 APK SHA-256，写入 remote.json 驱动应用内
-          # 更新的完整性校验（UpdateViewModel 读取 update_apk_sha256 验证下载包）
+          # 从构建产物校验文件中提取 APK SHA-256，写入 remote.json，供 App 端做「版本号/直链/校验和
+          # 三者同源」的自洽性判定（UpdateViewModel 读取 update_apk_sha256），确认对应 Release 已真实发布；
+          # 用户也可在 Release 页据 SHA-256 核对下载包。
           APK_SHA="$(awk '{print tolower($1)}' ../out/SHA256SUMS.txt | head -1)"
           # 取不到合法校验和就失败，绝不发布空值：空校验和会让 App 端无从验证下载包
           # （App 侧已拒绝安装无校验和的包，更应在发布侧断开）

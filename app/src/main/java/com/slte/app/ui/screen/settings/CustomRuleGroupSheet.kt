@@ -3,7 +3,6 @@
 
 package com.slte.app.ui.screen.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.slte.app.R
@@ -28,6 +28,7 @@ import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.utils.Dimens
 
 /**
@@ -125,7 +126,14 @@ private fun BehaviorRow(
         modifier =
         Modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
+            .then(
+                noRippleClickable(
+                    role = Role.RadioButton,
+                    label = label,
+                    selected = selected,
+                    onClick = if (enabled) onClick else null,
+                ),
+            )
             .padding(vertical = Dimens.gap.sm, horizontal = Dimens.gap.lg),
         verticalAlignment = Alignment.CenterVertically,
     ) {

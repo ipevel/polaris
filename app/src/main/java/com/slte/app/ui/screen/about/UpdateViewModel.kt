@@ -4,7 +4,6 @@
 package com.slte.app.ui.screen.about
 
 import android.content.Context
-import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.BuildConfig
@@ -14,13 +13,11 @@ import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.di.IoDispatcher
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelProxy
+import com.slte.app.ui.component.openExternalUrl
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Diagnostics
-import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -30,15 +27,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.OkHttpClient
 
 /**
  * 更新载荷自洽性：版本号、APK 直链、SHA-256 必须同时指向同一个已发布的包。
  *
  * 存在的理由：发布流程曾允许在 Release 产出**之前**先把 remote.json 的 update_version 改成新版本，
- * 此时直链与校验和仍是上一版的。App 只看版本号就提示更新，用户下载到的是旧包，而旧包的哈希恰好
- * 与旧校验和一致 —— 校验反而通过，装完版本没变又提示更新，形成无限循环。这里要求三者同源，
- * 任一不自洽就不提示更新（宁可少提示，也不能把旧包/未验证的包当新版本安装）。
+ * 此时直链与校验和仍是上一版的。App 只看版本号就提示更新，用户会跳到 Releases 页却找不到对应版本
+ * 的下载项（历史上应用内安装时则会下载到旧包，装完版本没变又提示更新，形成无限循环）。这里要求三者
+ * 同源，任一不自洽就不提示更新：宁可少提示，也不能把未发布的版本当新版本提示。
  */
 internal fun isUpdatePayloadConsistent(
     updateVersion: String,
@@ -54,6 +50,24 @@ internal fun isUpdatePayloadConsistent(
     if (!versionInUrl.containsMatchIn(url)) return false
     val sha = apkSha256?.trim().orEmpty()
     return sha.length == SHA256_HEX_LENGTH && sha.all { it.isHexDigit() }
+}
+
+/**
+ * 从 APK 直链推导 GitHub Release 页地址。
+ *
+ * 更新方式已从「应用内下载并安装」改为「跳转 Releases 页由用户自行下载」：直链本身不再用于下载，
+ * 但仍作为「对应版本确实已发布」的自洽性凭证，并据此定位下载页：
+ * `https://github.com/<owner>/<repo>/releases/download/<tag>/<asset>` → `https://github.com/<owner>/<repo>/releases`。
+ *
+ * 只接受 https，且 `/releases` 段必须位于主机之后（防止把 `https://releases.example.com/...`
+ * 这类域名误当成 release 路径）；无法识别时返回 null，由调用方报错，而不是打开可疑地址。
+ */
+internal fun releasePageUrl(apkUrl: String?): String? {
+    val url = apkUrl?.trim().orEmpty()
+    if (!url.startsWith("https://")) return null
+    val idx = url.indexOf("/releases")
+    if (idx <= "https://".length) return null
+    return url.substring(0, idx) + "/releases"
 }
 
 private const val SHA256_HEX_LENGTH = 64
@@ -102,14 +116,6 @@ sealed interface UpdateUiState {
         val force: Boolean,
     ) : UpdateUiState
 
-    data class Downloading(
-        val progress: Int = 0,
-    ) : UpdateUiState
-
-    data class DownloadFailed(
-        val messageRes: Int,
-    ) : UpdateUiState
-
     data object Latest : UpdateUiState
 
     data object Error : UpdateUiState
@@ -145,14 +151,6 @@ constructor(
     private var dismissedInSession = false
 
     private var lastShownSignature: String? = null
-
-    private val downloadClient: OkHttpClient by lazy {
-        OkHttpClient
-            .Builder()
-            .connectTimeout(DOWNLOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(DOWNLOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .build()
-    }
 
     init {
         viewModelScope.launch {
@@ -230,110 +228,30 @@ constructor(
         }
     }
 
-    fun updateNow() {
-        val current = _state.value as? UpdateUiState.Available ?: return
-        val url = remoteConfig.data.updateApkUrl
-        if (!url.startsWith("https://")) {
+    /**
+     * 跳转到 GitHub Releases 页，由用户自行下载并覆盖安装。
+     *
+     * 不再在应用内下载/安装 APK：应用内安装要清理并校验中间产物、依赖 FileProvider 与「安装未知应用」
+     * 授权，且发布元数据一旦不自洽就会陷入「装完还是旧版」的循环。改由系统浏览器 + 系统安装器承接后，
+     * 用户以**覆盖安装**方式升级即可 —— 同一包名、同一签名且 versionCode 更高时，Android 会保留其应用
+     * 数据与配置；只有「先卸载再安装」才会清空，故 UI 侧同时提示用户不要先卸载。
+     */
+    fun openReleasePage() {
+        if (_state.value !is UpdateUiState.Available) return
+        val url = releasePageUrl(remoteConfig.data.updateApkUrl)
+        if (url == null) {
+            AppLog.w("Polaris-Update", "APK 直链无法推导 Release 页地址，已阻止跳转")
             _state.value = UpdateUiState.Failed(R.string.update_apk_missing)
             return
         }
-        if (_state.value is UpdateUiState.Downloading) return
-
-        _state.value = UpdateUiState.Downloading(progress = 0)
-        viewModelScope.launch {
-            val result =
-                withContext(ioDispatcher) {
-                    runCatching { downloadApk(url) { pct -> _state.value = UpdateUiState.Downloading(progress = pct) } }
-                }
-            result.onSuccess { apkFile ->
-                AppLog.i("Polaris-Update", "APK 下载完成: ${apkFile.name} size=${apkFile.length()}")
-                val expectedSha = remoteConfig.data.updateApkSha256
-                if (expectedSha.isNotBlank()) {
-                    val actualSha = fileSha256(apkFile)
-                    if (!actualSha.equals(expectedSha, ignoreCase = true)) {
-                        AppLog.w("Polaris-Update", "APK 哈希校验失败: expected=$expectedSha actual=$actualSha")
-                        apkFile.delete()
-                        _state.value = UpdateUiState.DownloadFailed(R.string.update_hash_mismatch)
-                        return@launch
-                    }
-                    AppLog.i("Polaris-Update", "APK 哈希校验通过")
-                } else {
-                    // 无校验和 = 无法验证完整性，拒绝安装。发布侧由 build.yml 保证不再发布空校验和，
-                    // 此处兜住「检查与下载之间 remote.json 被换成不带校验和的版本」这一竞态。
-                    AppLog.w("Polaris-Update", "APK 缺少 SHA-256 校验和，拒绝安装未验证的更新包")
-                    apkFile.delete()
-                    _state.value = UpdateUiState.DownloadFailed(R.string.update_apk_missing)
-                    return@launch
-                }
-                _state.value = UpdateUiState.Idle
-                installApk(apkFile)
-            }.onFailure { e ->
-                AppLog.w("Polaris-Update", "APK 下载失败: ${sanitizeLog(e.message ?: "Unknown")}")
-                _state.value = UpdateUiState.DownloadFailed(R.string.update_download_failed)
-            }
+        if (!openExternalUrl(context, url)) {
+            _state.value = UpdateUiState.Failed(R.string.update_open_failed)
+            return
         }
-    }
-
-    private fun downloadApk(
-        url: String,
-        onProgress: (Int) -> Unit,
-    ): java.io.File {
-        val dir =
-            context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-                ?: context.filesDir
-        val target = java.io.File(dir, "polaris-update.apk")
-        val request = okhttp3.Request.Builder().url(url).build()
-        downloadClient.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) throw java.io.IOException("HTTP ${resp.code}")
-            val body = resp.body ?: throw java.io.IOException("empty body")
-            val total = body.contentLength()
-            var readBytes = 0L
-            body.byteStream().use { input ->
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        output.write(buffer, 0, n)
-                        readBytes += n
-                        if (total > 0L) {
-                            onProgress(((readBytes * 100L) / total).toInt().coerceIn(0, 100))
-                        }
-                    }
-                }
-            }
-            onProgress(100)
-        }
-        return target
-    }
-
-    private fun fileSha256(file: java.io.File): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buf = ByteArray(64 * 1024)
-            while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        return md.digest().joinToString("") { "%02x".format(it) }
-    }
-
-    private fun installApk(file: java.io.File) {
-        try {
-            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-            val intent =
-                Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            AppLog.w("Polaris-Update", "拉起安装器失败: ${sanitizeLog(e.message ?: "Unknown")}")
-            _state.value = UpdateUiState.DownloadFailed(R.string.update_download_failed)
-        }
+        AppLog.i("Polaris-Update", "已跳转 Release 页: $url")
+        // 用户已离开去下载页，本次会话不再自动弹窗（force 更新不受影响）
+        dismissedInSession = true
+        _state.value = UpdateUiState.Idle
     }
 
     fun later() {
@@ -353,9 +271,5 @@ constructor(
     private companion object {
 
         const val REFRESH_TIMEOUT_MS = 6_000L
-
-        const val DOWNLOAD_TIMEOUT_SECONDS = 60L
-
-        const val DOWNLOAD_BUFFER_SIZE = 8 * 1024
     }
 }

@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "1.5.11",
-  "update_changelog_title": "Polaris 1.5.11 更新",
-  "update_changelog": "### 1.5.11\n\n- **可读性全面达标**：亮色主题下 5 个状态芯片与 6 个数据瓷片的文字对比度全部达到 WCAG AA（4.5:1），此前我的 / 节点 / 流量 / 订单 / 公告 / 套餐等页最低只有 2.26:1\n- **流量柱状图配色重做**：柱体由纵向渐变改纯色，原来柱底只有 1.30~1.87:1、低流量日看起来像「没数据」，现在整根柱 4.07:1；基线提到 4.20:1，顶部加高光条以区分最新一天\n- **禁用按钮改为中性色**：原来「双重降透明」会渲染成满饱和蓝底加幽灵文字（1.37:1），现在中性底加可读文字（4.02:1）\n- **首页顶栏胶囊修正**：芯片底色不再半透明，改为按卡片面预合成，此前叠在氛围光晕上只有 3.6:1\n- **设置页错误提示**：出错时那行说明文字从 3.36:1 提到 4.62:1",
+  "update_version": "1.5.12",
+  "update_changelog_title": "Polaris 1.5.12 更新",
+  "update_changelog": "### 1.5.12\n\n- **应用内更新改为跳转 GitHub Releases**：不再在应用内下载并安装 APK，点击更新直接打开 Release 页由你自行下载。请直接覆盖安装，不要先卸载，以免丢失已有配置\n- **无障碍修复**：所有可点击行、开关、按钮与底部导航现在都有可访问名称与状态（读屏可正确播报「到期邮件提醒，已开启」这类信息）。此前的版本里这些节点在无障碍树中没有名字，读屏只能念出一个空洞的色块\n- **移除「安装未知应用」权限**：更新方式变更后该敏感权限已无用途，现已从应用中彻底移除\n- **新增隐私政策与用户协议**：关于页新增「用户协议 / 隐私政策 / 开源许可」入口\n- **Release 附件补齐许可与法务文档**：下载页除 APK 外还附 LICENSE、THIRD-PARTY-NOTICES.md、PRIVACY.md、TERMS.md\n- **第三方声明勘误**：kaidl 与 RikkaX multiprocess 的许可由误写的 Apache-2.0 更正为 MIT",
   "update_force": false,
   "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.11/Polaris-1.5.11.apk",
   "update_apk_sha256": "a3529a1ec5b2fdaf10f95d8fe6a02349c0af0ac5600e4e25f529af1942f30cde"

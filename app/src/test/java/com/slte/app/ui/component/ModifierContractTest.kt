@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import com.slte.app.support.RobolectricTestApplication
@@ -61,7 +62,9 @@ class ModifierContractTest {
         }
         composeRule.waitForIdle()
 
-        val node = composeRule.onNodeWithText("登录").fetchSemanticsNode()
+        // 取整按钮节点要按 contentDescription：V5Button 把文案挂在可点击节点的 contentDescription 上，
+        // 子 Text 在语义树里是独立节点（不合并子文本才能让读屏念出按钮名）。
+        val node = composeRule.onNodeWithContentDescription("登录").fetchSemanticsNode()
         val density = composeRule.density.density
         val expectedPx = containerWidth.value * density
         val actualPx = node.boundsInRoot.width
@@ -85,7 +88,7 @@ class ModifierContractTest {
         }
         composeRule.waitForIdle()
 
-        val node = composeRule.onNodeWithText("确定").fetchSemanticsNode()
+        val node = composeRule.onNodeWithContentDescription("确定").fetchSemanticsNode()
         val widthDp = node.boundsInRoot.width / composeRule.density.density
         // 内容宽度应当明显小于一个常规手机宽度（360dp），且不至于塌成 0。
         // 实测小号按钮的「确定」约 37dp（2 个 CJK 字形 + 左右各若干 padding），

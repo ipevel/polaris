@@ -43,7 +43,7 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.5.10 | 43 |
+| Android | 1.5.12 | 45 |
 
 > 内核：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。版本以 [Releases](https://github.com/ipevel/polaris/releases) 为准。
 
@@ -100,8 +100,8 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 |------|--------|------|
 | `POLARIS_APP_NAME` | `Polaris` | 应用显示名 |
 | `POLARIS_APPLICATION_ID` | `com.polaris.app` | 包名 |
-| `POLARIS_VERSION_NAME` | `1.5.10` | 版本名（Release 由 build.yml 传入） |
-| `POLARIS_VERSION_CODE` | `43` | versionCode |
+| `POLARIS_VERSION_NAME` | `1.5.12` | 版本名（Release 由 build.yml 传入） |
+| `POLARIS_VERSION_CODE` | `45` | versionCode |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 仅作 Retrofit 构造占位，运行时不使用；并入域名白名单 |
 | `POLARIS_API_TYPE` | `xiaov2b` | 遗留变量：仍写入 `BuildConfig.API_TYPE`，运行时不再读取（后端类型登录时自动探测） |
 | `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅路径，面板地址 + 该路径 + token 组成订阅源 |
@@ -131,6 +131,11 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ## 许可证
 
 以 [GPL-3.0](LICENSE) 协议开源，基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核构建，第三方组件声明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+每个 Release 的附件中都包含 `LICENSE` 与 `THIRD-PARTY-NOTICES.md`，与二进制一并分发；应用内「关于软件 → 用户协议 / 隐私政策 / 开源许可」也可直接跳转到对应文档。
+
+- [隐私政策](PRIVACY.md)
+- [用户协议](TERMS.md)
 
 ---
 
