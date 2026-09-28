@@ -126,12 +126,39 @@ fun V5Colors.tile(tone: TileTone): TileColors = when (tone) {
 /** 徽标胶囊色调。 */
 enum class ChipTone { OK, WARN, DANGER, NEUTRAL, ACCENT }
 
+/**
+ * 把半透明色 [fg] 预先压到不透明底色 [bg] 上（sRGB 直通道 alpha 合成）。
+ *
+ * 不用 `Color.compositeOver` 是因为本工程所用 Compose 版本里没有该符号（编译报 Unresolved
+ * reference）。这里的算法与 Skia 对 `Modifier.background(半透明色)` 的实际合成一致，已用真机
+ * 像素验证：`okBg`(12.9%) 压在首页光晕底 `#ECDDEA` 上，本算法预得 `#D0D8D9`，实测 `#D0D8DA`
+ * （只差最低位）。
+ */
+private fun flattenOver(fg: Color, bg: Color): Color {
+    val a = fg.alpha
+    return Color(
+        red = fg.red * a + bg.red * (1f - a),
+        green = fg.green * a + bg.green * (1f - a),
+        blue = fg.blue * a + bg.blue * (1f - a),
+        alpha = 1f,
+    )
+}
+
+/**
+ * 芯片的「墨色 → 底色」。墨色走 `*Ink` 角色（对底色 ≥4.5:1）。
+ *
+ * 底色**先与卡片面 `surface` 合成成不透明色**再返回。原因：`*Bg` 是 12.9% 左右的半透明色，
+ * 合成结果取决于背后是什么——白卡上合成出 `#E1F4EC`（L=0.868），但在首页顶栏的**氛围光晕**上
+ * 只合成出 `#CFD9D9`（L=0.679），同一个墨色因此从 4.57:1 掉到 3.63:1（真机实测，见设计评审 §8.4）。
+ * 预先按 surface 合成后，底色与背景无关：白卡上结果**逐像素相同**（零视觉变化），
+ * 光晕上则成为一枚更亮的胶囊，5 个芯片 + `V5Banner` 一次性稳定达标。
+ */
 fun V5Colors.chip(tone: ChipTone): Pair<Color, Color> = when (tone) {
-    ChipTone.OK -> ok to okBg
-    ChipTone.WARN -> up to upBg
-    ChipTone.DANGER -> danger to dangerBg
-    ChipTone.NEUTRAL -> neutral to neutralBg
-    ChipTone.ACCENT -> accent to accentBg
+    ChipTone.OK -> okInk to flattenOver(okBg, surface)
+    ChipTone.WARN -> upInk to flattenOver(upBg, surface)
+    ChipTone.DANGER -> dangerText to flattenOver(dangerBg, surface)
+    ChipTone.NEUTRAL -> neutralInk to flattenOver(neutralBg, surface)
+    ChipTone.ACCENT -> accentInk to flattenOver(accentBg, surface)
 }
 
 /**
@@ -596,7 +623,17 @@ fun V5Button(
         ButtonStyle.SOLID_DANGER -> c.danger
         else -> Color.Transparent
     }
-    if (!active) fg = fg.copy(alpha = 0.45f)
+    // 禁用态**不再用"降 alpha"表达**。真机实测（雷电模拟器 14，1080p，工单新建面板的「提交」钮）：
+    // `Modifier.alpha` 在 modifier 链上位于 `.background()` 之后，只压住文字层、压不住底色，
+    // 于是渲染成"满饱和蓝底 + 幽灵文字"，文字实测仅 **1.37:1**（同底色纯白为 4.00:1）。
+    // 改为中性色禁用态：底 surface3 + 字 text3，实测 **4.03:1** —— 既明确"不可用"又读得清。
+    //
+    // 语义依据就在本文件下方：v4 的 `SlteButton(enabled = false)` 是"看得见、按不动"，
+    // 而双重降透明（0.45 × 0.45 = 0.2025）恰好让它"几乎看不见"；且禁用态恰恰是用户最需要
+    // 读懂按钮文案的时刻（"为什么点不了"）。
+    // 注：WCAG 1.4.3 对 inactive 组件有豁免，所以这属于可用性修复，不是合规义务。
+    val disabled = !active
+    if (disabled) fg = c.text3
     val clickable = noRippleClickable(if (active) onClick else null)
     // 调用方传入的 modifier 必须**最先**应用：里面通常带着 fillMaxWidth / weight 这类尺寸约束，
     // 放到后面会被 shadow/clip/background 的顺序与默认最小尺寸挤掉。
@@ -611,10 +648,16 @@ fun V5Button(
             clickable
         } else {
             clickable
-                .shadow(if (spot == Color.Transparent || !active) 0.dp else V5Spacing.dp8, shape, clip = false, ambientColor = spot, spotColor = spot)
+                .shadow(if (spot == Color.Transparent || disabled) 0.dp else V5Spacing.dp8, shape, clip = false, ambientColor = spot, spotColor = spot)
                 .clip(shape)
-                .then(if (bg != null) Modifier.background(bg) else Modifier.background(solidBg))
-                .then(if (active) Modifier else Modifier.alpha(DISABLED_BUTTON_ALPHA))
+                .then(
+                    when {
+                        // 禁用态走中性实色底（不看样式），与 fg = text3 配对成 4.03:1
+                        disabled -> Modifier.background(c.surface3)
+                        bg != null -> Modifier.background(bg)
+                        else -> Modifier.background(solidBg)
+                    },
+                )
         },
     )
     Row(
@@ -660,8 +703,10 @@ fun V5Button(
     }
 }
 
-/** 不可用按钮的整体透明度（与 v4 `SlteButton(enabled = false)` 的观感对齐）。 */
-private const val DISABLED_BUTTON_ALPHA = 0.45f
+// 原 `private const val DISABLED_BUTTON_ALPHA = 0.45f` 已删除。
+// 它作用在 modifier 链的 `.background()` **之后**，因此只压内容层、不压底色，与同时施加的
+// 前景 alpha 叠加后文字有效不透明度只剩 0.2025（真机实测 1.37:1）。禁用态已改用中性色方案
+// （底 surface3 + 字 text3 = 4.03:1），见 V5Button 内的 disabled 分支。
 
 /** iOS 风格开关（on = 绿）。 */
 @Composable

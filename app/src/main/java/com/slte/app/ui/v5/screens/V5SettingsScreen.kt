@@ -126,7 +126,10 @@ internal fun V5SettingsScreen(
                 Text(
                     text = stringResource(res),
                     fontSize = V5Type.sp12_5,
-                    color = c.danger,
+                    // 原来用语义实色 c.danger(#E5484D)：对页面底 #F1F0F6 只有 3.36:1，低于 AA ——
+                    // 也就是说 App 出问题时**唯一说明原因的那行字**恰恰最难读。
+                    // 换 c.dangerText(#C13D41)：同底色实测 4.62:1。
+                    color = c.dangerText,
                     modifier = Modifier.padding(horizontal = V5Spacing.dp4),
                 )
             }

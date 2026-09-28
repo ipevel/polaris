@@ -52,6 +52,23 @@ data class V5Colors(
     val dangerInk: Color,
     val neutral: Color,
     val neutralBg: Color,
+    // 文字 ink 角色（第 13 轮真机复核新增）
+    //
+    // 为什么必须单开一档：ok/up/danger/neutral/accent 是**语义实色**，同一个值同时承担
+    // 「图形色」与「文字 ink」两个角色，而两者阈值不同——图形只要 3:1（WCAG 1.4.11），
+    // 文字要 4.5:1（1.4.3）。一个值满足不了两种阈值，于是亮色主题下 5 个芯片、6 个瓷片
+    // 的墨色全部低于 AA（真机实测 2.26~4.27:1）。
+    //
+    // 且**调底色救不了**：#16AC6C 自身亮度 L=0.303，与任何底色的对比度上限只有 2.97:1；
+    // #E8802A（L=0.327）上限 2.78:1 —— 只能压深墨色。
+    //
+    // 亮色填达标值、暗色沿用既已达标的实色（暗色瓷片 5.93~7.84:1，无需改动）。
+    // 图形角色（连接钮光环、瓷片呼吸点、开关轨道）继续用 ok/up/danger/accent，不受影响。
+    val okInk: Color,
+    val upInk: Color,
+    val dangerText: Color,
+    val neutralInk: Color,
+    val accentInk: Color,
     // 马卡龙瓷片（颜色语义固定，不随主题换义）
     val tileBlue: TileColors,
     val tileOrange: TileColors,
@@ -98,12 +115,21 @@ val LightV5Colors = V5Colors(
     dangerInk = Color(0xFFFFFFFF),
     neutral = Color(0xFF6B7280),
     neutralBg = Color(0x1A6B7280),
-    tileBlue = TileColors(Color(0xFFEAF1FF), Color(0xFF2F6BF6)),
-    tileOrange = TileColors(Color(0xFFFEF1E2), Color(0xFFE8802A)),
-    tileGreen = TileColors(Color(0xFFE5F8EE), Color(0xFF149E63)),
-    tilePurple = TileColors(Color(0xFFF1ECFE), Color(0xFF8253F0)),
-    tilePink = TileColors(Color(0xFFFCEBF5), Color(0xFFD84FB4)),
-    tileCyan = TileColors(Color(0xFFE4F6FB), Color(0xFF119FC7)),
+    // 文字 ink：真机实测达标值（对各自芯片/瓷片底色 4.52~4.57:1）
+    okInk = Color(0xFF107C4E), // 原 ok #16AC6C 对芯片底 2.57:1
+    upInk = Color(0xFFA15E1E), // 原 up #EE8A2C 对芯片底 2.26:1
+    dangerText = Color(0xFFC13D41), // 原 danger #E5484D 对芯片底 3.40:1、对页面底 3.36:1
+    neutralInk = Color(0xFF676E7C), // 原 neutral #6B7280 对芯片底 4.27:1
+    accentInk = Color(0xFF2C64E5), // 原 accent #2F6BF6 对芯片底 4.04:1
+    // 瓷片墨色：原值与语义实色同值，实测全部低于 AA（BLUE 4.07 / ORANGE 2.50 / GREEN 3.11
+    // / PURPLE 4.09 / PINK 3.22 / CYAN 2.77）。瓷片底色不动，只压深墨色以保住马卡龙观感。
+    // 改动面确认：tile.ink 全仓仅 4 处消费（V5Components.kt:473/474 图标与标签、:1020/1024 V5Ledger）。
+    tileBlue = TileColors(Color(0xFFEAF1FF), Color(0xFF2C64E7)),
+    tileOrange = TileColors(Color(0xFFFEF1E2), Color(0xFFA65C1E)),
+    tileGreen = TileColors(Color(0xFFE5F8EE), Color(0xFF107F50)),
+    tilePurple = TileColors(Color(0xFFF1ECFE), Color(0xFF7A4EE2)),
+    tilePink = TileColors(Color(0xFFFCEBF5), Color(0xFFB14194)),
+    tileCyan = TileColors(Color(0xFFE4F6FB), Color(0xFF0D7897)),
     navBg = Color(0xE6FFFFFF),
     navOn = Color(0xFFEFF1F7),
     // 氛围光晕：原值 0x13/0x0B 在 1080p 屏上几乎不可见（整屏读起来就是一块灰白），
@@ -140,6 +166,13 @@ val DarkV5Colors = V5Colors(
     dangerInk = Color(0xFF2B0B08),
     neutral = Color(0xFF8A9CB4),
     neutralBg = Color(0x248A9CB4),
+    // 暗色主题原本全部达标（瓷片 5.93~7.84:1、ok 6.19:1、danger 5.09:1），
+    // ink 直接沿用语义实色 —— 暗色观感零变化。
+    okInk = Color(0xFF3DCC8E),
+    upInk = Color(0xFFF5A25B),
+    dangerText = Color(0xFFF4776D),
+    neutralInk = Color(0xFF8A9CB4),
+    accentInk = Color(0xFF6E97FF),
     tileBlue = TileColors(Color(0x266E97FF), Color(0xFF93B4FF)),
     tileOrange = TileColors(Color(0x26F5A25B), Color(0xFFF7B177)),
     tileGreen = TileColors(Color(0x243DCC8E), Color(0xFF5ED9A6)),

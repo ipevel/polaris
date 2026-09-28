@@ -55,7 +55,11 @@ private const val BARS_MAX_DAYS = 30
  *
  * 视觉上刻意避开"图表库默认脸"：不画虚线网格（虚线 + 均分刻度是任何图表组件的默认长相），
  * 不留纵轴刻度槽（峰值已经标在柱顶，槽里孤零零一个「0」既占掉 40dp 宽度、又和基线重复），
- * 柱子改纵向渐变、越往下越淡——用明度差表达高度，而不是"一根实色柱顶着一排灰柱"的硬对比。
+ * 柱子用纯色 + 顶部一道高光条 —— 用**柱高**表达用量，而不是让柱底淡出去换"明度层次"。
+ *
+ * 第 13 轮真机复核修正：原先的纵向渐变 `0.62 → 0.18`（endY = plotBottom）让柱底恒为 18% alpha，
+ * 实测柱底只有 1.30~1.87:1、20/27 根低于 1.5:1，低流量日看起来像"没数据"；基线 hairline2
+ * 更是只有 1.16:1。现改为纯色柱 + text3 基线 + 零值日短桩。
  *
  * [records] 正序倒序都接受，内部统一按 date 正序取最近 [BARS_MAX_DAYS] 天。
  */
@@ -88,36 +92,54 @@ fun BarsChart(
         val barWidth = ((plotRight - plotLeft - barGap * (count - 1)) / count).coerceAtLeast(1f)
         val corner = (barWidth * 0.45f).coerceAtMost(V5Spacing.dp4.toPx())
 
-        // 唯一一条基线，不画虚线网格。
-        drawLine(c.hairline2, Offset(plotLeft, plotBottom), Offset(plotRight, plotBottom), V5Spacing.dp1.toPx())
+        // 唯一一条基线，不画虚线网格。原值 c.hairline2(#EFEDF5) 对白卡只有 1.16:1，轴等于不存在；
+        // 换成 c.text3（4.76:1）——基线属于"理解图表所必需的图形对象"，WCAG 1.4.11 要求 ≥3:1。
+        drawLine(c.text3, Offset(plotLeft, plotBottom), Offset(plotRight, plotBottom), V5Spacing.dp1.toPx())
 
         days.forEachIndexed { i, record ->
             val barHeight = record.totalBytes.toFloat() / scale * plotHeight
-            if (barHeight <= 0f) return@forEachIndexed
             val left = plotLeft + i * (barWidth + barGap)
-            val top = plotBottom - barHeight
-            // 最新一天略亮：不用图例也能认出"今天"，但不做"一根实色 + 其余灰"的硬对比
+            // 最新一天：不用图例也能认出"今天"
             val latest = i == count - 1
-            val brush =
-                Brush.verticalGradient(
-                    colors = listOf(
-                        c.accent.copy(alpha = if (latest) 0.95f else 0.62f),
-                        c.accent.copy(alpha = if (latest) 0.40f else 0.18f),
-                    ),
-                    startY = top,
-                    endY = plotBottom,
+
+            // 零值日不再"什么都不画"。原实现 `if (barHeight <= 0f) return@forEachIndexed` 让
+            // "0 字节"与"这天没记录"在屏幕上完全等价 —— 用户会以为记录丢失或统计出错。
+            // 改为在基线上留一根 2dp 短桩（c.text3，4.76:1），把"有记录、值为 0"显式画出来。
+            if (barHeight <= 0f) {
+                val stub = V5Spacing.dp2.toPx()
+                drawRoundRect(
+                    color = c.text3,
+                    topLeft = Offset(left, plotBottom - stub),
+                    size = Size(barWidth, stub),
+                    cornerRadius = CornerRadius(stub / 2f, stub / 2f),
                 )
+                return@forEachIndexed
+            }
+
+            val top = plotBottom - barHeight
+            // 纯色柱（c.accent 对白卡 4.61:1）。原实现是纵向渐变 0.62→0.18、endY = plotBottom，
+            // 于是**柱底恒为 18% alpha**（1.27:1），柱子越矮越读不出来，实测 20/27 根低于 1.5:1。
+            // 高度本身已经在表达用量，不必再让柱底牺牲对比度去换"明度层次"。
             drawRoundRect(
-                brush = brush,
+                color = c.accent,
                 topLeft = Offset(left, top),
                 size = Size(barWidth, barHeight),
                 cornerRadius = CornerRadius(corner, corner),
             )
             // drawRoundRect 会把底边一并削圆，再用直角矩形把底部压回基线
             drawRect(
-                brush = brush,
+                color = c.accent,
                 topLeft = Offset(left, top + barHeight - corner),
                 size = Size(barWidth, corner.coerceAtMost(barHeight)),
+            )
+            // 顶部高光条：接管原纵向渐变承担的"收口/层次"，且不落在任何必须达标的对比度上。
+            // 今天用满强度 accent2、其余日半强度 —— 保住"一眼认出最新一天"这一原有意图。
+            val capHeight = V5Spacing.dp2.toPx().coerceAtMost(barHeight / 3f)
+            drawRoundRect(
+                color = if (latest) c.accent2 else c.accent2.copy(alpha = 0.5f),
+                topLeft = Offset(left + corner * 0.5f, top),
+                size = Size((barWidth - corner).coerceAtLeast(1f), capHeight),
+                cornerRadius = CornerRadius(capHeight / 2f, capHeight / 2f),
             )
         }
 
