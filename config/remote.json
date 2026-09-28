@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.12 更新",
   "update_changelog": "### 1.5.12\n\n- **应用内更新改为跳转 GitHub Releases**：不再在应用内下载并安装 APK，点击更新直接打开 Release 页由你自行下载。请直接覆盖安装，不要先卸载，以免丢失已有配置\n- **无障碍修复**：所有可点击行、开关、按钮与底部导航现在都有可访问名称与状态（读屏可正确播报「到期邮件提醒，已开启」这类信息）。此前的版本里这些节点在无障碍树中没有名字，读屏只能念出一个空洞的色块\n- **移除「安装未知应用」权限**：更新方式变更后该敏感权限已无用途，现已从应用中彻底移除\n- **新增隐私政策与用户协议**：关于页新增「用户协议 / 隐私政策 / 开源许可」入口\n- **Release 附件补齐许可与法务文档**：下载页除 APK 外还附 LICENSE、THIRD-PARTY-NOTICES.md、PRIVACY.md、TERMS.md\n- **第三方声明勘误**：kaidl 与 RikkaX multiprocess 的许可由误写的 Apache-2.0 更正为 MIT",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.11/Polaris-1.5.11.apk",
-  "update_apk_sha256": "a3529a1ec5b2fdaf10f95d8fe6a02349c0af0ac5600e4e25f529af1942f30cde"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.12/Polaris-1.5.12.apk",
+  "update_apk_sha256": "4c6bbbe7dfa5c3ffadd07abe2f534d8416fb6ba69ad4bc0071cc028d6632917a"
 }
