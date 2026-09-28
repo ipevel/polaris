@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.11 更新",
   "update_changelog": "### 1.5.11\n\n- **可读性全面达标**：亮色主题下 5 个状态芯片与 6 个数据瓷片的文字对比度全部达到 WCAG AA（4.5:1），此前我的 / 节点 / 流量 / 订单 / 公告 / 套餐等页最低只有 2.26:1\n- **流量柱状图配色重做**：柱体由纵向渐变改纯色，原来柱底只有 1.30~1.87:1、低流量日看起来像「没数据」，现在整根柱 4.07:1；基线提到 4.20:1，顶部加高光条以区分最新一天\n- **禁用按钮改为中性色**：原来「双重降透明」会渲染成满饱和蓝底加幽灵文字（1.37:1），现在中性底加可读文字（4.02:1）\n- **首页顶栏胶囊修正**：芯片底色不再半透明，改为按卡片面预合成，此前叠在氛围光晕上只有 3.6:1\n- **设置页错误提示**：出错时那行说明文字从 3.36:1 提到 4.62:1",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.10/Polaris-1.5.10.apk",
-  "update_apk_sha256": "546867f252b1446d09c4fbe726bf3baeda85b28b0f6dd2c0cea3836dc7486d62"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.11/Polaris-1.5.11.apk",
+  "update_apk_sha256": "a3529a1ec5b2fdaf10f95d8fe6a02349c0af0ac5600e4e25f529af1942f30cde"
 }
