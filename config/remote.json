@@ -4,6 +4,6 @@
   "update_changelog_title": "Polaris 1.5.13 更新",
   "update_changelog": "### 1.5.13\n\n- **分流规则管理支持拖动排序**：拖动右侧手柄即可调整内置分流规则组的顺序。顺序决定规则的匹配优先级，并同步影响「节点」页中分流规则组的排列；改动即时生效\n- **关于页精简**：移除「用户协议 / 隐私政策 / 开源许可」入口\n- **文案优化**：更新分流规则管理页的说明文案",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.12/Polaris-1.5.12.apk",
-  "update_apk_sha256": "4c6bbbe7dfa5c3ffadd07abe2f534d8416fb6ba69ad4bc0071cc028d6632917a"
+  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.13/Polaris-1.5.13.apk",
+  "update_apk_sha256": "8ebc0b8ea211b4f22115ab367f5696bbc36d00c68b41013e02c9c9813516c742"
 }
