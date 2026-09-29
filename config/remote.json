@@ -1,8 +1,8 @@
 {
   "config_version": "1",
-  "update_version": "",
-  "update_changelog_title": "",
-  "update_changelog": "",
+  "update_version": "1.5.16",
+  "update_changelog_title": "1.5.16 更新",
+  "update_changelog": "· 移除登录/注册/找回密码页的品牌标识区，表单垂直居中\n· 内核侧新增 geox-url 复位兜底，封堵订阅注入导致的 SSRF 与规则数据投毒",
   "update_force": false,
   "update_apk_url": "",
   "update_apk_sha256": ""
