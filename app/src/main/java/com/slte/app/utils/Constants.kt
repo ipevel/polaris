@@ -82,8 +82,6 @@ object Stickers {
     const val REGISTER = "stickers/register.tgs"
     const val EMPTY = "stickers/empty.tgs"
     const val ERROR = "stickers/error.tgs"
-    const val UPDATE = "stickers/update.tgs"
-    const val FORCE_UPDATE = "stickers/force_update.tgs"
     const val INVITE = "stickers/invite.tgs"
     const val GIFT_CARD = "stickers/gift_card.tgs"
 }

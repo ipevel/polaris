@@ -45,7 +45,6 @@ import com.slte.app.support.FakeAuthApi
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.screen.about.AboutScreen
-import com.slte.app.ui.screen.about.UpdateUiState
 import com.slte.app.ui.screen.about.UpdateViewModel
 import com.slte.app.ui.screen.forgot.ForgotPasswordScreen
 import com.slte.app.ui.screen.forgot.ForgotPasswordUiState
@@ -543,18 +542,19 @@ class PageSweepLegacyScreenshotTest {
     // ==================== 关于页 ====================
 
     /**
-     * 关于页用 mock VM 渲染：真实 [UpdateViewModel] 的 init 里有一个 `collect` 永不结束的协程与
-     * 一个 `delay` 重试循环，在 compose 测试作用域 teardown 时被取消，会被 kotlinx-coroutines-test
-     * 报成 `KotlinNothingValueException`（脚手架产物，与页面渲染无关）。这里只喂三个 StateFlow，
+     * 关于页用 mock VM 渲染：真实 [UpdateViewModel] 的 init 里有一个 `delay` 重试循环，
+     * 在 compose 测试作用域 teardown 时被取消，会被 kotlinx-coroutines-test
+     * 报成 `KotlinNothingValueException`（脚手架产物，与页面渲染无关）。这里只喂两个 StateFlow，
      * 用于验证页面本身能否正常渲染。
+     *
+     * 应用内更新已移除：页面不再有「检查更新」行与其转圈加载态，
+     * 故原先的 `40a-关于-检查更新中` 用例一并删除。
      */
     private fun aboutViewModel(
-        state: UpdateUiState = UpdateUiState.Idle,
         siteInfo: SiteInfo = SiteInfo(),
         kernelVersion: String? = "1.9.2-alpha",
     ): UpdateViewModel {
         val vm = mockk<UpdateViewModel>(relaxed = true)
-        every { vm.state } returns MutableStateFlow(state)
         every { vm.kernelVersion } returns MutableStateFlow(kernelVersion)
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
         return vm
@@ -564,19 +564,6 @@ class PageSweepLegacyScreenshotTest {
     fun `40-关于-亮色`() {
         val vm = aboutViewModel()
         snapshot("40-about-light", dark = false) { AboutScreen(onBack = {}, viewModel = vm) }
-    }
-
-    /**
-     * 关于页没有整页三态：加载态体现为「检查更新」行内的转圈（[UpdateUiState.Checking]），
-     * 错误态是系统 Toast 气泡（`LaunchedEffect` 里弹，不在本页位图内，且系统 Toast 是独立窗口
-     * 无法被 Robolectric 位图捕获），空态不存在（页面内容为静态版本信息 + 面板下发的站点名）。
-     * 因此这里用 `Checking`（loading 类）与"站点信息缺失/下发"两种数据态补齐可截图证据，
-     * 其余在交付报告的对账清单里逐条注明取证方式。
-     */
-    @Test
-    fun `40a-关于-检查更新中-亮色`() {
-        val vm = aboutViewModel(state = UpdateUiState.Checking)
-        snapshot("40a-about-checking-light", dark = false) { AboutScreen(onBack = {}, viewModel = vm) }
     }
 
     @Test

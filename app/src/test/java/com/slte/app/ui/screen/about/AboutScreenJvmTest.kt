@@ -6,7 +6,6 @@ package com.slte.app.ui.screen.about
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import com.slte.app.BuildConfig
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.support.RobolectricTestApplication
@@ -14,7 +13,6 @@ import com.slte.app.ui.theme.SlteTheme
 import com.slte.app.utils.Constants
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.Test
@@ -25,10 +23,10 @@ import org.robolectric.annotation.Config
 /**
  * 关于页 v5 化的行为对账（v4 → v5 迁移不能丢入口/丢设置项）。
  *
- * 盯的是迁移清单里可在 JVM 断言的四项：应用版本、内核版本、检查更新点击、导出日志入口。
- * 不覆盖到位的：检查更新的"检查中"转圈（已由 `PageSweepLegacyScreenshotTest` 的 40a 截图取证）、
- * 导出日志的真实分享 Intent（依赖 `AppLog.export` 与 FileProvider，属 Android 运行时时序，
- * 用 mock 断言"点了没崩"没有证据价值，留给雷电模拟器走查）。
+ * 盯的是迁移清单里可在 JVM 断言的三项：应用版本、内核版本、导出日志入口。
+ * 应用内更新已整体移除，故另有一条**负向断言**防止「检查更新」入口被重新加回来。
+ * 不覆盖到位的：导出日志的真实分享 Intent（依赖 `AppLog.export` 与 FileProvider，
+ * 属 Android 运行时时序，用 mock 断言"点了没崩"没有证据价值，留给雷电模拟器走查）。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "zh-rCN-w411dp-h891dp-420dpi", application = RobolectricTestApplication::class)
@@ -37,12 +35,10 @@ class AboutScreenJvmTest {
     val composeRule = createComposeRule()
 
     private fun viewModel(
-        state: UpdateUiState = UpdateUiState.Idle,
         kernelVersion: String? = "1.9.2-alpha",
         siteInfo: SiteInfo = SiteInfo(),
     ): UpdateViewModel {
         val vm = mockk<UpdateViewModel>(relaxed = true)
-        every { vm.state } returns MutableStateFlow(state)
         every { vm.kernelVersion } returns MutableStateFlow(kernelVersion)
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
         return vm
@@ -88,14 +84,12 @@ class AboutScreenJvmTest {
     }
 
     @Test
-    fun 点击检查更新触发手动检查() {
-        val vm = viewModel()
-        content(vm)
+    fun 检查更新入口已移除() {
+        content(viewModel())
 
-        composeRule.onNodeWithText("检查更新").performClick()
-        composeRule.waitForIdle()
-
-        verify(exactly = 1) { vm.checkUpdate(manual = true) }
+        // 应用内更新已整体移除：关于页不得再出现任何更新/升级入口，
+        // 这条负向断言用于防止后续误把入口加回来。
+        composeRule.onNodeWithText("检查更新").assertDoesNotExist()
     }
 
     @Test

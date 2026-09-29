@@ -1,9 +1,9 @@
 {
   "config_version": "1",
-  "update_version": "1.5.14",
-  "update_changelog_title": "Polaris 1.5.14 更新",
-  "update_changelog": "### 1.5.14\n\n- **修复更新按钮无法打开下载页**：在部分设备上点击「前往 GitHub 下载」时浏览器没有拉起（应用未按系统要求以新任务方式启动浏览器），现已修复",
+  "update_version": "",
+  "update_changelog_title": "",
+  "update_changelog": "",
   "update_force": false,
-  "update_apk_url": "https://github.com/ipevel/polaris/releases/download/v1.5.14/Polaris-1.5.14.apk",
-  "update_apk_sha256": "a05856234bad3c79cff31e1c7415cc4fb3cbc48b59b842f47cad9602bc6fccd7"
+  "update_apk_url": "",
+  "update_apk_sha256": ""
 }

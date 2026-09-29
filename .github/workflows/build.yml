@@ -81,7 +81,10 @@ on:
         required: false
         default: ''
       releaseNotes:
-        description: Release 变更说明（留空自动从 git log 生成）
+        description: |
+          Release 变更说明（留空则不输出「变更说明」小节；填 auto 会写成「见 git log」）。
+          注意：本仓库应用内更新功能已移除，变更说明**不得**描述更新/升级功能的增删，
+          只写「修复若干已知问题」这类中性措辞；同理 commit 标题也不要写。
         required: false
         default: ''
       iconB64:
@@ -203,10 +206,10 @@ jobs:
           POLARIS_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
           POLARIS_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
 
-          # 应用内更新提示依赖 remote.json（版本/变更/APK 直链+SHA-256）。直链与校验和用于判定
-          # 所声明版本的 Release 是否真实存在（自洽性），App 侧不再下载，而是跳转 Release 页由用户下载。
-          # 远程配置源与 APK 直链域名必须进编译期白名单，否则 RemoteConfigParser
-          # 会静默拒绝 update_apk_url，更新提示形同虚设（SEC-2 教训）。
+          # 应用内更新提示已随本版本移除：remote.json 不再承载「有新版本」的语义，
+          # 发布流程只负责把历史遗留的 update_* 字段置空，不再写入版本号/直链/校验和。
+          # 远程配置源与 GitHub 域名仍需进编译期白名单，否则 RemoteConfigParser
+          # 会静默拒绝远端配置（SEC-2 教训）。
           POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls != '' && inputs.remoteConfigUrls || 'https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json' }}
           POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains != '' && inputs.allowedDomains || 'github.com,raw.githubusercontent.com,objects.githubusercontent.com' }}
 
@@ -415,7 +418,7 @@ jobs:
           fi
           echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
 
-      - name: 更新 config/remote.json（app 内更新自动生效）
+      - name: 停用 config/remote.json 的更新字段（应用内更新已移除）
         env:
           VERSION: ${{ inputs.versionName }}
           NOTES: ${{ inputs.releaseNotes }}
@@ -456,23 +459,21 @@ jobs:
           python3 -c "
           import json, os
           version = os.environ['VERSION']
-          notes = os.environ.get('NOTES', '').strip()
-          apk = os.environ.get('APK_URL', '')
-          sha = os.environ.get('APK_SHA', '')
+          # 应用内更新功能已整体移除：不再向 remote.json 写入任何更新字段。
+          # 保留这些键并置空，是为了让仍在读该文件的历史版本 App 解析到空版本号后不再提示更新，
+          # 同时避免新旧 schema 分叉（RemoteConfigData 为整份序列化缓存）。
           with open('config/remote.json', 'r') as f:
               cfg = json.load(f)
-          cfg['update_version'] = version
-          cfg['update_apk_url'] = apk
-          cfg['update_apk_sha256'] = sha
-          # 标题与正文一并由 bot 写，使 remote.json 的更新相关字段完全由发布流程拥有，
-          # 人工提交阶段不再手工改这份文件（避免出现「版本号已改、直链还是上一版」的不自洽态）
-          cfg['update_changelog_title'] = 'Polaris %s 更新' % version
-          if notes and notes != 'auto':
-              cfg['update_changelog'] = notes
+          cfg['update_version'] = ''
+          cfg['update_changelog_title'] = ''
+          cfg['update_changelog'] = ''
+          cfg['update_force'] = False
+          cfg['update_apk_url'] = ''
+          cfg['update_apk_sha256'] = ''
           with open('config/remote.json', 'w') as f:
               json.dump(cfg, f, indent=2, ensure_ascii=False)
               f.write('\n')
-          print('remote.json 已更新 (version=%s, sha256=%s...)' % (version, sha[:12]))
+          print('remote.json 已停用更新字段 (version=%s)' % version)
           "
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

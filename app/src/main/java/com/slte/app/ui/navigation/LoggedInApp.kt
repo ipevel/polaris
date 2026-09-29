@@ -39,15 +39,12 @@ fun LoggedInApp(
     val mainData by viewModels.main.data.collectAsStateWithLifecycle()
     val purchaseStep by viewModels.purchase.step.collectAsStateWithLifecycle()
     val purchaseToast by viewModels.purchase.toastRes.collectAsStateWithLifecycle()
-    val updateState by viewModels.update.state.collectAsStateWithLifecycle()
 
     GlobalToastHosts(
         purchaseToast = purchaseToast,
         onPurchaseToastShown = viewModels.purchase::clearToast,
         mainErrorRes = mainData.errorMessageRes,
         onMainErrorShown = viewModels.main::clearError,
-        updateState = updateState,
-        onUpdateTipShown = viewModels.update::consumeTip,
     )
 
     val pageStack = rememberSaveablePageStack()
@@ -147,8 +144,6 @@ fun LoggedInApp(
             viewModels.main.cancelUpdating()
         },
     )
-
-    UpdateHost(updateState = updateState, updateViewModel = viewModels.update)
 }
 
 @Composable

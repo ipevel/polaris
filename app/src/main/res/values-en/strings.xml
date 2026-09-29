@@ -238,9 +238,6 @@
     <string name="about_app_desc">Lightweight mihomo-based proxy client</string>
     <string name="about_app_version">App version</string>
     <string name="about_kernel_version">Core version</string>
-    <string name="about_check_update">Check updates</string>
-    <string name="about_latest">Up to date</string>
-    <string name="about_update_failed">Update check failed</string>
     <string name="about_log_export">Export logs</string>
     <string name="about_log_exported">Logs exported</string>
     <string name="about_log_export_failed">Export failed</string>
@@ -248,16 +245,6 @@
     <string name="about_log_share_failed">Couldn\'t share the log</string>
 
     <!-- Update (检查更新) -->
-    <string name="update_force_title">Available after update</string>
-    <string name="update_title">New version found</string>
-    <string name="update_version_label">New version %1$s</string>
-    <string name="update_now">Download on GitHub</string>
-    <string name="update_later">Later</string>
-    <string name="update_changelog_title_default">Changelog</string>
-    <string name="update_changelog_default">No changelog available</string>
-    <string name="update_apk_missing">Update link missing</string>
-    <string name="update_open_failed">Could not open the download page, please try again later</string>
-    <string name="update_keep_config_hint">Install directly over the current version; do not uninstall first, or your settings will be lost</string>
 
     <string name="profile_logout">Log out</string>
     <string name="logout_confirm_message">Log out of this account?</string>

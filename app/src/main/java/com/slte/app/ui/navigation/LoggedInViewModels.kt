@@ -5,7 +5,6 @@ package com.slte.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.slte.app.ui.screen.about.UpdateViewModel
 import com.slte.app.ui.screen.invite.InviteViewModel
 import com.slte.app.ui.screen.main.MainViewModel
 import com.slte.app.ui.screen.notice.NoticeViewModel
@@ -28,7 +27,6 @@ internal class LoggedInViewModels(
     val ticket: TicketViewModel,
     val traffic: TrafficViewModel,
     val main: MainViewModel,
-    val update: UpdateViewModel,
 )
 
 @Composable
@@ -43,5 +41,4 @@ internal fun rememberLoggedInViewModels(accountKey: String): LoggedInViewModels 
     ticket = hiltViewModel(key = "ticket-$accountKey"),
     traffic = hiltViewModel(key = "traffic-$accountKey"),
     main = hiltViewModel(key = "main-$accountKey"),
-    update = hiltViewModel(key = "update"),
 )

@@ -26,7 +26,7 @@
 | 登录邮箱 / 账号标识 | 本地私有存储 | 展示"我的"页面用 |
 | 登录密码、访问令牌 | **加密存储**（AndroidKeyStore + AES-GCM） | 绝不落明文；密钥由系统密钥库托管 |
 | 订阅节点、分组、用量、订单、工单、公告 | 本地私有存储（缓存） | 来自你的面板，用于离线查看 |
-| 远程配置缓存 | 加密存储 | 用于检查新版本 |
+| 远程配置缓存 | 加密存储 | 用于拉取面板下发的应用配置（如应用名、描述） |
 | 主题、语言、TUN 堆栈、提醒开关等偏好 | 本地私有存储 | 纯客户端设置 |
 | 运行日志 | 内存 + 应用私有目录 | 仅在你点「日志导出」时才会写出并交给你分享 |
 
@@ -35,10 +35,10 @@
 ## 3. 会发生的网络通信
 
 1. **你的面板**（你自行输入并确认的地址，HTTPS）：登录、拉取订阅与用量、下单、工单等。这些请求直接发往**你所选择的面板运营者**，与开发者无关；其数据处理规则由该运营者负责，请查阅其隐私说明。
-2. **GitHub**（`raw.githubusercontent.com` / `github.com`）：拉取版本号与更新日志以检查新版本；以及在你点击「开源许可 / 用户协议 / 隐私政策」时用浏览器打开对应页面。
+2. **GitHub**（`raw.githubusercontent.com` / `github.com`）：拉取面板下发的远程配置（应用名、描述等展示信息）；以及在你点击「开源许可 / 用户协议 / 隐私政策」时用浏览器打开对应页面。
 3. **公共 IP 查询**（`api.ipify.org`）：仅当你使用需要显示出口 IP 的功能时请求，用于向你展示当前公网 IP；请求不携带任何账号信息。
 
-本应用**不接收**来自上述任何一方的推送或指令式配置下发，远程配置只影响"是否有新版本"的提示。
+本应用**不接收**来自上述任何一方的推送或指令式配置下发，远程配置只影响应用名与描述等展示信息的呈现。
 
 ## 4. VPN 权限与流量
 
@@ -72,4 +72,4 @@
 
 ## English Summary
 
-Polaris ships **no analytics, no telemetry, and no developer-operated server**. Your panel URL, account, subscription and usage data stay in the app's private storage on your device; credentials and the remote-config cache are encrypted via AndroidKeyStore. Network traffic goes only to (1) the panel you configured, (2) GitHub for update checks and legal pages, and (3) `api.ipify.org` when showing your public IP. The VPN runs entirely on-device via an open-source mihomo kernel; traffic content is never inspected, logged, or uploaded. Logs are sanitized and only exported when you explicitly tap "Export logs". Automatic backup is disabled.
+Polaris ships **no analytics, no telemetry, and no developer-operated server**. Your panel URL, account, subscription and usage data stay in the app's private storage on your device; credentials and the remote-config cache are encrypted via AndroidKeyStore. Network traffic goes only to (1) the panel you configured, (2) GitHub for the remote display config and legal pages, and (3) `api.ipify.org` when showing your public IP. The VPN runs entirely on-device via an open-source mihomo kernel; traffic content is never inspected, logged, or uploaded. Logs are sanitized and only exported when you explicitly tap "Export logs". Automatic backup is disabled.

@@ -6,10 +6,6 @@ package com.slte.app.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.slte.app.ui.component.rememberToast
-import com.slte.app.ui.screen.about.ForceUpdateDialog
-import com.slte.app.ui.screen.about.UpdateSheet
-import com.slte.app.ui.screen.about.UpdateUiState
-import com.slte.app.ui.screen.about.UpdateViewModel
 
 @Composable
 internal fun GlobalToastHosts(
@@ -17,8 +13,6 @@ internal fun GlobalToastHosts(
     onPurchaseToastShown: () -> Unit,
     mainErrorRes: Int?,
     onMainErrorShown: () -> Unit,
-    updateState: UpdateUiState,
-    onUpdateTipShown: () -> Unit,
 ) {
     val toast = rememberToast()
 
@@ -33,30 +27,5 @@ internal fun GlobalToastHosts(
             toast.show(mainErrorRes)
             onMainErrorShown()
         }
-    }
-    LaunchedEffect(updateState) {
-        val failedRes = (updateState as? UpdateUiState.Failed)?.messageRes
-        if (failedRes != null) {
-            toast.show(failedRes)
-            onUpdateTipShown()
-        }
-    }
-}
-
-@Composable
-internal fun UpdateHost(
-    updateState: UpdateUiState,
-    updateViewModel: UpdateViewModel,
-) {
-    val available = updateState as? UpdateUiState.Available ?: return
-    if (available.force) {
-        ForceUpdateDialog(onOpenRelease = updateViewModel::openReleasePage)
-    } else {
-        UpdateSheet(
-            state = available,
-            onDismiss = updateViewModel::dismiss,
-            onOpenRelease = updateViewModel::openReleasePage,
-            onLater = updateViewModel::later,
-        )
     }
 }
