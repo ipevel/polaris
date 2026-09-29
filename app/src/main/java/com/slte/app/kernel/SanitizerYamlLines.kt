@@ -66,9 +66,11 @@ internal object SanitizerYamlLines {
             val colon = unquotedColonIndex(line)
             if (colon <= 0) continue
             val rawKey = line.substring(0, colon).trim()
-            val key = unwrapQuotes(rawKey)
-            if (key == rawKey || !SanitizerRules.PLAIN_KEY.matches(key)) continue
-            lines[i] = leadingIndent(line) + key + line.substring(colon)
+            val key = unwrapQuotes(rawKey).lowercase()
+            // 引号键与大小写变体都要扁平化：前者是 YAML 合法写法，后者则是清洗层的绕过面
+            // （下游全是精确串比较，见 normalizeKey 的说明）。
+            val rewritten = leadingIndent(line) + key + line.substring(colon)
+            if (rewritten != line && SanitizerRules.PLAIN_KEY.matches(key)) lines[i] = rewritten
         }
     }
 
@@ -105,7 +107,17 @@ internal object SanitizerYamlLines {
         return normalizeKey(line.substring(0, colon)).ifEmpty { null }
     }
 
-    private fun normalizeKey(raw: String): String = unwrapQuotes(raw.trim()).trim()
+    /**
+     * 键名归一化：解引号 → 去空白 → **转小写**。
+     *
+     * 转小写是安全关键，不是风格问题。YAML 规范里映射键是大小写敏感的，但 mihomo/clash
+     * 对配置项的解析是大小写不敏感的，`Mixed-Port: 7890` 与 `mixed-port: 7890` 同样生效。
+     * 而下游所有判定用的都是精确串比较（[SanitizerNeutralizer] 里的 `key in SET`、`key == "allow-lan"`
+     * 等），一旦大小写不归一，`GeOx-Url`、`SECRET`、`Mixed-Port` 这类写法就会整条穿过清洗层，
+     * 连兜底校验器 [SanitizerNeutralizer.hasUnsafeResidue] 也拦不住（它复用同一个归一化结果）。
+     * 该缺陷属于 SSRF/控制面暴露风险，修复见 2026-09-29 geox-url 专项。
+     */
+    private fun normalizeKey(raw: String): String = unwrapQuotes(raw.trim()).trim().lowercase()
 
     fun topLevelBlockIndices(
         lines: List<String>,

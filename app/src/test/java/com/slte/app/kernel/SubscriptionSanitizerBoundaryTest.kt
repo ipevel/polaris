@@ -365,6 +365,98 @@ class SubscriptionSanitizerBoundaryTest {
     }
 
     @Test
+    fun `安全 - 键名大小写变体无法绕过清洗`() {
+        // YAML 键大小写敏感，但 mihomo 解析配置项时大小写不敏感：`Mixed-Port` 与 `mixed-port` 等价。
+        // 清洗层若按原样比较，这些写法会整条穿过中和层与兜底校验器（2026-09-29 修复）。
+        val src =
+            """
+            |Mixed-Port: 7890
+            |ALLOW-LAN: true
+            |Secret: hunter2
+            |External-Controller: 0.0.0.0:9090
+            |External-UI: /srv/ui
+            |Bind-Address: '*'
+            |Hosts:
+            |  'bank.example': 10.0.0.1
+            |Script:
+            |  code: evil
+            |TUN:
+            |  enable: true
+            |Authentication: admin:hunter2
+            |$baseProxies
+            """.trimMargin()
+        val out = sanitize(src)
+        assertEquals(out, sanitize(out))
+        val doc = parse(out)
+        assertEquals(0, doc["mixed-port"])
+        assertEquals(false, doc["allow-lan"])
+        assertEquals("", doc["secret"])
+        assertEquals("", doc["external-controller"])
+        assertEquals("", doc["external-ui"])
+        assertEquals("", doc["bind-address"])
+        assertFalse(doc.containsKey("hosts"))
+        assertFalse(doc.containsKey("script"))
+        assertEquals(false, (doc["tun"] as Map<*, *>)["enable"])
+        assertEquals(emptyList<Any?>(), doc["authentication"])
+        // 小写本体不得再残留任何大写变体键
+        assertFalse(out.contains("Mixed-Port"))
+        assertFalse(out.contains("Secret"))
+        assertFalse(out.contains("TUN:"))
+    }
+
+    @Test
+    fun `安全 - 大小写变体的geox-url被中和且不注入自身URL`() {
+        // geox-url 是内核的 geo 数据下载地址，可控即 SSRF。它必须与 secret 同级中和。
+        listOf("geox-url", "Geox-Url", "GEOX-URL", "\"GeOx-Url\"").forEach { spelling ->
+            val out = sanitize("$spelling: https://attacker.example/geo.dat\n$baseProxies")
+            assertTrue(spelling, out.isNotEmpty())
+            val value = parse(out)["geox-url"]
+            assertEquals(spelling, "", value)
+            assertFalse(spelling, out.contains("attacker.example"))
+        }
+    }
+
+    @Test
+    fun `安全 - 大小写变体与缩进引号组合绕过被完全清洗`() {
+        val src =
+            "\uFEFF" +
+                """
+                |  'Mixed-Port': 7890
+                |  'ALLOW-LAN': true
+                |  'Secret': hunter2
+                |  'Geox-Url': https://attacker.example/geo.dat
+                |  'Hosts':
+                |    'bank.example': 10.0.0.1
+                |  'TUN':
+                |    enable: true
+                |$baseProxies
+                """.trimMargin()
+        val out = sanitize(src)
+        assertEquals(out, sanitize(out))
+        assertFalse(out.contains("\uFEFF"))
+        assertFalse(out.contains("attacker.example"))
+        val doc = parse(out)
+        assertEquals(0, doc["mixed-port"])
+        assertEquals(false, doc["allow-lan"])
+        assertEquals("", doc["secret"])
+        assertEquals("", doc["geox-url"])
+        assertFalse(doc.containsKey("hosts"))
+        assertEquals(false, (doc["tun"] as Map<*, *>)["enable"])
+    }
+
+    @Test
+    fun `清洗 - 键名大小写变体被扁平化为小写`() {
+        // 归一化本身要落到输出文本上，否则内核仍按原大小写键读到非中和值
+        val out = sanitize("Mixed-Port: 7890\nAllow-Lan: true\n$baseProxies")
+        assertTrue(out.startsWith("mixed-port: 0\nallow-lan: false\n"))
+        assertEquals("", sanitize("Geox-Url: https://attacker.example/x\n$baseProxies").let { parse(it)["geox-url"] })
+        // 嵌套同类键（provider 内的 hosts）应保持原样，不得被顶层扁平化规则误伤
+        val nested = sanitize("proxy-providers:\n  p:\n    type: http\n    url: https://example.com/s\n    Hosts:\n      'bank.example': 10.0.0.1\n$baseProxies")
+        val provider = (parse(nested)["proxy-providers"] as Map<*, *>)["p"] as Map<*, *>
+        assertEquals(mapOf("bank.example" to "10.0.0.1"), provider["hosts"])
+    }
+
+    @Test
     fun `安全 - dns列表中的同名字符串不再抑制直连规则与豁免注入`() {
         val filter =
             """

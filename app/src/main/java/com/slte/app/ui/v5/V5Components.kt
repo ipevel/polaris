@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Polaris Contributors
 // SPDX-License-Identifier: GPL-3.0-only
-// 自 polaris-ui-v5-code 原型工程移植（VmShell 设计语言通用组件）。
+// 自 v5 原型工程移植（VmShell 设计语言通用组件；原型脚手架已归档清理）。
 
 package com.slte.app.ui.v5
 

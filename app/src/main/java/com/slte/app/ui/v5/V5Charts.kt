@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Polaris Contributors
 // SPDX-License-Identifier: GPL-3.0-only
-// 自 polaris-ui-v5-code 原型工程移植（v5 图表组件）。
+// 自 v5 原型工程移植（v5 图表组件；原型脚手架已归档清理）。
 
 package com.slte.app.ui.v5
 

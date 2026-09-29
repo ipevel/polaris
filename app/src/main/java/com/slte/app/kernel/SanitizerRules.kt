@@ -36,6 +36,7 @@ internal object SanitizerRules {
             "external-ui",
             "external-ui-name",
             "external-ui-url",
+            "geox-url",
             "secret",
         )
 
