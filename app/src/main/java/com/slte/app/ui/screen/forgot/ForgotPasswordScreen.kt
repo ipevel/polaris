@@ -40,7 +40,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.ui.component.LoadingOverlay
 import com.slte.app.ui.component.ToastTip
-import com.slte.app.ui.screen.login.AuthBrandHeader
 import com.slte.app.ui.screen.login.AuthField
 import com.slte.app.ui.screen.login.AuthFieldBox
 import com.slte.app.ui.screen.login.AuthFieldError
@@ -137,13 +136,8 @@ fun ForgotPasswordScreen(
                 .imePadding()
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Spacer(modifier = Modifier.height(if (compact) 4.dp else 14.dp))
-
-            AuthBrandHeader()
-
-            Spacer(modifier = Modifier.height(if (compact) 12.dp else 22.dp))
-
             V5Card(
                 modifier =
                 Modifier

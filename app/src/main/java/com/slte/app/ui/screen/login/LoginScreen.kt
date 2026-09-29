@@ -3,7 +3,6 @@
 
 package com.slte.app.ui.screen.login
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,9 +51,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -167,13 +164,8 @@ fun LoginScreen(
                 .imePadding()
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Spacer(modifier = Modifier.height(if (compact) 4.dp else 14.dp))
-
-            AuthBrandHeader()
-
-            Spacer(modifier = Modifier.height(if (compact) 12.dp else 22.dp))
-
             V5Card(
                 modifier =
                 Modifier
@@ -486,56 +478,6 @@ internal fun rememberCompactAuthLayout(): Boolean {
     val config = LocalConfiguration.current
     val fontScale = LocalDensity.current.fontScale
     return needsCompactAuthLayout(config.screenHeightDp, fontScale)
-}
-
-/**
- * 认证三页共用的品牌区（标识 + 应用名 + 一句话说明）。
- * 放在本文件是因为文件集只覆盖这三个 Screen，Register/Forgot 以同模块 internal 复用，避免三份重复绘制代码。
- *
- * **标识与应用名在任何情况下都保留**（用户明确要求这张品牌图不能被取消）：小屏/大字体下
- * 只把标识收小、说明文字限一行，而不是隐藏（第 3 轮 N4/N5）。
- */
-@Composable
-internal fun AuthBrandHeader(modifier: Modifier = Modifier) {
-    val compact = rememberCompactAuthLayout()
-    val c = V5ThemeColors.current
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        BrandMark(markSize = if (compact) 48.dp else 64.dp)
-        Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
-        Text(
-            text = stringResource(R.string.app_name),
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Bold,
-            color = c.text,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = stringResource(R.string.about_app_desc),
-            fontSize = 12.5.sp,
-            lineHeight = 18.sp,
-            color = c.text3,
-            textAlign = TextAlign.Center,
-            // 压缩态限一行（文案本身仍在，不删），省下的高度留给表单主操作
-            maxLines = if (compact) 1 else Int.MAX_VALUE,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/** 极星标识：轨道环 + 四角星，纯 Compose 绘制，取色走 v5 令牌。 */
-@Composable
-private fun BrandMark(
-    markSize: Dp,
-    modifier: Modifier = Modifier,
-) {
-    val c = V5ThemeColors.current
-    Canvas(modifier = modifier.size(markSize)) {
-        drawPolarisMark(accent = c.accent, ring = c.text3)
-    }
 }
 
 /** 极星标识绘制（与关于页共用同一份路径逻辑，取色由调用方决定）。 */
