@@ -29,6 +29,7 @@ var processors = []processor{
 	patchLocalRouting, // 本地分流（Karing 式）：在面板规则被处理前整体替换，须在 patchRules 之前
 	patchGeneral,
 	patchProfile,
+	patchGeoXUrl, // 安全:必须晚于 override 合并、早于 executor.setGeneral 的 geodata URL 注入，不得被订阅覆写
 	patchDns,
 	patchRules,
 	patchTun,
@@ -158,6 +159,27 @@ func patchDns(cfg *config.RawConfig, _ string) error {
 		}
 	}
 
+	return nil
+}
+
+// 官方 geodata 下载地址（与 foss/golang/clash/config/config.go:578-583 的
+// DefaultRawConfig 保持一致）。订阅里出现 geox-url 即复位为这一组，而不是
+// 整键清空——清空会让 geodata 失去数据源，导致所有 GEOIP/GEOSITE 规则失效。
+var officialGeoXUrls = config.RawGeoXUrl{
+	Mmdb:    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
+	ASN:     "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb",
+	GeoIp:   "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
+	GeoSite: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat",
+}
+
+// 安全:必须早于 geodata URL 注入(executor.setGeneral)，且不得被订阅覆写。
+// geox-url 可控即 SSRF——内核会用它发起 HTTPS 请求取回数据并当规则加载
+// （executor.go:423-426 的 geodata.SetGeoIpUrl/SetGeoSiteUrl/SetMmdbUrl/SetASNUrl），
+// 兼具「让内核替攻击者发请求」与「注入内核规则数据」两重风险。
+// app 侧清洗层已做第一道防线，但清洗层是行级 YAML 改写 + 黑名单设计，
+// 清单外的键形态不产生任何信号，故在此做最终兜底。
+func patchGeoXUrl(cfg *config.RawConfig, _ string) error {
+	cfg.GeoXUrl = officialGeoXUrls
 	return nil
 }
 

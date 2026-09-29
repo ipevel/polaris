@@ -46,9 +46,23 @@ jobs:
 
       # 这条是本次回归能溜进发布的结构性缺口：routing 单测早已存在
       # （含组数契约 TestDefaultOnGroups），但 CI 从来没跑过 go test。
-      - name: go test（本地分流生成层）
+      # config 包（geox-url 兜底等安全处理器所在包）同样长期没有单测门禁。
+      #
+      # 必须与上面 vet/build 一样带构建标签：config -> native/app -> mihomo/dns
+      # 的 UpdateSystemDNS / FlushCacheWithDefaultResolver 只在 android 标签下
+      # 才有实现，不带标签会以 `undefined:` 编译失败（曾因此让 go test 挂掉）。
+      # routing 包本身不依赖 app，故旧命令不带标签才一直没暴露这个缺口。
+      #
+      # 该包单测本地无法执行：native/platform 受 `// +build linux` 限制，
+      # 宿主 Windows 下是空包；交叉编译出的 ARM64 测试二进制也无法在 x86_64
+      # 运行（runtime.gcdata: missing Go type information），只能由本 job 承担。
+      - name: go test（本地分流生成层 + 配置处理器）
         working-directory: kernel-core/src/main/golang
-        run: go test -v -count=1 ./native/config/routing/...
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go test -v -count=1 -tags "android cmfa with_gvisor" ./native/config/... ./native/config/routing/...
 
   quality:
     name: 质量门禁（test + ktlint + lint）

@@ -7,4 +7,4 @@
 # 重新生成（仅在按 VERSION.md 升级内核、确认真实重建后执行）：
 #   shasum -a 256 libclash.so   # 或 sha256sum libclash.so
 # 并把新摘要写回本文件，同时在 VERSION.md 记录本次升级。
-76fd93893495816230047c7b53377cde580ceb0309b6198334c0f024beadd33b  libclash.so
+0d2399c3dd6abbbf8de19c13b127d91c645ff8d81a8fa3b4c4cff4bc518d6452  libclash.so
