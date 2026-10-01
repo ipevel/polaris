@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -30,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.slte.app.ui.theme.V5Spacing
 import kotlinx.coroutines.delay
 
-/** 页面骨架：氛围底 + 状态栏避让 + 可选悬浮胶囊导航。 */
+/** 页面骨架：氛围底 + 状态栏避让 + 可选贴底通栏导航。 */
 @Composable
 fun V5PageScaffold(
     tab: NavTab?,
@@ -49,12 +48,9 @@ fun V5PageScaffold(
             content()
         }
         if (tab != null) {
-            FloatingPillNav(
+            V5BottomNavBar(
                 active = tab,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = V5Spacing.dp14, end = V5Spacing.dp14, bottom = V5Spacing.dp16)
-                    .navigationBarsPadding(),
+                modifier = Modifier.align(Alignment.BottomCenter),
                 onSelect = onNavSelect,
             )
         }
@@ -62,16 +58,14 @@ fun V5PageScaffold(
 }
 
 /**
- * 悬浮胶囊导航为可滚动主体预留的底部高度。
+ * 贴底通栏导航为可滚动主体预留的底部高度。
  *
- * 组成：导航胶囊 52dp + 外边距 上下各 16dp + 视觉呼吸余量。
- * 118dp 是旧值，在首页加了 SectionTitle 起头后不够用——最后一块内容会滑到胶囊底下
- * 被半透明导航压住（实测：会话信息的 IPv6 行与导航文字叠在一起）。
- * 提到 150dp 让最后一块内容能完整滑出导航区之上，仍为纯底部留白，不影响首屏观感。
+ * 组成：导航栏 64dp + 顶部分割线 1dp + 视觉呼吸余量 7dp。
+ * 通栏贴底后不再悬浮，内容只需避开栏体本身，无需额外留白。
  */
-private val BottomNavContentInset = 150.dp
+private val BottomNavContentInset = 72.dp
 
-/** 页签页的可滚动主体（自动为悬浮导航留出底部空间）。 */
+/** 页签页的可滚动主体（自动为贴底导航留出底部空间）。 */
 @Composable
 fun V5ScrollBody(
     tab: NavTab?,

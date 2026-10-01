@@ -56,8 +56,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,8 +74,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -835,62 +831,36 @@ enum class NavTab(val icon: ImageVector, @StringRes val labelRes: Int) {
     ME(Icons.Outlined.Person, R.string.tab_profile),
 }
 
+/**
+ * 传统贴底通栏导航（Material 经典底栏样式）。
+ *
+ * 整条栏贴底、顶部细分割线、图标+文字、选中项仅用主题色高亮，无悬浮无圆角容器。
+ * 文案走资源而不是硬编码：v5 组件里曾写死简体中文，导致 en / zh-Hant 下整条导航仍显示中文
+ * （键 tab_home / tab_server / tab_traffic / tab_profile 三语早已存在，见 ResourceLocaleParityTest）。
+ */
 @Composable
-fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (NavTab) -> Unit = {}) {
+fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (NavTab) -> Unit = {}) {
     val c = V5ThemeColors.current
-    // 选中胶囊用一层可位移的高亮背景：切换 tab 时滑过去而不是硬切，让"谁被选中"这件事
-    // 有一个可跟随的动作（状态变化回应）。位置用 animateDpAsState 表达，不引入 third-party 动画库。
-    val tabs = NavTab.entries
-    val activeIndex = tabs.indexOf(active).coerceAtLeast(0)
-    // 分区宽度必须来自实际测量：每个 tab 是 weight(1f)，其宽 =（导航栏内容宽）/ 4，
-    // 随屏幕宽度变化（1080px@480dpi 上约 80dp）。曾写死 52dp 猜宽度，导致高亮块比分区窄、
-    // 且与选中项文字错位——只有实测才能对齐。
-    var segmentWidthPx by remember { mutableFloatStateOf(0f) }
-    val density = LocalDensity.current
-    val segmentWidthDp = with(density) { segmentWidthPx.toDp() }
-    val offsetX by animateDpAsState(
-        targetValue = segmentWidthDp * activeIndex,
-        animationSpec = tween(320),
-        label = "navIndicator",
-    )
-    Box(
+    Column(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(V5Radius.pill))
-            .clip(RoundedCornerShape(V5Radius.pill))
-            .background(c.navBg)
-            .padding(7.dp)
-            .height(52.dp),
+            .fillMaxWidth()
+            .background(c.surface)
+            .navigationBarsPadding(),
     ) {
-        if (segmentWidthPx > 0f) {
-            Box(
-                Modifier
-                    .offset(x = offsetX)
-                    .width(segmentWidthDp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(V5Radius.pill))
-                    .background(c.navOn),
-            )
-        }
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            tabs.forEachIndexed { index, tab ->
+        HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavTab.entries.forEach { tab ->
                 val on = tab == active
                 val tabLabel = stringResource(tab.labelRes)
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(V5Radius.pill))
-                        // 只测量第一个 tab 的宽度：四个分区等宽（weight(1f)），拿到一个即可推
-                        // 出其余三个的位置，避免每个都缓存一份测量值。
-                        .then(
-                            if (index == 0) {
-                                Modifier.onGloballyPositioned { coordinates ->
-                                    segmentWidthPx = coordinates.size.width.toFloat()
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
                         .then(
                             noRippleClickable(
                                 role = Role.Tab,
@@ -902,11 +872,11 @@ fun FloatingPillNav(active: NavTab, modifier: Modifier = Modifier, onSelect: (Na
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(tab.icon, null, modifier = Modifier.size(21.dp), tint = if (on) c.accent else c.text3)
+                    Icon(tab.icon, null, modifier = Modifier.size(22.dp), tint = if (on) c.accent else c.text3)
                     Text(
                         tabLabel,
-                        fontSize = V5Type.sp10_5,
-                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = V5Type.sp11,
+                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
                         letterSpacing = V5Type.tracking,
                         color = if (on) c.accent else c.text3,
                     )

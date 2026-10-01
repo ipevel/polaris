@@ -98,8 +98,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 5. Bare Icons check (CI regex: capital Icons. ; import lines use lowercase icons. so they do NOT match)
+#    豁免目录必须与 ci.yml / build.yml 完全一致：rg 的两个 --glob 是
+#    '!**/ui/theme/SlteIcons.kt' 与 '!**/ui/v5/**'（ui/v5 设计系统的图标由组件自身定义）。
+#    历史上这里漏了 ui/v5 豁免，导致 27 处 v5 图标被误报为违规、每次门禁都假失败。
 Write-Host "`n[5/7] bare Icons.* reference check ..." -ForegroundColor Cyan
-$files = Get-ChildItem -Path 'app\src\main\java' -Recurse -Include *.kt | Where-Object { $_.Name -ne 'SlteIcons.kt' }
+$files = Get-ChildItem -Path 'app\src\main\java' -Recurse -Include *.kt |
+    Where-Object { $_.Name -ne 'SlteIcons.kt' -and $_.FullName -notmatch '\\ui\\v5\\' }
 $bare = @()
 foreach ($f in $files) {
     $m = Select-String -Path $f.FullName -CaseSensitive -Pattern 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.'

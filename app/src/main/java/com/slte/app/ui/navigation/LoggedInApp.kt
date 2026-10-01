@@ -115,7 +115,7 @@ fun LoggedInApp(
                     onRoutingRules = { pushPage(Page.RoutingRules) },
                 )
             } else {
-                // 底部导航由 v5 页面自带的悬浮胶囊导航（FloatingPillNav）提供，
+                // 底部导航由 v5 页面自带的贴底通栏导航（V5BottomNavBar）提供，
                 // 此处不再叠加旧的 SlteBottomNavBar，也不再预留其高度
                 Box(modifier = Modifier.fillMaxSize()) {
                     RootTabContent(

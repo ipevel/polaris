@@ -76,9 +76,6 @@ data class V5Colors(
     val tilePurple: TileColors,
     val tilePink: TileColors,
     val tileCyan: TileColors,
-    // 悬浮胶囊导航
-    val navBg: Color,
-    val navOn: Color,
     // 页面氛围光晕
     val auroraGlow1: Color,
     val auroraGlow2: Color,
@@ -130,8 +127,6 @@ val LightV5Colors = V5Colors(
     tilePurple = TileColors(Color(0xFFF1ECFE), Color(0xFF7A4EE2)),
     tilePink = TileColors(Color(0xFFFCEBF5), Color(0xFFB14194)),
     tileCyan = TileColors(Color(0xFFE4F6FB), Color(0xFF0D7897)),
-    navBg = Color(0xE6FFFFFF),
-    navOn = Color(0xFFEFF1F7),
     // 氛围光晕：原值 0x13/0x0B 在 1080p 屏上几乎不可见（整屏读起来就是一块灰白），
     // 品牌色因此进不到空间感里、页面显"平"。提到 0x2E/0x1C 后光晕仍属"氛围"量级
     // （不干扰白卡上的文字对比度），但能撑起顶部蓝、右上粉紫两处色彩落点。
@@ -179,8 +174,6 @@ val DarkV5Colors = V5Colors(
     tilePurple = TileColors(Color(0x2B966EF5), Color(0xFFB49AF8)),
     tilePink = TileColors(Color(0x24E966C4), Color(0xFFF093D4)),
     tileCyan = TileColors(Color(0x2138BDF8), Color(0xFF6FD0F2)),
-    navBg = Color(0xEB171A25),
-    navOn = Color(0xFF2A3042),
     // 暗色底本来就深，光晕只需比亮色略强一点点就能被看见（见亮色处注释）。
     auroraGlow1 = Color(0x3D6366F1),
     auroraGlow2 = Color(0x24EC4899),
