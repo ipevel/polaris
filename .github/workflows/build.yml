@@ -501,6 +501,7 @@ jobs:
           set -e
           TAG="${TAG_INPUT:-v${VERSION}}"
           echo "目标标签：$TAG"
+          FRESH=1
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::notice::Release $TAG 已存在，更新资产与说明"
             gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
@@ -508,12 +509,33 @@ jobs:
               --title "Polaris $VERSION" \
               --notes-file notes.md \
               --repo "$GITHUB_REPOSITORY"
+            FRESH=0
           else
+            # --target 必须给：gh 的默认目标是 main 分支，而 main 可能在这套
+            # 流水线跑的几分钟里被别人推过。不给的话，产物编的是 GITHUB_SHA，
+            # tag 却会落在发版那一刻的 main HEAD 上——两者静默地不一致，
+            # 谁 checkout 那个 tag 编出来的东西都不等于你发出去的 APK。
+            # tag 必须指向你验过的那份代码，这是「已发布版本不可改」最底下那条。
             gh release create "$TAG" out/* \
               --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
               --title "Polaris $VERSION" \
               --notes-file notes.md \
               --latest
+          fi
+          # 发完再回头看一眼 tag 究竟指向谁，别只信命令行的意图。
+          # 刚建的 tag 指向不对 = --target 没生效，那必须炸。
+          # 已存在的 tag 指向不对 = 拿新构建覆盖了老 tag 的资产（重发是允许的，
+          # 但这时发布页的 tag 与 APK 对不上号，值得喊一声而不是拦住发版）。
+          TAGGED_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          if [ "$TAGGED_SHA" != "$GITHUB_SHA" ]; then
+            if [ "$FRESH" = "1" ]; then
+              echo "::error::tag $TAG 指向 $TAGGED_SHA，而本流水线构建的是 $GITHUB_SHA"
+              exit 1
+            fi
+            echo "::warning::tag $TAG 指向 $TAGGED_SHA，本次资产构建自 $GITHUB_SHA（重发同一版本号）"
+          else
+            echo "::notice::tag $TAG 已确认指向构建提交 $TAGGED_SHA"
           fi
           echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
 
