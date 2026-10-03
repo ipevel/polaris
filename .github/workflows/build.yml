@@ -9,6 +9,10 @@ name: Polaris Build
 #   - publishRelease=true 时，构建成功后自动创建/更新 Release 并附上 APK、
 #     SHA256SUMS.txt 与签名证书指纹（SIGNING.txt）。
 #   - 重复运行同一标签（releaseTag 相同）会更新既有 Release 的资产与说明，不会失败。
+#   - versionName 必须填本次发布的版本号，且严格大于上一已发布版本：构建前会跑
+#     .scripts/version_gate.py 校验版本号/versionCode/tag 三者自洽，并检查区间内的
+#     feat / 破坏性变更是否递增了对应位（规则见 VERSIONING.md）。门禁不通过即中止，
+#     可用 gateMode=warn 降级为告警、gateMode=off 跳过（仅限紧急回滚场景）。
 
 on:
   workflow_dispatch:
@@ -22,9 +26,9 @@ on:
         required: true
         default: com.polaris.app
       versionName:
-        description: 版本号
+        description: 版本号（X.Y.Z，必须严格大于上一已发布版本；门禁会校验）
         required: true
-        default: 1.0.0
+        default: ''
       versionCode:
         description: versionCode（留空自动生成）
         required: false
@@ -80,6 +84,17 @@ on:
         description: Release 标签名（留空自动使用 v<版本号>）
         required: false
         default: ''
+      gateMode:
+        description: |
+          版本门禁模式。strict=不一致即中止（默认）；warn=只告警；off=跳过。
+          门禁内容：版本号合法、tag 与版本号一致、版本号与 versionCode 相对上一版严格递增、
+          区间内有 feat 却只升 PATCH 则拦截。规则见 VERSIONING.md。
+        type: choice
+        options:
+          - strict
+          - warn
+          - off
+        default: strict
       releaseNotes:
         description: |
           Release 变更说明（留空则不输出「变更说明」小节；填 auto 会写成「见 git log」）。
@@ -108,6 +123,81 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 版本门禁要读历史 tag 与上一版构建文件。本仓库 .git 约 290MB，
+          # 不做全量克隆：先只取当前提交与 tag 引用，再按需加深（见下一步）。
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: 补全版本门禁所需的历史
+        run: |
+          set -e
+          # 门禁要跑 git log <上一版 tag>..HEAD 判定提交类型，depth=1 取不到区间提交。
+          # 加深到 500 个提交即可覆盖全部 tag（当前仓库约 220 个提交），失败则退回全量。
+          git fetch --no-tags --deepen=500 origin "$(git rev-parse --abbrev-ref HEAD)" \
+            || git fetch --no-tags --unshallow
+          echo "可见 tag 数：$(git tag --list 'v*' | wc -l)"
+
+      - name: 解析发布版本号
+        id: version
+        env:
+          VERSION_INPUT: ${{ inputs.versionName }}
+          CODE_INPUT: ${{ inputs.versionCode }}
+          TAG_INPUT: ${{ inputs.releaseTag }}
+        run: |
+          set -e
+          # versionName / versionCode / tag 的单一来源：后续所有步骤都从 $GITHUB_ENV 读取，
+          # 避免「构建用 A、发布挂 B」的分叉。
+          if [ -z "$VERSION_INPUT" ]; then
+            echo "::error::versionName 为空，请填写本次发布的版本号（形如 1.5.18）"
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION_INPUT" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::versionName '${VERSION_INPUT}' 不是合法的 SemVer（必须为 X.Y.Z，无前导零）"
+            exit 1
+          fi
+          if [ -n "$CODE_INPUT" ]; then
+            VC="$CODE_INPUT"
+            case "$VC" in
+              ''|*[!0-9]*) echo "::error::versionCode '${CODE_INPUT}' 必须是纯数字"; exit 1 ;;
+            esac
+          else
+            VC=$(( $(date +%s) / 60 ))
+          fi
+          TAG="${TAG_INPUT:-v${VERSION_INPUT}}"
+          if [ "$TAG" != "v${VERSION_INPUT}" ]; then
+            echo "::error::releaseTag '${TAG}' 必须等于 v${VERSION_INPUT}（SemVer 要求 tag 与版本号一一对应）"
+            exit 1
+          fi
+          {
+            echo "POLARIS_RELEASE_VERSION=${VERSION_INPUT}"
+            echo "POLARIS_RELEASE_CODE=${VC}"
+            echo "POLARIS_RELEASE_TAG=${TAG}"
+          } >> "$GITHUB_ENV"
+          echo "版本 ${VERSION_INPUT} / versionCode ${VC} / tag ${TAG}"
+
+      - name: SemVer 版本门禁
+        if: inputs.gateMode != 'off'
+        env:
+          GATE_MODE: ${{ inputs.gateMode }}
+        run: |
+          set -e
+          python3 .scripts/version_gate.py \
+            --tag "$POLARIS_RELEASE_TAG" \
+            --android-gradle app/build.gradle.kts \
+            --version-name "$POLARIS_RELEASE_VERSION" \
+            --version-code "$POLARIS_RELEASE_CODE" \
+            --check-commits \
+            --mode "$GATE_MODE"
+
+      - name: SemVer 历史审计
+        if: inputs.gateMode == 'strict'
+        run: |
+          set -e
+          # 揪出「版本号写进代码却从未打 tag」的欠账：版本序列出现空洞会让用户
+          # 无法判断哪个版本对应哪次构建。本仓库当前无欠账。
+          python3 .scripts/version_gate.py \
+            --audit-history app/build.gradle.kts:POLARIS_VERSION_NAME
 
       - name: 安装 JDK 17
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -228,9 +318,10 @@ jobs:
         run: |
           chmod +x gradlew
 
-          VC="$POLARIS_VERSION_CODE"
-          if [ -z "$VC" ]; then VC=$(( $(date +%s) / 60 )); fi
-          export POLARIS_VERSION_CODE="$VC"
+          # 版本号与 versionCode 由「解析发布版本号」步骤统一算出（并已过门禁校验），
+          # 这里只做转发，避免再出现一份内联的 VC 计算逻辑与发布标签分叉。
+          export POLARIS_VERSION_NAME="$POLARIS_RELEASE_VERSION"
+          export POLARIS_VERSION_CODE="$POLARIS_RELEASE_CODE"
           ./gradlew :app:testDebugUnitTest ":app:assemble$POLARIS_BUILD_TYPE"
 
       - name: 代码风格与静态检查（ktlint + Android Lint + R8 存活校验）
