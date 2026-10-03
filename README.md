@@ -43,9 +43,9 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.5.15 | 48 |
+| Android | 1.5.17 | 50 |
 
-> 内核：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。版本以 [Releases](https://github.com/ipevel/polaris/releases) 为准。
+> 内核：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。版本以 [Releases](https://github.com/ipevel/polaris/releases) 为准；版本号规则、发布流程与自动门禁见 [VERSIONING.md](VERSIONING.md)。
 
 ## 开发环境
 
@@ -126,7 +126,7 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ## 社区
 
 - [安全政策](SECURITY.md)（漏洞请走私渠道报告，勿开公开 Issue）
-- [贡献指南](CONTRIBUTING.md) ｜ [说明规范](docs/writing-guide.md) ｜ [行为准则](CODE_OF_CONDUCT.md) ｜ [支持与求助](SUPPORT.md)
+- [贡献指南](CONTRIBUTING.md) ｜ [说明规范](docs/writing-guide.md) ｜ [版本策略](VERSIONING.md) ｜ [行为准则](CODE_OF_CONDUCT.md) ｜ [支持与求助](SUPPORT.md)
 
 ## 许可证
 

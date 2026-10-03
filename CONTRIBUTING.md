@@ -51,7 +51,10 @@ export POLARIS_RELEASE_KEY_PASSWORD=ci-throwaway
 - 摘要格式为 `type(scope): 摘要`，type 取 `feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore` / `revert`。
 - 标题 ≤ 50 字符，不以 BOM 等不可见字符开头；一次提交只做一件事。
 - 可选启用模板：`git config commit.template .gitmessage`。
-- 改动功能或流程时，同步更新对应文档（`README.md` / `CONFIG.md` / `docs/` 等）。
+- 改动功能或流程时，同步更新对应文档（`README.md` / `CONFIG.md` / `VERSIONING.md` / `docs/` 等）。
+- **版本号**：`feat` 提交通常意味着需要升 MINOR，破坏性变更需要升 MAJOR。发布时
+  `.scripts/version_gate.py` 会校验版本号/`versionCode`/tag 三者自洽并检查递增位是否匹配，
+  判定标准见 [VERSIONING.md](VERSIONING.md)。
 
 ## AI 辅助开发
 

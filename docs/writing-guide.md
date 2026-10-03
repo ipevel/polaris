@@ -122,10 +122,13 @@ Closes #42
 | `README.md` | 用户：介绍、下载、编译、配置入口 |
 | `CONTRIBUTING.md` | 贡献者：门禁、代码规范、提交规则 |
 | `CONFIG.md` | 部署者：构建配置与远程配置字段 |
+| `VERSIONING.md` | 发布者：版本号规则、发布流程与版本门禁 |
 | `SECURITY.md` / `SUPPORT.md` | 安全报告 / 求助渠道 |
 | `docs/` | 设计与架构说明 |
 
-- 版本号与默认值以**代码为准**（`app/build.gradle.kts`），不要在多处手工复制。
+- 版本号与默认值以**代码为准**（`app/build.gradle.kts`），不要在多处手工复制；
+  版本号规则与递增判定见 [VERSIONING.md](../VERSIONING.md)，且发布时有
+  `.scripts/version_gate.py` 自动校验。
 - 发布流程自动维护的字段（`config/remote.json` 的更新字段）不在文档里手工抄写。
 - 改动功能或流程时，同步更新对应文档。
 
