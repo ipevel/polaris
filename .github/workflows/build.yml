@@ -232,7 +232,11 @@ jobs:
           echo "$STORE_B64" | base64 -d > release.keystore
 
       - name: 应用自定义图标
-        if: inputs.iconB64 != '' || hashFiles('app/icon-source.png') != ''
+        # 只有调用方显式传入 iconB64 时才覆盖仓库资源。
+        # 曾经这里还带 `|| hashFiles('app/icon-source.png') != ''`，而仓库里长期躺着一张
+        # 旧版图标的 icon-source.png，导致每次发版都被 ImageMagick 重新生成一遍、
+        # 把 res/ 下的正式图标资源盖回旧图（还会造出与矢量前景同名的 nodpi 位图）。
+        if: inputs.iconB64 != ''
         env:
           ICON_B64: ${{ inputs.iconB64 }}
         run: |
@@ -241,6 +245,10 @@ jobs:
             echo "$ICON_B64" | base64 -d > app/icon-source.png
           fi
           test -f app/icon-source.png || { echo "无图标源，跳过"; exit 0; }
+          # 自定义前景生成的是 drawable-nodpi/ic_launcher_foreground.png，
+          # 与仓库里的矢量 drawable/ic_launcher_foreground.xml 同名。同名资源按密度
+          # 选取时 nodpi 会压过无密度限定的矢量，必须先清掉矢量，结果才唯一。
+          rm -f app/src/main/res/drawable/ic_launcher_foreground.xml
           if ! command -v convert >/dev/null 2>&1; then
             sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
           fi
