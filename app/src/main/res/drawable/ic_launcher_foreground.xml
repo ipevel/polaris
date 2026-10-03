@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标前景层：几何字母 P（O3 方案）。
+    - 竖杠 12×50，圆头（rx=6），位于 x=35..47、y=29..79
+    - 圆环碗部：圆心 (56,46)，外半径 17，内半径 9，用 evenOdd 真正镂空
+    - 整体包围盒 x=35..73、y=29..79，恰好以 (54,54) 为中心
+    - 最远轮廓半径约 31.4，在自适应图标保证可见的半径 33 安全圆内
+
+    竖杠右缘落在 x=47，正是内孔左端点：两者相切而不是重叠，
+    否则会在孔里留下一道宽 1 单位的实心月牙（512px 出图时约 4.7px）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 竖杠 -->
+    <path
+        android:fillColor="#2F6BF6"
+        android:pathData="M41,29 A6,6 0 0 1 47,35 V73 A6,6 0 0 1 41,79 A6,6 0 0 1 35,73 V35 A6,6 0 0 1 41,29 Z" />
+    <!-- 圆环碗部 -->
+    <path
+        android:fillColor="#2F6BF6"
+        android:fillType="evenOdd"
+        android:pathData="M56,29 A17,17 0 1 0 56,63 A17,17 0 1 0 56,29 Z M56,37 A9,9 0 1 1 56,55 A9,9 0 1 1 56,37 Z" />
+</vector>

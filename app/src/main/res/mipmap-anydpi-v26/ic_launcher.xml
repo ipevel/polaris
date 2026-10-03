@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
    自适应启动图标（Android 8.0+ 使用）：
-   - 背景：Polaris 深空色 #0A1024
-   - 前景：亮色北极星
-   - 单色层：纯黑（Android 13+ 主题图标）
+   - 背景：浅色 #F7F8FC
+   - 前景：品牌蓝 #2F6BF6 的几何字母 P
+   - 单色层：纯黑同形（Android 13+ 主题图标）
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />

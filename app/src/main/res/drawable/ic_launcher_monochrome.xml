@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Polaris 北极星单色层（Android 13+ 主题图标）：系统将按主题着色 -->
+<!--
+    几何字母 P 单色层（Android 13+ 主题图标）：系统按主题着色，所以只留形状。
+    几何与前景层 ic_launcher_foreground.xml 完全一致，只是换成纯黑。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -7,8 +10,9 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#000000"
-        android:pathData="M37.23,17.09 C41.45,35.23 41.45,71.51 37.23,90.91 C33.01,71.51 33.01,35.23 37.23,17.09 Z" />
+        android:pathData="M41,29 A6,6 0 0 1 47,35 V73 A6,6 0 0 1 41,79 A6,6 0 0 1 35,73 V35 A6,6 0 0 1 41,29 Z" />
     <path
         android:fillColor="#000000"
-        android:pathData="M37.23,31.01 C53.05,31.01 74.46,36.49 74.46,45.77 C74.46,55.05 53.05,60.54 37.23,60.54 C50.94,59.06 68.77,54.21 68.77,45.77 C68.77,37.34 50.94,32.48 37.23,31.01 Z" />
+        android:fillType="evenOdd"
+        android:pathData="M56,29 A17,17 0 1 0 56,63 A17,17 0 1 0 56,29 Z M56,37 A9,9 0 1 1 56,55 A9,9 0 1 1 56,37 Z" />
 </vector>

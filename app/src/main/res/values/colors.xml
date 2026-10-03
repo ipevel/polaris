@@ -11,7 +11,10 @@
     -->
     <color name="light_background">#FFF1F0F6</color>
     <color name="dark_background">#FF0B0D15</color>
-    <!-- 启动图标渐变两端：与 app/icon-source.png（北辰深空渐变）同色，被 drawable/ic_launcher_background.xml 共用 -->
-    <color name="ic_launcher_background">#FF0D1638</color>
-    <color name="ic_launcher_background_end">#FF2A1B5E</color>
+    <!--
+      启动图标底色不在这里：自适应图标背景层是 drawable/ic_launcher_background.xml
+      里写死的 #F7F8FC。这里原有 ic_launcher_background / ic_launcher_background_end
+      两个「北辰深空渐变」色，是旧版图标（app/icon-source.png）时代的遗留，
+      随图标改版一起成了无人引用的死资源，已删除。
+    -->
 </resources>
