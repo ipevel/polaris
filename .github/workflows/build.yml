@@ -176,6 +176,14 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "版本 ${VERSION_INPUT} / versionCode ${VC} / tag ${TAG}"
 
+      - name: 门禁自测
+        run: |
+          set -e
+          # 门禁是 CI 的裁判，它自己坏掉时没人会发现：历史审计曾经因为拿 .gradle.kts
+          # 文本去 json.loads、异常被 except 吞掉，每次都报「通过」而实际一个提交都没扫。
+          # 所以先用临时仓库复现历史违规，确认它真的能拦住，再拿它去裁判这次发布。
+          python3 .scripts/version_gate_test.py
+
       - name: SemVer 版本门禁
         if: inputs.gateMode != 'off'
         env:
