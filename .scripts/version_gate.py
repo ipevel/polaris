@@ -355,7 +355,7 @@ def audit_history(repo: str, specs, allowlist_path, report) -> None:
     seen: dict[str, str] = {}
     for commit in git(repo, "log", "--format=%H", "--", path).split():
         try:
-            value = read_json_version_at(repo, commit, path, key)
+            value = read_version_at(repo, commit, path, key)
         except Exception:
             continue  # 该提交里文件不存在或解析失败，跳过
         if value is None or parse_semver(value) is None:
@@ -391,6 +391,13 @@ def read_json_version_at(repo: str, commit: str, path: str, key: str):
     data = json.loads(raw)
     value = data.get(key)
     return value if isinstance(value, str) else None
+
+
+def read_version_at(repo: str, commit: str, path: str, key: str):
+    """读取某个提交里版本声明文件的版本号，JSON 与 Gradle 两种形态都支持。"""
+    if path.endswith((".kts", ".gradle")):
+        return read_android_versions(git(repo, "show", f"{commit}:{path}"))[0]
+    return read_json_version_at(repo, commit, path, key)
 
 
 def load_allowlist(path):
@@ -545,6 +552,10 @@ def main() -> int:
         help="本次发布的版本号（覆盖 gradle 文件里的默认值，供 CI 注入场景使用）",
     )
     parser.add_argument(
+        "--print-version", action="store_true",
+        help="只打印声明点里的版本号后退出（供 CI 在未打 tag 时推导 tag，避免重复解析逻辑）",
+    )
+    parser.add_argument(
         "--check-commits", action="store_true",
         help="检查上一版 tag 到 HEAD 的提交类型与递增位是否匹配",
     )
@@ -554,13 +565,26 @@ def main() -> int:
     )
     parser.add_argument(
         "--audit-history", default=None, metavar="PATH:KEY",
-        help="审计历史：找出写入过却从未发布的版本号",
+        help="审计历史：找出写入过却从未发布的版本号（JSON 或 *.gradle.kts 皆可）",
     )
     parser.add_argument(
         "--audit-allowlist", default=None, metavar="PATH",
         help="历史审计的已知欠账豁免清单",
     )
     args = parser.parse_args()
+
+    if args.print_version:
+        repo = os.path.abspath(args.repo)
+        if args.android_gradle:
+            with open(os.path.join(repo, args.android_gradle), "r", encoding="utf-8") as handle:
+                print(read_android_versions(handle.read())[0])
+        elif args.version_file:
+            path, _, key = args.version_file[0].partition(":")
+            print(read_json_version(os.path.join(repo, path), key or "version"))
+        else:
+            print("--print-version 需要同时给出 --android-gradle 或 --version-file", file=sys.stderr)
+            return EXIT_FAIL
+        return EXIT_OK
 
     if args.mode == "off":
         print("SemVer 版本门禁已被 --mode off 跳过。")
