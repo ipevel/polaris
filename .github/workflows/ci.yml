@@ -13,6 +13,20 @@ permissions:
   contents: read
 
 jobs:
+  # 门禁是 CI 的裁判，而裁判坏掉时没人会发现：2026-10-03 的历史审计把
+  # Gradle 声明点当成 JSON 解析，异常被吞掉，于是每次都打印「通过」而
+  # 实际一个提交都没扫。所以每次推送都先验证裁判本身。
+  version-gate:
+    name: 版本门禁自测
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 运行门禁自测（23 个用例）
+        run: python3 .scripts/version_gate_test.py
+
   go:
     name: 内核 Go 门禁（vet + build + test）
     runs-on: ubuntu-latest
