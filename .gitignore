@@ -22,6 +22,10 @@ AGENTS.md
 # 扫描工具会话状态（不入库）
 .mimosa/
 
+# Python 字节码缓存（.scripts/version_gate.py 及其自测）
+__pycache__/
+*.pyc
+
 # 构建发布产物
 dist/
 

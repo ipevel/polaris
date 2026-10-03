@@ -159,7 +159,7 @@ with open(os.path.join(repo2, "_t.py"), "w", encoding="utf-8") as h:
             'import version_gate as vg\n'
             'print(vg.read_android_versions(open(r"%s", encoding="utf-8").read()))\n'
             % (HERE, os.path.join(repo2, "app2", "build.gradle.kts")))
-rc, out = run(PY, os.path.join(repo2, "_t.py"))
+rc, out = run(PY, "-B", os.path.join(repo2, "_t.py"))
 expect("C3 兼容 slte 的 POLARIS_ 环境变量写法", "('1.5.18', 9)" in out, out)
 
 # --------------------------------------------------------------------------- #
