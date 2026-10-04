@@ -41,16 +41,19 @@ suspend fun KernelProxy.speedTest(): Map<String, Int> = safe(emptyMap(), "speedT
         if (waitForGroups() == null) return@safe emptyMap()
     }
 
-    structuralSpeedTest(clash) { }?.let { return@safe it }
-
-    // 非本地分流模式（面板组结构）：保持既有 healthCheckAll + 轮询行为
-    clash.healthCheckAll()
-    var result = queryAllGroupDelays(clash, hasTestRun = true)
-    repeat(10) {
-        if (result.values.all { it != Constants.DELAY_TIMEOUT }) return@safe result
-        delay(500)
-        result = queryAllGroupDelays(clash, hasTestRun = true)
+    // 本地分流模式只探测结构组（自动选择/故障转移）；面板组结构走 healthCheckAll
+    // 覆盖全部 provider。两条路径的 healthCheck 都是 fire-and-forget——返回只代表
+    // 任务已下发，延迟历史可能一条都还没写回，因此都必须经 awaitSpeedSettle 等到
+    // 真实结果。此前本地分流分支在此直接 return，收敛轮询只在面板组结构下生效。
+    val structural = structuralSpeedTest(clash) { }
+    if (structural == null) {
+        clash.healthCheckAll()
     }
+    val result =
+        awaitSpeedSettle(
+            clash,
+            structural ?: queryAllGroupDelays(clash, hasTestRun = true),
+        )
     AppLog.d("Polaris-Kernel", "speedTest: groups=${result.size}")
     result
 }
@@ -69,25 +72,25 @@ suspend fun KernelProxy.speedTestProgressive(
         if (waitForGroups() == null) return@safe emptyMap()
     }
 
-    structuralSpeedTest(clash, onProgress)?.let { return@safe it }
-
-    clash.healthCheckAll()
-    var result = queryAllGroupDelays(clash, hasTestRun = true)
-    onProgress(result)
-    repeat(20) {
-        if (result.values.all { it != Constants.DELAY_TIMEOUT }) return@safe result
-        delay(PROGRESS_POLL_INTERVAL_MS)
-        result = queryAllGroupDelays(clash, hasTestRun = true)
-        if (result.isNotEmpty()) onProgress(result)
+    // 同 speedTest：本地分流分支不得短路，否则渐进测速同样读到空历史
+    val structural = structuralSpeedTest(clash, onProgress)
+    if (structural == null) {
+        clash.healthCheckAll()
     }
-    result
+    awaitSpeedSettle(
+        clash,
+        structural ?: queryAllGroupDelays(clash, hasTestRun = true),
+        onProgress,
+    )
 }
 
 /**
- * 只 await 结构组的探测；返回 null 表示当前不是本地分流结构（调用方回落）。
+ * 只探测结构组（自动选择/故障转移）；返回 null 表示当前不是本地分流结构（调用方回落）。
  *
- * 期间按 [PROGRESS_POLL_INTERVAL_MS] 采样做渐进显示，但**完成判定只认
- * `healthCheck(group)` 的返回**，采样不参与判定。
+ * 本函数只负责**下发**探测并返回一份初始快照，收敛判定交给调用方的
+ * [awaitSpeedSettle]：`healthCheck(group)` 是 fire-and-forget，返回即返回，
+ * 此刻读到的延迟历史通常还是空的。把它当完成信号就会重演「26 个成员 458ms
+ * 内测完、全部读成 999」的回归。
  */
 private suspend fun KernelProxy.structuralSpeedTest(
     clash: IClashManager,
@@ -132,6 +135,80 @@ private suspend fun KernelProxy.structuralSpeedTest(
     val result = queryAllGroupDelays(clash, hasTestRun = completed)
     if (result.isNotEmpty()) onProgress(result)
     AppLog.d("Polaris-Kernel", "structuralSpeedTest: completed=$completed members=${result.size}")
+    return result
+}
+
+/** 收敛轮询的动作（纯函数 [speedSettleAction] 的判定结果）。 */
+internal enum class SpeedSettleAction {
+    /** 全部节点都拿到真实延迟，立即返回。 */
+    DONE,
+
+    /** 一条真实延迟都没有，且已等满最小沉降窗口：认作节点确实不可用。 */
+    GIVE_UP,
+
+    /** 继续轮询。 */
+    WAIT,
+}
+
+/**
+ * 测速收敛判定（纯函数，可单测）。
+ *
+ * 内核的 `healthCheck` 是 fire-and-forget：调用返回只表示探测任务已下发，
+ * 延迟历史可能一条都还没写回。此时立刻去读，读到的全是
+ * [Constants.DELAY_TIMEOUT]（999）——`queryAllGroupDelays` 在 `hasTestRun=true`
+ * 时会把「尚无记录」也渲染成超时，于是节点页整片变红。
+ *
+ * 回归现场：26 个成员的探测在 458ms 内"完成"（healthCheck 立即返回，
+ * 预算是 22500ms），全部读成 999，被误读为"节点全挂"。
+ *
+ * - 已有真实延迟 → 等全部收敛，避免把仍在途的节点固化成超时
+ * - 尚无真实延迟 → 至少等满 [SPEED_SETTLE_MIN_POLLS] 次轮询再认输，
+ *   否则无法区分"历史还没写回"与"节点真的挂了"
+ * - 结果为空 → 继续等（空结果不得判为完成）
+ */
+internal fun speedSettleAction(
+    delays: Map<String, Int>,
+    polls: Int,
+): SpeedSettleAction {
+    if (delays.isEmpty()) return SpeedSettleAction.WAIT
+    val settled = delays.values.count { it > Constants.DELAY_PENDING && it < Constants.DELAY_TIMEOUT }
+    return when {
+        settled == delays.size -> SpeedSettleAction.DONE
+        settled == 0 && polls >= SPEED_SETTLE_MIN_POLLS -> SpeedSettleAction.GIVE_UP
+        else -> SpeedSettleAction.WAIT
+    }
+}
+
+/**
+ * 轮询内核的延迟历史，直到 [speedSettleAction] 判定收敛或触达硬上限。
+ *
+ * 两条测速路径（本地分流结构组 / 面板组结构）都必须经此返回，
+ * 不得把「healthCheck 已下发」当成「测速已完成」。
+ */
+private suspend fun KernelProxy.awaitSpeedSettle(
+    clash: IClashManager,
+    initial: Map<String, Int>,
+    onProgress: ((Map<String, Int>) -> Unit)? = null,
+): Map<String, Int> {
+    var result = initial
+    var polls = 0
+    while (polls < SPEED_SETTLE_MAX_POLLS) {
+        when (speedSettleAction(result, polls)) {
+            SpeedSettleAction.DONE -> return result
+            SpeedSettleAction.GIVE_UP -> {
+                AppLog.w(
+                    "Polaris-Kernel",
+                    "awaitSpeedSettle: $polls 次轮询后仍无真实延迟，按不可用返回 $result.size 个节点",
+                )
+                return result
+            }
+            SpeedSettleAction.WAIT -> Unit
+        }
+        delay(SPEED_SETTLE_POLL_INTERVAL_MS)
+        result = queryAllGroupDelays(clash, hasTestRun = true)
+        if (result.isNotEmpty()) onProgress?.invoke(result)
+        polls++
+    }
     return result
 }
 
@@ -211,6 +288,20 @@ private fun KernelProxy.queryAllGroupDelays(
     }
 
 private const val PROGRESS_POLL_INTERVAL_MS = 500L
+
+/** 收敛轮询间隔：与渐进采样同频，实时反映内核写回历史的进度。 */
+private const val SPEED_SETTLE_POLL_INTERVAL_MS = 500L
+
+/**
+ * 收敛轮询的最小沉降窗口（次）：一条真实延迟都没拿到时，至少等这么久再认输。
+ *
+ * 取 6 次 × 500ms = 3s，对应回归日志里真实测速的耗时（约 3.2s）。短于此，
+ * 无法区分「历史还没写回」与「节点真的挂了」；长于此只会拖慢启动。
+ */
+internal const val SPEED_SETTLE_MIN_POLLS = 6
+
+/** 收敛轮询的硬上限（次）：6 × 60 = 30s 封顶，防止个别节点拖住整页。 */
+internal const val SPEED_SETTLE_MAX_POLLS = 60
 
 internal const val HEALTH_CHECK_MIN_BUDGET_MS = 15_000L
 

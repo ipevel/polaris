@@ -163,6 +163,45 @@ class SpeedTestOutcomeTest {
         assertEquals(emptyMap<String, Int>(), storeableDelays(mapOf("a" to 0, "b" to 65535), emptyMap()))
         assertEquals(emptyMap<String, Int>(), storeableDelays(null, emptyMap()))
     }
+
+    @Test
+    fun `收敛判定_全空结果必须继续等`() {
+        // 回归：空 Map 会让旧判据"瞬间完成"，26 个成员 458ms 测完全读成 999
+        assertEquals(SpeedSettleAction.WAIT, speedSettleAction(emptyMap(), polls = 0))
+        assertEquals(SpeedSettleAction.WAIT, speedSettleAction(emptyMap(), polls = SPEED_SETTLE_MAX_POLLS))
+    }
+
+    @Test
+    fun `收敛判定_全部拿到真实延迟才算完成`() {
+        assertEquals(SpeedSettleAction.DONE, speedSettleAction(mapOf("a" to 120, "b" to 30), polls = 0))
+    }
+
+    @Test
+    fun `收敛判定_全超时必须等满沉降窗口才认输`() {
+        val allTimeout = mapOf("a" to Constants.DELAY_TIMEOUT, "b" to Constants.DELAY_TIMEOUT)
+        // 未测（0）与超时（999）都算"尚无真实延迟"
+        val notTested = mapOf("a" to Constants.DELAY_PENDING, "b" to Constants.DELAY_PENDING)
+        for (delays in listOf(allTimeout, notTested)) {
+            assertEquals(SpeedSettleAction.WAIT, speedSettleAction(delays, polls = 0))
+            assertEquals(SpeedSettleAction.WAIT, speedSettleAction(delays, polls = SPEED_SETTLE_MIN_POLLS - 1))
+            assertEquals(SpeedSettleAction.GIVE_UP, speedSettleAction(delays, polls = SPEED_SETTLE_MIN_POLLS))
+        }
+    }
+
+    @Test
+    fun `收敛判定_部分出结果则继续等且不认输`() {
+        // 只要有一个真实值，就不能判定为"节点全挂"，必须继续等其余节点
+        val partial = mapOf("a" to Constants.DELAY_TIMEOUT, "b" to 200)
+        assertEquals(SpeedSettleAction.WAIT, speedSettleAction(partial, polls = 0))
+        assertEquals(SpeedSettleAction.WAIT, speedSettleAction(partial, polls = SPEED_SETTLE_MIN_POLLS))
+        assertEquals(SpeedSettleAction.DONE, speedSettleAction(mapOf("a" to 90, "b" to 200), polls = 0))
+    }
+
+    @Test
+    fun `收敛轮询有硬上限且沉降窗口不超过上限`() {
+        assertTrue(SPEED_SETTLE_MIN_POLLS > 0)
+        assertTrue(SPEED_SETTLE_MAX_POLLS > SPEED_SETTLE_MIN_POLLS)
+    }
 }
 
 /** 节点页区块折叠集合（集合内 = 收起）。 */
