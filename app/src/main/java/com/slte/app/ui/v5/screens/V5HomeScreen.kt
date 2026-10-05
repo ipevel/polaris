@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -205,7 +206,11 @@ private fun PlanUsageCard(
 }
 
 @Composable
-private fun SessionCard(data: DashboardData) {
+private fun SessionCard(
+    data: DashboardData,
+    proxyModeLabel: String?,
+    onProxyModeClick: () -> Unit,
+) {
     val c = V5ThemeColors.current
     val connected = data.isConnected
     // connectedSinceElapsedMs 是「连接时刻」时间戳（elapsedRealtime 毫秒），不是时长本身，
@@ -217,6 +222,17 @@ private fun SessionCard(data: DashboardData) {
             ""
         }
     V5CardFlat {
+        V5RowItem(
+            title = stringResource(R.string.action_proxy_mode),
+            value = proxyModeLabel,
+            chevron = true,
+            onClick = onProxyModeClick,
+        )
+        HorizontalDivider(
+            thickness = V5Spacing.dp1,
+            color = c.hairline2,
+            modifier = Modifier.padding(start = V5Spacing.dp16),
+        )
         V5Ledger(
             listOf(
                 LedgerData(
@@ -366,21 +382,16 @@ internal fun V5HomeScreen(
                 SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, connected, Modifier.weight(1f))
                 SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, connected, Modifier.weight(1f))
             }
-            // —— 代理模式（出口策略）：最轻的一级，夹在速率卡与分组段之间。
-            V5CardFlat(Modifier.v5Enter(2)) {
-                V5RowItem(
-                    title = stringResource(R.string.action_proxy_mode),
-                    value = proxyModeLabelRes(data.proxyMode)?.let { stringResource(it) },
-                    chevron = true,
-                    onClick = onProxyModeClick,
+            // —— 会话 / 套餐：iOS 分组段（代理模式并入会话卡第一行）。
+            Column(Modifier.v5Enter(2), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
+                SectionTitle(stringResource(R.string.session_title))
+                SessionCard(
+                    data,
+                    proxyModeLabel = proxyModeLabelRes(data.proxyMode)?.let { stringResource(it) },
+                    onProxyModeClick = onProxyModeClick,
                 )
             }
-            // —— 会话 / 套餐：iOS 分组段。
             Column(Modifier.v5Enter(3), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
-                SectionTitle(stringResource(R.string.session_title))
-                SessionCard(data)
-            }
-            Column(Modifier.v5Enter(4), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                 SectionTitle(stringResource(R.string.usage_title))
                 PlanUsageCard(data, onRenew)
             }
