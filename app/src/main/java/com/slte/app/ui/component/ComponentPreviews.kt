@@ -10,29 +10,31 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteTheme
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
+import com.slte.app.ui.v5.V5Input
+import com.slte.app.ui.v5.V5PasswordInput
 import com.slte.app.utils.Dimens
 
 @Preview(name = "按钮 · 浅色", showBackground = true, widthDp = 360)
 @Preview(name = "按钮 · 深色", showBackground = true, widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-private fun PreviewSlteButton() {
+private fun PreviewV5Button() {
     SlteTheme {
         Column(
             modifier = Modifier.padding(Dimens.gap.lg),
             verticalArrangement = Arrangement.spacedBy(Dimens.gap.md),
         ) {
-            SlteButton(text = "主要操作", onClick = {}, style = SlteButtonStyle.Primary)
-            SlteButton(text = "推进操作", onClick = {}, style = SlteButtonStyle.Secondary)
-            SlteButton(text = "中性操作", onClick = {}, style = SlteButtonStyle.Neutral)
-            SlteButton(text = "行内操作", onClick = {}, style = SlteButtonStyle.Tonal)
-            SlteButton(text = "紧凑 CTA", onClick = {}, style = SlteButtonStyle.Medium)
-            SlteButton(text = "危险操作", onClick = {}, style = SlteButtonStyle.Danger)
-            SlteButton(text = "禁用态", onClick = {}, enabled = false)
-            SlteButton(text = "加载中", onClick = {}, loading = true)
+            V5Button(text = "主要操作", style = ButtonStyle.PRIMARY, onClick = {})
+            V5Button(text = "成功操作", style = ButtonStyle.GREEN, onClick = {})
+            V5Button(text = "中性操作", style = ButtonStyle.NEUTRAL, onClick = {})
+            V5Button(text = "弱强调", style = ButtonStyle.TONAL, onClick = {})
+            V5Button(text = "危险操作", style = ButtonStyle.DANGER, onClick = {})
+            V5Button(text = "禁用态", style = ButtonStyle.PRIMARY, onClickEnabled = false, onClick = {})
+            V5Button(text = "加载中", style = ButtonStyle.PRIMARY, loading = true, onClick = {})
         }
     }
 }
@@ -40,35 +42,31 @@ private fun PreviewSlteButton() {
 @Preview(name = "输入框 · 浅色", showBackground = true, widthDp = 360)
 @Preview(name = "输入框 · 深色", showBackground = true, widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-private fun PreviewSlteInput() {
+private fun PreviewV5Input() {
     SlteTheme {
         Column(
             modifier = Modifier.padding(Dimens.gap.lg),
             verticalArrangement = Arrangement.spacedBy(Dimens.gap.md),
         ) {
-            SlteInput(
+            V5Input(
                 value = "",
                 onValueChange = {},
                 placeholder = "请输入邮箱",
                 icon = SlteIcons.Email,
                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
             )
-            SlteInput(
+            V5PasswordInput(
                 value = "••••••••",
                 onValueChange = {},
                 placeholder = "密码",
-                visualTransformation = PasswordVisualTransformation(),
-                trailing = {
-                    SlteButton(text = "显示", onClick = {}, style = SlteButtonStyle.Tonal)
-                },
             )
-            SlteInput(
+            V5Input(
                 value = "utun",
                 onValueChange = {},
                 placeholder = "紧凑档",
-                size = SlteInputSize.Compact,
+                small = true,
             )
-            SlteInput(
+            V5Input(
                 value = "只读内容",
                 onValueChange = {},
                 placeholder = "只读",
@@ -124,29 +122,6 @@ private fun PreviewSlteSwitch() {
             SlteSwitch(checked = false, onCheckedChange = {})
             SlteSwitch(checked = true, onCheckedChange = {}, enabled = false)
         }
-    }
-}
-
-@Preview(name = "空态 · 浅色", showBackground = true, widthDp = 360, heightDp = 480)
-@Preview(name = "空态 · 深色", showBackground = true, widthDp = 360, heightDp = 480, uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-private fun PreviewEmptyState() {
-    SlteTheme {
-        EmptyState(
-            title = "暂无订单",
-            description = "购买套餐后可在这里查看订单记录",
-            actionText = "去购买",
-            onAction = {},
-        )
-    }
-}
-
-@Preview(name = "错误态 · 浅色", showBackground = true, widthDp = 360, heightDp = 480)
-@Preview(name = "错误态 · 深色", showBackground = true, widthDp = 360, heightDp = 480, uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-private fun PreviewErrorState() {
-    SlteTheme {
-        ErrorState(message = "加载失败，请检查网络后重试", onRetry = {})
     }
 }
 

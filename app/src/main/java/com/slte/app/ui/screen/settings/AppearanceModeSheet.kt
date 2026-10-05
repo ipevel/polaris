@@ -20,9 +20,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
 import com.slte.app.data.local.ThemeMode
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.utils.Dimens
 
 /** 外观三态：与 LanguageMode 同构，供「其他设置」里的「外观」行展开选择。 */
@@ -49,7 +49,7 @@ internal fun AppearanceModeSheet(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.settings_appearance),
         onDismiss = onDismiss,
     ) {

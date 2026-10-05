@@ -14,8 +14,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.v5.SheetOption
+import com.slte.app.ui.v5.V5Sheet
 
 /**
  * 代理模式面板（v6 iOS 语言）：单选对勾行。
@@ -30,7 +30,7 @@ fun ProxyModeSheet(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.action_proxy_mode),
         onDismiss = onDismiss,
     ) {

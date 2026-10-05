@@ -14,12 +14,11 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import com.slte.app.R
-import com.slte.app.ui.component.SlteInputSize
-import com.slte.app.ui.component.SltePasswordInput
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
+import com.slte.app.ui.v5.V5PasswordInput
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.utils.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,41 +34,41 @@ fun ChangePasswordSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val haptic = LocalHapticFeedback.current
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.settings_change_password),
         onDismiss = { if (!state.submitting) onDismiss() },
     ) {
-        SltePasswordInput(
+        V5PasswordInput(
             value = state.form.oldPassword,
             onValueChange = onOldPasswordChange,
             placeholder = stringResource(R.string.settings_change_pwd_old_hint),
             icon = SlteIcons.Password,
             imeAction = ImeAction.Next,
             enabled = !state.submitting,
-            size = SlteInputSize.Compact,
+            small = true,
         )
 
         Spacer(modifier = Modifier.height(Dimens.gap.md))
 
-        SltePasswordInput(
+        V5PasswordInput(
             value = state.form.newPassword,
             onValueChange = onNewPasswordChange,
             placeholder = stringResource(R.string.settings_change_pwd_new_hint),
             icon = SlteIcons.Password,
             imeAction = ImeAction.Next,
             enabled = !state.submitting,
-            size = SlteInputSize.Compact,
+            small = true,
         )
 
         Spacer(modifier = Modifier.height(Dimens.gap.md))
 
-        SltePasswordInput(
+        V5PasswordInput(
             value = state.form.confirmPassword,
             onValueChange = onConfirmPasswordChange,
             placeholder = stringResource(R.string.settings_change_pwd_confirm_hint),
             icon = SlteIcons.Password,
             enabled = !state.submitting,
-            size = SlteInputSize.Compact,
+            small = true,
         )
 
         Spacer(modifier = Modifier.height(Dimens.gap.lg))

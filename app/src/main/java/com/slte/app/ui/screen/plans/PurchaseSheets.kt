@@ -31,16 +31,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.domain.model.PlanInfo
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.component.formatCurrency
 import com.slte.app.ui.component.formatNegCurrency
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Input
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.utils.FormatUtils
 
@@ -59,11 +57,9 @@ internal fun SelectPeriodSheet(
     onConfirmOrder: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    SlteSheet(
+    V5Sheet(
         onDismiss = onDismiss,
         title = "${stringResource(R.string.plans_subscribe)} - ${step.plan.name}",
-        shape = V5SheetShape,
-        titleStyle = V5SheetTitleStyle,
     ) {
         PeriodGrid(
             periods = step.plan.periodPrices,

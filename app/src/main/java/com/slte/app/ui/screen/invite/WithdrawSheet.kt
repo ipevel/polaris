@@ -18,13 +18,11 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Input
+import com.slte.app.ui.v5.V5Sheet
 
 /** 提现面板（v5）：提现方式下拉 + 收款账号输入 + 确认。 */
 @Composable
@@ -48,12 +46,10 @@ fun WithdrawSheet(
         }
     }
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.invite_withdraw_title),
         subtitle = stringResource(R.string.invite_withdraw_subtitle),
         onDismiss = onDismiss,
-        shape = V5SheetShape,
-        titleStyle = V5SheetTitleStyle,
     ) {
         WithdrawMethodField(
             methods = methods,

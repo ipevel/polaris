@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Polaris Contributors
 // SPDX-License-Identifier: GPL-3.0-only
 
-package com.slte.app.ui.component
+package com.slte.app.ui.v5
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -29,10 +29,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.slte.app.ui.component.AppLocaleContent
+import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteType
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
-import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.utils.Dimens
 
 /**
@@ -43,7 +42,7 @@ import com.slte.app.utils.Dimens
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SlteSheet(
+fun V5Sheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     title: String? = null,

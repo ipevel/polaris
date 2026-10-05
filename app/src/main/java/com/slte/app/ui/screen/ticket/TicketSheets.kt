@@ -37,10 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.domain.model.TicketDetail
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
@@ -48,6 +45,7 @@ import com.slte.app.ui.v5.V5ErrorState
 import com.slte.app.ui.v5.V5FieldHint
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5LoadingState
+import com.slte.app.ui.v5.V5Sheet
 
 /**
  * 新建工单面板（v5）。
@@ -65,12 +63,10 @@ internal fun TicketCreateSheet(
     var message by rememberSaveable { mutableStateOf("") }
     var level by rememberSaveable { mutableStateOf(DEFAULT_LEVEL) }
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.ticket_new),
         onDismiss = onDismiss,
         dismissible = !submitting,
-        shape = V5SheetShape,
-        titleStyle = V5SheetTitleStyle,
     ) {
         V5Input(
             value = subject,
@@ -136,12 +132,10 @@ internal fun TicketDetailSheet(
         }
     }
 
-    SlteSheet(
+    V5Sheet(
         title = detail?.ticket?.subject ?: stringResource(R.string.ticket_detail),
         onDismiss = onDismiss,
         dismissible = !replying && !closing,
-        shape = V5SheetShape,
-        titleStyle = V5SheetTitleStyle,
     ) {
         when {
             loading -> {

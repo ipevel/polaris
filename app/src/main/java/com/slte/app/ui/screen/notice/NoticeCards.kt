@@ -28,13 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slte.app.domain.model.Notice
 import com.slte.app.ui.component.RichText
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5SheetShape
 import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.V5Chip
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.utils.FormatUtils
 
@@ -160,11 +160,9 @@ internal fun NoticeDetailSheet(
     onDismiss: () -> Unit,
 ) {
     val c = V5ThemeColors.current
-    SlteSheet(
+    V5Sheet(
         onDismiss = onDismiss,
-        shape = V5SheetShape,
         title = notice.title,
-        titleStyle = V5SheetTitleStyle,
     ) {
         if (notice.tags.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))

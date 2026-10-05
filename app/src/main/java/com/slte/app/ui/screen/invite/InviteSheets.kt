@@ -16,14 +16,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.slte.app.R
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5ReadOnlyField
+import com.slte.app.ui.v5.V5Sheet
 
 /**
  * 转赠佣金面板（v5）。
@@ -40,12 +38,10 @@ fun TransferSheet(
 ) {
     var amountText by remember { mutableStateOf("") }
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.invite_transfer_title),
         subtitle = stringResource(R.string.invite_transfer_subtitle, stringResource(R.string.app_name)),
         onDismiss = onDismiss,
-        shape = V5SheetShape,
-        titleStyle = V5SheetTitleStyle,
     ) {
         V5ReadOnlyField(
             value = stringResource(R.string.currency_symbol) + com.slte.app.utils.FormatUtils.balance(availableBalance),

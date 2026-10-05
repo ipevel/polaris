@@ -20,9 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.utils.Dimens
 
 enum class TunStackMode(
@@ -52,7 +52,7 @@ internal fun TunStackModeSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.settings_tun_stack),
         onDismiss = onDismiss,
     ) {

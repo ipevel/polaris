@@ -24,16 +24,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slte.app.R
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.component.formatCurrency
 import com.slte.app.ui.component.formatNegCurrency
 import com.slte.app.ui.component.formatPlusCurrency
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5FieldHint
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.utils.FormatUtils
 
 @Composable
@@ -44,11 +42,9 @@ internal fun OrderPaymentSheet(
     onDismiss: () -> Unit,
 ) {
     val c = V5ThemeColors.current
-    SlteSheet(
+    V5Sheet(
         onDismiss = onDismiss,
         title = stringResource(R.string.purchase_order_info),
-        shape = V5SheetShape,
-        titleStyle = V5SheetTitleStyle,
     ) {
         val payAmount = step.payAmount
 

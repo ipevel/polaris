@@ -21,13 +21,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.slte.app.R
-import com.slte.app.ui.component.SlteInput
-import com.slte.app.ui.component.SlteInputSize
-import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
+import com.slte.app.ui.v5.V5Input
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.utils.Dimens
 
@@ -47,29 +46,29 @@ fun CustomRuleGroupSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    SlteSheet(
+    V5Sheet(
         title = stringResource(R.string.routing_custom_add),
         onDismiss = { if (!state.submitting) onDismiss() },
     ) {
-        SlteInput(
+        V5Input(
             value = state.form.name,
             onValueChange = onNameChange,
             placeholder = stringResource(R.string.routing_custom_name_hint),
             imeAction = ImeAction.Next,
             enabled = !state.submitting,
-            size = SlteInputSize.Compact,
+            small = true,
         )
 
         Spacer(modifier = Modifier.height(Dimens.gap.md))
 
-        SlteInput(
+        V5Input(
             value = state.form.url,
             onValueChange = onUrlChange,
             placeholder = stringResource(R.string.routing_custom_url_hint),
             keyboardType = KeyboardType.Uri,
             imeAction = ImeAction.Done,
             enabled = !state.submitting,
-            size = SlteInputSize.Compact,
+            small = true,
         )
 
         Spacer(modifier = Modifier.height(Dimens.gap.md))
