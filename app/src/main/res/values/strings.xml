@@ -393,6 +393,10 @@
     <string name="plans_title">订阅</string>
     <string name="plans_traffic_unit">GB</string>
     <string name="plans_traffic_label">流量</string>
+    <string name="plans_current_title">当前套餐</string>
+    <string name="plans_in_use">使用中</string>
+    <string name="plans_remaining">剩余流量</string>
+    <string name="plans_total">总流量</string>
     <string name="plans_subscribe">订阅</string>
     <string name="plans_recommended">推荐</string>
 

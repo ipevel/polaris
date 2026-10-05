@@ -391,6 +391,10 @@
     <string name="plans_title">訂閱</string>
     <string name="plans_traffic_unit">GB</string>
     <string name="plans_traffic_label">流量</string>
+    <string name="plans_current_title">目前套餐</string>
+    <string name="plans_in_use">使用中</string>
+    <string name="plans_remaining">剩餘流量</string>
+    <string name="plans_total">總流量</string>
     <string name="plans_subscribe">訂閱</string>
     <string name="plans_recommended">推薦</string>
 

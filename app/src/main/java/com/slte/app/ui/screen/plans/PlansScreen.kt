@@ -34,12 +34,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.R
 import com.slte.app.domain.model.PlanInfo
+import com.slte.app.domain.model.SubscribeInfo
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.component.RichText
 import com.slte.app.ui.component.formatCurrency
+import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.ChipTone
+import com.slte.app.ui.v5.ProgressTrack
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
@@ -70,9 +73,11 @@ fun PlansScreen(
     onGoToOrders: () -> Unit = {},
     viewModel: PlansViewModel = hiltViewModel(),
     purchaseViewModel: PurchaseViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val purchaseStep by purchaseViewModel.step.collectAsStateWithLifecycle()
+    val profileData by profileViewModel.data.collectAsStateWithLifecycle()
 
     V5PageScaffold(tab = null) {
         V5TopBar(
@@ -113,6 +118,15 @@ fun PlansScreen(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 24.dp),
                     ) {
                         val plans = data.plans.distinctBy { it.id }
+                        val currentPlan = profileData.subscribeInfo
+                        if (currentPlan != null) {
+                            item(key = "current_plan") {
+                                CurrentPlanCard(
+                                    info = currentPlan,
+                                    daysLeft = profileData.daysUntilExpired,
+                                )
+                            }
+                        }
                         itemsIndexed(plans, key = { _, plan -> plan.id }) { index, plan ->
                             PlanCard(
                                 plan = plan,
@@ -141,6 +155,99 @@ fun PlansScreen(
         onDismiss = purchaseViewModel::goBack,
         onGoToOrders = onGoToOrders,
     )
+}
+
+/** 当前套餐卡（设计稿「套餐与续费」的信息架构：先看到自己的套餐，再选购）。 */
+@Composable
+private fun CurrentPlanCard(
+    info: SubscribeInfo,
+    daysLeft: Int?,
+) {
+    val c = V5ThemeColors.current
+    val total = info.transferEnable.coerceAtLeast(0L)
+    val used = info.usedTraffic.coerceIn(0L, total.coerceAtLeast(1L))
+    val remaining = (total - used).coerceAtLeast(0L)
+
+    V5CardFlat(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = info.planName.ifBlank { stringResource(R.string.app_name) },
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = c.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text =
+                        buildString {
+                            append(stringResource(R.string.plans_current_title))
+                            daysLeft?.let { append(" · " + stringResource(R.string.v5_days_left, it)) }
+                        },
+                        fontSize = 13.sp,
+                        color = c.text3,
+                        maxLines = 1,
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                V5Chip(tone = ChipTone.OK, text = stringResource(R.string.plans_in_use))
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                PlanStat(
+                    label = stringResource(R.string.plans_remaining),
+                    value = FormatUtils.traffic(remaining),
+                    modifier = Modifier.weight(1f),
+                )
+                PlanStat(
+                    label = stringResource(R.string.plans_total),
+                    value = FormatUtils.traffic(total),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            ProgressTrack(
+                fraction = if (total > 0) used.toFloat() / total else 0f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** 当前套餐卡内的数值列（标签 12sp 灰 + 数值 17sp 半粗）。 */
+@Composable
+private fun PlanStat(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    val c = V5ThemeColors.current
+    Column(modifier = modifier) {
+        Text(text = label, fontSize = 12.sp, color = c.text3, maxLines = 1)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = c.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable

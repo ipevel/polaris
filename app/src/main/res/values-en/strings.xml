@@ -397,6 +397,10 @@
     <string name="plans_title">Plans</string>
     <string name="plans_traffic_unit">GB</string>
     <string name="plans_traffic_label">Traffic</string>
+    <string name="plans_current_title">Current Plan</string>
+    <string name="plans_in_use">Active</string>
+    <string name="plans_remaining">Remaining</string>
+    <string name="plans_total">Total</string>
     <string name="plans_subscribe">Subscribe</string>
     <string name="plans_recommended">Recommended</string>
 
