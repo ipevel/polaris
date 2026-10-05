@@ -44,12 +44,11 @@ fun ProxyModeSheet(
                     title = stringResource(option.labelRes),
                     sub = stringResource(option.descRes),
                     selected = selected,
-                    modifier =
-                        Modifier.clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onSelect(option.mode)
-                            onDismiss()
-                        },
+                    modifier = Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSelect(option.mode)
+                        onDismiss()
+                    },
                 )
             }
         }
