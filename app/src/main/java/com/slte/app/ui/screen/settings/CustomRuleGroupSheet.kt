@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -23,6 +22,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Input
@@ -97,7 +97,7 @@ fun CustomRuleGroupSheet(
             Text(
                 text = stringResource(res),
                 style = SlteType.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = V5ThemeColors.current.danger,
                 modifier = Modifier.padding(horizontal = Dimens.gap.lg),
             )
         }

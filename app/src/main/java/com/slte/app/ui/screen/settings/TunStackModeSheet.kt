@@ -3,27 +3,20 @@
 
 package com.slte.app.ui.screen.settings
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.slte.app.R
-import com.slte.app.ui.theme.SlteColors
-import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.v5.SheetOption
 import com.slte.app.ui.v5.V5Sheet
-import com.slte.app.utils.Dimens
 
 enum class TunStackMode(
     val value: String,
@@ -56,47 +49,21 @@ internal fun TunStackModeSheet(
         title = stringResource(R.string.settings_tun_stack),
         onDismiss = onDismiss,
     ) {
-        TunStackMode.entries.forEach { mode ->
-            val selected = currentMode == mode
-            Row(
-                modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = selected,
-                        onClick = {
-                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                            onSelect(mode)
-                        },
-                    ).padding(vertical = Dimens.gap.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            entries.forEach { mode ->
+                val selected = currentMode == mode
+                SheetOption(
+                    title = stringResource(mode.labelRes),
+                    sub = stringResource(mode.descRes),
                     selected = selected,
-                    onClick = null,
-                    colors =
-                    RadioButtonDefaults.colors(
-                        selectedColor = SlteColors.current.accentInteractive,
-                    ),
+                    modifier = Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSelect(mode)
+                    },
                 )
-                Column(
-                    modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(start = Dimens.gap.sm),
-                ) {
-                    Text(
-                        text = stringResource(mode.labelRes),
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        style = SlteType.title,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = stringResource(mode.descRes),
-                        style = SlteType.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
         }
     }

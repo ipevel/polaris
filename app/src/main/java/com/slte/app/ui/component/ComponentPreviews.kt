@@ -76,54 +76,7 @@ private fun PreviewV5Input() {
     }
 }
 
-@Preview(name = "行卡片 · 浅色", showBackground = true, widthDp = 360)
-@Preview(name = "行卡片 · 深色", showBackground = true, widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-private fun PreviewSlteRowCard() {
-    SlteTheme {
-        Column(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(Dimens.gap.lg),
-            verticalArrangement = Arrangement.spacedBy(Dimens.gap.sm),
-        ) {
-            SlteRowCard(
-                icon = SlteIcons.Server,
-                title = "节点列表",
-                value = "12 个",
-                chevron = true,
-                onClick = {},
-            )
-            SlteRowCard(
-                icon = SlteIcons.Expiry,
-                title = "到期时间",
-                subtitle = "2026-12-31",
-            )
-            SlteRowCard(
-                icon = SlteIcons.SyncSubscription,
-                title = "更新订阅",
-                onClick = {},
-            )
-        }
-    }
-}
 
-@Preview(name = "开关 · 浅色", showBackground = true)
-@Preview(name = "开关 · 深色", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-private fun PreviewSlteSwitch() {
-    SlteTheme {
-        Column(
-            modifier = Modifier.padding(Dimens.gap.lg),
-            verticalArrangement = Arrangement.spacedBy(Dimens.gap.md),
-        ) {
-            SlteSwitch(checked = true, onCheckedChange = {})
-            SlteSwitch(checked = false, onCheckedChange = {})
-            SlteSwitch(checked = true, onCheckedChange = {}, enabled = false)
-        }
-    }
-}
 
 @Preview(name = "圆形图标按钮 · 浅色", showBackground = true)
 @Preview(name = "圆形图标按钮 · 深色", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
