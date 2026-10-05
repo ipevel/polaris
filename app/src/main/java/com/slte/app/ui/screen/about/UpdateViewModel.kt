@@ -14,7 +14,6 @@ import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.utils.Diagnostics
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +49,6 @@ sealed interface AppUpdateState {
 class UpdateViewModel
 @Inject
 constructor(
-    @ApplicationContext private val appContext: Context,
     private val kernelProxy: KernelProxy,
     private val siteInfoStore: SiteInfoStore,
     private val diagnostics: Diagnostics,
