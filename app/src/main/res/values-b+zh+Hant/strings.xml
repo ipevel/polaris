@@ -226,7 +226,7 @@
     <string name="profile_not_logged_in">未登入</string>
     <string name="profile_orders">我的訂單</string>
     <string name="profile_tickets">我的工單</string>
-    <string name="profile_telegram">Telegram 討論組</string>
+    <string name="profile_telegram">Telegram</string>
     <string name="profile_about">關於軟體</string>
 
     <!-- About (关于软件) -->
@@ -238,6 +238,15 @@
     <string name="about_log_exported">日誌已匯出</string>
     <string name="about_log_export_failed">匯出失敗</string>
     <string name="about_log_export_share">分享日誌</string>
+    <string name="about_check_update">檢查更新</string>
+    <string name="update_checking">檢查中…</string>
+    <string name="update_title">發現新版本</string>
+    <string name="update_version_line">新版本 %1$s，目前 %2$s</string>
+    <string name="update_now">立即更新</string>
+    <string name="update_up_to_date">已是最新版本</string>
+    <string name="update_check_failed">檢查失敗，請稍後重試</string>
+    <string name="update_downloading">正在後台下載更新…</string>
+    <string name="update_download_title">正在下載 %1$s</string>
     <string name="about_log_share_failed">無法分享日誌</string>
 
     <!-- Update (检查更新) -->

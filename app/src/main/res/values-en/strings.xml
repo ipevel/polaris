@@ -230,7 +230,7 @@
     <string name="profile_not_logged_in">Not logged in</string>
     <string name="profile_orders">My orders</string>
     <string name="profile_tickets">My Tickets</string>
-    <string name="profile_telegram">Telegram Group</string>
+    <string name="profile_telegram">Telegram</string>
     <string name="profile_about">About</string>
 
     <!-- About (关于软件) -->
@@ -242,6 +242,15 @@
     <string name="about_log_exported">Logs exported</string>
     <string name="about_log_export_failed">Export failed</string>
     <string name="about_log_export_share">Share logs</string>
+    <string name="about_check_update">Check for updates</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_title">New version available</string>
+    <string name="update_version_line">New %1$s, current %2$s</string>
+    <string name="update_now">Update now</string>
+    <string name="update_up_to_date">Already up to date</string>
+    <string name="update_check_failed">Check failed, please try again later</string>
+    <string name="update_downloading">Downloading update in background…</string>
+    <string name="update_download_title">Downloading %1$s</string>
     <string name="about_log_share_failed">Couldn\'t share the log</string>
 
     <!-- Update (检查更新) -->

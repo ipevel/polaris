@@ -6,7 +6,11 @@ package com.slte.app.ui.screen.about
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -15,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
 import com.slte.app.R
+import com.slte.app.ui.component.ToastTip
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.V5CardFlat
@@ -30,9 +35,7 @@ import com.slte.app.utils.LogExport
  *
  * 迁移自 v4 的 `SlteScaffold` + `SlteCard`/`SlteRow`/`SlteRowCard` 版本。入口与行为逐项对齐
  * （详见本轮交付报告的「关于页入口对账清单」）：返回、应用标识卡、应用版本、内核版本、
- * 导出日志（导出 + 系统分享 + 三种提示）。
- *
- * 「检查更新」入口已随应用内更新功能一并移除：本页不再有获取新版本或提示升级的行为。
+ * 导出日志（导出 + 系统分享 + 三种提示）、检查更新（GitHub Releases 检测 + 下载安装）。
  */
 @Composable
 fun AboutScreen(
@@ -41,8 +44,40 @@ fun AboutScreen(
 ) {
     val kernelVersion by viewModel.kernelVersion.collectAsStateWithLifecycle()
     val siteInfo by viewModel.siteInfo.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val c = V5ThemeColors.current
+
+    var toastMessage by remember { mutableStateOf<String?>(null) }
+
+    // 更新检查结果：一次性消费后回 Idle，避免重组重复弹
+    LaunchedEffect(updateState) {
+        when (val s = updateState) {
+            AppUpdateState.UpToDate -> {
+                toastMessage = context.getString(R.string.update_up_to_date)
+                viewModel.dismissUpdate()
+            }
+            AppUpdateState.Failed -> {
+                toastMessage = context.getString(R.string.update_check_failed)
+                viewModel.dismissUpdate()
+            }
+            else -> Unit
+        }
+    }
+
+    ToastTip(message = toastMessage, onDismiss = { toastMessage = null })
+
+    (updateState as? AppUpdateState.Available)?.let { available ->
+        UpdateSheet(
+            info = available.info,
+            onDismiss = { viewModel.dismissUpdate() },
+            onUpdate = {
+                viewModel.startDownload(available.info)
+                toastMessage = context.getString(R.string.update_downloading)
+                viewModel.dismissUpdate()
+            },
+        )
+    }
 
     V5PageScaffold(tab = null) {
         V5TopBar(
@@ -81,6 +116,19 @@ fun AboutScreen(
                     icon = SlteIcons.ExportLog,
                     chevron = true,
                     onClick = { LogExport.exportAndShare(context, viewModel.diagnosticsExtra()) },
+                )
+                HorizontalDivider(thickness = 1.dp, color = c.hairline2)
+                V5RowItem(
+                    title = stringResource(R.string.about_check_update),
+                    icon = SlteIcons.UpdateSubscription,
+                    value =
+                    if (updateState == AppUpdateState.Checking) {
+                        stringResource(R.string.update_checking)
+                    } else {
+                        null
+                    },
+                    chevron = updateState != AppUpdateState.Checking,
+                    onClick = { viewModel.checkForUpdate() },
                 )
             }
         }
