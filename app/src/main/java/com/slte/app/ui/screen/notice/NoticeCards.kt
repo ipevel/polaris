@@ -29,8 +29,6 @@ import androidx.compose.ui.unit.sp
 import com.slte.app.domain.model.Notice
 import com.slte.app.ui.component.RichText
 import com.slte.app.ui.theme.SlteIcons
-import com.slte.app.ui.theme.V5SheetShape
-import com.slte.app.ui.theme.V5SheetTitleStyle
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.V5Chip

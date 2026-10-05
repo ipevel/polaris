@@ -68,8 +68,8 @@ import com.slte.app.ui.v5.V5FieldHint
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5PasswordInput
 import com.slte.app.ui.v5.V5Switch
-import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.ui.v5.v5Aurora
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.Dimens
 import kotlin.math.cos
 import kotlin.math.sin
