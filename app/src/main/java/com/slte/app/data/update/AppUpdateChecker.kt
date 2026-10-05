@@ -42,35 +42,34 @@ constructor() {
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
 
-    suspend fun checkLatest(currentVersion: String): ReleaseInfo? =
-        withContext(Dispatchers.IO) {
-            val request =
-                Request
-                    .Builder()
-                    .url("https://api.github.com/repos/ipevel/polaris/releases/latest")
-                    .header("Accept", "application/vnd.github+json")
-                    .build()
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) throw IOException("GitHub API HTTP ${resp.code}")
-                val json = JSONObject(resp.body!!.string())
-                val latest = json.getString("tag_name").removePrefix("v")
-                if (!isNewer(latest, currentVersion)) return@withContext null
-                val assets = json.getJSONArray("assets")
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.getString("name")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        return@withContext ReleaseInfo(
-                            version = latest,
-                            changelog = json.optString("body").trim(),
-                            apkUrl = asset.getString("browser_download_url"),
-                            apkFileName = name,
-                        )
-                    }
+    suspend fun checkLatest(currentVersion: String): ReleaseInfo? = withContext(Dispatchers.IO) {
+        val request =
+            Request
+                .Builder()
+                .url("https://api.github.com/repos/ipevel/polaris/releases/latest")
+                .header("Accept", "application/vnd.github+json")
+                .build()
+        client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) throw IOException("GitHub API HTTP ${resp.code}")
+            val json = JSONObject(resp.body!!.string())
+            val latest = json.getString("tag_name").removePrefix("v")
+            if (!isNewer(latest, currentVersion)) return@withContext null
+            val assets = json.getJSONArray("assets")
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.getString("name")
+                if (name.endsWith(".apk", ignoreCase = true)) {
+                    return@withContext ReleaseInfo(
+                        version = latest,
+                        changelog = json.optString("body").trim(),
+                        apkUrl = asset.getString("browser_download_url"),
+                        apkFileName = name,
+                    )
                 }
-                throw IOException("release 无 APK 资产")
             }
+            throw IOException("release 无 APK 资产")
         }
+    }
 
     /** 纯数字段比较：`1.6.1` > `1.6.0`；段数不足补 0。 */
     fun isNewer(
