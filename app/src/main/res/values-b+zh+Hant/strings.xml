@@ -299,7 +299,8 @@
     <string name="page_nodes">節點</string>
     <string name="page_traffic">流量</string>
     <string name="page_me">我的</string>
-    <string name="v5_connected_rule">已連線 · 規則</string>
+    <string name="v5_connected_rule">已連線 · 規則
+    <string name="v5_connected_title">已連線</string></string>
     <string name="v5_not_connected">未連線</string>
     <string name="v5_protected">已保護</string>
     <string name="v5_unprotected">未受保護</string>

@@ -60,7 +60,7 @@ import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.ui.v5.v5Enter
 
 /* ============================================================
-   v5 节点页（组 → 成员两层）
+   v6 节点页（iOS 简约风；组 → 成员两层，结构与 v5 一致）
 
    内核生成的结构是 Karing 式的：
      🚀 节点选择   select   = [自动选择, 故障转移, DIRECT] + include-all 全部节点

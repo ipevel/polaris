@@ -50,7 +50,7 @@ import com.slte.app.utils.FormatUtils
 import kotlin.math.roundToInt
 
 /* ============================================================
-   v5 流量页：用量环形 + 每日柱状图 + 每日明细清单
+   v6 流量页（iOS 简约风）：用量环形 + 每日柱状图 + 每日明细清单
    （数据接线：TrafficViewModel 的 TrafficData）
    ============================================================ */
 

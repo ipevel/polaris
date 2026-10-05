@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.slte.app.ui.theme.V5Spacing
 import kotlinx.coroutines.delay
 
-/** 页面骨架：氛围底 + 状态栏避让 + 可选贴底通栏导航。 */
+/** 页面骨架：iOS 分组底 + 状态栏避让 + 可选贴底通栏导航。 */
 @Composable
 fun V5PageScaffold(
     tab: NavTab?,
@@ -60,10 +60,10 @@ fun V5PageScaffold(
 /**
  * 贴底通栏导航为可滚动主体预留的底部高度。
  *
- * 组成：导航栏 64dp + 顶部分割线 1dp + 视觉呼吸余量 7dp。
+ * 组成：导航栏 58dp + 顶部分割线 1dp + 视觉呼吸余量 7dp。
  * 通栏贴底后不再悬浮，内容只需避开栏体本身，无需额外留白。
  */
-private val BottomNavContentInset = 72.dp
+private val BottomNavContentInset = 66.dp
 
 /** 页签页的可滚动主体（自动为贴底导航留出底部空间）。 */
 @Composable

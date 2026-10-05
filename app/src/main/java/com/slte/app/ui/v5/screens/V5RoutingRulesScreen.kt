@@ -54,7 +54,7 @@ import com.slte.app.ui.v5.v5Enter
 import kotlin.math.roundToInt
 
 /**
- * v5 分流规则管理页（Karing 式每条规则组独立开关 + 自定义规则组）。
+ * v6 分流规则管理页（iOS 简约风；Karing 式每条规则组独立开关 + 自定义规则组）。
  * 状态与写盘逻辑与 v4 版共用 RoutingRulesViewModel。
  */
 @Composable

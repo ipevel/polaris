@@ -1,17 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Polaris Contributors
 // SPDX-License-Identifier: GPL-3.0-only
 // 自 v5 原型工程移植（VmShell 设计语言通用组件；原型脚手架已归档清理）。
+// v6（iOS 简约风）整体换皮：所有组件签名保持不变，只改内部实现。
 
 package com.slte.app.ui.v5
 
 import androidx.annotation.StringRes
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ChevronLeft
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Check
@@ -104,13 +100,15 @@ import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.theme.V5Type
 
 /* ============================================================
-   v5 通用组件（VmShell 设计语言：白卡 + 马卡龙瓷片 + 渐变方块图标
-   + 悬浮胶囊导航 + 大圆连接钮 + iOS 绿开关）
+   v6 通用组件（iOS 简约风：分组底 + 白卡 + tint 图标 + 大标题
+   + 标准 Tab 栏 + 白底色环连接钮 + iOS 绿开关）
+   签名与 v5 完全一致，调用点无需改动。
    ============================================================ */
 
-/** 渐变方块图标色调（渐变固定，不随主题）。 */
+/** 图标 tint 色调（iOS 淡底 + 实色图标，不随主题换义）。 */
 enum class IconTone { BLUE, PINK, ORANGE, GREEN, PURPLE, CYAN }
 
+/** 保留：历史调用兼容（v6 图标走 tint，不再用渐变）。 */
 fun iconBrush(tone: IconTone): Brush = when (tone) {
     IconTone.BLUE -> Brush.linearGradient(listOf(Color(0xFF6AA5FF), Color(0xFF2F6BF6)))
     IconTone.PINK -> Brush.linearGradient(listOf(Color(0xFFF480C8), Color(0xFFC93BAE)))
@@ -120,7 +118,7 @@ fun iconBrush(tone: IconTone): Brush = when (tone) {
     IconTone.CYAN -> Brush.linearGradient(listOf(Color(0xFF4CC7F0), Color(0xFF0E9DC5)))
 }
 
-/** 马卡龙瓷片色调（语义固定：蓝=额度/下行，橙=已用/上行，绿=就绪/延迟，紫=配置，粉=福利，青=线路）。 */
+/** tint 色调（语义固定：蓝=额度/下行，橙=已用/上行，绿=就绪/延迟，紫=配置，粉=福利，青=线路）。 */
 enum class TileTone { BLUE, ORANGE, GREEN, PURPLE, PINK, CYAN }
 
 fun V5Colors.tile(tone: TileTone): TileColors = when (tone) {
@@ -132,16 +130,14 @@ fun V5Colors.tile(tone: TileTone): TileColors = when (tone) {
     TileTone.CYAN -> tileCyan
 }
 
+private fun IconTone.toTileTone(): TileTone = TileTone.valueOf(name)
+
 /** 徽标胶囊色调。 */
 enum class ChipTone { OK, WARN, DANGER, NEUTRAL, ACCENT }
 
 /**
  * 把半透明色 [fg] 预先压到不透明底色 [bg] 上（sRGB 直通道 alpha 合成）。
- *
- * 不用 `Color.compositeOver` 是因为本工程所用 Compose 版本里没有该符号（编译报 Unresolved
- * reference）。这里的算法与 Skia 对 `Modifier.background(半透明色)` 的实际合成一致，已用真机
- * 像素验证：`okBg`(12.9%) 压在首页光晕底 `#ECDDEA` 上，本算法预得 `#D0D8D9`，实测 `#D0D8DA`
- * （只差最低位）。
+ * （v5 遗留：算法与 Skia 合成一致，真机像素验证过，v6 沿用。）
  */
 private fun flattenOver(fg: Color, bg: Color): Color {
     val a = fg.alpha
@@ -153,15 +149,7 @@ private fun flattenOver(fg: Color, bg: Color): Color {
     )
 }
 
-/**
- * 芯片的「墨色 → 底色」。墨色走 `*Ink` 角色（对底色 ≥4.5:1）。
- *
- * 底色**先与卡片面 `surface` 合成成不透明色**再返回。原因：`*Bg` 是 12.9% 左右的半透明色，
- * 合成结果取决于背后是什么——白卡上合成出 `#E1F4EC`（L=0.868），但在首页顶栏的**氛围光晕**上
- * 只合成出 `#CFD9D9`（L=0.679），同一个墨色因此从 4.57:1 掉到 3.63:1（真机实测，见设计评审 §8.4）。
- * 预先按 surface 合成后，底色与背景无关：白卡上结果**逐像素相同**（零视觉变化），
- * 光晕上则成为一枚更亮的胶囊，5 个芯片 + `V5Banner` 一次性稳定达标。
- */
+/** 芯片的「墨色 → 底色」（v5 的可达性结论在 v6 同样成立，色相未变）。 */
 fun V5Colors.chip(tone: ChipTone): Pair<Color, Color> = when (tone) {
     ChipTone.OK -> okInk to flattenOver(okBg, surface)
     ChipTone.WARN -> upInk to flattenOver(upBg, surface)
@@ -171,100 +159,29 @@ fun V5Colors.chip(tone: ChipTone): Pair<Color, Color> = when (tone) {
 }
 
 /**
- * 页面氛围底：主题底色 + 两处径向光晕（颜色由主题单源下发）。
+ * 页面底：v6 为纯色分组底（iOS 无氛围光晕）。
  *
- * [breathing] 为 true 时光晕以极慢速度呼吸（透明度 0.72→1.0，6.5 秒一轮）：连接页用它让
- * "已连接"这件事被感知到——氛围光只在有状态时才动，静止页保持完全静态（非用户触发的
- * 循环动画越少越好）。
- *
- * [connected] 为 true 时把左侧光晕换成连接成功的绿色（`ok`）：未连接是品牌蓝、已连接转绿，
- * 让"连上了"这件事在**整屏氛围**上就能感知到，而不只是顶栏一个胶囊。
+ * 主题已把 auroraGlow1/2 置透明，这里直接铺底色；[breathing]/[connected]
+ * 参数保留兼容，v6 不再做呼吸/变色（"已连接"由连接钮色环与状态文字表达）。
  */
 @Composable
 fun Modifier.v5Aurora(breathing: Boolean = false, connected: Boolean = false): Modifier {
-    val c = V5ThemeColors.current
-    val glowAlpha =
-        if (breathing) {
-            val transition = rememberInfiniteTransition(label = "aurora")
-            val a by transition.animateFloat(
-                initialValue = 0.72f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(tween(6500), RepeatMode.Reverse),
-                label = "auroraAlpha",
-            )
-            a
-        } else {
-            1f
-        }
-    // 已连接时主光晕改用品牌绿：与顶栏「已连接」胶囊、连接钮的 okGrad 同色系，
-    // 三处一起把"连接成功"讲清楚。未连接保持品牌蓝，呼应连接钮的 accentGrad。
-    val glowPrimary = if (connected) c.ok.copy(alpha = 0.30f) else c.auroraGlow1
-    return drawBehind {
-        drawRect(c.bg)
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(glowPrimary.copy(alpha = glowPrimary.alpha * glowAlpha), Color.Transparent),
-                center = Offset(size.width * 0.16f, -size.height * 0.06f),
-                radius = size.width * 0.78f,
-            ),
-        )
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(c.auroraGlow2.copy(alpha = c.auroraGlow2.alpha * glowAlpha), Color.Transparent),
-                center = Offset(size.width * 0.88f, 0f),
-                radius = size.width * 0.68f,
-            ),
-        )
-    }
+    return this.background(V5ThemeColors.current.bg)
 }
 
-/** 卡片投影：亮色柔和投影、暗色收敛（色值随主题单源）。 */
+/** 卡片投影：iOS 式极淡（亮色 едва 可见、暗色无投影，色值随主题单源）。 */
 @Composable
 fun Modifier.v5CardShadow(shape: Shape): Modifier {
     val sc = LocalV5Colors.current
-    return shadow(V5Spacing.dp6, shape, clip = false, ambientColor = sc.cardShadow, spotColor = sc.cardShadow)
+    return shadow(2.dp, shape, clip = false, ambientColor = sc.cardShadow, spotColor = sc.cardShadow)
 }
 
 /**
  * v5 统一的无涟漪点击（返回 `Modifier`，用法 `.then(noRippleClickable(onClick = onClick))`，
  * 或直接尾随 lambda `.then(noRippleClickable { ... })`）。
  *
- * 对 `ui.screen.*` 下的 v5 化页面开放（internal）：节点/公告等页面的行容器不再走 v4 的
- * `clickable(indication = null, interactionSource = remember { ... })` 手写形式，避免同一套
- * 交互在仓库里出现两处实现、改一处漏一处。
- *
- * 无障碍（真机实测修复）：**名称/角色/开关状态与点击动作必须落在同一个 a11y 节点上**。
- * 改造前真机 a11y 树上设置页 7 个可点击行的 `text` 与 `content-desc` 全为空，读屏只会念出
- * 一个没有名字的空块（行内文字挂在不可点击的子 TextView 上）。
- *
- * 两次失败方案（均为真机复验证据，勿回退）：
- * 1. `Modifier.semantics(mergeDescendants = true).then(Modifier.clickable(...))`：每行裂成两个节点——
- *    外层 `clickable=true / focusable=true` 却 `content-desc` 为空，带名字的内层 `focusable=false`，
- *    读屏聚焦的正是没有名字的那个。根因是 `Modifier.clickable` 会另建自己的语义节点
- *    （并套一层 `minimumInteractiveComponentSize`）。
- * 2. 弃用 `clickable`、改为手写 `semantics` + `pointerInput` 后，只要带 `mergeDescendants` 仍会裂成
- *    两个节点（外层 `clickable/checkable/checked` 无名字，内层有 `content-desc` 却 `clickable=false`）；
- *    把语义挪到修饰符链最外层也无法合并（只是把内层 bounds 变成整行），反而让开关行的
- *    `checkable/checked` 动作从 a11y 树上消失。
- *
- * 最终方案：**`clearAndSetSemantics`**——它**替换整个子树的语义**而不是合并，所以无论修饰符链上
- * 还有什么，都只暴露一个节点，名称/角色/状态/点击动作全在它上面。
- * - [label] 挂 `contentDescription`，是读屏播报的名字（行类控件用 `title, sub, value` 拼接）。
- * - [texts] 挂 `SemanticsProperties.Text`（列表，逐条保留原文）：子节点语义被隐藏后，靠它保留
- *   「按文本定位」能力，`onNodeWithText("外观")` 这类精确匹配仍可用（未显式传 `texts` 时退回 `label`）。
- * - `clearAndSetSemantics` 只在**有名称或状态**（[label]/[texts]/[toggleState]/[selected]）时启用；
- *   否则（只传了角色/点击，子节点自带 `Icon` 的 `contentDescription` 或本身就是输入框）退回普通
- *   `semantics`，避免把子节点语义清掉而破坏读屏与既有测试断言。
- * - `indication` 本来就是 null（无涟漪），对触摸用户行为等价；代价是失去 `Modifier.clickable`
- *   自带的方向键/回车激活，本应用无键盘导航，读屏可用性收益远大于此。
- *
- * 开关状态用 [toggleState] 而不是 `stateDescription`：前者落到
- * `AccessibilityNodeInfo.setCheckable/setChecked`，在 minSdk 28 上就能被 TalkBack 播报，且能直接
- * 从 `uiautomator` 层级里读到 `checkable=true` / `checked=true` 作为回归证据；后者是 API 30+
- * 才有的自由文本，低版本会被静默忽略。
- *
- * [onClick] 必须留在**最后一个形参**：Kotlin 的尾随 lambda 只能落到位居末位的函数类型形参上，
- * 仓库里有 6 处 `noRippleClickable { ... }` 惯用法依赖这一点。
+ * （v5 的无障碍方案整体保留：clearAndSetSemantics 单节点、名称/角色/状态/点击动作
+ * 落在同一节点。v6 不做改动，详见 git 历史中本函数的 KDoc。）
  */
 @Composable
 internal fun noRippleClickable(
@@ -282,8 +199,7 @@ internal fun noRippleClickable(
     // 保证 `onNodeWithText(...)` 仍能定位（未显式传 texts 时退回 label）。
     val nodeTexts = texts ?: listOfNotNull(label)
     // 只有「有可暴露的名称或状态」时才用 clearAndSetSemantics 收敛成单节点；
-    // 否则（例如调用方只传了 onClick，子节点自带 Icon 的 contentDescription、
-    // 或子节点本身是输入框）退回普通 semantics，避免把子节点语义一并清掉。
+    // 否则退回普通 semantics，避免把子节点语义一并清掉。
     val shouldClear = label != null ||
         nodeTexts.isNotEmpty() ||
         toggleState != null ||
@@ -293,8 +209,6 @@ internal fun noRippleClickable(
         if (toggleState != null) this.toggleableState = ToggleableState(toggleState)
         if (selected != null) this.selected = selected
         if (label != null) this.contentDescription = label
-        // 直接写 SemanticsProperties.Text（List<AnnotatedString>）：`text` 属性只接受单个
-        // AnnotatedString，拼接后 `onNodeWithText("外观")` 这类精确匹配会失效。
         if (nodeTexts.isNotEmpty()) {
             this[SemanticsProperties.Text] = nodeTexts.map { AnnotatedString(it) }
         }
@@ -320,7 +234,7 @@ internal fun noRippleClickable(
         )
 }
 
-/** 白色大圆角卡片（22dp 圆角）。 */
+/** iOS 分组卡片（白底，18dp 圆角，极淡投影）。 */
 @Composable
 fun V5Card(
     modifier: Modifier = Modifier,
@@ -330,8 +244,8 @@ fun V5Card(
     val c = V5ThemeColors.current
     Column(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(V5Radius.r22))
-            .clip(RoundedCornerShape(V5Radius.r22))
+            .v5CardShadow(RoundedCornerShape(V5Radius.r18))
+            .clip(RoundedCornerShape(V5Radius.r18))
             .background(c.surface)
             .padding(contentPadding),
         content = content,
@@ -347,20 +261,28 @@ fun V5CardFlat(
     val c = V5ThemeColors.current
     Column(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(V5Radius.r22))
-            .clip(RoundedCornerShape(V5Radius.r22))
+            .v5CardShadow(RoundedCornerShape(V5Radius.r18))
+            .clip(RoundedCornerShape(V5Radius.r18))
             .background(c.surface),
         content = content,
     )
 }
 
-/** 发丝分隔线（清单行之间统一用它，避免各处重复写 thickness/color）。 */
+/** iOS 发丝分隔线（左缩进 16dp，与行内图标右缘对齐）。 */
 @Composable
 fun V5Divider(modifier: Modifier = Modifier) {
-    HorizontalDivider(modifier = modifier, thickness = V5Spacing.dp1, color = V5ThemeColors.current.hairline2)
+    HorizontalDivider(
+        modifier = modifier.fillMaxWidth().padding(start = V5Spacing.dp16),
+        thickness = V5Spacing.dp1,
+        color = V5ThemeColors.current.hairline2,
+    )
 }
 
-/** 顶栏：大标题 + 返回 + 动作位。 */
+/**
+ * 顶栏：iOS 双模式。
+ * - 无返回键（主 Tab 页）→ 34sp 大标题，actions 贴右；
+ * - 有返回键（二级页）→ iOS 式"< + 居中 17sp 标题"，actions 贴右（无 actions 时占位保居中）。
+ */
 @Composable
 fun V5TopBar(
     title: String,
@@ -368,40 +290,56 @@ fun V5TopBar(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = V5Spacing.dp18, end = V5Spacing.dp18, top = V5Spacing.dp6, bottom = V5Spacing.dp12),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
-    ) {
-        if (onBack != null) V5TopIconButton(Icons.AutoMirrored.Outlined.ArrowBack, onBack, contentDescription = stringResource(R.string.back))
-        // 标题用 weight 吃掉全部剩余宽度、空出的空间由它承担，这样 actions（如首页的
-        // 「已连接/未连接」胶囊）保持内在宽度并始终贴右。
-        // 注意两点：
-        // 1) 不能再保留 Spacer(weight(1f))——两个 weight 子项会均分剩余宽度，长标题
-        //    反而更早被省略号截断；
-        // 2) 站点名是面板可控的任意长字符串，必须给 Ellipsis，否则默认 Clip 会硬切字，
-        //    且非 weighted 的 Text 会把 actions 挤到 0 宽（首页连接状态就此不可见）。
-        Box(Modifier.weight(1f)) {
+    val c = V5ThemeColors.current
+    if (onBack == null) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(start = V5Spacing.dp16, end = V5Spacing.dp16, top = V5Spacing.dp8, bottom = V5Spacing.dp8),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10),
+        ) {
             Text(
                 title,
-                fontSize = V5Type.sp21,
+                fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
-                color = V5ThemeColors.current.text,
+                color = c.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            actions()
         }
-        actions()
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(end = V5Spacing.dp16, top = V5Spacing.dp4, bottom = V5Spacing.dp4),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            V5TopIconButton(Icons.AutoMirrored.Outlined.ChevronLeft, onBack, contentDescription = stringResource(R.string.back))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text(
+                    title,
+                    fontSize = V5Type.sp17,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // 右侧占位 48dp：无 actions 时标题严格居中（与左侧返回键等宽）。
+            Box(Modifier.width(48.dp), contentAlignment = Alignment.CenterEnd) {
+                Row(verticalAlignment = Alignment.CenterVertically) { actions() }
+            }
+        }
     }
 }
 
 /**
- * 顶栏圆形动作按钮。
+ * 顶栏动作按钮：iOS 风格——无底卡，图标直接品牌蓝。
  *
- * 触摸目标固定 48dp（无障碍最小可点尺寸），视觉方块仍为 37dp：外框只负责命中区域，
- * 内框负责外观，二者分离后放大可点范围不会改变按钮本身的大小观感。
+ * 触摸目标保持 44dp（无障碍最小可点尺寸），视觉只有图标本身。
  * [contentDescription] 供无障碍读屏；调用点必须传入与动作等价的文案。
  */
 @Composable
@@ -414,55 +352,26 @@ fun V5TopIconButton(
     val c = V5ThemeColors.current
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(44.dp)
             .then(noRippleClickable(role = Role.Button, label = contentDescription, onClick = onClick)),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(37.dp)
-                .v5CardShadow(RoundedCornerShape(V5Radius.r13))
-                .clip(RoundedCornerShape(V5Radius.r13))
-                .background(c.surface),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription, modifier = Modifier.size(19.dp), tint = tint ?: c.accent)
-        }
+        Icon(icon, contentDescription, modifier = Modifier.size(22.dp), tint = tint ?: c.accent)
     }
 }
 
-/**
- * 区块标题：12sp 半粗 + 前置 2dp 品牌蓝短竖线。
- *
- * 原版是 11sp 大写字距的纯文字标签，与正文同色系、无结构，读起来像一段被加粗的小字。
- * 加一条 2dp 品牌蓝竖线后，标题有了"这是新的一段"的结构信号，也把品牌色带进了层级表达
- * （不是靠全大写 eyebrow——那是生成式界面最常见的套路，见 frontend-design）。
- */
+/** iOS 分组头：13sp 灰色（v5 的蓝竖线装饰已移除）。 */
 @Composable
 fun SectionTitle(label: String, modifier: Modifier = Modifier) {
-    val c = V5ThemeColors.current
-    Row(
-        modifier = modifier.padding(horizontal = V5Spacing.dp4),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8),
-    ) {
-        Box(
-            Modifier
-                .size(width = 2.dp, height = 12.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(c.accent),
-        )
-        Text(
-            label,
-            fontSize = V5Type.sp12,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = V5Type.trackingWide,
-            color = c.text2,
-        )
-    }
+    Text(
+        label,
+        fontSize = V5Type.sp13,
+        color = V5ThemeColors.current.text3,
+        modifier = modifier.padding(start = V5Spacing.dp16, top = V5Spacing.dp8, bottom = V5Spacing.dp6),
+    )
 }
 
-/** 徽标胶囊。 */
+/** 徽标胶囊（iOS tint 底 + 墨色字）。 */
 @Composable
 fun V5Chip(
     tone: ChipTone,
@@ -510,42 +419,29 @@ fun LatencyText(value: String, tone: ChipTone, modifier: Modifier = Modifier) {
     }
 }
 
-/** 单选圆点（节点选择）。 */
+/** 选择态：iOS 式蓝色对勾（未选中时占位，保证行高对齐）。 */
 @Composable
 fun RadioDot(on: Boolean, modifier: Modifier = Modifier) {
-    val c = V5ThemeColors.current
-    Box(
-        modifier = modifier
-            .size(21.dp)
-            .clip(CircleShape)
-            .then(
-                if (on) {
-                    Modifier.background(c.accent)
-                } else {
-                    Modifier.border(1.7.dp, c.text3, CircleShape)
-                },
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (on) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(V5Spacing.dp12), tint = Color.White)
+    Box(modifier = modifier.size(22.dp), contentAlignment = Alignment.Center) {
+        if (on) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(20.dp), tint = V5ThemeColors.current.accent)
     }
 }
 
-/** 渐变圆角方块图标。 */
+/** iOS tint 图标：淡色圆角方块 + 实色图标。 */
 @Composable
 fun GradientIcon(tone: IconTone, icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 38.dp) {
+    val t = V5ThemeColors.current.tile(tone.toTileTone())
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(size * 0.32f))
-            .background(iconBrush(tone)),
+            .clip(RoundedCornerShape(9.dp))
+            .background(t.bg),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, modifier = Modifier.size(size * 0.5f), tint = Color.White)
+        Icon(icon, null, modifier = Modifier.size(size * 0.55f), tint = t.ink)
     }
 }
-
-/** 马卡龙数据瓷片（字符串值）。 */
+/** iOS 数据卡（白底；标签 13sp 灰 + 数值大字）。 */
 @Composable
 fun MacaronTile(
     tone: TileTone,
@@ -558,14 +454,14 @@ fun MacaronTile(
     MacaronTile(tone, label, modifier, icon, small) {
         Text(
             value,
-            fontSize = if (small) V5Type.sp13_5 else V5Type.sp16,
+            fontSize = if (small) V5Type.sp13_5 else 22.sp,
             fontWeight = FontWeight.Bold,
             color = V5ThemeColors.current.text,
         )
     }
 }
 
-/** 马卡龙数据瓷片（自定义值槽，可放带单位的富文本）。 */
+/** iOS 数据卡（自定义值槽，可放带单位的富文本）。 */
 @Composable
 fun MacaronTile(
     tone: TileTone,
@@ -580,72 +476,61 @@ fun MacaronTile(
     val t = c.tile(tone)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(V5Radius.r14))
-            .background(t.bg)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+            .v5CardShadow(RoundedCornerShape(V5Radius.r18))
+            .clip(RoundedCornerShape(V5Radius.r18))
+            .background(c.surface)
+            .padding(horizontal = V5Spacing.dp16, vertical = V5Spacing.dp14),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp5)) {
-            icon?.let { Icon(it, null, modifier = Modifier.size(13.dp), tint = t.ink) }
-            Text(label, fontSize = V5Type.sp11, fontWeight = FontWeight.SemiBold, letterSpacing = V5Type.tracking, color = t.ink)
-            // 实时指示：柔和呼吸的绿点。首页移除实时曲线后，用它表明速率仍在按秒刷新，
-            // 既保留"数据是活的"这一信息，又不占额外版面、不喧宾夺主。
-            if (live) {
-                val transition = rememberInfiniteTransition(label = "tile-live")
-                val alpha by transition.animateFloat(
-                    initialValue = 1f,
-                    targetValue = 0.35f,
-                    animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
-                    label = "tile-live-alpha",
-                )
-                Box(Modifier.size(V5Spacing.dp6).clip(CircleShape).background(c.ok.copy(alpha = alpha)))
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp6)) {
+            icon?.let { Icon(it, null, modifier = Modifier.size(V5Spacing.dp14), tint = t.ink) }
+            Text(label, fontSize = V5Type.sp13, color = c.text2)
+            if (live) LiveDot()
         }
-        Box(Modifier.padding(top = V5Spacing.dp2)) { value() }
+        Box(Modifier.padding(top = V5Spacing.dp6)) { value() }
     }
 }
 
-/** 分段选择（胶囊段控）。 */
+/** iOS 分段选择：灰轨 + 白色选中段（带投影）。 */
 @Composable
 fun SegmentedPill(options: List<String>, active: Int, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
     Row(
         modifier = modifier
-            .v5CardShadow(RoundedCornerShape(V5Radius.pill))
-            .clip(RoundedCornerShape(V5Radius.pill))
-            .background(c.surface)
-            .padding(V5Spacing.dp4),
-        horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp4),
+            .clip(RoundedCornerShape(V5Radius.r10))
+            .background(c.surface3)
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         options.forEachIndexed { i, opt ->
+            val thumb = RoundedCornerShape(8.dp)
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(37.dp)
-                    .clip(RoundedCornerShape(V5Radius.pill))
-                    .then(if (i == active) Modifier.background(c.accentGrad) else Modifier),
+                    .height(32.dp)
+                    .then(if (i == active) Modifier.v5CardShadow(thumb) else Modifier)
+                    .clip(thumb)
+                    .then(if (i == active) Modifier.background(c.surface) else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     opt,
-                    fontSize = V5Type.sp12_5,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (i == active) Color.White else c.text2,
+                    fontSize = V5Type.sp13,
+                    fontWeight = if (i == active) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (i == active) c.text else c.text2,
                 )
             }
         }
     }
 }
 
-/** 按钮风格。 */
+/** 按钮风格（v6 全部走 iOS 扁平实色，不再用渐变）。 */
 enum class ButtonStyle { PRIMARY, MAGENTA, GREEN, TONAL, NEUTRAL, DANGER, SOLID_DANGER, GHOST }
 
 /**
- * v5 按钮。
+ * v6 按钮：iOS 扁平实色。
  *
- * @param onClickEnabled 按钮是否可点。与 [onClick] 分开是有意的：v4 的 `SlteButton(enabled = false)`
- *   语义是「看得见、按不动」（如提现/转赠在金额为空时），而 v5 组件里 [onClick] 传 null 表示
- *   「整块不可点、连按压反馈都没有」。迁移时必须保住前者的观感与语义，因此单列一个开关：
- *   传 false 时组件仍渲染完整外观，只是不挂点击监听，并把前景/底色按 45% 透明弱化。
+ * @param onClickEnabled 按钮是否可点（v5 语义保留：false = 看得见、按不动；
+ *   禁用态走中性色：底 surface3 + 字 text3）。
  */
 @Composable
 fun V5Button(
@@ -660,92 +545,66 @@ fun V5Button(
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
-    val radius = if (hero) {
-        17
-    } else if (small) {
-        12
-    } else {
-        15
-    }
+    val radius = if (hero) 16 else if (small) 10 else 12
     val shape = RoundedCornerShape(radius)
     val height = if (hero) {
         54.dp
     } else if (small) {
-        38.dp
+        36.dp
     } else {
-        46.dp
+        50.dp
     }
     val active = onClickEnabled && !loading
-    var bg: Brush? = null
+    // iOS 实色映射
+    var bg: Color? = null
     var fg = c.text
-    var spot = Color.Transparent
     when (style) {
         ButtonStyle.PRIMARY -> {
-            bg = c.accentGrad
+            bg = c.accent
             fg = Color.White
-            spot = c.accent.copy(alpha = 0.5f)
         }
         ButtonStyle.MAGENTA -> {
-            bg = Brush.linearGradient(listOf(Color(0xFFF27BC8), Color(0xFFC93BAE)))
+            bg = Color(0xFFFF2D55)
             fg = Color.White
-            spot = Color(0x80C93BAE)
         }
         ButtonStyle.GREEN -> {
-            bg = c.okGrad
+            bg = c.ok
             fg = Color.White
-            spot = c.ok.copy(alpha = 0.5f)
         }
-        ButtonStyle.TONAL -> fg = c.accent
-        ButtonStyle.NEUTRAL -> fg = c.text2
-        ButtonStyle.DANGER -> fg = c.danger
+        ButtonStyle.TONAL -> {
+            bg = c.accentBg
+            fg = c.accent
+        }
+        ButtonStyle.NEUTRAL -> {
+            bg = c.surface3
+            fg = c.text
+        }
+        ButtonStyle.DANGER -> {
+            bg = c.dangerBg
+            fg = c.dangerText
+        }
         ButtonStyle.SOLID_DANGER -> {
-            fg = c.dangerInk
-            spot = c.danger.copy(alpha = 0.4f)
+            bg = c.danger
+            fg = Color.White
         }
         ButtonStyle.GHOST -> fg = c.accent
     }
-    val solidBg = when (style) {
-        ButtonStyle.TONAL -> c.accentBg
-        ButtonStyle.NEUTRAL -> c.surface2
-        ButtonStyle.DANGER -> c.dangerBg
-        ButtonStyle.SOLID_DANGER -> c.danger
-        else -> Color.Transparent
-    }
-    // 禁用态**不再用"降 alpha"表达**。真机实测（雷电模拟器 14，1080p，工单新建面板的「提交」钮）：
-    // `Modifier.alpha` 在 modifier 链上位于 `.background()` 之后，只压住文字层、压不住底色，
-    // 于是渲染成"满饱和蓝底 + 幽灵文字"，文字实测仅 **1.37:1**（同底色纯白为 4.00:1）。
-    // 改为中性色禁用态：底 surface3 + 字 text3，实测 **4.03:1** —— 既明确"不可用"又读得清。
-    //
-    // 语义依据就在本文件下方：v4 的 `SlteButton(enabled = false)` 是"看得见、按不动"，
-    // 而双重降透明（0.45 × 0.45 = 0.2025）恰好让它"几乎看不见"；且禁用态恰恰是用户最需要
-    // 读懂按钮文案的时刻（"为什么点不了"）。
-    // 注：WCAG 1.4.3 对 inactive 组件有豁免，所以这属于可用性修复，不是合规义务。
+    // 禁用态：中性色（底 surface3 + 字 text3），v5 的真机对比度结论沿用。
     val disabled = !active
-    if (disabled) fg = c.text3
+    if (disabled) {
+        bg = c.surface3
+        fg = c.text3
+    }
     val clickable = noRippleClickable(role = Role.Button, label = text, onClick = if (active) onClick else null)
-    // 调用方传入的 modifier 必须**最先**应用：里面通常带着 fillMaxWidth / weight 这类尺寸约束，
-    // 放到后面会被 shadow/clip/background 的顺序与默认最小尺寸挤掉。
-    //
-    // 这里曾经漏掉 `modifier`（参数声明了但整个函数体没用它），于是**调用方传的尺寸全部失效**：
-    // 真机实测登录页的「登录」按钮只占了内容的固有宽度（bounds 宽 196px ≈ 75dp，而不是满卡宽），
-    // 形成"按钮缩在左边一小块"的观感，而且自动化点击按满宽中心去点会直接点空。
-    // 单元测试查不出来（截图里按钮"看起来还在"），是雷电模拟器走查 + uiautomator 的
-    // clickable 节点 bounds 才把它钉死的。
+    // 调用方传入的 modifier 必须最先应用（v5 的历史教训：漏掉会导致调用方尺寸失效）。
     val m = modifier.then(
         if (style == ButtonStyle.GHOST) {
             clickable
         } else {
             clickable
-                .shadow(if (spot == Color.Transparent || disabled) 0.dp else V5Spacing.dp8, shape, clip = false, ambientColor = spot, spotColor = spot)
+                .then(if (!disabled && (style == ButtonStyle.PRIMARY || style == ButtonStyle.GREEN || style == ButtonStyle.SOLID_DANGER)) Modifier.v5CardShadow(shape) else Modifier)
                 .clip(shape)
-                .then(
-                    when {
-                        // 禁用态走中性实色底（不看样式），与 fg = text3 配对成 4.03:1
-                        disabled -> Modifier.background(c.surface3)
-                        bg != null -> Modifier.background(bg)
-                        else -> Modifier.background(solidBg)
-                    },
-                )
+                .background(bg ?: Color.Transparent)
         },
     )
     Row(
@@ -756,14 +615,6 @@ fun V5Button(
         horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
     ) {
         if (loading) {
-            // 转圈容器给足尺寸并让指示器吃满：Material3 的默认尺寸策略在**极小尺寸**下会退化成
-            // 一两个像素的点（第 10 轮在关于页实测到 5×5px）。这里 18dp + fillMaxSize
-            // 能让静态帧至少画出可辨识的一段弧。
-            //
-            // 注意：认证三页的"提交中"用的是**全屏 LoadingOverlay**（scrim + 居中卡片），
-            // 按钮此时被 scrim 盖住，所以按钮内这枚转圈在那些页面的截图里本来就看不出来——
-            // 那不算缺陷，加载反馈由覆盖层承担。此处保留转圈是给"就地加载"的按钮
-            // （如工单提交、优惠券验证）用的。
             Box(
                 modifier = Modifier.size(V5Spacing.dp18),
                 contentAlignment = Alignment.Center,
@@ -782,36 +633,32 @@ fun V5Button(
             fontSize = when {
                 hero -> V5Type.sp16
                 small -> V5Type.sp13
-                else -> V5Type.sp14
+                else -> V5Type.sp16
             },
-            fontWeight = if (style == ButtonStyle.GHOST) FontWeight.SemiBold else FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = fg,
             textAlign = TextAlign.Center,
         )
     }
 }
 
-// 原 `private const val DISABLED_BUTTON_ALPHA = 0.45f` 已删除。
-// 它作用在 modifier 链的 `.background()` **之后**，因此只压内容层、不压底色，与同时施加的
-// 前景 alpha 叠加后文字有效不透明度只剩 0.2025（真机实测 1.37:1）。禁用态已改用中性色方案
-// （底 surface3 + 字 text3 = 4.03:1），见 V5Button 内的 disabled 分支。
-
-/** iOS 风格开关（on = 绿）。 */
+/** iOS 风格开关（on = 绿，51×31）。 */
 @Composable
 fun V5Switch(checked: Boolean, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
-    val x by animateDpAsState(if (checked) V5Spacing.dp20 else 0.dp, label = "switchKnob")
+    val x by animateDpAsState(if (checked) 20.dp else 0.dp, label = "switchKnob")
     Box(
         modifier = modifier
-            .width(48.dp)
-            .height(28.dp)
+            .width(51.dp)
+            .height(31.dp)
             .clip(RoundedCornerShape(V5Radius.pill))
             .background(if (checked) c.ok else c.surface3),
     ) {
         Box(
             Modifier
-                .offset(x = 3.5.dp + x, y = 3.5.dp)
-                .size(21.dp)
+                .offset(x = 2.dp + x, y = 2.dp)
+                .size(27.dp)
+                .shadow(2.dp, CircleShape)
                 .clip(CircleShape)
                 .background(Color.White),
         )
@@ -819,10 +666,7 @@ fun V5Switch(checked: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * 底部悬浮胶囊导航。
- *
- * 文案走资源而不是硬编码：v5 组件里曾写死简体中文，导致 en / zh-Hant 下整条导航仍显示中文
- * （键 tab_home / tab_server / tab_traffic / tab_profile 三语早已存在，见 ResourceLocaleParityTest）。
+ * 底部 Tab 栏位（文案走资源，三语键 tab_home / tab_server / tab_traffic / tab_profile）。
  */
 enum class NavTab(val icon: ImageVector, @StringRes val labelRes: Int) {
     HOME(Icons.Outlined.Home, R.string.tab_home),
@@ -831,13 +675,7 @@ enum class NavTab(val icon: ImageVector, @StringRes val labelRes: Int) {
     ME(Icons.Outlined.Person, R.string.tab_profile),
 }
 
-/**
- * 传统贴底通栏导航（Material 经典底栏样式）。
- *
- * 整条栏贴底、顶部细分割线、图标+文字、选中项仅用主题色高亮，无悬浮无圆角容器。
- * 文案走资源而不是硬编码：v5 组件里曾写死简体中文，导致 en / zh-Hant 下整条导航仍显示中文
- * （键 tab_home / tab_server / tab_traffic / tab_profile 三语早已存在，见 ResourceLocaleParityTest）。
- */
+/** iOS 标准 Tab 栏：贴底通栏、顶部发丝线、图标 + 小标签、选中品牌蓝。 */
 @Composable
 fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (NavTab) -> Unit = {}) {
     val c = V5ThemeColors.current
@@ -851,7 +689,7 @@ fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (Nav
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(58.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavTab.entries.forEach { tab ->
@@ -872,12 +710,11 @@ fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (Nav
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(tab.icon, null, modifier = Modifier.size(22.dp), tint = if (on) c.accent else c.text3)
+                    Icon(tab.icon, null, modifier = Modifier.size(24.dp), tint = if (on) c.accent else c.text3)
                     Text(
                         tabLabel,
-                        fontSize = V5Type.sp11,
-                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
-                        letterSpacing = V5Type.tracking,
+                        fontSize = 10.sp,
+                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (on) c.accent else c.text3,
                     )
                 }
@@ -887,10 +724,12 @@ fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (Nav
 }
 
 /**
- * 大圆连接钮：未连=蓝渐变+闪电，已连=绿渐变+电源，外圈有波纹扩散环并向外散细密粒子。
+ * iOS 式连接钮：白底大圆 + 品牌色细环（已连=绿 / 未连=蓝），圆心电源图标。
  *
+ * v5 的波纹粒子在 v6 移除：iOS 语言里"状态"由色环与下方状态文字表达，不靠装饰动画。
  * [connecting] 时文案变「取消」——MainViewModel.toggleConnection 在 isConnecting 分支里执行
- * 取消（停隧道 + 复位），所以这不是"置灰的等待按钮"，而是一个真实可点的取消入口。
+ * 取消，所以这是一个真实可点的取消入口（v5 语义保留）。
+ * 无障碍名称 [connectLabel] 保留，读屏可播报。
  */
 @Composable
 fun HeroConnectButton(
@@ -900,98 +739,46 @@ fun HeroConnectButton(
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
-    val grad = if (connected) c.okGrad else c.accentGrad
     val ring = if (connected) c.ok else c.accent
-    val halo = if (connected) c.okBg else c.accentBg
-    // 大圆钮同样必须自带可访问名称，否则读屏只能念出一个"无名按钮"。
     val connectLabel = when {
         connected -> stringResource(R.string.v5_disconnect)
         connecting -> stringResource(R.string.v5_cancel)
         else -> stringResource(R.string.v5_connect)
     }
-    // 波纹扩散：一圈细环从按钮外缘匀速向外推开、边推边淡出，推到最远时循环重来。
-    val transition = rememberInfiniteTransition(label = "pulse")
-    val pulse by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(3600, easing = LinearEasing), RepeatMode.Restart),
-        label = "pulsePhase",
-    )
-    // 粒子相位：独立于波纹，让细密碎点持续向外飘散，与波纹叠成两层动态。
-    val particlePhase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
-        label = "particlePhase",
-    )
     Box(
         modifier = modifier
-            .size(150.dp)
-            .offset(y = 10.dp)
-            .then(noRippleClickable(role = Role.Button, label = connectLabel, onClick = onClick))
-            .drawBehind {
-                val r = size.minDimension / 2f
-                // 柔光底：按钮外一层极淡的色晕，让波纹推开时有"承托"。
-                drawCircle(halo, radius = r + 6.dp.toPx())
-                // 波纹：连续两道错相位的细环，向外推开 26dp，越远越淡。
-                for (wave in 0 until 2) {
-                    val p = (pulse + wave * 0.5f) % 1f
-                    drawCircle(
-                        color = ring,
-                        radius = r + p * 26.dp.toPx(),
-                        style = Stroke(width = 2.dp.toPx()),
-                        alpha = (1f - p) * 0.45f,
-                    )
-                }
-                // 星屑：细密小点从按钮边缘沿径向向外飘散。
-                // 要点是"细碎尘屑"而不是"一颗颗圆球"：数量多、半径极小、不随飞行变大，
-                // 飞得越远越淡（平方衰减），形成环带状的尘屑扩散。
-                val particleCount = 60
-                for (i in 0 until particleCount) {
-                    val life = (particlePhase + i.toFloat() / particleCount) % 1f
-                    // 角度均匀铺满整圈，并按序号轻微错开，避免形成规则条纹。
-                    val angle = i * (360f / particleCount) + i * 1.7f
-                    val rad = Math.toRadians(angle.toDouble())
-                    val cosA = kotlin.math.cos(rad).toFloat()
-                    val sinA = kotlin.math.sin(rad).toFloat()
-                    // 起点贴按钮边缘（r），沿径向向外飘散最多 30dp。
-                    val dist = r + life * 30.dp.toPx()
-                    val cx = center.x + cosA * dist
-                    val cy = center.y + sinA * dist
-                    // 半径恒定在 0.3~0.7dp 之间（更小的碎点），不随生命变大。
-                    val dotRadius = (0.3f + (i % 3) * 0.2f).dp.toPx()
-                    val fade = (1f - life) * (1f - life)
-                    drawCircle(
-                        color = ring,
-                        radius = dotRadius,
-                        center = Offset(cx, cy),
-                        alpha = fade * 0.85f,
-                    )
-                }
-            }
-            .clip(CircleShape)
-            .background(grad),
+            .size(168.dp)
+            .then(noRippleClickable(role = Role.Button, label = connectLabel, onClick = onClick)),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(V5Spacing.dp5)) {
+        // 外层淡色光晕（静态，非动画）
+        Box(
+            Modifier
+                .size(168.dp)
+                .clip(CircleShape)
+                .background(if (connected) c.okBg else c.accentBg),
+        )
+        // 白底圆 + 色环
+        Box(
+            Modifier
+                .size(140.dp)
+                .v5CardShadow(CircleShape)
+                .clip(CircleShape)
+                .background(c.surface)
+                .border(3.dp, ring, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
-                if (connected) Icons.Outlined.PowerSettingsNew else Icons.Filled.Bolt,
+                Icons.Outlined.PowerSettingsNew,
                 null,
-                modifier = Modifier.size(40.dp),
-                tint = Color.White,
-            )
-            Text(
-                connectLabel,
-                fontSize = V5Type.sp15,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 3.sp,
-                color = Color.White,
+                modifier = Modifier.size(52.dp),
+                tint = ring,
             )
         }
     }
 }
 
-/** 提示横幅（info/warn/danger）。 */
+/** 提示横幅（info/warn/danger，iOS tint 底）。 */
 @Composable
 fun V5Banner(tone: ChipTone, text: String, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     val c = V5ThemeColors.current
@@ -1014,7 +801,7 @@ fun V5Banner(tone: ChipTone, text: String, modifier: Modifier = Modifier, icon: 
     }
 }
 
-/** 清单行（图标/标题/副标题/值/尾部/箭头）。 */
+/** iOS 清单行（图标/标题/副标题/值/尾部/箭头/开关）。 */
 @Composable
 fun V5RowItem(
     title: String,
@@ -1032,13 +819,11 @@ fun V5RowItem(
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
-    // 行类控件必须自带可访问名称与文本：真机实测行节点的 text 为空（详见 noRippleClickable 的 KDoc）。
+    // 行类控件必须自带可访问名称与文本（v5 真机实测结论，v6 沿用）。
     val a11yTexts = if (onClick != null || switchState != null) listOfNotNull(title, sub, value) else emptyList()
     val a11yLabel = a11yTexts.joinToString(", ").ifEmpty { null }
     Row(
         modifier = modifier
-            // 语义挂在修饰符链最外层：`clearAndSetSemantics` 会替换整个子树的语义，
-            // 放在链首才能让「整行」成为唯一暴露的节点（bounds 覆盖整行）。
             .then(
                 noRippleClickable(
                     role = if (switchState != null) Role.Switch else null,
@@ -1049,8 +834,8 @@ fun V5RowItem(
                 ),
             )
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 58.dp)
-            .padding(horizontal = 15.dp, vertical = V5Spacing.dp10),
+            .defaultMinSize(minHeight = 52.dp)
+            .padding(horizontal = V5Spacing.dp16, vertical = V5Spacing.dp10),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12),
     ) {
@@ -1059,21 +844,25 @@ fun V5RowItem(
         } else if (icon != null) {
             Box(
                 Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(V5Radius.r12))
-                    .background(if (highlight) c.accentBg else c.surface2),
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        when {
+                            danger -> c.dangerBg
+                            highlight -> c.accentBg
+                            else -> c.surface3
+                        },
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     icon,
                     null,
-                    modifier = Modifier.size(19.dp),
-                    tint = if (danger) {
-                        c.danger
-                    } else if (highlight) {
-                        c.accent
-                    } else {
-                        c.text2
+                    modifier = Modifier.size(17.dp),
+                    tint = when {
+                        danger -> c.danger
+                        highlight -> c.accent
+                        else -> c.text2
                     },
                 )
             }
@@ -1081,34 +870,31 @@ fun V5RowItem(
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                fontSize = V5Type.sp14,
-                fontWeight = FontWeight.Medium,
+                fontSize = V5Type.sp16,
                 color = if (danger) c.danger else c.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             sub?.let {
-                Text(it, fontSize = V5Type.sp11_5, color = c.text3, modifier = Modifier.padding(top = V5Spacing.dp1))
+                Text(it, fontSize = V5Type.sp13, color = c.text3, modifier = Modifier.padding(top = V5Spacing.dp1))
             }
         }
         value?.let {
             Text(
                 it,
-                fontSize = V5Type.sp13,
+                fontSize = V5Type.sp15,
                 color = c.text2,
                 fontFamily = if (valueMono) FontFamily.Monospace else null,
             )
         }
         trailing?.invoke(this)
-        if (chevron) Icon(Icons.Outlined.ChevronRight, null, modifier = Modifier.size(V5Spacing.dp18), tint = c.text3)
+        if (chevron) Icon(Icons.Outlined.ChevronRight, null, modifier = Modifier.size(V5Spacing.dp16), tint = c.text3)
     }
 }
 
 /**
  * 账本行数据（label 左 / 等宽值 右）。
- *
- * [tone] 非空时整行加马卡龙底色（圆角 + 内外边距同步放大）——用于首页会话信息：
- * 形式沿用账本行（左标签 / 右等宽值），效果沿用瓷片（[MacaronTile] 的同色系底色与墨色）。
+ * [tone] 保留字段兼容（v6 渲染为普通行，不再套马卡龙底）。
  */
 data class LedgerData(
     val label: String,
@@ -1118,29 +904,22 @@ data class LedgerData(
     val tone: TileTone? = null,
 )
 
+/** iOS 账本行：左标签灰 / 右值深色等宽，行间发丝线。 */
 @Composable
 fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
-    // 带底色时行与行之间要留缝，否则两行底色连成一片、看不出是两行
-    val toned = rows.any { it.tone != null }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (toned) V5Spacing.dp8 else 0.dp)) {
+    Column(modifier.fillMaxWidth()) {
         rows.forEachIndexed { i, r ->
-            // 分隔线只在"相邻两行都没有底色"时画；带底色的行靠留白区分
-            if (i > 0 && r.tone == null && rows[i - 1].tone == null) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2)
-            val t = r.tone?.let { c.tile(it) }
+            if (i > 0) HorizontalDivider(thickness = V5Spacing.dp1, color = c.hairline2, modifier = Modifier.padding(start = V5Spacing.dp16))
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .then(if (t != null) Modifier.clip(RoundedCornerShape(V5Radius.r12)).background(t.bg) else Modifier)
-                    .defaultMinSize(minHeight = if (t != null) 52.dp else 46.dp)
-                    .padding(horizontal = if (t != null) V5Spacing.dp14 else 15.dp, vertical = if (t != null) V5Spacing.dp10 else V5Spacing.dp6),
+                    .defaultMinSize(minHeight = 48.dp)
+                    .padding(horizontal = V5Spacing.dp16, vertical = V5Spacing.dp10),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12),
             ) {
-                // 标签行**不能**带 weight：Row 先量非加权子项，若标签是加权项，超长值
-                // （真机实测：IPv6 地址 39 字符）会先把剩余宽度吃光，标签被压成一个字一行
-                // （"当前IP"竖排）——正是用户说的"显示不开"。现在反过来：标签占固定列宽
-                // （最短 64dp、最长 140dp 用省略号收口），值取剩余宽度、可折行、右对齐。
+                // 标签固定列宽（v5 的 IPv6 长值压标签竖排教训保留：标签列限宽、值取剩余宽度右对齐）。
                 Row(
                     Modifier
                         .defaultMinSize(minWidth = 64.dp)
@@ -1148,19 +927,19 @@ fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    r.icon?.let { Icon(it, null, modifier = Modifier.size(V5Spacing.dp16), tint = t?.ink ?: c.text2) }
+                    r.icon?.let { Icon(it, null, modifier = Modifier.size(V5Spacing.dp16), tint = c.text2) }
                     Text(
                         r.label,
-                        fontSize = V5Type.sp12_5,
-                        color = t?.ink ?: c.text2,
+                        fontSize = V5Type.sp15,
+                        color = c.text2,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Text(
                     r.value,
-                    fontSize = if (t != null) V5Type.sp15 else V5Type.sp14,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = V5Type.sp15,
+                    fontWeight = FontWeight.Medium,
                     fontFamily = FontFamily.Monospace,
                     color = r.color ?: c.text,
                     textAlign = TextAlign.End,
@@ -1171,14 +950,14 @@ fun V5Ledger(rows: List<LedgerData>, modifier: Modifier = Modifier) {
     }
 }
 
-/** 细进度条（默认蓝渐变主进度）。 */
+/** iOS 细进度条（蓝填充 + 灰轨）。 */
 @Composable
 fun ProgressTrack(fraction: Float, modifier: Modifier = Modifier, brush: Brush? = null) {
     val c = V5ThemeColors.current
     Box(
         modifier
             .fillMaxWidth()
-            .height(7.dp)
+            .height(6.dp)
             .clip(RoundedCornerShape(V5Radius.pill))
             .background(c.surface3),
     ) {
@@ -1187,12 +966,12 @@ fun ProgressTrack(fraction: Float, modifier: Modifier = Modifier, brush: Brush? 
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(V5Radius.pill))
-                .background(brush ?: c.accentGrad),
+                .background(brush ?: c.accent),
         )
     }
 }
 
-/** 底部面板（scrim + 26dp 顶圆角白面板）。 */
+/** iOS 底部面板（抓手 + 居中标题 + 小圆角）。 */
 @Composable
 fun SheetOverlay(
     title: String,
@@ -1213,7 +992,7 @@ fun SheetOverlay(
             modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = V5Radius.r26, topEnd = V5Radius.r26))
+                .clip(RoundedCornerShape(topStart = V5Radius.r16, topEnd = V5Radius.r16))
                 .background(c.surface)
                 .navigationBarsPadding()
                 .padding(start = V5Spacing.dp22, end = V5Spacing.dp22, top = V5Spacing.dp10, bottom = 28.dp),
@@ -1221,8 +1000,8 @@ fun SheetOverlay(
             Box(
                 Modifier
                     .align(Alignment.CenterHorizontally)
-                    .width(40.dp)
-                    .height(4.5.dp)
+                    .width(36.dp)
+                    .height(5.dp)
                     .clip(RoundedCornerShape(V5Radius.pill))
                     .background(c.surface3),
             )
@@ -1243,7 +1022,7 @@ fun SheetOverlay(
                     .align(Alignment.CenterHorizontally)
                     .padding(top = V5Spacing.dp6),
                 fontSize = V5Type.sp17,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 color = c.text,
                 textAlign = TextAlign.Center,
             )
@@ -1253,7 +1032,7 @@ fun SheetOverlay(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .padding(top = 7.dp),
-                    fontSize = V5Type.sp12,
+                    fontSize = V5Type.sp13,
                     lineHeight = V5Type.sp18,
                     color = c.text3,
                     textAlign = TextAlign.Center,
@@ -1265,7 +1044,7 @@ fun SheetOverlay(
     }
 }
 
-/** 面板单选项行：选中 = 蓝圈 + 蓝描边 + 右侧蓝徽章。 */
+/** 面板单选项行：iOS 式右侧蓝色对勾。 */
 @Composable
 fun SheetOption(
     title: String,
@@ -1277,48 +1056,22 @@ fun SheetOption(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(V5Radius.r14))
-            .background(if (selected) c.accentBg else c.surface2)
-            .then(if (selected) Modifier.border(1.5.dp, c.accent, RoundedCornerShape(V5Radius.r14)) else Modifier)
-            .padding(horizontal = 13.dp, vertical = V5Spacing.dp8)
-            .defaultMinSize(minHeight = 50.dp),
+            .clip(RoundedCornerShape(V5Radius.r12))
+            .background(if (selected) c.accentBg else c.surface)
+            .padding(horizontal = V5Spacing.dp16, vertical = V5Spacing.dp12)
+            .defaultMinSize(minHeight = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Box(
-            Modifier
-                .size(19.dp)
-                .clip(CircleShape)
-                .then(
-                    if (selected) {
-                        Modifier.background(c.accent)
-                    } else {
-                        Modifier.border(1.7.dp, c.text3, CircleShape)
-                    },
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (selected) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(11.dp), tint = Color.White)
-        }
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = V5Type.sp14, fontWeight = FontWeight.SemiBold, color = c.text)
-            sub?.let { Text(it, fontSize = V5Type.sp11_5, color = c.text3, modifier = Modifier.padding(top = V5Spacing.dp1)) }
+            Text(title, fontSize = V5Type.sp16, color = c.text)
+            sub?.let { Text(it, fontSize = V5Type.sp13, color = c.text3, modifier = Modifier.padding(top = V5Spacing.dp1)) }
         }
-        if (selected) {
-            Box(
-                Modifier
-                    .size(V5Spacing.dp20)
-                    .clip(CircleShape)
-                    .background(c.accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.Check, null, modifier = Modifier.size(11.dp), tint = Color.White)
-            }
-        }
+        if (selected) Icon(Icons.Outlined.Check, null, modifier = Modifier.size(V5Spacing.dp20), tint = c.accent)
     }
 }
 
-/** Polaris 星标品牌图形（轨道环 + 四角星 + 橙色伴星）。 */
+/** Polaris 星标品牌图形（轨道环 + 四角星 + 橙色伴星，v5 沿用）。 */
 @Composable
 fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
     val c = V5ThemeColors.current
@@ -1354,18 +1107,18 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
             close()
         }
         drawPath(star, accent)
-        drawCircle(Color(0xFFF0812B), radius = 2.8f * s, center = Offset(52.5f * s, 21f * s))
+        drawCircle(Color(0xFFFF9F0A), radius = 2.8f * s, center = Offset(52.5f * s, 21f * s))
     }
 }
 
-/** 字母 P 头像。 */
+/** 字母 P 头像（v5 沿用，渐变收敛为品牌蓝系）。 */
 @Composable
 fun AvatarP(size: Dp, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .size(size)
             .clip(RoundedCornerShape(size * 0.32f))
-            .background(Brush.linearGradient(listOf(Color(0xFF6AA5FF), Color(0xFF2B5FF0)))),
+            .background(Brush.linearGradient(listOf(Color(0xFF0A84FF), Color(0xFF007AFF)))),
         contentAlignment = Alignment.Center,
     ) {
         Text("P", color = Color.White, fontSize = (size.value * 0.4f).sp, fontWeight = FontWeight.Bold)

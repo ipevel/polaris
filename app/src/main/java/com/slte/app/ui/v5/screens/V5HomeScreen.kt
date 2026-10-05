@@ -11,27 +11,31 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -41,6 +45,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.slte.app.R
 import com.slte.app.ui.screen.main.DashboardData
@@ -54,6 +59,7 @@ import com.slte.app.ui.v5.GradientIcon
 import com.slte.app.ui.v5.HeroConnectButton
 import com.slte.app.ui.v5.IconTone
 import com.slte.app.ui.v5.LedgerData
+import com.slte.app.ui.v5.LiveDot
 import com.slte.app.ui.v5.MacaronTile
 import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.ProgressTrack
@@ -72,15 +78,13 @@ import com.slte.app.ui.v5.v5Enter
 import com.slte.app.utils.FormatUtils
 
 /* ============================================================
-   v5 首页：大圆连接钮 + 速率瓷片/曲线 + 会话信息 + 套餐用量
-   （数据接线：MainViewModel 的 DashboardData）
+   v6 首页：大标题 + 白底色环连接钮 + 状态行 + 速率卡 + 会话/套餐
+   （数据接线：MainViewModel 的 DashboardData；连接/权限逻辑与 v5 一致）
    ============================================================ */
 
 /**
- * 速率瓷片：数值用 [animateFloatAsState] 平滑过渡。
- *
- * 连接后速率每秒刷新，直接换字符串会让数字"跳"；用动画插值的数值做格式化，
- * 读数在刷新之间连续滑动，长时间盯着看不会觉得界面在抖。
+ * 速率卡：数值用 [animateFloatAsState] 平滑过渡（v5 结论沿用：
+ * 连接后速率每秒刷新，直接换字符串会让数字"跳"，插值后读数连续滑动）。
  */
 @Composable
 private fun SpeedTile(
@@ -102,19 +106,19 @@ private fun SpeedTile(
             // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
             Text(
                 "--",
-                fontSize = V5Type.sp16,
+                fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 color = V5ThemeColors.current.text3,
             )
         } else {
             Text(
                 buildAnnotatedString {
-                    withStyle(SpanStyle(fontSize = V5Type.sp16, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
+                    withStyle(SpanStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
                         append(FormatUtils.traffic(animatedBps.toLong()))
                     }
-                    withStyle(SpanStyle(fontSize = V5Type.sp11, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text)) {
+                    withStyle(SpanStyle(fontSize = V5Type.sp12, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text2)) {
                         // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
-                        // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。等价的现成写法见 FormatUtils.speed()。
+                        // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。
                         append("/s")
                     }
                 },
@@ -144,8 +148,6 @@ private fun PlanUsageCard(
         } else {
             ""
         }
-    // 有效套餐把「剩余天数」放在到期日之前（复用「我的/套餐」页同款 v5_days_left，免新增 i18n）：
-    // 只给到期日期用户还得自己心算，补上剩余天数才一眼可读。
     val expiryText = listOf(daysLeftLabel, expiredLabel).filter { it.isNotEmpty() }.joinToString(" · ")
     // 用量逼近上限（≥90%）时把数字与进度条转成警示红，提前提醒，避免用超/被限速。
     val nearLimit = fraction >= 0.9f
@@ -153,10 +155,10 @@ private fun PlanUsageCard(
     V5Card(modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
-                GradientIcon(IconTone.BLUE, Icons.Outlined.CreditCard)
+                GradientIcon(IconTone.BLUE, Icons.Outlined.CreditCard, size = 34.dp)
                 Text(
                     data.planName.ifBlank { stringResource(R.string.usage_no_plan) },
-                    fontSize = V5Type.sp15,
+                    fontSize = V5Type.sp16,
                     fontWeight = FontWeight.SemiBold,
                     color = c.text,
                 )
@@ -204,8 +206,6 @@ private fun PlanUsageCard(
 private fun SessionCard(data: DashboardData) {
     val c = V5ThemeColors.current
     val connected = data.isConnected
-    // 运行中追加连接时长：实时曲线移除后，这里是首页唯一能体现「已连多久」的信息，
-    // 也与原型设计（已运行 00:45:00）一致。未连接/连接中不显示时长。
     // connectedSinceElapsedMs 是「连接时刻」时间戳（elapsedRealtime 毫秒），不是时长本身，
     // 必须先与当前时刻相减；> 0 的判断顺带兜住异常数据，避免显示成设备开机时长。
     val uptime =
@@ -214,64 +214,27 @@ private fun SessionCard(data: DashboardData) {
         } else {
             ""
         }
-    val statusText =
-        if (connected) {
-            listOf(stringResource(R.string.session_running), uptime).filter { it.isNotEmpty() }.joinToString(" · ")
-        } else {
-            stringResource(R.string.session_not_running)
-        }
-    // 会话信息：页面上唯一的实体卡（第三级"实体卡"层的代表）。内部账本行自带浅底，
-    // 外层保留一张白卡把"这一段是会话信息"框起来，与上方无卡片的舞台区、下方扁平行拉开层次。
-    V5Card {
-        Column(verticalArrangement = Arrangement.spacedBy(V5Spacing.dp12)) {
-            // 卡内不再重复「会话信息」标题：卡片上方的 SectionTitle 已经承担了这段的命名，
-            // 卡里再写一遍就是同一句话说两次（观感上像标题的残影）。这里只留状态文字，
-            // 靠右对齐顶在第一行，卡片的"标题行"由状态本身充当。
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.weight(1f))
-                Text(
-                    statusText,
-                    fontSize = V5Type.sp11_5,
-                    fontFamily = FontFamily.Monospace,
-                    color = c.text3,
-                )
-            }
-            // 四项一行一项（整改要求 5）：形式照「内网IP / 内存占用」的账本行（左标签 + 右等宽值），
-            // 效果照「当前IP / 本次用量」的瓷片（同色系底色）。此前 IP 与用量挤在两个并排瓷片里，
-            // 窄屏下 IPv6 这类长值必然被截断——一行一项才显示得开。
-            // 这些账本行自带浅色底与圆角，**不再外套白色 V5Card/V5CardFlat**：
-            // 卡里再套一层白底会形成"卡中卡"，同一块信息被两层边界圈住，层级反而含糊
-            // （frontend-design 点名的 SaaS 卡套件观感）。
-            V5Ledger(
-                listOf(
-                    LedgerData(
-                        stringResource(R.string.session_current_ip),
-                        data.currentIp,
-                        icon = Icons.Outlined.Public,
-                        tone = TileTone.BLUE,
-                    ),
-                    LedgerData(
-                        stringResource(R.string.session_lan_ip),
-                        data.lanIp,
-                        icon = Icons.Outlined.Memory,
-                        color = if (connected) c.text else c.text3,
-                        tone = TileTone.CYAN,
-                    ),
-                    LedgerData(
-                        stringResource(R.string.session_used),
-                        FormatUtils.traffic(data.sessionDownloadBytes + data.sessionUploadBytes),
-                        icon = Icons.Outlined.BarChart,
-                        tone = TileTone.ORANGE,
-                    ),
-                    LedgerData(
-                        stringResource(R.string.session_memory),
-                        stringResource(R.string.session_memory_mb, data.appMemoryUsedMb),
-                        icon = Icons.Outlined.Cloud,
-                        tone = TileTone.PURPLE,
-                    ),
+    V5CardFlat {
+        V5Ledger(
+            listOf(
+                LedgerData(
+                    stringResource(R.string.session_current_ip),
+                    data.currentIp.ifBlank { "--" },
+                    icon = Icons.Outlined.Public,
                 ),
-            )
-        }
+                LedgerData(
+                    stringResource(R.string.session_used),
+                    FormatUtils.traffic(data.sessionDownloadBytes + data.sessionUploadBytes),
+                    icon = Icons.Outlined.BarChart,
+                ),
+                LedgerData(
+                    stringResource(R.string.session_running),
+                    uptime.ifBlank { stringResource(R.string.session_not_running) },
+                    icon = Icons.Outlined.Memory,
+                    color = if (connected) c.text else c.text3,
+                ),
+            ),
+        )
     }
 }
 
@@ -286,9 +249,9 @@ internal fun V5HomeScreen(
     refreshKernelInfo: () -> Unit,
     onProxyModeClick: () -> Unit = {},
 ) {
+    val c = V5ThemeColors.current
     val connected = data.isConnected
-    // 连接中态：v5 改造时把这个字段丢了（isConnecting 在 ui/v5/ 下零命中），
-    // 导致"点连接"到"连上"之间界面与未连接完全一致（截图逐字节相同）。
+    // 连接中态：点连接后到连上之间，界面必须与未连接区分（v5 曾丢失该字段导致截图无差别）。
     val connecting = data.isConnecting
     val context = LocalContext.current
     val vpnPermissionLauncher =
@@ -317,8 +280,7 @@ internal fun V5HomeScreen(
         }
 
     // 连接中再点 = 取消连接：必须**直接**走 onToggleConnection（MainViewModel.toggleConnection
-    // 的 isConnecting 分支会停隧道并复位）。绝不能复用它下面的"套餐 / 通知权限 / VPN 授权"前置：
-    // 连接中再弹一次 VPN 授权，用户一拒绝就会被置成未连接、而隧道可能已在途
+    // 的 isConnecting 分支会停隧道并复位）。绝不能复用下面的"套餐 / 通知权限 / VPN 授权"前置
     // （历史缺陷"连不上也关不掉"）。
     val handleToggle = {
         when {
@@ -349,64 +311,52 @@ internal fun V5HomeScreen(
 
     LaunchedEffect(Unit) { refreshKernelInfo() }
 
-    V5PageScaffold(tab = NavTab.HOME, breathing = connected, connected = connected, onNavSelect = onNavSelect) {
-        // 站点名由数据层合并（面板 comm/config → 面板域名 → 订阅 profile-title），
-        // 未配置/未拉到才回退应用名。v5 改造时这里被写成固定 app_name，导致
-        // DashboardData.siteName 一直是死数据（v4 首页的契约见 git 历史 MainScreen.kt）。
-        V5TopBar(siteDisplayName(data.siteName, stringResource(R.string.app_name))) {
-            when {
-                connected ->
-                    V5Chip(ChipTone.OK, stringResource(R.string.v5_connected_rule), icon = Icons.Outlined.Shield, large = true)
-                connecting ->
-                    V5Chip(ChipTone.ACCENT, stringResource(R.string.v5_connecting), icon = Icons.Outlined.Cloud, large = true)
-                else ->
-                    V5Chip(ChipTone.NEUTRAL, stringResource(R.string.v5_not_connected), icon = Icons.Outlined.Cloud, large = true)
-            }
+    // 大状态行：v5 的顶栏状态胶囊移到连接钮下方（iOS 式：圆钮 + 状态 + 节点行）。
+    val statusBig = when {
+        connected -> stringResource(R.string.v5_connected_title)
+        connecting -> stringResource(R.string.v5_connecting)
+        else -> stringResource(R.string.v5_not_connected)
+    }
+    val nodeLine = when {
+        connected -> {
+            val delay = data.exitDelay
+            if (delay != null && delay > 0) "${data.serverName} · $delay ms" else data.serverName
         }
+        connecting -> stringResource(R.string.v5_connecting_wait)
+        else -> stringResource(R.string.v5_ready_no_node)
+    }
+
+    V5PageScaffold(tab = NavTab.HOME, onNavSelect = onNavSelect) {
+        V5TopBar(stringResource(NavTab.HOME.labelRes))
         V5ScrollBody(NavTab.HOME) {
-            // —— 第一级：舞台区。连接钮是首页的主角，**不给它套卡片**。
-            // 卡片边界会把主角降格成"又一个白块"，与下面真正的信息卡抢层级；
-            // 去掉后连接钮直接坐在氛围底上，只有它和状态胶囊占据这块空间。
+            // —— 连接舞台：白底色环大圆钮 + 状态 + 节点行（v6 不再套卡片、不再有氛围底）。
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.v5Enter(0).fillMaxWidth(),
+                modifier = Modifier.v5Enter(0).fillMaxWidth().padding(top = V5Spacing.dp8),
             ) {
-                // 卡片内不再放「未受保护 / 等待连接」那一组状态：顶栏已经有唯一的连接状态，
-                // 两者重复（整改要求 1：两个都取消掉）。
                 HeroConnectButton(
                     connected = connected,
                     connecting = connecting,
                     onClick = handleToggle,
                 )
-                // 节点（含延迟）在按钮**下方**（整改要求 2：按钮在前、节点状态在后）。
-                // 圆钮向下偏移 10dp，光弧紧贴外缘、粒子再向外飞约 18dp，因此这里留 32dp
-                // 作为硬约束而非审美取值——余量不足会重现"按钮挡住节点"的历史缺陷。
-                // 延迟取自测速缓存（未测过则不显示，不写"未测"以免误导）；出口是
-                // 「自动选择」时 serverName 已被 serverInfo() 解析为其当前选中的叶子节点，
-                // 因此这里显示的确实是那个节点的延迟。
-                V5Chip(
-                    if (connected) ChipTone.OK else ChipTone.ACCENT,
+                Spacer(Modifier.height(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp6)) {
                     if (connected) {
-                        val base = stringResource(R.string.v5_connected_node, data.serverName)
-                        val delay = data.exitDelay
-                        if (delay != null && delay > 0) "$base · $delay ms" else base
+                        LiveDot()
                     } else {
-                        stringResource(R.string.v5_ready_no_node)
-                    },
-                    dot = !connected,
-                    icon = if (connected) Icons.Outlined.Shield else null,
-                    large = true,
-                    modifier = Modifier.padding(top = 32.dp),
-                )
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(c.text3))
+                    }
+                    Text(statusBig, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = c.text)
+                }
+                Spacer(Modifier.height(V5Spacing.dp4))
+                Text(nodeLine, fontSize = V5Type.sp15, color = c.text3)
             }
-            // —— 第二级：速率瓷片（扁平的并排小块，不套卡片）
-            Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp10), modifier = Modifier.v5Enter(1)) {
+            // —— 速率卡
+            Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12), modifier = Modifier.v5Enter(1)) {
                 SpeedTile(TileTone.BLUE, stringResource(R.string.v5_down_speed), data.downloadSpeedBps, Icons.Outlined.ArrowDownward, connected, Modifier.weight(1f))
                 SpeedTile(TileTone.ORANGE, stringResource(R.string.v5_up_speed), data.uploadSpeedBps, Icons.Outlined.ArrowUpward, connected, Modifier.weight(1f))
             }
-            // —— 代理模式（出口策略：规则/全局/直连）：v5 改造时入口丢失、功能整体不可达，
-            //    这里在首页接回入口，复用既有 ProxyModeSheet 与 MainViewModel.setProxyMode。
-            //    它是最轻的一级（扁平行），夹在瓷片与实体卡之间，承担"过渡层"。
+            // —— 代理模式（出口策略）：最轻的一级，夹在速率卡与分组段之间。
             V5CardFlat(Modifier.v5Enter(2)) {
                 V5RowItem(
                     title = stringResource(R.string.action_proxy_mode),
@@ -415,7 +365,7 @@ internal fun V5HomeScreen(
                     onClick = onProxyModeClick,
                 )
             }
-            // —— 第三级：实体卡。用 SectionTitle 起头，把"这一段是什么"讲清楚。
+            // —— 会话 / 套餐：iOS 分组段。
             Column(Modifier.v5Enter(3), verticalArrangement = Arrangement.spacedBy(V5Spacing.dp10)) {
                 SectionTitle(stringResource(R.string.session_title))
                 SessionCard(data)
