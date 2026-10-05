@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
  * 关于页 v5 化的行为对账（v4 → v5 迁移不能丢入口/丢设置项）。
  *
  * 盯的是迁移清单里可在 JVM 断言的三项：应用版本、内核版本、导出日志入口。
- * 应用内更新已整体移除，故另有一条**负向断言**防止「检查更新」入口被重新加回来。
+ * 应用内更新已按 GitHub Releases 方案加回（用户明确要求），故有一条正向断言覆盖「检查更新」入口。
  * 不覆盖到位的：导出日志的真实分享 Intent（依赖 `AppLog.export` 与 FileProvider，
  * 属 Android 运行时时序，用 mock 断言"点了没崩"没有证据价值，留给雷电模拟器走查）。
  */
@@ -41,6 +41,7 @@ class AboutScreenJvmTest {
         val vm = mockk<UpdateViewModel>(relaxed = true)
         every { vm.kernelVersion } returns MutableStateFlow(kernelVersion)
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
+        every { vm.updateState } returns MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
         return vm
     }
 
@@ -84,12 +85,11 @@ class AboutScreenJvmTest {
     }
 
     @Test
-    fun 检查更新入口已移除() {
+    fun 检查更新入口存在() {
         content(viewModel())
 
-        // 应用内更新已整体移除：关于页不得再出现任何更新/升级入口，
-        // 这条负向断言用于防止后续误把入口加回来。
-        composeRule.onNodeWithText("检查更新").assertDoesNotExist()
+        // 应用内更新已加回：关于页必须有「检查更新」入口。
+        composeRule.onNodeWithText("检查更新").assertIsDisplayed()
     }
 
     @Test

@@ -32,7 +32,7 @@ class SheetSubtitleConventionTest {
             )
         uiDir().walkTopDown().filter { it.extension == "kt" }.forEach { file ->
             val source = file.readText()
-            Regex("SlteSheet\\(([\\s\\S]{0,500}?)\\{([\\s\\S]{0,400})").findAll(source).forEach { m ->
+            Regex("V5Sheet\\(([\\s\\S]{0,500}?)\\{([\\s\\S]{0,400})").findAll(source).forEach { m ->
                 val head = m.groupValues[1]
                 val body = m.groupValues[2]
                 if (head.contains("subtitle")) return@forEach
@@ -40,7 +40,7 @@ class SheetSubtitleConventionTest {
                 if (hit != null) {
                     val name = hit.groupValues[1]
                     val line = source.take(m.range.first).count { it == '\n' } + 1
-                    found += "${file.path}:$line 用内容模拟副标题（$name），应改用 SlteSheet(subtitle = …)"
+                    found += "${file.path}:$line 用内容模拟副标题（$name），应改用 V5Sheet(subtitle = …)"
                 }
             }
         }
@@ -54,10 +54,10 @@ class SheetSubtitleConventionTest {
     }
 
     @Test
-    fun `SlteSheet 提供 subtitle 参数`() {
-        val sheet = uiDir().walkTopDown().first { it.name == "SlteSheet.kt" }
+    fun `V5Sheet 提供 subtitle 参数`() {
+        val sheet = uiDir().walkTopDown().first { it.name == "V5Sheet.kt" }
         val source = sheet.readText()
-        assertTrue("SlteSheet 应保留 subtitle 参数以统一副标题间距", source.contains("subtitle: String?"))
-        assertTrue("SlteSheet 应使用统一的副标题间距", source.contains("Dimens.gap.sm"))
+        assertTrue("V5Sheet 应保留 subtitle 参数以统一副标题间距", source.contains("subtitle: String?"))
+        assertTrue("V5Sheet 应使用统一的副标题间距", source.contains("Dimens.gap.sm"))
     }
 }

@@ -45,6 +45,7 @@ import com.slte.app.support.FakeAuthApi
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.screen.about.AboutScreen
+import com.slte.app.ui.screen.about.AppUpdateState
 import com.slte.app.ui.screen.about.UpdateViewModel
 import com.slte.app.ui.screen.forgot.ForgotPasswordScreen
 import com.slte.app.ui.screen.forgot.ForgotPasswordUiState
@@ -67,6 +68,8 @@ import com.slte.app.ui.screen.plans.PaymentCheckout
 import com.slte.app.ui.screen.plans.PlansScreen
 import com.slte.app.ui.screen.plans.PlansViewModel
 import com.slte.app.ui.screen.plans.PurchaseViewModel
+import com.slte.app.ui.screen.profile.ProfileData
+import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.screen.register.RegisterScreen
 import com.slte.app.ui.screen.register.RegisterUiState
 import com.slte.app.ui.screen.register.RegisterViewModel
@@ -222,6 +225,13 @@ class PageSweepLegacyScreenshotTest {
         createdAt = 1_700_000_000L + id * 86_400L,
     )
 
+    /** 当前套餐卡依赖 ProfileViewModel：截图用空数据，不渲染该卡。 */
+    private fun profileViewModel(): ProfileViewModel {
+        val vm = mockk<ProfileViewModel>(relaxed = true)
+        every { vm.data } returns MutableStateFlow(ProfileData())
+        return vm
+    }
+
     private fun purchaseViewModel() = PurchaseViewModel(
         couponChecker = CouponChecker(orderRepository),
         paymentLoader = OrderPaymentLoader(orderRepository),
@@ -329,7 +339,8 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("33-plans-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel())
+            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel())
         }
     }
 
@@ -340,7 +351,8 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("34-plans-dark", dark = true) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel())
+            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel())
         }
     }
 
@@ -351,7 +363,8 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("35-plans-empty-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel())
+            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel())
         }
     }
 
@@ -362,7 +375,8 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("35a-plans-error-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel())
+            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel())
         }
     }
 
@@ -374,7 +388,12 @@ class PageSweepLegacyScreenshotTest {
         val vm = PlansViewModel(orderRepository)
         val purchase = purchaseViewModel()
         snapshot("35b-plans-loading-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchase)
+            PlansScreen(
+                onBack = {},
+                viewModel = vm,
+                purchaseViewModel = purchase,
+                profileViewModel = profileViewModel(),
+            )
         }
     }
 
@@ -557,6 +576,7 @@ class PageSweepLegacyScreenshotTest {
         val vm = mockk<UpdateViewModel>(relaxed = true)
         every { vm.kernelVersion } returns MutableStateFlow(kernelVersion)
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
+        every { vm.updateState } returns MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
         return vm
     }
 

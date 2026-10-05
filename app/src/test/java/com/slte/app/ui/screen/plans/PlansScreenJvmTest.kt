@@ -13,7 +13,12 @@ import com.slte.app.data.repository.OrderRepository
 import com.slte.app.support.FakeAuthApi
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.ContentPhase
+import com.slte.app.ui.screen.profile.ProfileData
+import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.theme.SlteTheme
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -57,10 +62,22 @@ class PlansScreenJvmTest {
         show = true,
     )
 
+    /** 当前套餐卡依赖 ProfileViewModel：mock 空数据，不渲染该卡，旧断言不受影响。 */
+    private fun profileViewModel(): ProfileViewModel {
+        val vm = mockk<ProfileViewModel>(relaxed = true)
+        every { vm.data } returns MutableStateFlow(ProfileData())
+        return vm
+    }
+
     private fun content() {
         composeRule.setContent {
             SlteTheme {
-                PlansScreen(onBack = {}, viewModel = viewModel, purchaseViewModel = purchaseViewModel())
+                PlansScreen(
+                    onBack = {},
+                    viewModel = viewModel,
+                    purchaseViewModel = purchaseViewModel(),
+                    profileViewModel = profileViewModel(),
+                )
             }
         }
     }
