@@ -162,8 +162,7 @@ fun V5Colors.chip(tone: ChipTone): Pair<Color, Color> = when (tone) {
  * 参数保留兼容，v6 不再做呼吸/变色（"已连接"由连接钮色环与状态文字表达）。
  */
 @Composable
-fun Modifier.v5Aurora(breathing: Boolean = false, connected: Boolean = false): Modifier =
-    background(V5ThemeColors.current.bg)
+fun Modifier.v5Aurora(breathing: Boolean = false, connected: Boolean = false): Modifier = background(V5ThemeColors.current.bg)
 
 /** 卡片投影：iOS 式极淡（亮色 едва 可见、暗色无投影，色值随主题单源）。 */
 @Composable
@@ -542,7 +541,11 @@ fun V5Button(
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
-    val radius = if (hero) { 16 } else if (small) { 10 } else { 12 }
+    val radius = when {
+        hero -> 16
+        small -> 10
+        else -> 12
+    }
     val shape = RoundedCornerShape(radius)
     val height = if (hero) {
         54.dp
