@@ -352,10 +352,9 @@ constructor(
     }
 
     /** 分流组名（排除内核保留组）：折叠键的来源。 */
-    private fun routingGroupNames(): List<String> =
-        _proxyGroups.value
-            .map { it.name }
-            .filterNot { it in com.slte.app.kernel.RoutingReservedNames }
+    private fun routingGroupNames(): List<String> = _proxyGroups.value
+        .map { it.name }
+        .filterNot { it in com.slte.app.kernel.RoutingReservedNames }
 
     /**
      * 进入节点页时调用：全部收起（主组 + 所有分流组）。
