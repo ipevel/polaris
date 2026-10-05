@@ -351,27 +351,46 @@ constructor(
         viewModelScope.launch { refreshGroups() }
     }
 
+    /** 分流组名（排除内核保留组）：折叠键的来源。 */
+    private fun routingGroupNames(): List<String> =
+        _proxyGroups.value
+            .map { it.name }
+            .filterNot { it in com.slte.app.kernel.RoutingReservedNames }
+
+    /**
+     * 进入节点页时调用：全部收起（主组 + 所有分流组）。
+     *
+     * offline 兜底名单由界面层强制展开，不受此影响。新出现的分组由
+     * [syncCollapsedSections] 的首见即收起覆盖，不会有漏网。
+     */
+    fun collapseAllSections() {
+        _collapsedSections.value =
+            buildSet {
+                add(com.slte.app.kernel.PRIMARY_SECTION_KEY)
+                addAll(routingGroupNames())
+            }
+    }
+
     /**
      * 切换某个区块的展开/收起。集合内 = 收起。
      *
-     * [com.slte.app.kernel.PRIMARY_SECTION_KEY]（主组卡）与内核保留组
-     * （自动选择/故障转移/漏网之鱼）走普通开关；其余分流组走**单开手风琴**：
-     * 每条分流组都 include-all 了全部节点，而节点页滚动体是非懒加载的
-     * `Column+verticalScroll`，同时展开多组会组合出「组数 × 节点数」行
-     * （默认 10 组 × N 节点，全开 27 组）；所以展开一个分流组时把其余分流组收起。
-     * 主组卡不受手风琴影响（它本是页面主任务）。
+     * 全组**单开手风琴**（含主组卡）：每条分流组都 include-all 了全部节点，
+     * 而节点页滚动体是非懒加载的 `Column+verticalScroll`，同时展开多组会组合出
+     * 「组数 × 节点数」行（默认 10 组 × N 节点，全开 27 组）；所以展开任一组时
+     * 把其余所有组收起。收起当前展开组时只收自己，不影响其他。
      */
     fun toggleSection(name: String) {
-        val routingNames =
-            _proxyGroups.value
-                .map { it.name }
-                .filterNot { it in com.slte.app.kernel.RoutingReservedNames }
+        val allKeys = buildSet {
+            add(com.slte.app.kernel.PRIMARY_SECTION_KEY)
+            addAll(routingGroupNames())
+        }
         _collapsedSections.value =
-            if (name in routingNames) {
-                val collapsed = com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
-                if (name in collapsed) collapsed else collapsed + (routingNames - name)
+            if (name in _collapsedSections.value) {
+                // 当前收起 -> 展开它，同时收起其他所有
+                allKeys - name
             } else {
-                com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
+                // 当前展开 -> 只收起它
+                _collapsedSections.value + name
             }
         persistSections()
     }
