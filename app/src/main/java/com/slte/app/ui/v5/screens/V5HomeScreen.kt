@@ -43,6 +43,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -349,7 +351,15 @@ internal fun V5HomeScreen(
                     Text(statusBig, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = c.text)
                 }
                 Spacer(Modifier.height(V5Spacing.dp4))
-                Text(nodeLine, fontSize = V5Type.sp15, color = c.text3)
+                Text(
+                    nodeLine,
+                    fontSize = V5Type.sp15,
+                    color = c.text3,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = V5Spacing.dp16),
+                )
             }
             // —— 速率卡
             Row(horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp12), modifier = Modifier.v5Enter(1)) {
