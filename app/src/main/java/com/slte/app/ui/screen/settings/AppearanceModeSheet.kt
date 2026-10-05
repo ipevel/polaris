@@ -57,7 +57,7 @@ internal fun AppearanceModeSheet(
                     title = stringResource(mode.labelRes),
                     selected = selected,
                     modifier = Modifier.clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onSelect(mode)
                     },
                 )

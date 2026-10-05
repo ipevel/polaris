@@ -68,7 +68,17 @@ fun V5Sheet(
         modifier = modifier,
         shape = shape,
         containerColor = c.surface,
-        dragHandle = null,
+        dragHandle = {
+            Box(
+                modifier =
+                Modifier
+                    .padding(top = 8.dp)
+                    .width(36.dp)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(c.surface3),
+            )
+        },
     ) {
         AppLocaleContent(locale = LocalAppLocale.current) {
             Column(
@@ -82,16 +92,6 @@ fun V5Sheet(
                         vertical = Dimens.sheetPaddingV,
                     ),
             ) {
-                // iOS 抓手
-                Box(
-                    Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .width(36.dp)
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(c.surface3),
-                )
-                Spacer(modifier = Modifier.height(Dimens.gap.md))
                 header?.let { headerContent ->
 
                     Column(

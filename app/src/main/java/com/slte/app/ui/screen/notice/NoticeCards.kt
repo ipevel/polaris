@@ -35,7 +35,7 @@ import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ChipTone
 import com.slte.app.ui.v5.V5Chip
 import com.slte.app.ui.v5.V5Sheet
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.FormatUtils
 
 /**
@@ -63,10 +63,10 @@ internal fun NoticeRow(
 ) {
     val c = V5ThemeColors.current
     val haptic = LocalHapticFeedback.current
-    // 抽成局部变量而不是直接传尾随 lambda：`noRippleClickable` 的形参是可空函数类型
+    // 抽成局部变量而不是直接传尾随 lambda：`v5Clickable` 的形参是可空函数类型
     // `(() -> Unit)?`（null 表示整行不可点），显式变量能让类型推导无歧义。
     val rowClick: () -> Unit = {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onClick()
     }
 
@@ -79,9 +79,9 @@ internal fun NoticeRow(
             modifier =
             Modifier
                 .fillMaxWidth()
-                // `noRippleClickable` 是返回 Modifier 的普通 @Composable（不是 Modifier 扩展），
+                // `v5Clickable` 是返回 Modifier 的普通 @Composable（不是 Modifier 扩展），
                 // 所以走 `.then(...)`——与 V5Components 内部所有调用点保持一致。
-                .then(noRippleClickable(onClick = rowClick))
+                .then(v5Clickable(onClick = rowClick))
                 .padding(horizontal = 15.dp, vertical = 13.dp),
         ) {
             Row(

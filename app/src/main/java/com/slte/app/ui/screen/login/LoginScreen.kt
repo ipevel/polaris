@@ -68,7 +68,7 @@ import com.slte.app.ui.v5.V5FieldHint
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5PasswordInput
 import com.slte.app.ui.v5.V5Switch
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.ui.v5.v5Aurora
 import com.slte.app.utils.Dimens
 import kotlin.math.cos
@@ -396,7 +396,7 @@ internal fun V5TextAction(
         modifier =
         modifier
             .clip(RoundedCornerShape(10.dp))
-            .then(noRippleClickable(onClick = onClick))
+            .then(v5Clickable(onClick = onClick))
             .padding(horizontal = 8.dp, vertical = 7.dp),
     ) {
         Text(text = text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = c.accent)

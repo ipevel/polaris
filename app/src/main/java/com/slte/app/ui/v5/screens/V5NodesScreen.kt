@@ -56,7 +56,7 @@ import com.slte.app.ui.v5.V5ScrollBody
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.V5TopIconButton
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.ui.v5.v5Enter
 
 /* ============================================================
@@ -312,7 +312,7 @@ private fun NodeGroupCard(
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = 48.dp)
                 .then(
-                    noRippleClickable(
+                    v5Clickable(
                         role = Role.Button,
                         label = name,
                         onClick = if (enabled) onToggle else null,

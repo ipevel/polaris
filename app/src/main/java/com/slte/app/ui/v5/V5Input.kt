@@ -233,7 +233,7 @@ fun V5PasswordInput(
                     .size(30.dp)
                     .clip(RoundedCornerShape(V5Radius.r10))
                     .then(
-                        noRippleClickable {
+                        v5Clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             visible = !visible
                         },

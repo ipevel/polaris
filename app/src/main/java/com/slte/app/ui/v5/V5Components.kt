@@ -10,7 +10,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.ripple
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -66,7 +68,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -172,14 +173,15 @@ fun Modifier.v5CardShadow(shape: Shape): Modifier {
 }
 
 /**
- * v5 统一的无涟漪点击（返回 `Modifier`，用法 `.then(noRippleClickable(onClick = onClick))`，
- * 或直接尾随 lambda `.then(noRippleClickable { ... })`）。
+ * v5 统一的行点击（返回 `Modifier`，用法 `.then(v5Clickable(onClick = onClick))`，
+ * 或直接尾随 lambda `.then(v5Clickable { ... })`）。
  *
- * （v5 的无障碍方案整体保留：clearAndSetSemantics 单节点、名称/角色/状态/点击动作
- * 落在同一节点。v6 不做改动，详见 git 历史中本函数的 KDoc。）
+ * 淡色水波纹（安卓触摸反馈）+ iOS 观感；无障碍方案保留：
+ * clearAndSetSemantics 单节点、名称/角色/状态落在同一节点，点击动作由
+ * `clickable(onClickLabel = ...)` 提供。
  */
 @Composable
-internal fun noRippleClickable(
+internal fun v5Clickable(
     role: Role? = null,
     toggleState: Boolean? = null,
     selected: Boolean? = null,
@@ -188,7 +190,6 @@ internal fun noRippleClickable(
     onClick: (() -> Unit)? = null,
 ): Modifier {
     val action = onClick
-    // 手势块用 Unit 作 key、动作经 rememberUpdatedState 取最新值，避免每次重组重启手势检测
     val currentAction = rememberUpdatedState(action)
     // 子节点语义会被 clearAndSetSemantics 隐藏，所以把行内文字显式挂到本节点上，
     // 保证 `onNodeWithText(...)` 仍能定位（未显式传 texts 时退回 label）。
@@ -207,26 +208,24 @@ internal fun noRippleClickable(
         if (nodeTexts.isNotEmpty()) {
             this[SemanticsProperties.Text] = nodeTexts.map { AnnotatedString(it) }
         }
-        if (action != null) {
-            this.onClick(label = label) {
-                action()
-                true
-            }
-        }
     }
     val base = if (shouldClear) {
         Modifier.clearAndSetSemantics(properties = semanticsBlock)
     } else {
         Modifier.semantics(properties = semanticsBlock)
     }
-    return base
-        .then(
-            if (action != null) {
-                Modifier.pointerInput(Unit) { detectTapGestures { currentAction.value?.invoke() } }
-            } else {
-                Modifier
-            },
-        )
+    if (action == null) return base
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed = V5ThemeColors.current.pressed
+    return base.then(
+        Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = ripple(color = pressed),
+            role = role,
+            onClickLabel = label,
+            onClick = { currentAction.value?.invoke() },
+        ),
+    )
 }
 
 /** iOS 分组卡片（白底，18dp 圆角，极淡投影）。 */
@@ -348,7 +347,7 @@ fun V5TopIconButton(
     Box(
         modifier = Modifier
             .size(44.dp)
-            .then(noRippleClickable(role = Role.Button, label = contentDescription, onClick = onClick)),
+            .then(v5Clickable(role = Role.Button, label = contentDescription, onClick = onClick)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription, modifier = Modifier.size(22.dp), tint = tint ?: c.accent)
@@ -595,7 +594,7 @@ fun V5Button(
         bg = c.surface3
         fg = c.text3
     }
-    val clickable = noRippleClickable(role = Role.Button, label = text, onClick = if (active) onClick else null)
+    val clickable = v5Clickable(role = Role.Button, label = text, onClick = if (active) onClick else null)
     // 调用方传入的 modifier 必须最先应用（v5 的历史教训：漏掉会导致调用方尺寸失效）。
     val m = modifier.then(
         if (style == ButtonStyle.GHOST) {
@@ -700,7 +699,7 @@ fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (Nav
                         .weight(1f)
                         .fillMaxHeight()
                         .then(
-                            noRippleClickable(
+                            v5Clickable(
                                 role = Role.Tab,
                                 selected = on,
                                 label = tabLabel,
@@ -748,7 +747,7 @@ fun HeroConnectButton(
     Box(
         modifier = modifier
             .size(168.dp)
-            .then(noRippleClickable(role = Role.Button, label = connectLabel, onClick = onClick)),
+            .then(v5Clickable(role = Role.Button, label = connectLabel, onClick = onClick)),
         contentAlignment = Alignment.Center,
     ) {
         // 外层淡色光晕（静态，非动画）
@@ -825,7 +824,7 @@ fun V5RowItem(
     Row(
         modifier = modifier
             .then(
-                noRippleClickable(
+                v5Clickable(
                     role = if (switchState != null) Role.Switch else null,
                     toggleState = switchState,
                     label = a11yLabel,
@@ -986,7 +985,7 @@ fun SheetOverlay(
             Modifier
                 .matchParentSize()
                 .background(Color(0x7A0A0C16))
-                .then(noRippleClickable {}),
+                .then(v5Clickable {}),
         )
         Column(
             modifier

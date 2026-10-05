@@ -51,7 +51,7 @@ import com.slte.app.ui.v5.V5PullRefresh
 import com.slte.app.ui.v5.V5StateScrollable
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.V5TopIconButton
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.FormatUtils
 
 /**
@@ -219,7 +219,7 @@ private fun TicketRow(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .then(noRippleClickable(onClick = rowClick))
+                .then(v5Clickable(onClick = rowClick))
                 .padding(horizontal = 15.dp, vertical = 13.dp),
         ) {
             Row(

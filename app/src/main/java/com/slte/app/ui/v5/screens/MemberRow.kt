@@ -70,7 +70,7 @@ internal fun MemberRow(
     member: KernelProxyMember,
     selected: Boolean,
     // 可为 null：内核未运行时的只读兜底名单没有任何可切换目标，
-    // 传 null 让整行不可点且无涟漪（V5RowItem 的 noRippleClickable 语义），
+    // 传 null 让整行不可点且无涟漪（V5RowItem 的 v5Clickable 语义），
     // 避免"点得动但什么都没发生"的假交互。
     onClick: (() -> Unit)? = null,
 ) {

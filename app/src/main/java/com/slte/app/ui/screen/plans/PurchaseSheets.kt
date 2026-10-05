@@ -39,7 +39,7 @@ import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5Sheet
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.FormatUtils
 
 /**
@@ -133,8 +133,8 @@ internal fun PeriodGrid(
                             .clip(shape)
                             .background(if (selected) c.accent else c.surface2)
                             .then(
-                                noRippleClickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                v5Clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     onSelect(pp.period)
                                 },
                             )
@@ -191,7 +191,7 @@ internal fun CouponInput(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (enabled) c.accentBg else c.surface3)
                     .then(
-                        noRippleClickable(
+                        v5Clickable(
                             onClick = if (enabled) {
                                 {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)

@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.slte.app.R
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 
 /**
  * 提现方式选择（v5）。
@@ -75,7 +75,7 @@ internal fun WithdrawMethodField(
     val haptic = LocalHapticFeedback.current
     val shape = RoundedCornerShape(14.dp)
     // 点击语义：失败态 = 重试；正常态 = 展开下拉；不可用态 = 什么都不做。
-    // 抽成局部变量是因为 `noRippleClickable` 的形参是可空函数类型，显式变量让推导无歧义。
+    // 抽成局部变量是因为 `v5Clickable` 的形参是可空函数类型，显式变量让推导无歧义。
     val clickAction: (() -> Unit)? = when {
         !enabled -> null
         failed -> onRetry
@@ -91,7 +91,7 @@ internal fun WithdrawMethodField(
                 .height(48.dp)
                 .clip(shape)
                 .background(c.surface2)
-                .then(noRippleClickable(onClick = clickAction))
+                .then(v5Clickable(onClick = clickAction))
                 .padding(horizontal = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -134,7 +134,7 @@ internal fun WithdrawMethodField(
                     Modifier
                         .fillMaxWidth()
                         .then(
-                            noRippleClickable {
+                            v5Clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onSelect(method)
                                 expanded = false

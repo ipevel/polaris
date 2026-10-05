@@ -27,7 +27,7 @@ import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5Sheet
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.Dimens
 
 /**
@@ -126,7 +126,7 @@ private fun BehaviorRow(
         Modifier
             .fillMaxWidth()
             .then(
-                noRippleClickable(
+                v5Clickable(
                     role = Role.RadioButton,
                     label = label,
                     selected = selected,

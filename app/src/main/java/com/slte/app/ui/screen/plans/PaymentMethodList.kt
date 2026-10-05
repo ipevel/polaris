@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.slte.app.domain.model.PaymentMethod
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.RadioDot
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 
 /**
  * 支付方式选择（v5）：两列网格，选中项蓝底蓝圈。
@@ -82,8 +82,8 @@ internal fun PaymentMethodCell(
             .clip(shape)
             .background(if (selected) c.accent else c.surface2)
             .then(
-                noRippleClickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                v5Clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onClick()
                 },
             )

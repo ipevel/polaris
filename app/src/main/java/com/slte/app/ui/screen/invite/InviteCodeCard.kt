@@ -36,7 +36,7 @@ import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.V5CardFlat
-import com.slte.app.ui.v5.noRippleClickable
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.copyToClipboard
 
 /**
@@ -152,7 +152,7 @@ private fun InviteCodeItem(
             Modifier
                 .size(48.dp)
                 .then(
-                    noRippleClickable {
+                    v5Clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         copyToClipboard(context, "invite_code", code.code)
                         toast.show(R.string.invite_code_copied)

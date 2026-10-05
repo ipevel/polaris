@@ -42,6 +42,8 @@ data class V5Colors(
     val surface3: Color,
     val hairline: Color,
     val hairline2: Color,
+    // 按压水波纹（淡色，iOS 观感 + 安卓触摸反馈）
+    val pressed: Color,
     // 文字
     val text: Color,
     val text2: Color,
@@ -90,6 +92,7 @@ val LightV5Colors = V5Colors(
     surface3 = Color(0xFFE5E5EA),
     hairline = Color(0x1F3C3C43),
     hairline2 = Color(0x1F3C3C43),
+    pressed = Color(0x1A000000),
     text = Color(0xFF1C1C1E),
     text2 = Color(0xFF3A3A3C),
     text3 = Color(0xFF8E8E93),
@@ -135,6 +138,7 @@ val DarkV5Colors = V5Colors(
     surface3 = Color(0xFF3A3A3C),
     hairline = Color(0x4D545458),
     hairline2 = Color(0x4D545458),
+    pressed = Color(0x1AFFFFFF),
     text = Color(0xFFFFFFFF),
     text2 = Color(0xFFAEAEB2),
     text3 = Color(0xFF8E8E93),

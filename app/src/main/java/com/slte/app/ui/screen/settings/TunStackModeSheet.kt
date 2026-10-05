@@ -60,7 +60,7 @@ internal fun TunStackModeSheet(
                     sub = stringResource(mode.descRes),
                     selected = selected,
                     modifier = Modifier.clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onSelect(mode)
                     },
                 )
