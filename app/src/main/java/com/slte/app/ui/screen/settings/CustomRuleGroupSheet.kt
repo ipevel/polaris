@@ -21,13 +21,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.slte.app.R
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SlteInput
 import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
 import com.slte.app.ui.v5.noRippleClickable
 import com.slte.app.utils.Dimens
 
@@ -105,12 +105,12 @@ fun CustomRuleGroupSheet(
 
         Spacer(modifier = Modifier.height(Dimens.gap.lg))
 
-        SlteButton(
+        V5Button(
             text = stringResource(R.string.routing_custom_submit),
-            onClick = onSubmit,
+            style = ButtonStyle.PRIMARY,
             modifier = Modifier.fillMaxWidth(),
-            style = SlteButtonStyle.Primary,
             loading = state.submitting,
+            onClick = onSubmit,
         )
     }
 }

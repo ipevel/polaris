@@ -14,12 +14,12 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import com.slte.app.R
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.component.SltePasswordInput
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
 import com.slte.app.utils.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,12 +74,12 @@ fun ChangePasswordSheet(
 
         Spacer(modifier = Modifier.height(Dimens.gap.lg))
 
-        SlteButton(
+        V5Button(
             text = stringResource(R.string.settings_change_pwd_submit),
-            onClick = onSubmit,
+            style = ButtonStyle.PRIMARY,
             modifier = Modifier.fillMaxWidth(),
-            style = SlteButtonStyle.Primary,
             loading = state.submitting,
+            onClick = onSubmit,
         )
     }
 }

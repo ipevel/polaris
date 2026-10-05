@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,9 +28,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
-import com.slte.app.ui.theme.SlteColors
 import com.slte.app.ui.theme.SlteShapes
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.utils.Dimens
 
 enum class SlteInputSize { Hero, Compact }
@@ -59,17 +58,18 @@ fun SlteInput(
     val fieldIcon = if (compact) Dimens.icon.md else Dimens.icon.lg
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
+    val c = V5ThemeColors.current
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = SlteShapes.medium,
-        color = MaterialTheme.colorScheme.surface,
+        color = c.surface,
         border =
         when {
-            focused -> BorderStroke(Dimens.strokeMedium, MaterialTheme.colorScheme.primary)
-            bordered -> BorderStroke(Dimens.dividerThickness, MaterialTheme.colorScheme.outline)
+            focused -> BorderStroke(Dimens.strokeMedium, c.accent)
+            bordered -> BorderStroke(Dimens.dividerThickness, c.hairline)
             else -> null
         },
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        contentColor = c.text3,
     ) {
         Row(
             modifier =
@@ -84,7 +84,7 @@ fun SlteInput(
                     imageVector = it,
                     contentDescription = iconDesc,
                     modifier = Modifier.size(fieldIcon),
-                    tint = SlteColors.current.accentInteractive,
+                    tint = c.text3,
                 )
                 Spacer(modifier = Modifier.width(Dimens.gap.sm))
             }
@@ -98,14 +98,14 @@ fun SlteInput(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
                 visualTransformation = visualTransformation,
-                textStyle = fieldText.copy(color = MaterialTheme.colorScheme.onSurface),
+                textStyle = fieldText.copy(color = c.text),
 
-                cursorBrush = SolidColor(SlteColors.current.accentInteractive),
+                cursorBrush = SolidColor(c.accent),
                 decorationBox = { innerTextField ->
                     if (value.isEmpty()) {
                         Text(
                             text = placeholder,
-                            style = fieldText.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                            style = fieldText.copy(color = c.text3),
                             maxLines = 1,
                         )
                     }

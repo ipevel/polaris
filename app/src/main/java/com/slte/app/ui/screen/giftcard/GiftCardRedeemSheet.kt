@@ -13,12 +13,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.slte.app.R
 import com.slte.app.ui.component.AnimatedSticker
-import com.slte.app.ui.component.SlteButton
-import com.slte.app.ui.component.SlteButtonStyle
 import com.slte.app.ui.component.SlteInput
 import com.slte.app.ui.component.SlteInputSize
 import com.slte.app.ui.component.SlteSheet
 import com.slte.app.ui.theme.SlteIcons
+import com.slte.app.ui.v5.ButtonStyle
+import com.slte.app.ui.v5.V5Button
 import com.slte.app.utils.Dimens
 import com.slte.app.utils.Stickers
 
@@ -53,15 +53,15 @@ fun GiftCardRedeemSheet(
             size = SlteInputSize.Compact,
         )
 
-        SlteButton(
+        V5Button(
             text = stringResource(R.string.gift_card_redeem),
-            onClick = onSubmit,
-            enabled = state.code.isNotBlank() && !state.submitting,
-            loading = state.submitting,
+            style = ButtonStyle.PRIMARY,
             modifier = Modifier
                 .padding(top = Dimens.gap.md)
                 .fillMaxWidth(),
-            style = SlteButtonStyle.Primary,
+            loading = state.submitting,
+            onClickEnabled = state.code.isNotBlank(),
+            onClick = onSubmit,
         )
     }
 }
