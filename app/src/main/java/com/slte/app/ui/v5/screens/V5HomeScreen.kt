@@ -4,9 +4,13 @@
 package com.slte.app.ui.v5.screens
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
@@ -34,6 +38,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +83,7 @@ import com.slte.app.ui.v5.V5Ledger
 import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5ScrollBody
+import com.slte.app.ui.v5.V5Sheet
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.v5Enter
 import com.slte.app.utils.FormatUtils
@@ -297,6 +305,31 @@ internal fun V5HomeScreen(
             }
         }
 
+    // 电池优化白名单提示：系统（尤其国产 ROM）在后台杀掉 :background 进程会导致代理中断，
+    // 用户感知为"后台运行一段时间后自动停止"。连接前检查一次，未加白名单则弹 sheet 引导。
+    var showBatterySheet by remember { mutableStateOf(false) }
+    val batteryPrefs = remember(context) {
+        context.getSharedPreferences("polaris_battery", Context.MODE_PRIVATE)
+    }
+    fun isBatteryIgnored(): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+    fun proceedConnect() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val request = vpnRequestIntent()
+        if (request != null) {
+            vpnPermissionLauncher.launch(request)
+        } else {
+            onToggleConnection()
+        }
+    }
+
     // 连接中再点 = 取消连接：必须**直接**走 onToggleConnection（MainViewModel.toggleConnection
     // 的 isConnecting 分支会停隧道并复位）。绝不能复用下面的"套餐 / 通知权限 / VPN 授权"前置
     // （历史缺陷"连不上也关不掉"）。
@@ -310,17 +343,12 @@ internal fun V5HomeScreen(
                 onRenew()
             }
             else -> {
-                if (Build.VERSION.SDK_INT >= 33 &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                    PackageManager.PERMISSION_GRANTED
+                if (!isBatteryIgnored() &&
+                    !batteryPrefs.getBoolean("battery_sheet_dismissed", false)
                 ) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-                val request = vpnRequestIntent()
-                if (request != null) {
-                    vpnPermissionLauncher.launch(request)
+                    showBatterySheet = true
                 } else {
-                    onToggleConnection()
+                    proceedConnect()
                 }
             }
         }
@@ -395,6 +423,40 @@ internal fun V5HomeScreen(
                 SectionTitle(stringResource(R.string.usage_title))
                 PlanUsageCard(data, onRenew)
             }
+        }
+    }
+
+    if (showBatterySheet) {
+        V5Sheet(
+            onDismiss = { showBatterySheet = false },
+            title = stringResource(R.string.battery_opt_title),
+            subtitle = stringResource(R.string.battery_opt_message),
+        ) {
+            V5Button(
+                stringResource(R.string.battery_opt_go_settings),
+                ButtonStyle.PRIMARY,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    showBatterySheet = false
+                    batteryPrefs.edit().putBoolean("battery_sheet_dismissed", true).apply()
+                    context.startActivity(
+                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
+                    )
+                },
+            )
+            Spacer(Modifier.height(V5Spacing.dp8))
+            V5Button(
+                stringResource(R.string.battery_opt_later),
+                ButtonStyle.GHOST,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    showBatterySheet = false
+                    batteryPrefs.edit().putBoolean("battery_sheet_dismissed", true).apply()
+                    proceedConnect()
+                },
+            )
         }
     }
 }

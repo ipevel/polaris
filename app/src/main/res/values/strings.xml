@@ -115,6 +115,10 @@
     <string name="dashboard_no_plan_tip">请先购买套餐</string>
     <string name="dashboard_refresh_done">订阅已更新</string>
     <string name="notification_permission_denied">未开启通知权限，连接状态提醒可能收不到</string>
+    <string name="battery_opt_title">允许后台运行</string>
+    <string name="battery_opt_message">系统可能会在后台自动停止 Polaris，导致代理中断。请在电池优化中将 Polaris 设为"不优化"，以保持后台稳定运行。</string>
+    <string name="battery_opt_go_settings">去设置</string>
+    <string name="battery_opt_later">下次再说</string>
 
     <!-- Server -->
     <string name="server_title">节点</string>

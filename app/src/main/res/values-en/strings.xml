@@ -118,6 +118,10 @@
     <string name="dashboard_no_plan_tip">Buy a plan first</string>
     <string name="dashboard_refresh_done">Subscription updated</string>
     <string name="notification_permission_denied">Notifications are off; connection status reminders may not appear</string>
+    <string name="battery_opt_title">Allow Background Running</string>
+    <string name="battery_opt_message">The system may stop Polaris in the background, interrupting the proxy. Please set Polaris to "Don't optimize" in battery optimization to keep it running stably.</string>
+    <string name="battery_opt_go_settings">Open Settings</string>
+    <string name="battery_opt_later">Later</string>
 
     <!-- Server -->
     <string name="server_title">Nodes</string>

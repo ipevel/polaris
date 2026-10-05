@@ -250,6 +250,11 @@ constructor(
                             it.copy(
                                 isConnected = true,
                                 isConnecting = false,
+                                // 进程重启后从内核恢复的连接：connectedSinceElapsedMs 随旧进程丢失，
+                                // 用恢复时刻补上，避免按钮显示"已连接"但会话显示"未运行"的脱节。
+                                connectedSinceElapsedMs =
+                                    it.connectedSinceElapsedMs.takeIf { v -> v > 0L }
+                                        ?: SystemClock.elapsedRealtime(),
                             )
                         }
                         fallbackDns.clearCache()

@@ -115,6 +115,10 @@
     <string name="dashboard_no_plan_tip">請先購買方案</string>
     <string name="dashboard_refresh_done">訂閱已更新</string>
     <string name="notification_permission_denied">未開啟通知權限，連線狀態提醒可能收不到</string>
+    <string name="battery_opt_title">允許背景運行</string>
+    <string name="battery_opt_message">系統可能會在背景自動停止 Polaris，導致代理中斷。請在電池最佳化中將 Polaris 設為"不最佳化"，以保持背景穩定運行。</string>
+    <string name="battery_opt_go_settings">前往設定</string>
+    <string name="battery_opt_later">稍後再說</string>
 
     <!-- Server -->
     <string name="server_title">節點</string>
