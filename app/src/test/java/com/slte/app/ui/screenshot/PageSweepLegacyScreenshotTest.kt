@@ -339,8 +339,12 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("33-plans-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
-                profileViewModel = profileViewModel())
+            PlansScreen(
+                onBack = {},
+                viewModel = vm,
+                purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel(),
+            )
         }
     }
 
@@ -351,8 +355,12 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("34-plans-dark", dark = true) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
-                profileViewModel = profileViewModel())
+            PlansScreen(
+                onBack = {},
+                viewModel = vm,
+                purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel(),
+            )
         }
     }
 
@@ -363,8 +371,12 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("35-plans-empty-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
-                profileViewModel = profileViewModel())
+            PlansScreen(
+                onBack = {},
+                viewModel = vm,
+                purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel(),
+            )
         }
     }
 
@@ -375,8 +387,12 @@ class PageSweepLegacyScreenshotTest {
         val vm = plansViewModel()
         settle(vm)
         snapshot("35a-plans-error-light", dark = false) {
-            PlansScreen(onBack = {}, viewModel = vm, purchaseViewModel = purchaseViewModel(),
-                profileViewModel = profileViewModel())
+            PlansScreen(
+                onBack = {},
+                viewModel = vm,
+                purchaseViewModel = purchaseViewModel(),
+                profileViewModel = profileViewModel(),
+            )
         }
     }
 
