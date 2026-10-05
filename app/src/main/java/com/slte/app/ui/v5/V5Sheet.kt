@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import com.slte.app.ui.component.AppLocaleContent
 import com.slte.app.ui.component.LocalAppLocale
 import com.slte.app.ui.theme.SlteType
+import com.slte.app.ui.theme.V5SheetShape
+import com.slte.app.ui.theme.V5SheetTitleStyle
+import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.utils.Dimens
 
 /**

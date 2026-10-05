@@ -50,7 +50,7 @@ internal fun AppearanceModeSheet(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            entries.forEach { mode ->
+            AppearanceMode.entries.forEach { mode ->
                 val selected = currentMode == mode
                 SheetOption(
                     title = stringResource(mode.labelRes),
