@@ -33,11 +33,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.ChevronLeft
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Hub
@@ -58,7 +56,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -165,9 +162,8 @@ fun V5Colors.chip(tone: ChipTone): Pair<Color, Color> = when (tone) {
  * 参数保留兼容，v6 不再做呼吸/变色（"已连接"由连接钮色环与状态文字表达）。
  */
 @Composable
-fun Modifier.v5Aurora(breathing: Boolean = false, connected: Boolean = false): Modifier {
-    return this.background(V5ThemeColors.current.bg)
-}
+fun Modifier.v5Aurora(breathing: Boolean = false, connected: Boolean = false): Modifier =
+    background(V5ThemeColors.current.bg)
 
 /** 卡片投影：iOS 式极淡（亮色 едва 可见、暗色无投影，色值随主题单源）。 */
 @Composable
@@ -317,7 +313,7 @@ fun V5TopBar(
                 .padding(end = V5Spacing.dp16, top = V5Spacing.dp4, bottom = V5Spacing.dp4),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            V5TopIconButton(Icons.AutoMirrored.Outlined.ChevronLeft, onBack, contentDescription = stringResource(R.string.back))
+            V5TopIconButton(Icons.Outlined.ChevronLeft, onBack, contentDescription = stringResource(R.string.back))
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text(
                     title,
@@ -441,6 +437,7 @@ fun GradientIcon(tone: IconTone, icon: ImageVector, modifier: Modifier = Modifie
         Icon(icon, null, modifier = Modifier.size(size * 0.55f), tint = t.ink)
     }
 }
+
 /** iOS 数据卡（白底；标签 13sp 灰 + 数值大字）。 */
 @Composable
 fun MacaronTile(
@@ -545,7 +542,7 @@ fun V5Button(
     onClick: (() -> Unit)? = null,
 ) {
     val c = V5ThemeColors.current
-    val radius = if (hero) 16 else if (small) 10 else 12
+    val radius = if (hero) { 16 } else if (small) { 10 } else { 12 }
     val shape = RoundedCornerShape(radius)
     val height = if (hero) {
         54.dp
@@ -966,7 +963,7 @@ fun ProgressTrack(fraction: Float, modifier: Modifier = Modifier, brush: Brush? 
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(V5Radius.pill))
-                .background(brush ?: c.accent),
+                .then(if (brush != null) Modifier.background(brush) else Modifier.background(c.accent)),
         )
     }
 }
