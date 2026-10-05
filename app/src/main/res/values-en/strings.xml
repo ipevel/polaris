@@ -303,8 +303,8 @@
     <string name="page_nodes">Nodes</string>
     <string name="page_traffic">Traffic</string>
     <string name="page_me">Me</string>
-    <string name="v5_connected_rule">Connected · Rule
-    <string name="v5_connected_title">Connected</string></string>
+    <string name="v5_connected_rule">Connected · Rule</string>
+    <string name="v5_connected_title">Connected</string>
     <string name="v5_not_connected">Not connected</string>
     <string name="v5_protected">Protected</string>
     <string name="v5_unprotected">Unprotected</string>
