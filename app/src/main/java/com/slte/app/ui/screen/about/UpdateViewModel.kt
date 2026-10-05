@@ -3,28 +3,18 @@
 
 package com.slte.app.ui.screen.about
 
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.net.Uri
-import android.os.Environment
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.BuildConfig
-import com.slte.app.R
 import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.update.AppUpdateChecker
+import com.slte.app.data.update.AppUpdateDownloader
 import com.slte.app.data.update.ReleaseInfo
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.utils.Diagnostics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +55,7 @@ constructor(
     private val siteInfoStore: SiteInfoStore,
     private val diagnostics: Diagnostics,
     private val updateChecker: AppUpdateChecker,
+    private val downloader: AppUpdateDownloader,
 ) : ViewModel() {
     private val _siteInfo = MutableStateFlow<SiteInfo?>(null)
     val siteInfo: StateFlow<SiteInfo?> = _siteInfo.asStateFlow()
@@ -74,8 +65,6 @@ constructor(
 
     private val _updateState = MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
     val updateState: StateFlow<AppUpdateState> = _updateState.asStateFlow()
-
-    private var downloadReceiver: BroadcastReceiver? = null
 
     /** 导出诊断时附带的上下文；内核版本由本页负责查询，所以在基础字段上补一条。 */
     fun diagnosticsExtra(): Map<String, String> = diagnostics.extra() + mapOf("内核版本" to (_kernelVersion.value ?: "-"))
@@ -101,81 +90,12 @@ constructor(
 
     /**
      * 经 DownloadManager 下载 APK，完成后自动跳安装界面。
-     * 目标为 FileProvider 已覆盖的 app 专属下载目录，无需存储权限。
+     *
+     * 下载逻辑在 [AppUpdateDownloader]（应用单例）里，不跟关于页的 ViewModel 走，
+     * 离开关于页也不会丢下载完成的广播。
      */
     fun startDownload(info: ReleaseInfo) {
-        val dm = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val destDir = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
-        val destFile = File(destDir, info.apkFileName)
-        if (destFile.exists()) destFile.delete()
-
-        val request =
-            DownloadManager
-                .Request(Uri.parse(info.apkUrl))
-                .setTitle(appContext.getString(R.string.update_download_title, info.version))
-                .setDescription(info.apkFileName)
-                .setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationUri(Uri.fromFile(destFile))
-        val downloadId = dm.enqueue(request)
-
-        downloadReceiver?.let { appContext.unregisterReceiver(it) }
-        val receiver =
-            object : BroadcastReceiver() {
-                override fun onReceive(
-                    context: Context,
-                    intent: Intent,
-                ) {
-                    val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                    if (id != downloadId) return
-                    appContext.unregisterReceiver(this)
-                    downloadReceiver = null
-                    if (querySuccess(dm, downloadId)) installApk(destFile)
-                }
-            }
-        downloadReceiver = receiver
-        ContextCompat.registerReceiver(
-            appContext,
-            receiver,
-            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-    }
-
-    private fun querySuccess(
-        dm: DownloadManager,
-        downloadId: Long,
-    ): Boolean {
-        dm.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
-            if (cursor.moveToFirst()) {
-                val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                return status == DownloadManager.STATUS_SUCCESSFUL
-            }
-        }
-        return false
-    }
-
-    private fun installApk(file: File) {
-        val uri =
-            FileProvider.getUriForFile(
-                appContext,
-                "${appContext.packageName}.fileprovider",
-                file,
-            )
-        val intent =
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        appContext.startActivity(intent)
-    }
-
-    override fun onCleared() {
-        downloadReceiver?.let {
-            runCatching { appContext.unregisterReceiver(it) }
-            downloadReceiver = null
-        }
-        super.onCleared()
+        downloader.startDownload(info)
     }
 
     init {

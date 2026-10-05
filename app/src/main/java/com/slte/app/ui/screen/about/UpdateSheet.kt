@@ -47,7 +47,7 @@ internal fun UpdateSheet(
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    text = info.changelog,
+                    text = markdownToPlainText(info.changelog),
                     style = SlteType.bodySmall,
                     color = c.text2,
                 )
