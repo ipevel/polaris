@@ -37,6 +37,10 @@ constructor(
 ) {
     private var downloadReceiver: BroadcastReceiver? = null
 
+    /** 已下载待安装的 APK（用户未授予"安装未知应用"权限时暂存，授权后重试）。 */
+    @Volatile
+    private var pendingApk: File? = null
+
     /**
      * 经 DownloadManager 下载 APK，完成后自动跳安装界面。
      * 目标为 FileProvider 已覆盖的 app 专属下载目录，无需存储权限。
@@ -99,7 +103,40 @@ constructor(
         return false
     }
 
+    /**
+     * 有待安装包且已获"安装未知应用"权限时触发安装，返回是否触发。
+     * 供用户从系统设置回来后重试。
+     */
+    fun tryInstallPending(): Boolean {
+        val file = pendingApk ?: return false
+        if (!appContext.packageManager.canRequestPackageInstalls()) return false
+        pendingApk = null
+        fireInstallIntent(file)
+        return true
+    }
+
     private fun installApk(file: File) {
+        // Android 8+：光有 REQUEST_INSTALL_PACKAGES 还不够，用户必须在系统设置里
+        // 给本应用打开"允许安装未知应用"，否则 startActivity 直接失败。
+        // 之前这里没检查，是"下载完不弹安装"的另一个原因。
+        if (!appContext.packageManager.canRequestPackageInstalls()) {
+            AppLog.w("Polaris-Update", "未授予安装未知应用权限，暂存安装包并引导去设置")
+            pendingApk = file
+            val settingsIntent =
+                Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${appContext.packageName}"),
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            runCatching { appContext.startActivity(settingsIntent) }
+                .onFailure { AppLog.w("Polaris-Update", "打开安装权限设置失败: ${sanitizeLog(it.message ?: "Unknown")}") }
+            return
+        }
+        fireInstallIntent(file)
+    }
+
+    private fun fireInstallIntent(file: File) {
         val uri =
             FileProvider.getUriForFile(
                 appContext,
@@ -111,6 +148,7 @@ constructor(
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-        appContext.startActivity(intent)
+        runCatching { appContext.startActivity(intent) }
+            .onFailure { AppLog.w("Polaris-Update", "跳转安装失败: ${sanitizeLog(it.message ?: "Unknown")}") }
     }
 }

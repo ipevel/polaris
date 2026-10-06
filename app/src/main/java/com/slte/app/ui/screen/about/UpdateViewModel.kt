@@ -96,6 +96,14 @@ constructor(
         downloader.startDownload(info)
     }
 
+    /**
+     * 用户从"安装未知应用"设置页回来后重试安装。
+     * 由关于页的 onResume 触发。
+     */
+    fun retryPendingInstall() {
+        downloader.tryInstallPending()
+    }
+
     init {
         viewModelScope.launch {
             repeat(10) {
