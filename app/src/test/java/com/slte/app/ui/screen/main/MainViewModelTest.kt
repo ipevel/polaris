@@ -5,6 +5,7 @@ package com.slte.app.ui.screen.main
 
 import com.slte.app.R
 import com.slte.app.data.local.InMemoryPreferences
+import com.slte.app.data.local.SessionStore
 import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
@@ -52,6 +53,7 @@ class MainViewModelTest {
      */
     private val subscribeInfoFlow = MutableStateFlow<SubscribeInfo?>(null)
     private val siteInfoStore = SiteInfoStore(InMemoryPreferences())
+    private val sessionStore = SessionStore(InMemoryPreferences())
     private val deviceEnvironment = mockk<DeviceEnvironmentSource>(relaxed = true)
     private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
 
@@ -78,7 +80,7 @@ class MainViewModelTest {
         every { deviceEnvironment.lanIpv4() } returns null
         every { subscribeRepository.subscribeInfo } returns subscribeInfoFlow
         stubNoRoutingDegraded()
-        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, subscribeRepository, siteInfoStore, deviceEnvironment, routingStateStore)
+        return MainViewModel(mainRule.dispatcher, kernelManager, kernelProxy, kernelConfig, fallbackDns, subscriptionUpdater, dataWriter, authRepository, subscribeRepository, siteInfoStore, sessionStore, deviceEnvironment, routingStateStore)
     }
 
     /**
@@ -201,6 +203,7 @@ class MainViewModelTest {
                 authRepository,
                 subscribeRepository,
                 siteInfoStore,
+                sessionStore,
                 deviceEnvironment,
                 routingStateStore,
             )
@@ -242,6 +245,7 @@ class MainViewModelTest {
                 authRepository,
                 subscribeRepository,
                 siteInfoStore,
+                sessionStore,
                 deviceEnvironment,
                 routingStateStore,
             )

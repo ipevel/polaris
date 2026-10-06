@@ -137,6 +137,23 @@ constructor(
         }
     }
 
+    /**
+     * 连接计时起点（`SystemClock.elapsedRealtime()`，开机相对时间，进程死了也不变）。
+     *
+     * 用途：VPN 跑在独立 :background 进程，UI 进程被系统回收后重进，内存里的
+     * `connectedSinceElapsedMs` 丢失。用持久化的值恢复，才能继续累计运行时长
+     * 而不是清零。断开时必须清除，否则下次会复活旧时间戳。
+     */
+    fun saveConnectedSince(elapsedRealtimeMs: Long) {
+        prefs.edit { putLong(KEY_CONNECTED_SINCE, elapsedRealtimeMs) }
+    }
+
+    fun getConnectedSince(): Long = prefs.getLong(KEY_CONNECTED_SINCE, 0L)
+
+    fun clearConnectedSince() {
+        prefs.edit { remove(KEY_CONNECTED_SINCE) }
+    }
+
     fun clearDataCache() {
         prefs.edit {
             remove(KEY_SUBSCRIBE_URL)
@@ -165,5 +182,6 @@ constructor(
         private const val KEY_SERVER_NODES_FETCHED_AT = "server_nodes_fetched_at"
         private const val KEY_SPEED_RESULTS = "speed_results"
         private const val KEY_TRAFFIC_LOG = "traffic_log"
+        private const val KEY_CONNECTED_SINCE = "connected_since_elapsed"
     }
 }

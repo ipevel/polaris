@@ -8,6 +8,7 @@ import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.slte.app.R
+import com.slte.app.data.local.SessionStore
 import com.slte.app.data.local.SiteInfoStore
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.repository.AuthRepository
@@ -57,6 +58,7 @@ constructor(
     private val authRepository: AuthRepository,
     private val subscribeRepository: SubscribeRepository,
     private val siteInfoStore: SiteInfoStore,
+    private val sessionStore: SessionStore,
     private val deviceEnvironment: DeviceEnvironmentSource,
     private val routingStateStore: com.slte.app.kernel.RoutingStateStore,
 ) : ViewModel() {
@@ -194,6 +196,7 @@ constructor(
                 if (!connected) {
                     tunnelWatchJob?.cancel()
                     speedWatchJob?.cancel()
+                    sessionStore.clearConnectedSince()
                     _data.update {
                         it.copy(
                             isConnected = false,
@@ -247,9 +250,11 @@ constructor(
                         }
 
                         // 进程重启后从内核恢复的连接：connectedSinceElapsedMs 随旧进程丢失，
-                        // 用恢复时刻补上，避免按钮显示"已连接"但会话显示"未运行"的脱节。
+                        // 用持久化的值恢复以继续累计（elapsedRealtime 开机相对，进程死了也不变）；
+                        // 取不到才用当前时刻，避免按钮显示"已连接"但会话显示"未运行"的脱节。
                         val restoredSince =
                             _data.value.connectedSinceElapsedMs.takeIf { v -> v > 0L }
+                                ?: sessionStore.getConnectedSince().takeIf { v -> v > 0L }
                                 ?: SystemClock.elapsedRealtime()
                         _data.update {
                             it.copy(
@@ -357,11 +362,13 @@ constructor(
         } else {
             // 计时起点取点开开关的时刻（而非隧道就绪时刻）：
             // 用户一开代理就开始算运行时长，直到关闭清零
+            val since = SystemClock.elapsedRealtime()
+            sessionStore.saveConnectedSince(since)
             _data.update {
                 it.copy(
                     isConnecting = true,
                     errorMessageRes = null,
-                    connectedSinceElapsedMs = SystemClock.elapsedRealtime(),
+                    connectedSinceElapsedMs = since,
                 )
             }
             viewModelScope.launch {
