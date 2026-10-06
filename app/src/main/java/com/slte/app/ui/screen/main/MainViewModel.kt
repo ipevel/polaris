@@ -136,6 +136,19 @@ constructor(
         }
     }
 
+    /**
+     * 指数滑动平均（不对称）：上升平滑毛刺，下降快速回落。
+     * 首次采样直接采用，避免从 0 缓慢爬升。
+     */
+    private fun ema(
+        prev: Double,
+        new: Double,
+    ): Double {
+        if (prev == 0.0) return new
+        val alpha = if (new < prev) 0.6 else 0.35
+        return alpha * new + (1 - alpha) * prev
+    }
+
     private fun startSpeedWatch() {
         speedWatchJob?.cancel()
         speedWatchJob =
@@ -145,6 +158,8 @@ constructor(
                 var baseline: Pair<Long, Long>? = null
                 val history = ArrayDeque<Pair<Long, Long>>()
                 var tick = 0
+                var smoothUp = 0.0
+                var smoothDown = 0.0
                 while (isActive) {
                     val total = withContext(ioDispatcher) { kernelProxy.trafficTotal() }
                     // 网速取内核 ticker 维护的秒级 blip，而非本端差分：
@@ -155,10 +170,16 @@ constructor(
                         val base = baseline ?: total.also { baseline = it }
                         history.addLast(now.first to now.second)
                         while (history.size > SPEED_HISTORY_MAX_POINTS) history.removeFirst()
+                        // 指数滑动平均：原始秒级采样抖动大，直接显示会"跳得眼花"。
+                        // 上升用小权重平滑毛刺，下降用大权重快速回落，避免停流后数字半天不归零。
+                        val up = now.first.toDouble()
+                        val down = now.second.toDouble()
+                        smoothUp = ema(smoothUp, up)
+                        smoothDown = ema(smoothDown, down)
                         _data.update {
                             it.copy(
-                                uploadSpeedBps = now.first,
-                                downloadSpeedBps = now.second,
+                                uploadSpeedBps = smoothUp.toLong(),
+                                downloadSpeedBps = smoothDown.toLong(),
                                 speedHistory = history.toList(),
                                 sessionUploadBytes = (total.first - base.first).coerceAtLeast(0L),
                                 sessionDownloadBytes = (total.second - base.second).coerceAtLeast(0L),
