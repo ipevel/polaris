@@ -7,6 +7,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
@@ -428,7 +429,14 @@ internal fun V5HomeScreen(
 
     if (showBatterySheet) {
         V5Sheet(
-            onDismiss = { showBatterySheet = false },
+            // 点遮罩 / 下滑关闭也必须把"连接"这件事做完，并且标记已处理，
+            // 否则用户点了「连接」却被这个提示页吞掉动作，界面回到「未连接」且毫无提示，
+            // 下次点「连接」还会再弹一次 —— 正是上面注释警告的「连不上也关不掉」同型回归。
+            onDismiss = {
+                showBatterySheet = false
+                batteryPrefs.edit().putBoolean("battery_sheet_dismissed", true).apply()
+                proceedConnect()
+            },
             title = stringResource(R.string.battery_opt_title),
             subtitle = stringResource(R.string.battery_opt_message),
         ) {
@@ -440,7 +448,10 @@ internal fun V5HomeScreen(
                     showBatterySheet = false
                     batteryPrefs.edit().putBoolean("battery_sheet_dismissed", true).apply()
                     context.startActivity(
-                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            // 必须写 this.data：本 composable 有个同名形参 `data`，
+                            // 裸写 `data = ...` 会解析到形参上而不是 Intent 的属性。
+                            this.data = Uri.parse("package:${context.packageName}")
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         },
                     )

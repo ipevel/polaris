@@ -8,6 +8,10 @@
     <!-- 应用内更新：DownloadManager 下载 GitHub Releases 的 APK 后经 FileProvider 跳转安装，
          需要 REQUEST_INSTALL_PACKAGES（自发布走 GitHub，不上架 Play，无合规问题）。 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 电池优化白名单：国产 ROM 会在后台杀掉 :background 进程导致代理隧道静默中断。
+         ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 需要此权限才能弹出系统白名单对话框；
+         本应用是自发布（GitHub Releases）不上架 Play，无 Play 政策豁免问题。 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".SlteApplication"

@@ -27,6 +27,7 @@ import com.slte.app.data.repository.InviteRepository
 import com.slte.app.data.repository.OrderRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.data.repository.TicketRepository
+import com.slte.app.data.update.AppUpdateDownloader
 import com.slte.app.domain.model.CommissionRecord
 import com.slte.app.domain.model.InviteCodeInfo
 import com.slte.app.domain.model.InviteInfo
@@ -593,6 +594,8 @@ class PageSweepLegacyScreenshotTest {
         every { vm.kernelVersion } returns MutableStateFlow(kernelVersion)
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
         every { vm.updateState } returns MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
+        // 同上：新增的 downloadResult 不喂会在 `LaunchedEffect(downloadResult)` 取值处抛 CCE。
+        every { vm.downloadResult } returns MutableStateFlow<AppUpdateDownloader.DownloadResult?>(null)
         return vm
     }
 

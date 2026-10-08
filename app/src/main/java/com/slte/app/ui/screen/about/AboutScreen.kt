@@ -23,6 +23,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slte.app.BuildConfig
 import com.slte.app.R
+import com.slte.app.data.update.AppUpdateDownloader
 import com.slte.app.ui.component.ToastTip
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
@@ -49,6 +50,7 @@ fun AboutScreen(
     val kernelVersion by viewModel.kernelVersion.collectAsStateWithLifecycle()
     val siteInfo by viewModel.siteInfo.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val downloadResult by viewModel.downloadResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val c = V5ThemeColors.current
 
@@ -80,6 +82,20 @@ fun AboutScreen(
             }
             else -> Unit
         }
+    }
+
+    // 下载终态：失败必须让用户看见原因，缺权限要提示怎么继续；
+    // Installed 不提示，因为系统安装界面已经抢在前面出现了。
+    LaunchedEffect(downloadResult) {
+        when (val r = downloadResult) {
+            is AppUpdateDownloader.DownloadResult.Failed ->
+                toastMessage = context.getString(R.string.update_download_failed, r.reason)
+            is AppUpdateDownloader.DownloadResult.NeedsPermission ->
+                toastMessage = context.getString(R.string.update_install_permission_needed)
+            is AppUpdateDownloader.DownloadResult.Installed -> Unit
+            null -> Unit
+        }
+        if (downloadResult != null) viewModel.consumeDownloadResult()
     }
 
     ToastTip(message = toastMessage, onDismiss = { toastMessage = null })

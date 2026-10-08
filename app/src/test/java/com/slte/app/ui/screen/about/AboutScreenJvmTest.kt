@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import com.slte.app.BuildConfig
+import com.slte.app.data.update.AppUpdateDownloader
 import com.slte.app.domain.model.SiteInfo
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.theme.SlteTheme
@@ -42,6 +43,10 @@ class AboutScreenJvmTest {
         every { vm.kernelVersion } returns MutableStateFlow(kernelVersion)
         every { vm.siteInfo } returns MutableStateFlow<SiteInfo?>(siteInfo)
         every { vm.updateState } returns MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
+        // 关于页会消费下载终态（`LaunchedEffect(downloadResult)`）：relaxed mock 的
+        // `StateFlow.value` 在 Robolectric 沙箱类加载器下不是 `DownloadResult`，
+        // 取值处插入的 CHECKCAST 会抛 ClassCastException，必须显式喂一个空流。
+        every { vm.downloadResult } returns MutableStateFlow<AppUpdateDownloader.DownloadResult?>(null)
         return vm
     }
 

@@ -251,6 +251,12 @@
     <string name="update_check_failed">检查失败，请稍后重试</string>
     <string name="update_downloading">正在后台下载更新…</string>
     <string name="update_download_title">正在下载 %1$s</string>
+    <string name="update_download_failed">更新失败：%1$s</string>
+    <string name="update_install_permission_needed">请在系统设置中允许「安装未知应用」，返回后继续安装</string>
+    <string name="update_download_dir_unavailable">无法访问外部下载目录</string>
+    <string name="update_download_incomplete">下载未成功，请重试</string>
+    <string name="update_download_file_missing">下载文件不存在</string>
+    <string name="update_download_checksum_failed">安装包校验失败，已删除</string>
     <string name="about_log_share_failed">无法分享日志</string>
 
     <!-- Update (检查更新) -->
