@@ -209,7 +209,7 @@ internal fun ServerPageContent(
         serverViewModel.loadNodes()
         // 策略组（含分流规则组的出口）来自运行中的内核，进入节点页即拉一次
         serverViewModel.loadProxyGroups()
-        // 每次进入节点页全部收起（主组 + 分流组）：切 Tab 再回来不保留展开态
+        // 每次进入节点页把分流组与主组卡全部收起：切 Tab 再回来不保留展开态
         serverViewModel.collapseAllSections()
     }
     val data by serverViewModel.data.collectAsStateWithLifecycle()

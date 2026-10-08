@@ -357,39 +357,75 @@ constructor(
         .filterNot { it in com.slte.app.kernel.RoutingReservedNames }
 
     /**
-     * 进入节点页时调用：全部收起（主组 + 所有分流组）。
+     * "进入节点页即全部收起"是否还没落地。
+     *
+     * 分流组列表来自内核、是**异步**拉取的：[loadProxyGroups] 只负责点火
+     * （`viewModelScope.launch`），调用返回时 `_proxyGroups` 往往还是空的。
+     * 此时直接设折叠集合会得到**空集 = 什么都没收起**——真机取证：首次与再次进入
+     * 节点页，US / HK / MO / TW 全部分流组都处于展开态。
+     *
+     * 所以 [collapseAllSections] 只置这个标记，由 [applyCollapseIfPossible] 在
+     * 分组列表就绪后真正落集合（见 [refreshPrimarySectionState]）。
+     */
+    private var collapseOnNextGroupLoad = false
+
+    /**
+     * 进入节点页时调用：全部收起（**分流组 + 主组卡**）。
+     *
+     * 主组卡（[com.slte.app.kernel.PRIMARY_SECTION_KEY]）也收：它是节点页的默认折叠项，
+     * 与 v1.6.1 首次进入的表现一致。它仍**不参与** [toggleSection] 的单开手风琴
+     * （手风琴只作用于分流组），这里只是"进页时一起收"。
      *
      * offline 兜底名单由界面层强制展开，不受此影响。新出现的分组由
      * [syncCollapsedSections] 的首见即收起覆盖，不会有漏网。
+     *
+     * 必须 [persistSections]：否则这次状态只活在内存里，App 重启/杀进程后回滚到
+     * 上次落盘的集合（缺陷 P1-9）。
      */
     fun collapseAllSections() {
+        collapseOnNextGroupLoad = true
+        applyCollapseIfPossible()
+    }
+
+    /**
+     * 分组列表已就绪时，把待落的"全部收起"真正写进折叠集合并落盘。
+     *
+     * 列表还没到（内核未返回 / 正在重载）时直接返回，等 [refreshPrimarySectionState]
+     * 再触发一次——不做"先设空集"那种看似成功实则空转的写法。
+     *
+     * **增量写入**而不是 `names.toSet()` 整体替换：替换会把 [com.slte.app.kernel.PRIMARY_SECTION_KEY]
+     * （主组卡）一起抹掉——它既不在 [routingGroupNames] 的保留组过滤结果里，也不等于任何真实组名——
+     * 于是每次进节点页主组卡都被强行展开（真机取证：collapsed 集合从 8 项掉到 7 项，
+     * 主组卡同步弹开）。这也违反 [syncCollapsedSections] "不裁剪已存在键"的约定。
+     */
+    private fun applyCollapseIfPossible() {
+        val names = routingGroupNames()
+        if (names.isEmpty()) return
+        collapseOnNextGroupLoad = false
         _collapsedSections.value =
-            buildSet {
-                add(com.slte.app.kernel.PRIMARY_SECTION_KEY)
-                addAll(routingGroupNames())
-            }
+            _collapsedSections.value + names + com.slte.app.kernel.PRIMARY_SECTION_KEY
+        persistSections()
     }
 
     /**
      * 切换某个区块的展开/收起。集合内 = 收起。
      *
-     * 全组**单开手风琴**（含主组卡）：每条分流组都 include-all 了全部节点，
-     * 而节点页滚动体是非懒加载的 `Column+verticalScroll`，同时展开多组会组合出
-     * 「组数 × 节点数」行（默认 10 组 × N 节点，全开 27 组）；所以展开任一组时
-     * 把其余所有组收起。收起当前展开组时只收自己，不影响其他。
+     * [com.slte.app.kernel.PRIMARY_SECTION_KEY]（主组卡）与内核保留组
+     * （自动选择/故障转移/漏网之鱼）走普通开关；其余分流组走**单开手风琴**：
+     * 每条分流组都 include-all 了全部节点，而节点页滚动体是非懒加载的
+     * `Column+verticalScroll`，同时展开多组会组合出「组数 × 节点数」行
+     * （默认 10 组 × N 节点，全开 27 组）；所以展开一个分流组时把其余分流组收起。
+     * 主组卡不受手风琴影响（它本是页面主任务）——v1.7.0 曾把手风琴扩大到全组
+     * （含主组卡），点开一条分流组会把主组卡一起收走，属回归，已按 v1.6.1 恢复。
      */
     fun toggleSection(name: String) {
-        val allKeys = buildSet {
-            add(com.slte.app.kernel.PRIMARY_SECTION_KEY)
-            addAll(routingGroupNames())
-        }
+        val routingNames = routingGroupNames()
         _collapsedSections.value =
-            if (name in _collapsedSections.value) {
-                // 当前收起 -> 展开它，同时收起其他所有
-                allKeys - name
+            if (name in routingNames) {
+                val collapsed = com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
+                if (name in collapsed) collapsed else collapsed + (routingNames - name)
             } else {
-                // 当前展开 -> 只收起它
-                _collapsedSections.value + name
+                com.slte.app.kernel.toggleCollapsed(_collapsedSections.value, name)
             }
         persistSections()
     }
@@ -431,6 +467,8 @@ constructor(
     private suspend fun refreshPrimarySectionState(next: List<KernelProxyGroupInfo>) {
         syncCollapsedSections(next.map { it.name })
         _proxyGroups.value = withCachedDelays(next)
+        // 进入节点页时若分组还没到，collapseAllSections 只置了标记；这里列表就绪，补应用一次
+        if (collapseOnNextGroupLoad) applyCollapseIfPossible()
     }
 
     /**

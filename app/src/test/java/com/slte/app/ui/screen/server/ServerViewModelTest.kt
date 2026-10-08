@@ -360,6 +360,78 @@ class ServerViewModelTest {
         assertTrue("主组卡不受手风琴影响", PRIMARY_SECTION_KEY in collapsed)
     }
 
+    /**
+     * P1-9 回归：分组快照**还没到**就请求「全部收起」。
+     *
+     * 现场：进入节点页先调 `collapseAllSections()`，而分组是异步拉的（`loadProxyGroups()`
+     * 只点火）。旧实现此刻拿到的是空组名列表，折叠集合被写成空集 = 一条分流组都没收起
+     * ——真机取证：首次与再次进入节点页，US / HK / MO / TW 全部分流组都是展开态。
+     * 现在只置标记，由 `refreshPrimarySectionState` 在分组就绪后补应用一次。
+     */
+    @Test
+    fun `分组未到达就请求全部收起，分组到达后补应用`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+        stubGroupNames(listOf(PrimaryGroupName, GROUP_NAME))
+        vm.loadProxyGroups()
+        advanceUntilIdle()
+
+        // 用户展开分流组；此后这些键都已"见过"，默认收起不会再替它们兜底
+        vm.toggleSection(GROUP_NAME)
+        assertTrue("前置条件：用户已展开分流组", GROUP_NAME !in vm.collapsedSections.value)
+
+        // 内核重载中：快照为空时进入节点页
+        stubGroupNames(emptyList())
+        vm.loadProxyGroups()
+        advanceUntilIdle()
+        vm.collapseAllSections()
+
+        assertTrue(
+            "分组未到时不得把折叠集合清成空集",
+            GROUP_NAME !in vm.collapsedSections.value,
+        )
+
+        // 分组到达
+        stubGroupNames(listOf(PrimaryGroupName, GROUP_NAME))
+        vm.loadProxyGroups()
+        advanceUntilIdle()
+
+        assertTrue(
+            "分组到达后应补应用「全部收起」（P1-9：进入节点页后分流组仍停在展开态）",
+            GROUP_NAME in vm.collapsedSections.value,
+        )
+    }
+
+    /**
+     * 进页"全部收起"不能把主组卡的折叠键抹掉。
+     *
+     * 回归：`applyCollapseIfPossible` 曾用 `names.toSet()` 整体替换折叠集合，而
+     * [PRIMARY_SECTION_KEY] 既不在 [com.slte.app.kernel.RoutingReservedNames] 里、也不等于任何
+     * 真实组名，于是每次进节点页主组卡都被强行展开（真机取证：collapsed 集合从 8 项掉到 7 项）。
+     */
+    @Test
+    fun `进页全部收起不能抹掉主组卡的折叠键`() = runTest(mainRule.dispatcher) {
+        val vm = viewModel()
+
+        vm.loadProxyGroups()
+        vm.collapseAllSections()
+
+        // 分组未到达（内核未就绪，任何组都查不到）
+        stubGroupNames(emptyList())
+        vm.loadProxyGroups()
+        advanceUntilIdle()
+        assertTrue("分组未到达时不应落任何折叠键", vm.collapsedSections.value.isEmpty())
+
+        // 分组到达后：分流组与主组卡都要收起
+        stubGroupNames(listOf("🛑 广告拦截"))
+        vm.loadProxyGroups()
+        advanceUntilIdle()
+        assertEquals(
+            "主组卡折叠键不能被 applyCollapseIfPossible 抹掉",
+            setOf("🛑 广告拦截", PRIMARY_SECTION_KEY),
+            vm.collapsedSections.value,
+        )
+    }
+
     /** 折叠键必须与任何真实组名都不可能相等，否则两张卡会共用键互相踩。 */
     @Test
     fun `主组折叠键不与任何真实组名冲突`() {
@@ -406,6 +478,11 @@ class ServerViewModelTest {
                 Proxy(name = name, title = name, subtitle = "", type = "vmess", delay = delay, isGroup = false)
             }
         every { clash.queryProxyGroupNames(any()) } returns names
+        // 未命中的组名必须返回内核的哨兵：`Clash.queryGroup` 查不到组时返回
+        // `ProxyGroup("Unknown", [], "")` 而不是 null（kernel-core/.../core/Clash.kt）。
+        // relaxed 桩会凭空造出一个组，把「内核没有组」的现场掩盖掉。
+        every { clash.queryProxyGroup(any(), any()) } returns
+            ProxyGroup(type = "Unknown", proxies = emptyList(), now = "")
         names.forEach { groupName ->
             every { clash.queryProxyGroup(groupName, any()) } returns
                 ProxyGroup(type = "Selector", proxies = proxies, now = proxies.firstOrNull()?.name.orEmpty())
