@@ -16,7 +16,6 @@ package com.slte.app.ui.screen.about
 internal fun markdownToPlainText(markdown: String): String {
     val out = StringBuilder()
     var inCodeBlock = false
-    var inTable = false
 
     for (rawLine in markdown.lines()) {
         val line = rawLine.trimEnd()
@@ -31,7 +30,6 @@ internal fun markdownToPlainText(markdown: String): String {
         }
         val t = line.trim()
         if (t.isEmpty()) {
-            inTable = false
             out.appendLine()
             continue
         }
@@ -40,7 +38,6 @@ internal fun markdownToPlainText(markdown: String): String {
             val cells = t.split("|").map { it.trim() }.filter { it.isNotEmpty() }
             // 分隔行 | --- | 跳过
             if (cells.all { it.all { ch -> ch == '-' || ch == ':' } }) continue
-            inTable = true
             out.appendLine(
                 if (cells.size >= 2) {
                     cells[0].cleanInline() + "：" + cells.drop(1).joinToString(" / ") { it.cleanInline() }
@@ -50,7 +47,6 @@ internal fun markdownToPlainText(markdown: String): String {
             )
             continue
         }
-        inTable = false
         // 标题
         val header = Regex("^#{1,6}\\s+").replace(t, "")
         // 引用
@@ -71,7 +67,9 @@ private fun String.cleanInline(): String {
     var s = this
     s = Regex("\\[([^\\]]+)]\\([^)]+\\)").replace(s, "$1")
     s = Regex("`([^`]+)`").replace(s, "$1")
-    s = Regex("(\\*\\*|__)(.+?)\\1").replace(s, "$2")
-    s = Regex("(\\*|_)(.+?)\\1").replace(s, "$2")
+    // 加粗只认 `**`、斜体只认 `*`：`_` 不再当强调标记，否则 release note 里的 snake_case
+    // 标识符（`connect_since_elapsed` 这类文件路径/键名/常量名）会被当成 `_强调_` 吞掉下划线。
+    s = Regex("(\\*\\*)(.+?)\\*\\*").replace(s, "$2")
+    s = Regex("\\*(.+?)\\*").replace(s, "$1")
     return s.trim()
 }

@@ -374,7 +374,9 @@ internal fun V5HomeScreen(
     }
 
     V5PageScaffold(tab = NavTab.HOME, onNavSelect = onNavSelect) {
-        V5TopBar(stringResource(NavTab.HOME.labelRes))
+        // 顶栏显示面板站点名（DashboardData.siteName，清洗与截断由 siteDisplayName 负责），
+        // 底部 tab 才有"首页"字样；v1.6.1 就是这个契约，v1.7.x 一度被写死成"首页"。
+        V5TopBar(siteDisplayName(data.siteName, stringResource(R.string.app_name)))
         V5ScrollBody(NavTab.HOME) {
             // —— 连接舞台：白底色环大圆钮 + 状态 + 节点行（v6 不再套卡片、不再有氛围底）。
             Column(

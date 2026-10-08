@@ -118,7 +118,11 @@ fun PlansScreen(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 24.dp),
                     ) {
                         val plans = data.plans.distinctBy { it.id }
-                        val currentPlan = profileData.subscribeInfo
+                        // 未购套餐时后端仍返回**非 null 的空 DTO**（`XboardAuthApi` / `XiaoV2bAuthApi`
+                        // 兜底都是 `return SubscribeInfoDto()`），所以这里必须按 `hasPlan` 把空壳挡掉：
+                        // 只判 null 会让未购买的用户看到「当前套餐 / 使用中 / 剩余 0B / 进度条 0」的自相矛盾卡片，
+                        // 与首页 `!data.hasPlan` →「请先购买套餐」直接打脸。
+                        val currentPlan = profileData.subscribeInfo?.takeIf { it.hasPlan }
                         if (currentPlan != null) {
                             item(key = "current_plan") {
                                 CurrentPlanCard(
