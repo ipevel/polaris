@@ -41,6 +41,17 @@ suspend fun KernelProxy.speedTest(): Map<String, Int> = safe(emptyMap(), "speedT
         if (waitForGroups() == null) return@safe emptyMap()
     }
 
+    // 直连模式（或配置本身没有策略组）下没有可测的对象：structuralSpeedTest 会返回
+    // null，awaitSpeedSettle 又会把「空结果」当成 WAIT 空转满 60 次轮询（30s）。
+    // 这里提前返回，避免订阅刷新后的后台测速白跑。
+    val groupNames =
+        runCatching { clash.queryProxyGroupNames(excludeNotSelectable = false) }
+            .getOrDefault(emptyList())
+    if (groupNames.isEmpty()) {
+        AppLog.d("Polaris-Kernel", "speedTest: 无策略组，跳过")
+        return@safe emptyMap()
+    }
+
     // 本地分流模式只探测结构组（自动选择/故障转移）；面板组结构走 healthCheckAll
     // 覆盖全部 provider。两条路径的 healthCheck 都是 fire-and-forget——返回只代表
     // 任务已下发，延迟历史可能一条都还没写回，因此都必须经 awaitSpeedSettle 等到
@@ -70,6 +81,16 @@ suspend fun KernelProxy.speedTestProgressive(
         config.ensureProfile()
         clash.loadActiveProfile()
         if (waitForGroups() == null) return@safe emptyMap()
+    }
+
+    // 同 speedTest：无策略组（直连模式）时直接返回，否则 awaitSpeedSettle 空转 30s，
+    // 节点页还会据此弹出「测速失败」提示。
+    val groupNames =
+        runCatching { clash.queryProxyGroupNames(excludeNotSelectable = false) }
+            .getOrDefault(emptyList())
+    if (groupNames.isEmpty()) {
+        AppLog.d("Polaris-Kernel", "speedTestProgressive: 无策略组，跳过")
+        return@safe emptyMap()
     }
 
     // 同 speedTest：本地分流分支不得短路，否则渐进测速同样读到空历史

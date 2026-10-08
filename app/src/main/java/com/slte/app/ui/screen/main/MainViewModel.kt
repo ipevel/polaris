@@ -287,7 +287,11 @@ constructor(
                         fallbackDns.clearCache()
                         if (!autoTested) {
                             autoTested = true
-                            kernelProxy.runAutoSpeedTest()
+                            // 直连模式没有策略组可测（内核在 Direct 下 QueryProxyGroupNames
+                            // 恒返回空），跑自动测速只会空转重试 ~27s，直接跳过。
+                            if (kernelProxy.proxyMode() != Constants.PROXY_MODE_DIRECT) {
+                                kernelProxy.runAutoSpeedTest()
+                            }
                         }
                         refreshKernelInfo()
                         sampleDeviceEnvironment()

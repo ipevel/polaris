@@ -3,6 +3,9 @@
 
 package com.slte.app.kernel
 
+import com.github.kr328.clash.core.model.ProxySort
+import com.github.kr328.clash.core.model.TunnelState
+import com.github.kr328.clash.service.remote.IClashManager
 import com.slte.app.utils.AppLog
 import kotlinx.coroutines.delay
 
@@ -26,17 +29,27 @@ suspend fun KernelProxy.awaitTunnelReady(timeoutMs: Long = TUNNEL_READY_TIMEOUT_
             val state = runCatching { clash.queryTunnelState() }.getOrNull()
             if (state != null) {
                 lastMode = state.mode.name
-                val groups =
-                    runCatching {
-                        clash.queryProxyGroupNames(excludeNotSelectable = false)
-                    }.getOrNull()
-                if (!groups.isNullOrEmpty()) return true
+                if (isProfileLoaded(clash, state.mode)) return true
             }
         }
         delay(TUNNEL_READY_POLL_MS)
     }
     AppLog.w("Polaris-Kernel", "awaitTunnelReady 超时 ${timeoutMs}ms，最后 TunnelState.mode=$lastMode")
     return false
+}
+
+/**
+ * 配置是否已装载（策略组可读）。
+ *
+ * 直连模式下内核 `QueryProxyGroupNames` 恒返回空 —— `native/tunnel/proxies.go`
+ * 的 `if mode == tunnel.Direct { return []string{} }`。再拿「策略组非空」当
+ * 就绪判据就永远等不到，界面会一直卡在「连接中」直到看门狗超时。直连没有
+ * 策略组可读，改用「GLOBAL 组可读」作为「配置已装载」的等价判据。
+ */
+private fun isProfileLoaded(clash: IClashManager, mode: TunnelState.Mode): Boolean = if (mode == TunnelState.Mode.Direct) {
+    runCatching { clash.queryProxyGroup("GLOBAL", ProxySort.Default) }.getOrNull() != null
+} else {
+    !runCatching { clash.queryProxyGroupNames(excludeNotSelectable = false) }.getOrNull().isNullOrEmpty()
 }
 
 private const val TUNNEL_READY_TIMEOUT_MS = 12_000L
