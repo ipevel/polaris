@@ -92,6 +92,10 @@ fun AboutScreen(
                 toastMessage = context.getString(R.string.update_download_failed, r.reason)
             is AppUpdateDownloader.DownloadResult.NeedsPermission ->
                 toastMessage = context.getString(R.string.update_install_permission_needed)
+            is AppUpdateDownloader.DownloadResult.Started ->
+                toastMessage = context.getString(R.string.update_downloading)
+            is AppUpdateDownloader.DownloadResult.AlreadyDownloading ->
+                toastMessage = context.getString(R.string.update_download_in_progress)
             is AppUpdateDownloader.DownloadResult.Installed -> Unit
             null -> Unit
         }
@@ -105,8 +109,9 @@ fun AboutScreen(
             info = available.info,
             onDismiss = { viewModel.dismissUpdate() },
             onUpdate = {
+                // 提示交给下载器回报的 Started / AlreadyDownloading，避免这里先弹一次
+                // "正在后台下载更新…"、下载器再弹一次，两条 toast 排队叠在一起。
                 viewModel.startDownload(available.info)
-                toastMessage = context.getString(R.string.update_downloading)
                 viewModel.dismissUpdate()
             },
         )

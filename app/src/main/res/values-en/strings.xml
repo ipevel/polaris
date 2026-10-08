@@ -254,6 +254,7 @@
     <string name="update_up_to_date">Already up to date</string>
     <string name="update_check_failed">Check failed, please try again later</string>
     <string name="update_downloading">Downloading update in background…</string>
+    <string name="update_download_in_progress">The update is already downloading, please wait</string>
     <string name="update_download_title">Downloading %1$s</string>
     <string name="update_download_failed">Update failed: %1$s</string>
     <string name="update_install_permission_needed">Allow \"install unknown apps\" in system settings, then come back to continue</string>

@@ -250,6 +250,7 @@
     <string name="update_up_to_date">已是最新版本</string>
     <string name="update_check_failed">檢查失敗，請稍後重試</string>
     <string name="update_downloading">正在後台下載更新…</string>
+    <string name="update_download_in_progress">更新包正在下載中，請稍候</string>
     <string name="update_download_title">正在下載 %1$s</string>
     <string name="update_download_failed">更新失敗：%1$s</string>
     <string name="update_install_permission_needed">請在系統設定中允許「安裝未知應用」，返回後繼續安裝</string>

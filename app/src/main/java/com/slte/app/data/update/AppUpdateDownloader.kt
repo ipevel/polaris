@@ -79,17 +79,25 @@ constructor(
      * 目标为 FileProvider 已覆盖的 app 专属下载目录，无需存储权限。
      */
     fun startDownload(info: ReleaseInfo) {
+        val dm = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        // 已有下载在跑：只提示、不重下。此前这里一律"取消旧的再入队新的"，于是每点一次
+        // "立即更新"就从头重下一遍（系统通知里的进度也从 0 重来），用户看到的就是
+        // "点一次下载一次"。正在下载时保持原下载不动，交给调用方提示"下载中"。
+        activeDownloadId?.let { oldId ->
+            if (queryStatus(dm, oldId) == DownloadStatus.RUNNING) {
+                AppLog.i("Polaris-Update", "已有下载在进行中，忽略重复请求: id=$oldId")
+                report(DownloadResult.AlreadyDownloading)
+                return
+            }
+            // 旧下载已到终态（完成广播可能已丢），清掉它的接收器与记录再开新的。
+            receivers.remove(oldId)?.let { unregisterQuietly(it) }
+            activeDownloadId = null
+            runCatching { dm.remove(oldId) }
+                .onFailure { AppLog.w("Polaris-Update", "清理已结束的下载失败: id=$oldId") }
+        }
         // 新一轮下载让上一轮暂存的待安装包作废：它可能马上被同名文件覆盖或删除，
         // 留着会让 onResume 的 tryInstallPending() 拿一个不存在的包去发起安装。
         pendingApk = null
-        val dm = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        // 已有下载在进行中：先取消并清理它的接收器，避免两个下载并行、两个接收器并存。
-        // 不取消的话用户连点两次"立即更新"会入队两个下载，两个完成回调都会跳安装。
-        activeDownloadId?.let { oldId ->
-            receivers.remove(oldId)?.let { unregisterQuietly(it) }
-            runCatching { dm.remove(oldId) }
-                .onFailure { AppLog.w("Polaris-Update", "取消旧下载失败: id=$oldId") }
-        }
         val destDir = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         if (destDir == null) {
             report(DownloadResult.Failed(appContext.getString(R.string.update_download_dir_unavailable)))
@@ -109,6 +117,7 @@ constructor(
         val downloadId = dm.enqueue(request)
         activeDownloadId = downloadId
         AppLog.i("Polaris-Update", "下载已入队: ${sanitizeLog(info.apkFileName)} id=$downloadId")
+        report(DownloadResult.Started)
 
         receivers.remove(downloadId)?.let { unregisterQuietly(it) }
         val receiver =
@@ -311,8 +320,14 @@ constructor(
         _results.tryEmit(result)
     }
 
-    /** 下载终态。 */
+    /** 下载结果：下载终态，外加"已开始下载"和"已有下载在跑、本次请求被忽略"。 */
     sealed interface DownloadResult {
+        /** 已成功入队，下载开始。让提示只由这里发出，调用方不必自己猜"是否真的开始了"。 */
+        data object Started : DownloadResult
+
+        /** 已有一个下载在进行中，本次请求被忽略，调用方应提示"正在下载中"。 */
+        data object AlreadyDownloading : DownloadResult
+
         /** 下载成功、校验通过，已拉起系统安装界面。 */
         data class Installed(
             val file: File,
