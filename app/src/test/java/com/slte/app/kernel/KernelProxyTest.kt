@@ -103,6 +103,28 @@ class KernelProxyTest {
         assertNull(proxy.proxyMode())
     }
 
+    /**
+     * 直连模式下内核 `QueryProxyGroupNames` 直接返回空（Direct 早退），节点页因此
+     * 一个分流组都没有。兜底名单必须来自本地分流方案，且按用户自定义顺序排列。
+     */
+    @Test
+    fun `本地分组名单按用户自定义顺序，主组在最前`() {
+        val custom = listOf(RoutingCustomGroup(name = "我的组", url = "https://x.example.com"))
+        val names =
+            localRoutingGroupNames(
+                RoutingState(order = listOf("🍃 应用净化", "🛑 广告拦截"), custom = custom),
+            )
+
+        // 主组必须排在最前，否则节点页会把第一个分流组当成主组卡
+        assertEquals(PrimaryGroupName, names.first())
+        // 用户自定义顺序生效；未点名的内置组按默认顺序追加在后，绝不丢组
+        assertTrue(names.indexOf("🍃 应用净化") < names.indexOf("🛑 广告拦截"))
+        assertEquals(
+            (RoutingGroups.map { it.name } + PrimaryGroupName + custom.map { it.name }).toSet(),
+            names.toSet(),
+        )
+    }
+
     @Test
     fun `内核不可用时切换写磁盘并落本地`() = runTest(mainRule.dispatcher) {
         val proxy = proxy()

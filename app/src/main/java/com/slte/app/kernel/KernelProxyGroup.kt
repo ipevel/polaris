@@ -5,6 +5,7 @@ package com.slte.app.kernel
 
 import com.github.kr328.clash.core.model.ProxySort
 import com.github.kr328.clash.core.model.TunnelState
+import com.github.kr328.clash.service.remote.IClashManager
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Constants
 
@@ -106,32 +107,74 @@ data class KernelProxyGroupInfo(
  */
 suspend fun KernelProxy.proxyGroups(): List<KernelProxyGroupInfo> = safe(emptyList(), "proxyGroups") {
     val clash = manager.clash() ?: return@safe emptyList()
-    clash
-        .queryProxyGroupNames(excludeNotSelectable = false)
-        .filter { it != GLOBAL_GROUP }
-        .mapNotNull { groupName ->
-            runCatching {
-                val group = clash.queryProxyGroup(groupName, ProxySort.Default)
-                KernelProxyGroupInfo(
-                    name = groupName,
-                    type = group.type,
-                    now = group.now.takeIf { it.isNotBlank() },
-                    selectable = group.type.equals(GROUP_TYPE_SELECTOR, ignoreCase = true),
-                    members =
-                    group.proxies
-                        .filter { it.name != groupName }
-                        .map { proxy ->
-                            KernelProxyMember(
-                                name = proxy.name,
-                                isGroup = proxy.isGroup,
-                                delay = resolveDelay(proxy.delay, proxy.tested),
-                                kind = memberKindOf(proxy.name, proxy.isGroup),
-                            )
-                        },
-                )
-            }.getOrNull()
-        }
+    groupNamesFor(clash).mapNotNull { groupName -> queryGroupInfo(clash, groupName) }
 }
+
+/**
+ * 读取单个策略组。
+ *
+ * `Clash.queryGroup` 在组不存在时**不返回 null**，而是返回
+ * `ProxyGroup("Unknown", emptyList(), "")`（`kernel-core/.../core/Clash.kt`），
+ * 所以必须按类型过滤：本地兜底名单里必然有内核没有的组名，不过滤就会渲染出
+ * 一堆没有成员的空壳分组。
+ */
+private suspend fun KernelProxy.queryGroupInfo(
+    clash: IClashManager,
+    groupName: String,
+): KernelProxyGroupInfo? = runCatching {
+    val group = clash.queryProxyGroup(groupName, ProxySort.Default)
+    if (group.type == UNKNOWN_GROUP_TYPE) return@runCatching null
+    val members =
+        group.proxies
+            .filter { it.name != groupName }
+            .map { proxy ->
+                KernelProxyMember(
+                    name = proxy.name,
+                    isGroup = proxy.isGroup,
+                    delay = resolveDelay(proxy.delay, proxy.tested),
+                    kind = memberKindOf(proxy.name, proxy.isGroup),
+                )
+            }
+    KernelProxyGroupInfo(
+        name = groupName,
+        type = group.type,
+        now = group.now.takeIf { it.isNotBlank() },
+        selectable = group.type.equals(GROUP_TYPE_SELECTOR, ignoreCase = true),
+        members = members,
+    )
+}.getOrNull()
+
+/**
+ * 待读取的策略组名单。
+ *
+ * 内核在直连模式下 `QueryProxyGroupNames` 直接返回空列表
+ * （`kernel-core/src/main/golang/native/tunnel/proxies.go` 的 Direct 早退），
+ * 但此时配置其实已经装载、`QueryProxyGroup` 照样能读到组——节点页因此表现为
+ * 「已连接、直连模式下一个分流组都没有，只剩全部节点兜底名单」。
+ *
+ * 名单为空时退回本地分流方案的分组（按用户自定义顺序），再逐个去内核取真实数据：
+ * 组读不到就跳过，所以配置没装载时依然返回空列表，不会造成假就绪。
+ */
+private suspend fun KernelProxy.groupNamesFor(clash: IClashManager): List<String> {
+    val kernelNames =
+        runCatching { clash.queryProxyGroupNames(excludeNotSelectable = false) }
+            .getOrDefault(emptyList())
+            .filter { it != GLOBAL_GROUP }
+    if (kernelNames.isNotEmpty()) return kernelNames
+    return localRoutingGroupNames(config.routingStateStore.loadSanitized().state)
+}
+
+/**
+ * 本地分流方案的分组名单：主组 + 内置组（按用户自定义顺序）+ 自定义组。
+ *
+ * 主组必须带上——节点页靠它区分「节点选择」卡和分流组卡（`primaryGroupOf` 精确匹配
+ * 主组名），只给分流组名单会让主组卡退化成第一个分流组。
+ */
+internal fun localRoutingGroupNames(state: RoutingState): List<String> = buildList {
+    add(PrimaryGroupName)
+    orderedGroups(state.order).forEach { add(it.name) }
+    state.custom.forEach { add(it.name) }
+}.distinct()
 
 /**
  * 在指定策略组内切换选中项。仅 Selector 类型支持手动切换。
@@ -179,6 +222,9 @@ suspend fun KernelProxy.testGroup(groupName: String): Map<String, Int> = safe(em
 }
 
 private const val GROUP_TYPE_SELECTOR = "Selector"
+
+/** `Clash.queryGroup` 查不到组时返回的哨兵类型（见 `kernel-core/.../core/Clash.kt`）。 */
+private const val UNKNOWN_GROUP_TYPE = "Unknown"
 
 /**
  * 节点页「节点选择」卡的主组切换：成功后同步全局模式下的 GLOBAL。

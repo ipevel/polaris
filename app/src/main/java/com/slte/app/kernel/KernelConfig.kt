@@ -43,7 +43,7 @@ constructor(
     private val manager: KernelManager,
     private val subscribeSource: SubscribeSource,
     private val remoteConfig: AppRemoteConfig,
-    private val routingStateStore: RoutingStateStore,
+    internal val routingStateStore: RoutingStateStore,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
 ) {
