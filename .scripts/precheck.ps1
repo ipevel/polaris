@@ -57,11 +57,14 @@ Remove-Item $kp -ErrorAction SilentlyContinue
 $null = & keytool -genkeypair -keystore $kp -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 -storepass build-throwaway -keypass build-throwaway -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN" 2>$null
 if ($LASTEXITCODE -ne 0) { $failures.Add("keystore gen failed") }
 
-# 1. Unit tests (history: Dispatchers.IO leak / missing stub mock / ctor params)
-Write-Host "`n[1/7] testDebugUnitTest ..." -ForegroundColor Cyan
-$out = & .\gradlew.bat :app:testDebugUnitTest --no-daemon --warning-mode none 2>&1
+# 1. Unit tests + instrumented-test compilation. `assembleDebugAndroidTest` 在 CI 里是独立一步，
+#    本地曾经漏跑：androidTest 只在 CI 编译，源码改坏了本地全绿、推上去才红。
+#    --continue 保证单测失败时 androidTest 的编译错误在同一次运行里也能看到。
+#    (history: Dispatchers.IO leak / missing stub mock / ctor params / androidTest compile)
+Write-Host "`n[1/7] testDebugUnitTest + assembleDebugAndroidTest ..." -ForegroundColor Cyan
+$out = & .\gradlew.bat :app:testDebugUnitTest :app:assembleDebugAndroidTest --continue --no-daemon --warning-mode none 2>&1
 if ($LASTEXITCODE -ne 0) {
-    $failures.Add("testDebugUnitTest")
+    $failures.Add("testDebugUnitTest/assembleDebugAndroidTest")
     $out | Select-String 'FAILED|BUILD FAILED|UncaughtExceptions|Caused by' | Select-Object -First 8 | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
 } else {
     $out | Select-String 'BUILD SUCCESSFUL' | Select-Object -First 1 | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
