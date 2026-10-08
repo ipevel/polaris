@@ -334,8 +334,14 @@ constructor(
                         )
                     }
                 }
-                kernelProxy.proxyMode()?.let { mode ->
-                    _data.update { it.copy(proxyMode = mode) }
+                // 只在隧道真在跑时才采信内核的模式：未连接时 queryTunnelState().mode
+                // 是上一次连接的残留（内核 service 可能还绑着），直接写回会把用户刚在
+                // 面板里选的模式冲掉 —— setProxyMode 的乐观更新白做，界面表现为
+                // 「选了不生效」。连接中就绪后这里拿到的才是内核的真实模式。
+                if (_data.value.isConnected) {
+                    kernelProxy.proxyMode()?.let { mode ->
+                        _data.update { it.copy(proxyMode = mode) }
+                    }
                 }
                 // IP 刷新不依赖套餐状态：内核配置装载往往先于订阅数据返回，
                 // 若以 hasPlan 为条件会错过唯一的刷新时机，导致 IP/国旗停留在占位符
