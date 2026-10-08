@@ -179,8 +179,8 @@ fun Modifier.v5CardShadow(shape: Shape): Modifier {
  * 或直接尾随 lambda `.then(v5Clickable { ... })`）。
  *
  * 淡色水波纹（安卓触摸反馈）+ iOS 观感；无障碍方案保留：
- * clearAndSetSemantics 单节点、名称/角色/状态落在同一节点，点击动作由
- * `clickable(onClickLabel = ...)` 提供。
+ * clearAndSetSemantics 单节点，名称/角色/状态与点击动作都落在同一节点上
+ * （点击动作必须显式声明，见下方 `semanticsBlock` 内的注释）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,6 +210,23 @@ internal fun v5Clickable(
         if (label != null) this.contentDescription = label
         if (nodeTexts.isNotEmpty()) {
             this[SemanticsProperties.Text] = nodeTexts.map { AnnotatedString(it) }
+        }
+        // 必须在本节点显式声明点击语义动作。
+        //
+        // `clearAndSetSemantics`（以及 `semantics(mergeDescendants = false)`）会在本节点
+        // 内侧划出一条语义边界，把链上更靠内的 `clickable` 贡献的
+        // `SemanticsActions.OnClick` 一起吞掉 —— 而本链的顺序是 `base.then(clickable)`，
+        // `base` 在外、`clickable` 在内，正好落在边界之内。后果是整个节点仍然能点，
+        // 但屏幕阅读器拿不到任何点击动作，无法触发（v1.7.0 的 P0-2 回归）。
+        //
+        // 这里不能靠把两者顺序对调来"解决"：一旦 `clearAndSetSemantics` 被挪到
+        // `clickable` 里面，`clickable` 会重新合并后代语义，本函数刻意维持的
+        // "收敛成单个可播报节点"就失效了，子节点文字会重新冒出来。
+        if (action != null) {
+            this.onClick(label = label) {
+                currentAction.value?.invoke()
+                true
+            }
         }
     }
     val base = if (shouldClear) {

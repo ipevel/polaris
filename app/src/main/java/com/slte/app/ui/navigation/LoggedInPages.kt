@@ -329,14 +329,20 @@ internal fun SettingsPageContent(
         LanguageModeSheet(
             currentMode = LanguageMode.fromLocale(viewModel.data.collectAsStateWithLifecycle().value.locale),
             onDismiss = { showLanguage = false },
-            onSelect = { viewModel.setLocale(it.locale) },
+            onSelect = {
+                viewModel.setLocale(it.locale)
+                showLanguage = false
+            },
         )
     }
     if (showTunStack) {
         TunStackModeSheet(
             currentMode = viewModel.data.collectAsStateWithLifecycle().value.tunStackMode,
             onDismiss = { showTunStack = false },
-            onSelect = viewModel::setTunStackMode,
+            onSelect = {
+                viewModel.setTunStackMode(it)
+                showTunStack = false
+            },
         )
     }
     val changePasswordState = viewModel.changePasswordState.collectAsStateWithLifecycle().value
