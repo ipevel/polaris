@@ -1,6 +1,6 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-09
+> 最后更新：2026-10-09（内置分流已实装，见 §二.4 / §三 C-6 C-7）
 > 分支：`feat/windows-portable`（基线 `origin/ui/windows-design` @ `5328b55`）
 > 应用根目录：`design/windows/app/`
 
@@ -11,32 +11,36 @@
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.8.0.zip     ~186 MB
+design/windows/app/dist/Polaris-portable-1.8.0.zip     185,899,380 B（~186 MB）
 ```
 
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。已验证。
+
+> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 56/0、`--doctor` 72/0、`--smoke` `ok:true`，
+> `data/rules` 自动铺出 48 个种子。
 
 ### 规模
 
 | | |
 | --- | --- |
-| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` |
-| 相对基线 | +51,238 / −898 行，44 文件 |
-| 应用代码 | 主进程 ~2,600 行 JS，渲染层 ~1,400 行 JS，样式 ~500 行 |
+| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` |
+| 相对基线 | +115,989 / −902 行，103 文件 |
+| 应用代码 | 主进程 ~3,460 行 JS，渲染层 ~1,423 行 JS，样式 ~380 行 |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
+| 内置分流 | 48 个本地规则集 + 27 个分流组，1.42 MB（`resources/rules/`） |
 
 ### 三条自检线（成品包自带，目标机器无需源码）
 
 | 命令 | 规模 | 覆盖 |
 | --- | --- | --- |
-| `npm test` | 58 项 | 订阅清洗、配置组装、地区识别、真实拉起 mihomo |
-| `npm run test:e2e` | 56–60 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、系统代理还原 |
-| `Polaris.exe --uitest` | 38 项 | **界面驱动**：拖拽区、最大化、滚动、填表点登录、逐页切换、弹窗 |
-| `Polaris.exe --doctor` | 60 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
+| `npm test` | 110 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、地区识别、真实拉起 mihomo |
+| `npm run test:e2e` | 72 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、系统代理还原 |
+| `Polaris.exe --uitest` | 56 项 | **界面驱动**：拖拽区、最大化、滚动、填表点登录、逐页切换、分流页开关、流量曲线、弹窗、设置页不自我重绘 |
+| `Polaris.exe --doctor` | 72 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
 | `Polaris.exe --smoke` | — | 窗口能起 + DOM 渲染断言 |
 
-当前全绿：**58 / 56 / 38**（开发态与成品包各跑一遍）。
+当前全绿：**110 / 72 / 56**（开发态与成品包各跑一遍）。
 
 ### 已实测通过
 
@@ -45,6 +49,8 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     ~186 MB
 - 断开后系统代理 4 个注册表值逐项还原到进入前的状态
 - 最大化/还原布局无横向溢出；设置页可滚到底
 - 便携性：删掉 `%APPDATA%\Polaris` 后跑成品，不再重建
+- 内置分流：16 个默认规则集被内核**真正加载**（`/providers/rules` 逐个 `ruleCount > 0`，合计 > 1 万条），
+  运行中开关分流组能热重载并让内核加载新规则集
 
 ### 未验证 / 未做
 
@@ -52,9 +58,10 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     ~186 MB
 | --- | --- | --- |
 | 真实面板联调 | ❌ | 后端按 Android 端 Kotlin 契约写完，假面板验过；但各面板分支字段名不统一，需要真实账号 |
 | TUN 模式实机 | ❌ | 代码路径完整（含 UAC 提权、网卡收尾、残留清理），但会临时接管网络栈，未在真机跑 |
-| 自定义 rule-provider 分流 | ❌ | 订阅自带的分组可用；本地规则集管理、分组排序、自定义规则组未做 |
-| 面板活跃会话管理（踢设备） | ❌ | 接口已实现，UI 未做 |
-| 自动更新（下载并替换自身） | ⚠️ | 只做到「检测到新版本 → 打开下载页」，没有自替换 |
+| 面板活跃会话管理（踢设备） | ❌ | 需要新功能：**两端都没有这个接口**（面板侧也没有），不是「UI 未做」 |
+| 自动更新（下载并替换自身） | ⚠️ | 只做到「检测到新版本 → 打开下载页」；Windows 更新地址走 `update_windows_url`，不回落安卓 APK |
+| 自定义规则集（用户自己写规则） | ❌ | 内置分流已做（27 组 / 48 规则集可开关）；用户自定义规则组、分组排序未做 |
+| 分流组排序 | ❌ | `routing_order` 已在配置层支持（`orderedTable`），但 UI 没有排序入口 |
 
 ---
 
@@ -85,11 +92,13 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 ```
 <exe 同级>/
 ├─ Polaris.exe
-├─ core/          mihomo.exe + wintun.dll      (extraResources)
-├─ resources/geo/ 规则库                        (extraResources)
-└─ data/          ← 全部运行时数据
+├─ core/            mihomo.exe + wintun.dll            (extraResources)
+├─ resources/geo/   规则库（geoip/geosite/ASN）          (extraResources)
+├─ resources/rules/ 内置分流规则集 48 个 / 1.42 MB       (extraResources → 运行时铺到 data/rules)
+└─ data/            ← 全部运行时数据
    ├─ config.yaml      内核配置（每次连接重新生成）
    ├─ profiles/        订阅原文
+   ├─ rules/           内置规则集副本（内核只允许读 -d 目录内的文件）
    ├─ settings.json
    ├─ credentials.dat  DPAPI 加密
    ├─ traffic.json     流量历史
@@ -98,6 +107,23 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 ```
 
 数据目录解析：`<exe 同级>/data` → 不可写时回退 `%LOCALAPPDATA%/Polaris` → 开发态 `<app>/.devdata`。
+
+### 4. 内置分流规则集：`type: file` + 相对路径，不用 http
+
+Android 端的分流表（`kernel-core/.../native/config/routing/routing_table.go`，27 组 / 48 个规则集）
+用的是 `type: http` + jsdelivr —— 因为它的 assets 只当"预播种缓存"，内核照样联网拉。
+
+桌面端的前提是「解压即用、离线可用」，所以：
+
+- 48 个 yaml 直接进 `extraResources`（`resources/rules/`，1.42 MB），启动时铺到 `data/rules/`
+- provider 写 `type: file` + **相对路径** `rules/<key>.yaml`
+
+第二个决定不是风格问题，是硬约束：mihomo 的 `type: file` 走
+`C.Path.IsSafePath(C.Path.Resolve(schema.Path))`，而 `IsSafePath` 只放行 `-d` 目录（homeDir）下的子路径。
+写绝对路径或读 `resources/rules/` 一律被拒。详见坑 C-7。
+
+其余沿用 Android 的语义：本地规则插在订阅规则**之前**、内网地址始终直连、
+每个启用组一个同名 select 组（首位成员表达默认出口）、`orderedTable` 保证排序不丢组。
 
 ---
 
@@ -157,6 +183,35 @@ app.setPath('sessionData', electronData);
 
 **教训**：`design.css` 是从**浏览器里的设计稿**来的。凡是"窗口外壳"性质的样式（尺寸、边框、滚动、拖拽）都必须在外壳层重新声明，不能指望设计稿的写法在真窗口里成立。
 
+**A-6 设置页无界自我重绘（最贵的一个，38 项自检全绿也没抓到）**
+
+`bindSettings()` 第一行无条件调 `loadTunStatus()`，而 `loadTunStatus()` 结尾有
+`if (state.route === "settings") render()` —— render 会重新绑事件，于是：
+**render → bindSettings → loadTunStatus → render → …** 停不下来。
+
+用户看到的是：设置页一直在闪、滚不动、**从这里打开的每个弹窗（外观/语言/修改密码/导出日志）都是一闪即逝**
+（`render()` 把 `overlayRoot.innerHTML` 清空）。而自检全绿，因为 `executeJavaScript` 在同一个 JS 帧里
+同步读 DOM，重绘循环插不进去。
+
+修：`nav()` 里显式`if (route === "settings") loadTunStatus()`，`bindSettings()` 里一个字都不留
+（`app.js` 里那行注释就是防止后人再挪回去的）。
+
+**教训**：绑定函数必须是纯的（只绑事件、不发请求）；请求放 `nav()` / `refreshAll()`。
+反过来，"自检读得到 ≠ 用户用得到"，同步读 DOM 的断言天然看不见重绘循环。
+
+**A-7 一个字段名写错，静默变成空态**
+
+`Views.traffic` 读 `s.series.points`，而 `state` 里的字段叫 `trafficSeries`。不报错、不警告，
+流量曲线页永远显示"暂无流量记录"——**看起来像"还没产生流量"，不像 bug**。
+
+同类：`bindLiveStatus` 里比较 `state.phase`，而 `state` 根本没有 `phase` 字段（恒 `undefined`，
+恰好在某条分支上"能用"）；`if (state.route === "home") render()` 让非首页路由的速率/连接态永不刷新。
+
+修：视图字段名与 state 对齐；连接态变化在任何路由都重绘（首页只做轻量 `paintLive()`）。
+
+**教训**：渲染层没有类型检查，`undefined.x` 只会变成空字符串/空数组。视图里凡是用到"可能不存在"的
+字段，要么兜底要么断言——补一条真跑页面的自检（`--uitest` 里现在会断言流量曲线真画出 `path >= 3`）。
+
 ---
 
 ### B. 打包
@@ -196,6 +251,26 @@ ELECTRON_BUILDER_BINARIES_MIRROR = https://npmmirror.com/mirrors/electron-builde
 **B-4 `dist/win-unpacked` 被占住 → `EBUSY: resource busy or locked`**
 
 上一轮跑起来的 `Polaris.exe` 没退，electron-builder 删不掉输出目录。打包前先 `taskkill`。
+
+**B-5 应用自己的 `.gitignore` 把整个核心层吃掉了（最隐蔽的一个）**
+
+`design/windows/app/.gitignore` 里写的是 `core/`——这个模式**匹配任意深度**的 `core` 目录，
+本意是忽略内核二进制 `design/windows/app/core/`（61 MB，不能进库），
+结果把 `design/windows/app/electron/core/`（8 个核心文件，manager/builder/rulesets/…）也一起忽略了。
+
+后果：`git status` 永远干净，`git add -A` 永远加不上，**提交了 6 个 commit 的客户端缺整个核心层**，
+clone 下来直接起不来。全程没有任何提示——`git status` 不显示被忽略的已跟踪目录之外的东西。
+
+修：改成锚定的 `/core/`，只忽略应用根下的内核目录。
+
+```bash
+git check-ignore -v design/windows/app/core/mihomo.exe        # 应命中 /core/
+git check-ignore -v design/windows/app/electron/core/manager.js  # 应无输出
+git status --ignored --short design/windows/app | grep '!!'   # 审计还有没有别的源码被误伤
+```
+
+**教训**：`.gitignore` 里的目录模式一律加前导 `/`；新增源码目录后跑一次
+`git status --ignored` 审计，别只看 `git status`。
 
 ---
 
@@ -244,6 +319,38 @@ Node 的 `child.kill()` 在 Windows 上是 `TerminateProcess` —— 没有 SIGT
 **C-5 `--compatible` 变体**
 
 Windows 用 `mihomo-windows-amd64-compatible-*.zip`（不带 AVX 指令）。面向"任何 Win10+ 机器"，兼容性优先于那点性能差异。
+
+**C-6 provider 是异步初始化的，读太早会读到 0 条**
+
+调试内置分流时踩了这个：`GET /providers/rules` 立刻返回 16 个 provider，其中 `gp_cn`、`gp_google`、
+`gs_geolocation_ncn` 恒 `ruleCount: 0`，日志里**一条 error/warning 都没有**，看着像内核解析 bug。
+
+实际是**竞态**：大文件（200 KB ~ 600 KB，上万条规则）解析慢，查询先到了。
+按文件体积做二分（2000 条→0 条、截断到 1000 条就正常）会得出"体积阈值"的错误结论——
+因为截断同时也缩短了解析时间。
+
+**凡是验证 provider 是否加载，必须轮询到全部 `ruleCount > 0`**，不能查一次就下结论：
+
+```js
+for (let i = 0; i < 30; i++) {
+  const p = await controller.get('/providers/rules');
+  if (Object.values(p.providers).every(v => v.ruleCount > 0)) break;
+  await sleep(300);
+}
+```
+
+顺带排除的几条"看起来像元凶"的内核代码（都不是）：`common/utils/hash.go` 的 `MakeHash`（md5，
+不可能撞）、`resource/vehicle.go` 的 `FileVehicle.Read`（每次都重读并重算 hash，不看 oldHash）、
+`resource/fetcher.go` 的 `f.hash.Equal(hash)` 早退（真发生会静默 0 条，但触发不了）。
+
+**C-7 规则集文件必须放在 `-d` 目录内**
+
+mihomo 的 `type: file` provider 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Path))`，
+而 `IsSafePath` 只放行 `-d`（homeDir）下的子路径。所以内置规则集不能直接从
+`resources/rules/` 读，必须先铺到 `data/rules/`，配置里写相对路径 `rules/<key>.yaml`。
+
+另一个岔路：`acl_*` 是 classical/text 格式，里面有 mihomo 不支持的 `URL-REGEX` 规则，
+会逐条 skipped（`unsupported rule type: URL-REGEX`），**无害**，属上游 ACL 表的冗余。
 
 ---
 
@@ -307,6 +414,23 @@ Windows 用 `mihomo-windows-amd64-compatible-*.zip`（不带 AVX 指令）。面
 
 这样跑 e2e 才能同时验证"清洗链路在网络路径下也生效"，而不只是单元测试里生效。
 
+**E-5 断言失败先怀疑断言**
+
+补内置分流的 37 条 core 断言，首跑 3 条红。3 条全是**断言写错**，不是产品缺陷：
+
+- 断言 no-resolve 只有 2 条，实际 3 条（漏了 `acl_chinacompanyip`）
+- 用 `key.includes('apple')` 筛"内联组的规则集"，误命中 `gs_apple`
+- 断言"不传 routing 就不生成内置组"失败——**这条恰好抓出一个真 bug**：
+  `builder.build()` 的策略组数组直接引用了入参 `doc`，`push/unshift` 把调用方的配置改了
+
+**教训**：写断言时先把期望值打印出来核对，再固化；三条红里能出一条真 bug 就够本。
+
+**E-6 `--uitest` 不能带 `--mock`**
+
+`Polaris.exe --uitest --mock` → 5 通过 / 2 失败，报"登录页没出来"。原因是 `--mock` 让渲染层走
+`api.js` 的内置 Mock，其 `get_settings` 返回 `authed: true`，界面直接进首页——**是 mock 把被测前提改掉了**，
+不是界面坏了。界面自检必须走真实 IPC + 自带的假面板（`selftest-ui.js` 自己 `mockPanel.start(0)`）。
+
 ---
 
 ### F. 本机环境 / 工具链
@@ -338,8 +462,8 @@ npm run mock                  # 演示数据，不连内核
 npm start                     # 真实模式
 
 # 自检
-npm test                      # 核心层 58 项（纯 Node）
-npm run test:e2e              # 端到端 56 项
+npm test                      # 核心层 110 项（纯 Node）
+npm run test:e2e              # 端到端 72 项（起真 mihomo + 假面板 + 真流量）
 npm run test:e2e -- --sysproxy  # 连系统代理一起验（写 HKCU 并精确还原）
 
 # 打包
@@ -355,6 +479,9 @@ Polaris.exe --uitest            界面驱动自检，报告 → data/uitest-repo
 Polaris.exe --mock              演示数据启动，看界面
 ```
 
+> 本机注意：`npx` / `npm.ps1` 被执行策略禁止 → 用 `node node_modules\electron-builder\cli.js`、
+> `node scripts\selftest-core.js` 直接跑；跑 Electron 前必须 `Remove-Item Env:ELECTRON_RUN_AS_NODE`。
+
 ---
 
 ## 五、下次继续的入口
@@ -368,10 +495,14 @@ Polaris.exe --mock              演示数据启动，看界面
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。
 
 3. **自动更新做成自替换**
-   现在是「检测到新版本 → 打开下载页」。要做成下载 zip → 校验 → 替换自身 → 重启，注意便携版替换自身时的文件占用问题。
+   现在是「检测到新版本 → 打开下载页」（Windows 地址取 `update_windows_url`，不回落安卓包）。
+   要做成下载 zip → 校验 → 替换自身 → 重启。便携版替换自身时文件被占用，必须让一个
+   脱离进程（`cmd /c ping` 等窗口期或独立 .bat）等主进程退出后再解压覆盖。
 
-4. **自定义 rule-provider 分流**
-   现在只能用订阅自带的分组。要做本地规则集管理的话，可以照搬 Android 端 `app/src/main/assets/routing/providers/` 那 47 个 yaml。
+4. **内置分流的剩余部分**
+   - 分流组排序：配置层已支持（`routing_order` + `orderedTable`），缺 UI 入口
+   - 用户自定义规则集：往 `data/rules/` 放 yaml + 加一条 `rule-providers` 即可，
+     但要注意 `gs_*` 是 domain/`gp_*` 是 ipcidr/`acl_*` 是 classical，behavior 不能写错
 
 5. **补 UI 层面的更多断言**
-   目前 38 项。还可以补：暗色主题下的对比度、窄窗口（<1120px）断点下的布局、长列表性能。
+   目前 56 项。还可以补：暗色主题下的对比度、窄窗口（<1120px）断点下的布局、长列表性能。
