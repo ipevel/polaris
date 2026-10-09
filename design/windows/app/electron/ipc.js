@@ -16,6 +16,7 @@ const store = require('./store');
 const paths = require('./paths');
 const core = require('./core/manager');
 const remote = require('./core/remote');
+const updater = require('./core/updater');
 const traffic = require('./core/traffic');
 const panel = require('./panel/client');
 const autostart = require('./net/autostart');
@@ -334,8 +335,33 @@ const commands = {
   check_update: async () => {
     await remote.load(true).catch(() => {});
     const u = remote.updateInfo();
-    return { has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url };
+    const st = updater.info();
+    return {
+      has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
+      // 便携版能不能自己装：打包 + 安装目录可写才允许，否则退回「前往下载」
+      can_apply: paths.isPackaged && paths.isPortable(),
+      apply_blocked: paths.isPackaged && paths.isPortable() ? '' : updater.applyBlockedReason(),
+      install_dir: st.install_dir,
+      staged: st.phase === 'staged' && st.version === u.version,
+    };
   },
+
+  get_update_state: async () => updater.info(),
+
+  download_update: async ({ url, version } = {}) => {
+    const u = remote.updateInfo();
+    const target = String(url || u.url || store.get('download_url') || '');
+    return updater.download(target, version || u.version);
+  },
+
+  apply_update: async () => {
+    const r = updater.apply();
+    // 脚本已经在等我们退出了：先回包让界面把「正在重启」显示出来，再退
+    setTimeout(() => updater.quit(), 600);
+    return ok(r);
+  },
+
+  discard_update: async () => updater.reset(),
 
   open_download: async () => {
     const u = remote.updateInfo();
@@ -416,6 +442,10 @@ function register({ mock = false } = {}) {
     }
     ui.emit('status', st);
   });
+
+  // 更新进度推送（下载/解压/就绪），渲染层不用轮询
+  updater.onChange((st) => ui.emit('update', st));
+  updater.restoreStaged();
 
   if (mock) log.warn('mock 模式：前端将使用内置演示数据');
 }

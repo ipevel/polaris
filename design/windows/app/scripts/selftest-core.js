@@ -9,9 +9,10 @@
  *   2. 配置组装（端口、secret、DNS、TUN、兜底规则）
  *   3. 内置分流规则（27 组 × 48 个离线规则集，策略组语义、订阅冲突、开关）
  *   4. 直连域名与更新地址（订阅域名必须真被记住；Windows 不得用安卓 APK 地址）
- *   5. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
+ *   5. 自动更新（真下载 → zip 校验 → 真解压 → 结构校验 → 替换脚本）
+ *   6. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
  *
- * 第 5 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
+ * 第 6 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
  * "内核能被我们生成的配置喂起来并被控制"，不是"能翻墙"。
  */
 
@@ -288,6 +289,171 @@ function testRulesets() {
 
 /* ---------------- 5. 直连域名 / 更新地址 ---------------- */
 
+/**
+ * 自动更新：下载 → zip 校验 → 解压 → 结构校验 → 替换脚本。
+ * 这里跑的是真链路（本地 http 服务器 + 真 zip + 真解压），不是打桩。
+ */
+async function testUpdater() {
+  section('自动更新');
+  const http = require('http');
+  const { execFileSync } = require('child_process');
+  const updater = require('../electron/core/updater');
+  const paths = require('../electron/paths');
+
+  // 造一个「像成品包」的 zip：根下有 Polaris.exe
+  const src = path.join(os.tmpdir(), 'polaris-selftest-upd-src');
+  const zip = path.join(os.tmpdir(), 'polaris-selftest-upd.zip');
+  fs.rmSync(src, { recursive: true, force: true });
+  fs.rmSync(zip, { force: true });
+  fs.mkdirSync(path.join(src, 'resources'), { recursive: true });
+  fs.writeFileSync(path.join(src, 'Polaris.exe'), 'MZ' + 'x'.repeat(2048));
+  fs.writeFileSync(path.join(src, 'resources', 'app.asar'), 'fake asar');
+  fs.writeFileSync(path.join(src, 'version.txt'), '9.9.9');
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+    `Compress-Archive -Path '${src}\\*' -DestinationPath '${zip}' -Force`], { windowsHide: true });
+
+  const zipBuf = fs.readFileSync(zip);
+  let flaky = 0;
+  const server = http.createServer((req, res) => {
+    if (req.url === '/redirect') { res.writeHead(302, { Location: '/pkg.zip' }); return res.end(); }
+    if (req.url === '/pkg.zip') {
+      res.writeHead(200, { 'content-type': 'application/zip', 'content-length': zipBuf.length });
+      return res.end(zipBuf);
+    }
+    if (req.url === '/notzip') { res.writeHead(200, { 'content-length': 12 }); return res.end('<html>404</html>'); }
+    if (req.url === '/flaky') {
+      flaky += 1;
+      res.writeHead(500); return res.end('boom');
+    }
+    res.writeHead(404); res.end('nope');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const phases = [];
+  const off = updater.onChange((st) => phases.push(st.phase));
+
+  try {
+    check('zip 头校验认得出 zip', updater.isZipFile(zip) === true);
+    check('zip 头校验挡得住非 zip', updater.isZipFile(__filename) === false);
+    check('版本号里的路径分隔符被洗掉',
+      !/[/\\]/.test(updater.safeName('../../evil/9.9')) && !updater.safeName('..').includes('..'),
+      updater.safeName('../../evil/9.9') + ' / ' + updater.safeName('..'));
+    check('更新包落在 data/update 下',
+      updater.zipPath('1.9.0').startsWith(paths.updateDir() + path.sep),
+      updater.zipPath('1.9.0'));
+
+    // 1) 正常下载（顺带走一次 302）
+    const st = await updater.download(`${base}/redirect`, '9.9.9');
+    check('下载+解压后进入 staged', st.phase === 'staged', JSON.stringify(st.phase));
+    check('进度到 100%', st.percent === 100, String(st.percent));
+    check('staged 里有 Polaris.exe',
+      fs.existsSync(path.join(updater.stagingDir(), 'Polaris.exe')));
+    check('staged 里保留了包内目录结构',
+      fs.existsSync(path.join(updater.stagingDir(), 'resources', 'app.asar')));
+    check('解压出的文件内容正确',
+      fs.readFileSync(path.join(updater.stagingDir(), 'version.txt'), 'utf8') === '9.9.9');
+    check('staging 根能被识别为安装根',
+      updater.resolveStageRoot(updater.stagingDir()) === updater.stagingDir());
+    check('阶段事件按 downloading→extracting→staged 推进',
+      phases.includes('downloading') && phases.includes('extracting') && phases[phases.length - 1] === 'staged',
+      phases.join('>'));
+    check('staged.json 已落盘（重启后不用重下）',
+      fs.existsSync(path.join(updater.updateDir(), 'staged.json')));
+    check('开发态不允许自我替换', updater.canApply() === false && /开发态/.test(updater.applyBlockedReason()),
+      updater.applyBlockedReason());
+
+    // 2) 下到的不是 zip：必须拦住，且不能留下「已就绪」的假象
+    let err = null;
+    try { await updater.download(`${base}/notzip`, '9.9.9'); } catch (e) { err = e; }
+    check('非 zip 的下载被拒绝', !!err && /不是 zip/.test(err.message), err && err.message);
+    check('校验失败后状态是 error 而不是 staged',
+      updater.S.phase === 'error' && updater.canApply() === false, updater.S.phase);
+
+    // 3) HTTP 错误 / 非 http 协议 / 空地址 / 安卓包地址
+    err = null; try { await updater.download(`${base}/flaky`, '9.9.9'); } catch (e) { err = e; }
+    check('HTTP 500 报下载失败', !!err && /HTTP 500/.test(err.message), err && err.message);
+
+    err = null; try { await updater.download('file:///c:/x.zip', '9.9.9'); } catch (e) { err = e; }
+    check('非 http(s) 地址被拒绝', !!err && /只支持 http/.test(err.message), err && err.message);
+
+    err = null; try { await updater.download('', '9.9.9'); } catch (e) { err = e; }
+    check('空地址被拒绝', !!err && /未配置更新地址/.test(err.message), err && err.message);
+
+    err = null; try { await updater.download('https://dl.example.com/Polaris-9.9.9.apk', '9.9.9'); } catch (e) { err = e; }
+    check('安卓 APK 地址被拒绝（不能装到 Windows 上）',
+      !!err && /安卓安装包/.test(err.message), err && err.message);
+
+    // 4) 安装目录结构识别
+    const t = path.join(os.tmpdir(), 'polaris-selftest-stage');
+    fs.rmSync(t, { recursive: true, force: true });
+    fs.mkdirSync(path.join(t, 'nested', 'Polaris-1.9.0'), { recursive: true });
+    fs.writeFileSync(path.join(t, 'nested', 'Polaris-1.9.0', 'Polaris.exe'), 'MZ');
+    fs.mkdirSync(path.join(t, 'bad'), { recursive: true });
+    fs.writeFileSync(path.join(t, 'bad', 'setup.msi'), 'x');
+    check('包里套一层目录也能找到安装根',
+      updater.resolveStageRoot(path.join(t, 'nested')) === path.join(t, 'nested', 'Polaris-1.9.0'));
+    check('没有 Polaris.exe 的包被判为不可用', updater.resolveStageRoot(path.join(t, 'bad')) === null);
+    check('不存在的目录判为不可用', updater.resolveStageRoot(path.join(t, 'nope')) === null);
+    fs.rmSync(t, { recursive: true, force: true });
+
+    // 5) 替换脚本：等进程退出 → robocopy 覆盖 → 重新拉起
+    const script = updater.scriptFor('C:\\a\\staging', 'C:\\a\\app', 4321);
+    // 不能用 tasklist：脱离进程没有控制台，tasklist 一个字都不输出，
+    // 管道版会卡死在 find 上，重定向到文件的版本又会误判"进程已退出"。
+    check('脚本等待本进程退出（用 Get-Process，不用 tasklist）',
+      script.includes('Get-Process -Id 4321') && !script.includes('tasklist'));
+    check('探测失败（如没有 powershell）算"还没退"，不会误覆盖',
+      /if errorlevel 2 goto tick\r\nif errorlevel 1 goto copy/.test(script));
+    check('脚本用 robocopy 覆盖安装目录',
+      /robocopy "%SRC%" "%APP%" \/E \/IS \/IT/.test(script), script.split('\r\n').find((l) => l.startsWith('robocopy')));
+    check('robocopy 失败码（>=8）会走失败分支', script.includes('if errorlevel 8 goto fail'));
+    check('脚本最后重新拉起 Polaris.exe', script.includes('start "" "%APP%\\Polaris.exe"'));
+    check('脚本只覆盖不删除（robocopy 没有 /MIR /PURGE）',
+      !/\/MIR|\/PURGE/.test(script), 'no /MIR');
+    check('脚本全 ASCII（cmd 默认代码页读中文会乱码）', /^[\x00-\x7F]*$/.test(script));
+    check('脚本用 CRLF 行尾', script.includes('\r\n') && !script.includes('\n\n'));
+    check('等待有上限，不会永远卡住', script.includes('if %N% GEQ 120 goto stuck'));
+    // 主进程没退就覆盖 = 半新半旧的安装目录，所以超时只能放弃
+    check('超过等待上限就放弃覆盖（不是硬抄）',
+      /:stuck\r\necho .*still alive after 120s, aborted/.test(script) && !script.includes('GEQ 120 goto copy'));
+    // `timeout` 需要交互式控制台，脚本是脱离进程跑的（stdio 全忽略），必须换个睡法
+    check('等待用的是 ping 而不是 timeout（脱离控制台时 timeout 会立刻报错）',
+      script.includes('ping -n 2 127.0.0.1 >nul') && !/\btimeout \/t/.test(script));
+    // 装完必须清掉「已下好」的标记，否则下次启动又认成已就绪，用户点一下就把自己降级回去
+    check('装完清掉更新包与 staged.json',
+      script.includes('del "%UPD%\\staged.json"') && script.includes('del "%UPD%\\Polaris-*.zip"')
+      && script.includes('rd /s /q "%SRC%"'));
+    check('清理不改动安装目录与脚本自身',
+      !/rd \/s \/q "%APP%"/.test(script) && !/del .*apply-update/.test(script));
+
+    // 6) 开发态调 apply 必须被拦住，且不能动安装目录
+    err = null; try { updater.apply(); } catch (e) { err = e; }
+    check('开发态 apply 被拦住', !!err && /开发态/.test(err.message), err && err.message);
+    check('开发态 apply 没有写出替换脚本',
+      !fs.existsSync(path.join(updater.updateDir(), 'apply-update.cmd')));
+
+    // 7) 重启后能认出「下好了没装」
+    await updater.download(`${base}/pkg.zip`, '9.9.9');
+    updater.S.phase = 'idle'; updater.S.version = ''; updater.S.staged_at = 0;
+    updater.restoreStaged();
+    check('重启后恢复出已下载的更新包',
+      updater.S.phase === 'staged' && updater.S.version === '9.9.9', updater.S.phase + ' ' + updater.S.version);
+
+    // 8) 丢弃
+    updater.reset();
+    check('丢弃后回到 idle 且 staging 被清掉',
+      updater.S.phase === 'idle' && !fs.existsSync(updater.stagingDir()));
+    check('丢弃后不再认为可以安装', updater.canApply() === false);
+  } finally {
+    off();
+    updater.reset();
+    try { server.close(); } catch (_) {}
+    try { fs.rmSync(src, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(zip, { force: true }); } catch (_) {}
+  }
+}
+
 async function testDirectAndUpdate() {
   section('直连域名与更新地址');
   const http = require('http');
@@ -496,6 +662,7 @@ async function testKernel() {
   testBuilder();
   testRulesets();
   await testDirectAndUpdate();
+  await testUpdater();
   testRegion();
   await testKernel();
   console.log(`\n结果：${pass} 通过 / ${fail} 失败`);

@@ -12,6 +12,7 @@
 const { app } = require('electron');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
 
@@ -300,6 +301,77 @@ app.whenReady().then(async () => {
     check('恢复默认后规则集回到 16 个',
       Object.keys(cfg2['rule-providers'] || {}).length === 16,
       String(Object.keys(cfg2['rule-providers'] || {}).length));
+
+    /* ---------- 自动更新 ---------- */
+    section('自动更新');
+    {
+      const updater = require('../electron/core/updater');
+      const ui = require('../electron/ui');
+      const { execFileSync } = require('child_process');
+
+      // 造一个「像成品包」的 zip（根下有 Polaris.exe），用本地 http 发出去
+      const src = path.join(os.tmpdir(), 'polaris-e2e-upd-src');
+      const zip = path.join(os.tmpdir(), 'polaris-e2e-upd.zip');
+      fs.rmSync(src, { recursive: true, force: true });
+      fs.rmSync(zip, { force: true });
+      fs.mkdirSync(path.join(src, 'resources'), { recursive: true });
+      fs.writeFileSync(path.join(src, 'Polaris.exe'), 'MZ' + 'x'.repeat(2048));
+      fs.writeFileSync(path.join(src, 'resources', 'app.asar'), 'fake asar');
+      fs.writeFileSync(path.join(src, 'version.txt'), '9.9.9');
+      execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+        `Compress-Archive -Path '${src}\\*' -DestinationPath '${zip}' -Force`], { windowsHide: true });
+      const buf = fs.readFileSync(zip);
+      const srv = http.createServer((req, res) => {
+        if (req.url === '/pkg.zip') {
+          res.writeHead(200, { 'content-type': 'application/zip', 'content-length': buf.length });
+          return res.end(buf);
+        }
+        res.writeHead(404); res.end('nope');
+      });
+      await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+      const updBase = `http://127.0.0.1:${srv.address().port}`;
+
+      // register() 才会把 updater 的进度接到 ui.emit 上；e2e 平时不注册 handler，
+      // 这里注册一次，然后盯住推给渲染层的事件。
+      require('../electron/ipc').register({});
+      const events = [];
+      const origEmit = ui.emit;
+      ui.emit = (ch, payload) => { if (ch === 'update') events.push(payload && payload.phase); return origEmit(ch, payload); };
+
+      try {
+        const st0 = await commands.get_update_state();
+        check('初始更新状态是 idle', st0.phase === 'idle', JSON.stringify(st0.phase));
+        check('开发态不允许自我替换',
+          st0.can_apply === false && st0.packaged === false, JSON.stringify({ can_apply: st0.can_apply, packaged: st0.packaged }));
+        check('get_update_state 带回安装目录', !!st0.install_dir, st0.install_dir);
+
+        const cu = await commands.check_update();
+        check('check_update 说明能不能自装',
+          typeof cu.can_apply === 'boolean' && typeof cu.apply_blocked === 'string',
+          JSON.stringify({ can_apply: cu.can_apply, apply_blocked: cu.apply_blocked }));
+
+        const dl = await commands.download_update({ url: `${updBase}/pkg.zip`, version: '9.9.9' });
+        check('经 IPC 下载并解压成功', dl && dl.phase === 'staged', dl && dl.phase);
+        check('staging 里有 Polaris.exe',
+          fs.existsSync(path.join(updater.stagingDir(), 'Polaris.exe')));
+        check('进度事件经 ui.emit 推给渲染层',
+          events.includes('downloading') && events.includes('extracting') && events.includes('staged'),
+          events.join('>'));
+
+        await expectReject('开发态 apply_update 被拦住', () => commands.apply_update());
+
+        const disc = await commands.discard_update();
+        check('丢弃更新包返回 ok', disc && disc.ok === true, JSON.stringify(disc));
+        const st1 = await commands.get_update_state();
+        check('丢弃后回到 idle', st1.phase === 'idle', st1.phase);
+      } finally {
+        ui.emit = origEmit;
+        try { srv.close(); } catch (_) {}
+        updater.reset();
+        fs.rmSync(src, { recursive: true, force: true });
+        fs.rmSync(zip, { force: true });
+      }
+    }
 
     /* ---------- 系统代理 ---------- */
     if (WITH_SYSPROXY) {

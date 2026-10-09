@@ -228,7 +228,9 @@
     </div>
     <div class="section-label">关于</div><div class="card">
       ${row("当前版本", h(s.settings.version), { chev: false })}
-      ${row("检查更新", '<span style="color:var(--blue)">检查更新</span>', { chev: false, click: "check-update" })}
+      ${row("检查更新", s.updateInfo && s.updateInfo.has_update
+        ? '<span style="color:var(--blue)">有新版本 ' + h(s.updateInfo.version) + "</span>"
+        : '<span style="color:var(--blue)">检查更新</span>', { chev: false, click: "check-update" })}
       ${row("导出日志", "", { chev: false, click: "export-logs" })}
       ${row("开源许可", "GPL-3.0", { click: "license" })}
       ${row("运行模式", s.appInfo.portable ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
@@ -385,14 +387,34 @@
       </div></div>`;
     },
 
-    update: (u) => `<div class="overlay" data-overlay><div class="dialog">
+    update: (u) => {
+      // 便携版能自己装（下载→解压→退出→脚本覆盖→重启），装不了才退回「前往下载」
+      const ready = !!u.staged;
+      const canApply = !!u.can_apply;
+      const primary = ready
+        ? `<button class="btn btn-primary" id="btn-apply-update" style="width:100%;height:46px;margin-bottom:10px">重启并安装</button>`
+        : canApply
+          ? `<button class="btn btn-primary" id="btn-download-update" style="width:100%;height:46px;margin-bottom:10px">下载并安装</button>`
+          : `<button class="btn btn-primary" id="btn-open-download" style="width:100%;height:46px;margin-bottom:10px">前往下载</button>`;
+      const blocked = !canApply && u.apply_blocked
+        ? `<div class="dsub" style="text-align:center;margin-bottom:10px">${h(u.apply_blocked)}</div>`
+        : "";
+      return `<div class="overlay" data-overlay><div class="dialog">
       <div style="text-align:center;margin-bottom:12px"><img src="assets/p-icon.png" style="width:56px;height:56px;border-radius:14px"></div>
       <h2 style="text-align:center">发现新版本 ${h(u.version)}</h2>
       <div class="dsub" style="text-align:center">当前版本 ${h(u.current)}${u.size ? " · " + h(u.size) : ""}</div>
       <div style="background:var(--bg);border-radius:12px;padding:14px 16px;font-size:13.5px;color:var(--text2);margin-bottom:18px;white-space:pre-line;max-height:220px;overflow:auto">${h(u.notes || "本次更新没有提供说明")}</div>
-      <button class="btn btn-primary" id="btn-open-download" style="width:100%;height:46px;margin-bottom:10px">前往下载</button>
+      <div id="upd-progress" style="display:none;margin-bottom:14px">
+        <div style="height:6px;border-radius:3px;background:var(--bg);overflow:hidden">
+          <div id="upd-bar" style="height:100%;width:0%;background:var(--blue);transition:width .2s"></div>
+        </div>
+        <div id="upd-text" class="dsub" style="margin-top:8px;text-align:center"></div>
+      </div>
+      ${blocked}
+      ${primary}
       <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent" data-overlay-close>稍后再说</button>
-    </div></div>`,
+    </div></div>`;
+    },
 
     newTicket: () => `<div class="overlay" data-overlay><div class="dialog">
       <h2>新建工单</h2><div class="dsub">描述您遇到的问题，客服将尽快回复</div>

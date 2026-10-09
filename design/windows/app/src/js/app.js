@@ -56,6 +56,8 @@
     siteInfo: {},
     registerConfig: { email_verify: 0, invite_force: 0 },
     email: "",
+    updateInfo: null,      // 最近一次 check_update 的结果（设置页那行要显示「有新版本 x.y.z」）
+    checkingUpdate: false,
   };
 
   const content = $("#content");
@@ -157,8 +159,15 @@
     else if (action === "check-update") {
       const u = await guard("检查更新", () => api.checkUpdate());
       if (!u) return;
-      if (u.has_update) openDialog("update", Object.assign({ current: state.settings.version }, u));
-      else toast("已是最新版本 " + state.settings.version);
+      if (u.has_update) {
+        lastUpdate = Object.assign({ current: state.settings.version }, u);
+        state.updateInfo = u;
+        openDialog("update", lastUpdate);
+      } else if (u.staged) {
+        // 上次下好了没装：版本没变也要让用户能装
+        lastUpdate = Object.assign({ current: state.settings.version, has_update: true, version: u.version }, u);
+        openDialog("update", lastUpdate);
+      } else toast("已是最新版本 " + state.settings.version);
     } else if (action === "logout") openDialog("logoutConfirm", state);
     else if (action === "change-password") openDialog("changePassword", state);
     else if (action === "set-theme") openDialog("appearance", state);
@@ -203,7 +212,7 @@
       }));
     }
     if (name === "update") {
-      const btn = $("#btn-open-download");
+      let btn = $("#btn-open-download");
       if (btn) btn.addEventListener("click", async () => {
         // 旧代码写的是 api.openExternal(arg && arg.version ? "" : "") —— 恒传空串，
         // open_external 必然抛「只允许打开 http(s) 链接」，用户每次都先吃一条红 toast。
@@ -214,6 +223,27 @@
           : await guard("打开下载页", () => api.invoke("open_download"));
         if (r && r.ok === false) { toast(r.msg || "未配置更新地址"); return; }
         if (r) closeDialog();
+      });
+
+      btn = $("#btn-download-update");
+      if (btn) btn.addEventListener("click", async () => {
+        const direct = String((arg && arg.url) || "").trim();
+        paintUpdate({ phase: "downloading", percent: 0, received: 0, total: 0 });
+        const r = await guard("下载更新", () => api.downloadUpdate(direct, arg && arg.version));
+        // 成功时主进程已经推过 staged 事件、弹窗被重画成「重启并安装」，
+        // 这里只处理失败：把进度条收起来（错误提示由 guard 统一弹，不重复弹一条）。
+        if (!r || r.phase !== "staged") {
+          paintUpdate(null);
+          if (r && r.error) toast(r.error);
+        }
+      });
+
+      btn = $("#btn-apply-update");
+      if (btn) btn.addEventListener("click", async () => {
+        const r = await guard("安装更新", () => api.applyUpdate());
+        if (!r) return;
+        paintUpdate({ phase: "applying", percent: 100, received: 0, total: 0 });
+        toast("正在退出并安装，稍后会自动重启");
       });
     }
     if (name === "logoutConfirm") {
@@ -631,6 +661,7 @@
 
   /* ---------------- 主进程状态推送 ---------------- */
   let liveBound = false;
+  let lastUpdate = null;          // 记住这次「发现新版本」的参数，进度事件要拿它重画弹窗
   function bindLiveStatus() {
     if (liveBound || !window.polaris || !window.polaris.on) return;
     liveBound = true;
@@ -660,6 +691,39 @@
     });
     window.polaris.on("toast", (t) => { if (t && t.message) toast(t.message); });
     window.polaris.on("navigate", (t) => { if (t && t.route) nav(t.route); });
+    window.polaris.on("update", (st) => paintUpdate(st));
+  }
+
+  /**
+   * 更新进度：只改弹窗里的进度条，不整页重绘（重绘会把弹窗抹掉）。
+   * 下完（staged）时把弹窗换成「重启并安装」—— 那一步是重画 overlay，安全。
+   */
+  function paintUpdate(st) {
+    if (!st) { const box = $("#upd-progress"); if (box) box.style.display = "none"; return; }
+    const box = $("#upd-progress");
+    if (box) {
+      box.style.display = "";
+      const bar = $("#upd-bar"), text = $("#upd-text");
+      if (bar) bar.style.width = Math.max(0, Math.min(100, Number(st.percent) || 0)) + "%";
+      if (text) text.textContent = updateLabel(st);
+    }
+    if (st.phase === "staged" && lastUpdate) {
+      lastUpdate = Object.assign({}, lastUpdate, { staged: true, can_apply: true });
+      openDialog("update", lastUpdate);
+      toast("更新包已下载完成");
+    }
+  }
+
+  function updateLabel(st) {
+    const mb = (n) => (Number(n) / 1048576).toFixed(1) + " MB";
+    if (st.phase === "downloading") {
+      return st.total ? `正在下载 ${mb(st.received)} / ${mb(st.total)}` : `正在下载 ${mb(st.received)}`;
+    }
+    if (st.phase === "extracting") return "正在解压更新包…";
+    if (st.phase === "staged") return "已就绪，重启后完成安装";
+    if (st.phase === "applying") return "正在退出并安装…";
+    if (st.phase === "error") return st.error || "更新失败";
+    return "";
   }
 
   function paintLive() {
@@ -769,6 +833,29 @@
     autoRefreshSubscription();
     // 虚拟网卡状态要起 PowerShell，放到界面出来之后再查，不占启动路径
     loadTunStatus();
+    // 「自动检查更新」这个开关以前是死的（只有 UI，没有任何代码读它）。
+    // 现在真的会查：延迟 6s 起，别和启动路径抢带宽，也别在启动瞬间弹窗。
+    if (state.settings.auto_update) setTimeout(autoCheckUpdate, 6000);
+  }
+
+  /**
+   * 静默检查更新：只弹一条 toast、并把设置页那一行改成「有新版本 x.y.z」，
+   * 不自动弹窗打断用户（弹窗交给用户点「检查更新」）。
+   */
+  async function autoCheckUpdate() {
+    if (state.checkingUpdate) return;
+    state.checkingUpdate = true;
+    try {
+      const u = await api.checkUpdate();
+      if (u && (u.has_update || u.staged)) {
+        state.updateInfo = u;
+        lastUpdate = Object.assign({ current: state.settings.version }, u);
+        if (u.has_update) toast("发现新版本 " + u.version + "，可在「设置 → 检查更新」安装");
+        else toast("有已下载好的更新 " + u.version + "，可在「设置 → 检查更新」安装");
+        if (state.route === "settings") render();
+      }
+    } catch (_) { /* 检查更新失败不打扰用户 */ }
+    finally { state.checkingUpdate = false; }
   }
 
   let tunInflight = null;

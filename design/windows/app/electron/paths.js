@@ -76,6 +76,8 @@ const paths = {
     : path.resolve(__dirname, '..', 'resources', 'rules')),
   /** 内核实际读取的规则集目录：必须在 data/ 内，否则 mihomo 会以「不安全路径」拒载 */
   ruleSeeds: () => path.join(root(), 'data', 'rules'),
+  /** 自动更新的下载与解压暂存区 */
+  updateDir: () => path.join(root(), 'data', 'update'),
   cache: () => path.join(root(), 'data', 'cache'),
   file: (...rel) => path.join(root(), 'data', ...rel),
   core: () => (IS_PACKAGED
@@ -86,7 +88,7 @@ const paths = {
     ? path.join(process.resourcesPath, 'geo')
     : path.resolve(__dirname, '..', 'resources', 'geo')),
   ensureAll() {
-    for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.ruleSeeds(), paths.cache()]) {
+    for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.ruleSeeds(), paths.cache(), paths.updateDir()]) {
       fs.mkdirSync(d, { recursive: true });
     }
     return paths;

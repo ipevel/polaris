@@ -328,6 +328,51 @@ async function run(win, { log = console.log } = {}) {
     await js(`(() => { window.PolarisDialog.close();
       document.querySelectorAll('.toast').forEach((t) => t.remove()); return true; })()`);
 
+    /* ---------------- 5c. 自动更新的三种弹窗形态 ---------------- */
+    // 便携版能自己装时给「下载并安装」，下好了给「重启并安装」，装不了才退回「前往下载」。
+    R.section('更新弹窗（可自装 / 已就绪 / 不可自装）');
+    const openUpd = async (arg) => {
+      await js(`(() => { window.PolarisDialog.close(); window.PolarisDialog.open('update', ${JSON.stringify(arg)}); return true; })()`);
+      await sleep(320);
+      return js(`(() => {
+        const q = (s) => !!document.querySelector(s);
+        const box = document.querySelector('#upd-progress');
+        return {
+          download: q('#btn-download-update'), apply: q('#btn-apply-update'), open: q('#btn-open-download'),
+          progressShown: !!box && box.style.display !== 'none',
+          blockedHint: [...document.querySelectorAll('.dialog .dsub')].map((e) => e.textContent).join(' | '),
+        };
+      })()`);
+    };
+
+    const uCan = await openUpd({ version: '9.9.9', current: '1.8.0', size: '12 MB', notes: '自检占位', url: '', can_apply: true, staged: false, apply_blocked: '' });
+    R.check('能自装时给「下载并安装」', uCan.download === true && uCan.apply === false && uCan.open === false, JSON.stringify(uCan));
+    R.check('下载前进度条是收起的', uCan.progressShown === false, JSON.stringify(uCan));
+
+    const uReady = await openUpd({ version: '9.9.9', current: '1.8.0', url: '', can_apply: true, staged: true, apply_blocked: '' });
+    R.check('已下载好时给「重启并安装」', uReady.apply === true && uReady.download === false, JSON.stringify(uReady));
+
+    const uNo = await openUpd({ version: '9.9.9', current: '1.8.0', url: 'https://dl.example.com/x.zip', can_apply: false, staged: false, apply_blocked: '当前安装目录不可写（可能装在 Program Files 或只读盘），请手动解压更新' });
+    R.check('装不了时退回「前往下载」并说明原因',
+      uNo.open === true && uNo.download === false && /不可写/.test(uNo.blockedHint), JSON.stringify(uNo));
+
+    // 点「下载并安装」但没配地址：只能是一条错误提示，不能崩、不能把弹窗留下半个进度条
+    const beforeErrs = (await js(`(window.__consoleErrors || []).length`)) || 0;
+    await js(`(() => { document.querySelectorAll('.toast').forEach((t) => t.remove());
+      const b = document.querySelector('#btn-download-update'); if (b) b.click(); return true; })()`);
+    await sleep(1200);
+    const dlState = await js(`(() => ({
+      toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | '),
+      progressShown: (() => { const b = document.querySelector('#upd-progress'); return !!b && b.style.display !== 'none'; })(),
+      dialogStillThere: !!document.querySelector('.overlay .dialog'),
+      errs: (window.__consoleErrors || []).length,
+    }))()`);
+    R.check('没配地址时点下载只报错、不崩', dlState.errs === beforeErrs && dlState.dialogStillThere === true,
+      JSON.stringify(dlState));
+    R.check('下载失败后进度条收起', dlState.progressShown === false, JSON.stringify(dlState));
+    await js(`(() => { window.PolarisDialog.close();
+      document.querySelectorAll('.toast').forEach((t) => t.remove()); return true; })()`);
+
     /* ---------------- 5. 设置页滚动 ---------------- */
     R.section('设置页滚动');
     await js(`(() => { document.querySelector('.nav-item[data-route="settings"]').click(); return true; })()`);

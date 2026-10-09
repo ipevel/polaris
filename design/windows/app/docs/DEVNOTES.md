@@ -11,19 +11,19 @@
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.8.0.zip     185,899,380 B（~186 MB）
+design/windows/app/dist/Polaris-portable-1.8.0.zip     185,914,150 B（~186 MB）
 ```
 
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。已验证。
 
-> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 56/0、`--doctor` 72/0、`--smoke` `ok:true`，
+> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 75/0、`--doctor` 82/0、`--smoke` `ok:true`，
 > `data/rules` 自动铺出 48 个种子。
 
 ### 规模
 
 | | |
 | --- | --- |
-| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` |
+| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` |
 | 相对基线 | +115,989 / −902 行，103 文件 |
 | 应用代码 | 主进程 ~3,460 行 JS，渲染层 ~1,423 行 JS，样式 ~380 行 |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
@@ -34,13 +34,14 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,899,380 B（~186 MB�
 
 | 命令 | 规模 | 覆盖 |
 | --- | --- | --- |
-| `npm test` | 110 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、地区识别、真实拉起 mihomo |
-| `npm run test:e2e` | 72 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、系统代理还原 |
-| `Polaris.exe --uitest` | 69 项 | **界面驱动**：拖拽区、最大化、窄窗口（1100px）、滚动、填表点登录、逐页切换、分流页开关、流量曲线、弹窗、设置页不自我重绘、两套主题的文字对比度 |
-| `Polaris.exe --doctor` | 72 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
+| `npm test` | 150 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、自动更新（下载/解压/替换脚本）、地区识别、真实拉起 mihomo |
+| `npm run test:e2e` | 82 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、自动更新（IPC + 进度事件）、系统代理还原 |
+| `Polaris.exe --uitest` | 75 项 | **界面驱动**：拖拽区、最大化、窄窗口（1100px）、滚动、填表点登录、逐页切换、分流页开关、流量曲线、弹窗、更新弹窗三种形态、设置页不自我重绘、两套主题的文字对比度 |
+| `Polaris.exe --doctor` | 82 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
 | `Polaris.exe --smoke` | — | 窗口能起 + DOM 渲染断言 |
+| `Polaris.exe --updtest <zip>` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份** |
 
-当前全绿：**110 / 72 / 69**（开发态与成品包各跑一遍）。
+当前全绿：**150 / 82 / 75**（开发态与成品包各跑一遍）。
 
 ### 已实测通过
 
@@ -51,6 +52,7 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,899,380 B（~186 MB�
 - 便携性：删掉 `%APPDATA%\Polaris` 后跑成品，不再重建
 - 内置分流：16 个默认规则集被内核**真正加载**（`/providers/rules` 逐个 `ruleCount > 0`，合计 > 1 万条），
   运行中开关分流组能热重载并让内核加载新规则集
+- 自动更新：下载（含 302）→ 校验 zip → 解压 → 写替换脚本 → 覆盖安装目录 → 重启，全程在成品包的**拷贝**上真跑过一遍
 
 ### 未验证 / 未做
 
@@ -59,7 +61,7 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,899,380 B（~186 MB�
 | 真实面板联调 | ❌ | 后端按 Android 端 Kotlin 契约写完，假面板验过；但各面板分支字段名不统一，需要真实账号 |
 | TUN 模式实机 | ❌ | 代码路径完整（含 UAC 提权、网卡收尾、残留清理），但会临时接管网络栈，未在真机跑 |
 | 面板活跃会话管理（踢设备） | ❌ | 需要新功能：**两端都没有这个接口**（面板侧也没有），不是「UI 未做」 |
-| 自动更新（下载并替换自身） | ⚠️ | 只做到「检测到新版本 → 打开下载页」；Windows 更新地址走 `update_windows_url`，不回落安卓 APK |
+| 自动更新（下载并替换自身） | ✅ | 便携版可自装：`update_windows_url` 指向 zip → 下载 → 解压到 `data/update/staging` → 退出前写 `apply-update.cmd` 覆盖安装目录并重启。装在 `Program Files`/只读盘时自动退回「前往下载」；不做增量、不校验签名、失败无回滚（只覆盖不删除，用户数据与旧文件都还在，可手动重下） |
 | 自定义规则集（用户自己写规则） | ❌ | 内置分流已做（27 组 / 48 规则集可开关）；用户自定义规则组、分组排序未做 |
 | 分流组排序 | ❌ | `routing_order` 已在配置层支持（`orderedTable`），但 UI 没有排序入口 |
 
@@ -103,6 +105,7 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
    ├─ credentials.dat  DPAPI 加密
    ├─ traffic.json     流量历史
    ├─ electron/        ← Electron 自己的缓存也在这里（见坑 A-4）
+   ├─ update/          下载的更新包 + staging + apply-update.cmd/log
    └─ logs/
 ```
 
@@ -124,6 +127,30 @@ Android 端的分流表（`kernel-core/.../native/config/routing/routing_table.g
 
 其余沿用 Android 的语义：本地规则插在订阅规则**之前**、内网地址始终直连、
 每个启用组一个同名 select 组（首位成员表达默认出口）、`orderedTable` 保证排序不丢组。
+
+### 5. 自动更新：为什么把「替换自己」交给一个外部批处理
+
+进程不能覆盖自己正在运行的可执行文件（Windows 会锁住 `Polaris.exe` 和 asar），
+所以 `apply()` 只是写一个 `apply-update.cmd` 然后 `detached + unref` 地起它，自己退出：
+
+```
+等主进程 PID 消失（tasklist 轮询，最多 120 秒）
+  → robocopy staging 安装目录 /E /IS /IT        （只覆盖不删除）
+  → start "" 安装目录\Polaris.exe               （重启）
+```
+
+三个刻意的选择：
+
+- **`robocopy` 而不是 `xcopy`/自写拷贝**：`/E` 只补齐、不删除，所以 `data/`（配置、凭据、流量记录）
+  和上一版遗留的文件都会留着 —— 失败也没有「更新到一半打不开」的窗口，最多是版本混杂。
+- **不加 `/MIR` 或 `/PURGE`**：那会把用户数据一起清掉。自检里专门断言脚本**不含**这两个开关。
+- **脚本文件不自我删除**：运行中的 `.cmd` 删自己会报错；留在 `data/update/` 当审计日志。
+
+脚本必须**全 ASCII + CRLF**：`cmd.exe` 对 UTF-8 无 BOM 的中文路径/注释会按 ANSI 解，中文注释足以让
+`goto` 标签解析错位。脚本里所有路径都用 `%SRC%`/`%APP%` 变量加引号，日志头写清版本与时间。
+
+装不了的三种情况（开发态 / 安装目录不可写 / 还没下好）由 `applyBlockedReason()` 统一给出人话原因，
+渲染层据此在「下载并安装」「重启并安装」「前往下载」三种弹窗形态之间切换。
 
 ---
 
@@ -229,6 +256,69 @@ app.setPath('sessionData', electronData);
 对比度（浅色，背景 rgb(245, 245, 247)）：{"页面标题":15.46,"分组标题":2.99,"设置项名称":16.83,"设置项取值":5.07,"导航项":5.07}
 对比度（暗色，背景 rgb(22, 23, 26)）：  {"页面标题":16.03,"分组标题":5.31,"设置项名称":14.56,"设置项取值":6.97,"导航项":7.37}
 ```
+
+**A-9 `auto_update` 开关一直是死的**
+
+设置页有「自动检查更新」，`store.js` 里有默认值 `auto_update: true`，`ipc.js` 的白名单里有它 ——
+但 `grep auto_update` 只命中这三处，**没有任何代码真的读它去检查更新**。开关能拨、能存、能回显，
+就是不做事。这类"接线接了一半"的开关比缺功能更糟：用户以为开了。
+
+修：`boot()` 末尾按开关延迟 6 秒静默检查一次，有更新（或已下好）才提示；
+`--uitest` 断言不了它（要等 6 秒），改由 `selftest-e2e.js` 直接调命令层验证。
+
+**教训**：新增一个设置项时，`grep <key>` 必须能同时找到"写它的地方"和"读它的地方"；
+只有前者就是死开关。
+
+**A-10 在主进程里 `return` 之前动嘴，等于玩 TDZ 地雷**
+
+`--doctor` / `--updtest` 这类自检开关都是在 `main.js` 顶层 `return` 掉的（跳过窗口/托盘/单实例锁）。
+我加 `--updtest` 时顺手在回调里写了 `quitting = true; app.quit()` —— 看着无害，
+实际 `let quitting = false` 声明在那个 `return` **后面**，模块求值根本没走到，
+于是 500ms 后赋值直接 `ReferenceError: Cannot access 'quitting' before initialization`，
+**主进程弹错误框、永不退出**，而替换脚本正等着它退出 → 整个更新流程卡死。
+
+修：`--updtest` 分支里只碰 `app`/`log`/`paths`，退出就用 `app.quit()`。
+（顺带说明：因为模块提前 `return`，`window-all-closed` 的 `preventDefault` 也没注册，
+`app.quit()` 才能真的退出——这是这套自检开关"能用"的前提条件之一。）
+
+**A-11 替换脚本的两个"看起来对"的坑**
+
+1. **等不到进程退出也必须放弃**：原来写的是"等 120 秒 → `goto copy`"，也就是主进程还活着照样覆盖。
+   文件被占着，robocopy 只能抄进去一半 —— 比不更新糟得多（半新半旧、可能打不开）。
+   改成 `goto stuck` → 记日志 → `exit /b 2`，安装目录一个字节都不动。
+2. **`timeout /t 1` 在脱离进程里是坏的**：它需要交互式控制台，而脚本是
+   `spawn(cmd, {detached:true, stdio:'ignore'})` 起的 —— 没有控制台，`timeout` 立刻报错返回，
+   等待循环变成空转、120 次上限瞬间耗完。换成 `ping -n 2 127.0.0.1 >nul`（老牌 sleep，不依赖控制台）。
+3. **装完必须清包**：不清 `staged.json` + `staging`，下次启动 `restoreStaged()` 又把 staging 认成"已就绪"，
+   用户再点一次「重启并安装」= 拿旧包把自己降级回去。所以脚本在成功分支里
+   `del staged.json` / `del Polaris-*.zip` / `rd /s /q staging`（**不碰安装目录、不删脚本自身**）。
+
+**A-12 无控制台的脱离进程里，`tasklist` 是哑的（这条差点让更新永远卡住）**
+
+等主进程退出原来用的是 `tasklist /FI "PID eq N" /NH | find "N"`。在**有控制台**的终端里手跑完全正常，
+但在真实场景（GUI 应用 spawn 的脱离 cmd，stdio 全忽略）里：
+
+- `tasklist` **一个字都不输出**（连 `> file` 重定向出来都是空文件）；
+- 管道版因此**永远等不到 EOF，卡死在 `find.exe` 上** —— 表现就是"点了安装，应用退出了，然后再也不回来"；
+- 改成"重定向到文件再 `find 文件`"不卡了，但每次都是空文件 → 每次都判定"进程已退出" →
+  **应用还活着就开始 robocopy**，又回到 A-11 第 1 条的坏结果。
+
+实测结论：**PowerShell 的 `Get-Process -Id N` 在无控制台环境里工作正常**（活着的进程 exit 0，不存在的 exit 1）。
+现在脚本用 `powershell -NoProfile -NonInteractive -Command "if (Get-Process -Id N ...)"`，
+并把"探测本身失败"（errorlevel ≥ 2，比如机器上没有 powershell）当成**"还没退，继续等"**，
+等满上限就走 `:stuck` 放弃 —— 宁可不动，也不覆盖一个正在运行的安装目录。
+
+这三条都不是想出来的，是拿成品包副本真跑一遍 `--updtest` 压出来的 —— 见 §四。
+
+**A-13 Electron 的"位置参数之后再跟开关"会静默退出**
+
+演练命令原来写成 `Polaris.exe --updtest <URL> --updtest-version 9.9.9`，结果：
+**主进程 exit code -1、日志一个字都不写、`data/` 都不建**，看上去完全像"应用崩了"。
+把顺序换成 `--updtest-version 9.9.9 --updtest <URL>`，或者把第二个开关写成
+`--updtest-version=9.9.9`（等号形式），就一切正常。
+
+结论：**开关放位置参数前面，或者一律用 `--x=y`**。演练脚本已按等号形式写。
+（这只影响带命令行开关的自检/演练路径，正常用户是点界面触发的，不受影响。）
 
 ---
 
@@ -480,8 +570,8 @@ npm run mock                  # 演示数据，不连内核
 npm start                     # 真实模式
 
 # 自检
-npm test                      # 核心层 110 项（纯 Node）
-npm run test:e2e              # 端到端 72 项（起真 mihomo + 假面板 + 真流量）
+npm test                      # 核心层 145 项（纯 Node）
+npm run test:e2e              # 端到端 82 项（起真 mihomo + 假面板 + 真流量）
 npm run test:e2e -- --sysproxy  # 连系统代理一起验（写 HKCU 并精确还原）
 
 # 打包
@@ -495,10 +585,29 @@ Polaris.exe --doctor            端到端自检，报告 → data/doctor-report.
 Polaris.exe --doctor --sysproxy 连系统代理一起验
 Polaris.exe --uitest            界面驱动自检，报告 → data/uitest-report.txt
 Polaris.exe --mock              演示数据启动，看界面
+Polaris.exe --smoke             起窗口 + DOM 断言，结果 → data/smoke-result.json
 ```
 
+演练自我替换（**会覆盖当前目录，务必先整个拷一份再跑**）：
+
+```
+copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\gs_apple.yaml（当"被替换"标记）
+→ 放一个 data\USERDATA.txt（当"必须保留"标记）
+→ 用任意 http 服务把新 zip 发出来
+→ 副本里的 Polaris.exe --updtest-version=9.9.9 --updtest http://127.0.0.1:8124/Polaris-portable-1.8.0.zip
+
+验收：gs_apple.yaml 回来了、USERDATA.txt 还在、data\update\apply-update.log 里有 done, restarting、
+     重启后的进程在跑、data\update 里只剩 apply-update.cmd 与 apply-update.log（包和 staging 都清掉了）。
+```
+
+> **开关要写在 URL 前面**，或者写成 `--updtest-version=9.9.9` 的等号形式 ——
+> 位置参数之后再跟 `--switch value`，Electron 会在主进程起来之前就退出（exit -1、无日志），
+> 见踩坑 A-13。这一条真的花了十几分钟才从"应用崩了"里认出来。
+>
 > 本机注意：`npx` / `npm.ps1` 被执行策略禁止 → 用 `node node_modules\electron-builder\cli.js`、
-> `node scripts\selftest-core.js` 直接跑；跑 Electron 前必须 `Remove-Item Env:ELECTRON_RUN_AS_NODE`。
+> `node scripts\selftest-core.js` 直接跑；跑 Electron 前必须 `Remove-Item Env:ELECTRON_RUN_AS_NODE`
+> （**而且这个变量会传染给子进程**，用 Node spawn 起成品包时要把 env 过滤掉，否则 Electron 退化成纯 Node，
+> 报 `<exe>: bad option: --smoke` 并秒退）。
 
 ---
 
@@ -512,10 +621,11 @@ Polaris.exe --mock              演示数据启动，看界面
 2. **TUN 模式实机验证**（需要用户同意，会临时接管网络栈）
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。
 
-3. **自动更新做成自替换**
-   现在是「检测到新版本 → 打开下载页」（Windows 地址取 `update_windows_url`，不回落安卓包）。
-   要做成下载 zip → 校验 → 替换自身 → 重启。便携版替换自身时文件被占用，必须让一个
-   脱离进程（`cmd /c ping` 等窗口期或独立 .bat）等主进程退出后再解压覆盖。
+3. **自动更新的收尾**（自替换已实装并真跑过，见 §二.5）
+   - 没有回滚：覆盖失败只会留下版本混杂（`robocopy` 不删文件），可以再加"上一版备份 + 失败回滚"
+   - 没有校验：只判了 zip 头和 `Polaris.exe` 是否存在，没有签名/哈希校验
+   - 后端还缺 `update_windows_url`：现在 `remote.updateInfo()` 已经优先取它，
+     但真实面板得先把这个字段补上，否则 Windows 端只能退回「前往下载」
 
 4. **内置分流的剩余部分**
    - 分流组排序：配置层已支持（`routing_order` + `orderedTable`），缺 UI 入口
@@ -523,7 +633,7 @@ Polaris.exe --mock              演示数据启动，看界面
      但要注意 `gs_*` 是 domain/`gp_*` 是 ipcidr/`acl_*` 是 classical，behavior 不能写错
 
 5. **补 UI 层面的更多断言**
-   目前 69 项（含窄窗口 1100px 与两套主题的对比度）。还可以补：长列表性能（要一份几百节点的订阅）、
+   目前 75 项（含窄窗口 1100px 与两套主题的对比度）。还可以补：长列表性能（要一份几百节点的订阅）、
    键盘可达性（Tab 顺序、Esc 关弹窗）、多屏 DPI 缩放。
 
 6. **浅色主题的三级文字对比度（设计决策，非代码问题）**

@@ -36,6 +36,41 @@ if (process.argv.includes('--doctor')) {
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 const MOCK = process.argv.includes('--mock');
 
+// 自我替换演练：`Polaris.exe --updtest <zip 地址>`。
+// 下载 → 解压 → 写替换脚本 → 退出，由脚本覆盖安装目录并重启。
+// 这条路径平时只能在真实发版时走一次，坏了就是把用户的安装目录搞坏，
+// 所以留一个能在成品包上直接演练的开关（跑之前请先把整个目录拷一份）。
+// 注意 1：这个分支在模块顶层 return，后面的 `quitting` 等声明都不会执行，
+//         所以这里不能碰它们（曾经在这里赋 `quitting = true`，直接 TDZ 崩在主进程里）。
+// 注意 2：**开关要写在 URL 前面，或者用 `--updtest-version=9.9.9` 这种等号形式**。
+//         位置参数（那个 URL）之后再跟 `--switch value`，Electron 会在主进程起来之前就退出，
+//         实测 exit code -1、日志一个字都不写，排查起来极像"应用崩了"。
+if (process.argv.includes('--updtest')) {
+  const argOf = (name) => {
+    const eq = process.argv.find((a) => a.startsWith(name + '='));
+    if (eq) return eq.slice(name.length + 1);
+    const i = process.argv.indexOf(name);
+    return i >= 0 ? (process.argv[i + 1] || '') : '';
+  };
+  const url = argOf('--updtest');
+  const version = argOf('--updtest-version') || 'updtest';
+  app.whenReady().then(async () => {
+    const updater = require('./core/updater');
+    try {
+      log.info(`更新演练：${url} → ${paths.root()}`);
+      const st = await updater.download(url, version);
+      log.info(`更新演练：解压完成 phase=${st.phase}`);
+      const r = updater.apply();
+      log.info(`更新演练：替换脚本 ${r.script}，安装目录 ${r.install_dir}，退出中`);
+      setTimeout(() => app.quit(), 500);
+    } catch (e) {
+      log.error('更新演练失败：' + (e && e.message));
+      setTimeout(() => app.exit(2), 200);
+    }
+  });
+  return;
+}
+
 let mainWindow = null;
 let tray = null;
 let quitting = false;
