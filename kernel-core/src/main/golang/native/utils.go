@@ -17,7 +17,9 @@ import (
 func marshalJson(obj any) *C.char {
 	res, err := json.Marshal(obj)
 	if err != nil {
-		panic(err.Error())
+		// cgo 导出函数里 panic 会直接崩掉内核进程；序列化失败回退空 JSON，
+		// 让 Kotlin 侧拿到可解析的空对象而不是 VM abort
+		res = []byte("{}")
 	}
 
 	return C.CString(string(res))

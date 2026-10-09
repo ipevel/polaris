@@ -229,14 +229,16 @@ object Clash {
         )
     }
 
-    fun subscribeLogcat(): ReceiveChannel<LogMessage> {
-        return Channel<LogMessage>(32).apply {
-            Bridge.nativeSubscribeLogcat(object : LogcatInterface {
-                override fun received(jsonPayload: String) {
-                    trySend(Json.decodeFromString(LogMessage.serializer(), jsonPayload))
-                }
-            })
-        }
+    fun subscribeLogcat(): ReceiveChannel<LogMessage> = Channel<LogMessage>(32).apply {
+        Bridge.nativeSubscribeLogcat(object : LogcatInterface {
+            override fun received(jsonPayload: String) {
+                // 单条畸形日志解析失败只丢弃该条：向 C 侧抛异常会让内核退订，
+                // 日志流从此静默（直到 UI 重订阅）
+                runCatching {
+                    Json.decodeFromString(LogMessage.serializer(), jsonPayload)
+                }.onSuccess { trySend(it) }
+            }
+        })
     }
 
     fun setAgeSecretKey(key: String?) {
