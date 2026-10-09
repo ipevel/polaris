@@ -75,25 +75,26 @@ function write(level, args) {
   if (s) s.write(line);
 }
 
-/** printf 风格占位替换：%s / %d / %j / %% */
+function fmtOne(a) {
+  return typeof a === 'string' ? a : safeJson(a);
+}
+
+/** printf 风格占位替换：%s / %d / %j / %%。
+ *  第一个字符串参数是格式串；被消费掉的参数不再重复输出（同 console.log）。 */
 function interpolate(args) {
-  let i = 0;
-  return args
-    .map((a) => {
-      if (typeof a !== 'string' || a.indexOf('%') < 0) {
-        return typeof a === 'string' ? a : safeJson(a);
-      }
-      return a.replace(/%([sdj%])/g, (m, k) => {
-        if (k === '%') return '%';
-        if (i >= args.length) return m;
-        const v = args[i];
-        i += 1;
-        if (k === 's') return typeof v === 'string' ? v : safeJson(v);
-        if (k === 'd') return String(Number(v));
-        return safeJson(v);
-      });
-    })
-    .join(' ');
+  if (args.length === 0) return '';
+  const first = args[0];
+  if (typeof first !== 'string' || first.indexOf('%') < 0) {
+    return args.map(fmtOne).join(' ');
+  }
+  let i = 1;
+  const head = first.replace(/%([sdj%])/g, (m, k) => {
+    if (k === '%') return '%';
+    if (i >= args.length) return m;
+    return fmtOne(args[i++]);
+  });
+  const rest = args.slice(i).map(fmtOne);
+  return [head, ...rest].join(' ');
 }
 
 module.exports = {

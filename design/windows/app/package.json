@@ -10,9 +10,18 @@
   "scripts": {
     "start": "electron .",
     "mock": "electron . --mock",
+    "test": "node scripts/selftest-core.js",
     "pack": "electron-builder --win --x64 --dir",
     "dist": "electron-builder --win --x64",
     "clean": "node scripts/clean.js"
+  },
+  "dependencies": {
+    "js-yaml": "5.4.3",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
   },
   "build": {
     "appId": "app.polaris.windows",
@@ -27,13 +36,19 @@
     "files": [
       "electron/**/*",
       "src/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/js-yaml/**/*",
+      "node_modules/ws/**/*"
     ],
     "extraResources": [
       {
         "from": "core",
         "to": "core",
         "filter": ["**/*"]
+      },
+      {
+        "from": "build/portable-readme.txt",
+        "to": "../使用说明.txt"
       }
     ],
     "win": {
