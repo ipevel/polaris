@@ -258,10 +258,10 @@
   /* ---------- 标题栏 ---------- */
   function bindTitlebar() {
     $$(".nav-item").forEach((el) => el.addEventListener("click", () => nav(el.dataset.route)));
-    const win = () => (window.__TAURI__ ? window.__TAURI__.window.getCurrentWindow() : null);
-    $("#btn-min").addEventListener("click", async () => { const w = win(); if (w) await w.minimize(); });
-    $("#btn-max").addEventListener("click", async () => { const w = win(); if (w) await w.toggleMaximize(); });
-    $("#btn-close").addEventListener("click", async () => { const w = win(); if (w) await w.close(); });
+      const w = () => (window.polaris ? window.polaris.win : null);
+      $("#btn-min").addEventListener("click", () => { const a = w(); if (a) a.minimize(); });
+      $("#btn-max").addEventListener("click", () => { const a = w(); if (a) a.toggleMaximize(); });
+      $("#btn-close").addEventListener("click", () => { const a = w(); if (a) a.close(); });
   }
 
   /* ---------- 启动 ---------- */
@@ -280,9 +280,10 @@
       unreadNotices: notices.filter((n) => n.unread).length,
     });
     if (!keepRoute) state.route = "home";
-    render();
-    // 速率模拟跳动（浏览器预览用；Tauri 下由后端推送替换）
-    if (!api.isTauri) setInterval(() => {
+      render();
+      bindLiveStatus();
+      // 速率模拟跳动：仅浏览器/mock 预览用，真实运行时由主进程推送替换
+      if (!api.isHost) setInterval(() => {
       if (!state.connected) return;
       state.down_speed = (11 + Math.random() * 3).toFixed(1);
       state.up_speed = (1.8 + Math.random() * 0.8).toFixed(1);
@@ -292,5 +293,39 @@
     }, 2000);
   }
 
-  document.addEventListener("DOMContentLoaded", () => { bindTitlebar(); boot(false); });
+    /* ---------- 主进程状态推送（真实速率 / 连接状态 / 跳转） ---------- */
+    let liveBound = false;
+    function bindLiveStatus() {
+      if (liveBound || !window.polaris || !window.polaris.on) return;
+      liveBound = true;
+      window.polaris.on("status", (st) => {
+        if (!st) return;
+        const was = state.connected;
+        state.connected = !!st.connected;
+        state.node = st.node || state.node;
+        state.latency = st.latency || 0;
+        state.up_speed = st.up_speed;
+        state.down_speed = st.down_speed;
+        state.up_total = st.up_total;
+        state.down_total = st.down_total;
+        state.uptime = st.uptime;
+        if (st.mode) state.mode = st.mode;
+        if (state.route === "home") paintLiveSpeed();
+        if (was !== state.connected) render();
+      });
+      window.polaris.on("toast", (t) => { if (t && t.message) toast(t.message); });
+      window.polaris.on("navigate", (t) => { if (t && t.route) nav(t.route); });
+    }
+    function paintLiveSpeed() {
+      const d = $("#down-speed"), u = $("#up-speed");
+      if (d) d.textContent = state.down_speed + " MB/s";
+      if (u) u.textContent = state.up_speed + " MB/s";
+      const t = $(".hero .t"), n = $(".hero .node-line");
+      if (t) t.textContent = state.connected ? "已连接" : "未连接";
+      if (n) n.textContent = state.connected
+        ? state.node + " · " + state.latency + "ms"
+        : "点击上方按钮开始连接";
+    }
+
+    document.addEventListener("DOMContentLoaded", () => { bindTitlebar(); boot(false); });
 })();

@@ -1,1 +1,51 @@
-{"name":"polaris-windows","private":true,"scripts":{"build":"tauri build","dev":"tauri dev","preview":"npx serve src"},"type":"module","version":"1.7.4"}
+{
+  "name": "polaris-windows",
+  "productName": "Polaris",
+  "version": "1.8.0",
+  "description": "北辰 Polaris Windows 客户端（便携版）",
+  "license": "GPL-3.0",
+  "author": "Polaris Contributors",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "mock": "electron . --mock",
+    "pack": "electron-builder --win --x64 --dir",
+    "dist": "electron-builder --win --x64",
+    "clean": "node scripts/clean.js"
+  },
+  "build": {
+    "appId": "app.polaris.windows",
+    "productName": "Polaris",
+    "copyright": "Copyright (c) Polaris Contributors",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "core",
+        "to": "core",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Polaris-portable-${version}.zip",
+      "icon": "build/icon.png"
+    },
+    "compression": "maximum"
+  }
+}

@@ -1,10 +1,13 @@
 /* 数据层：优先走 Tauri 后端命令，非 Tauri 环境（浏览器预览）用本地 mock。
  * 后端实现见 src-tauri/src/main.rs，所有命令名与之一一对应。 */
 (function () {
-  const isTauri = !!(window.__TAURI__ && window.__TAURI__.core);
+  /* 宿主探测：Electron 走 IPC，浏览器预览走内置 mock。
+   * ?mock=1（或启动参数 --mock）强制走 mock，方便纯设计调试。 */
+  const isMock = /(\?|&)mock=1/.test(location.search);
+  const isHost = !isMock && !!(window.polaris && window.polaris.invoke);
 
   async function invoke(cmd, args) {
-    if (isTauri) return window.__TAURI__.core.invoke(cmd, args || {});
+    if (isHost) return window.polaris.invoke(cmd, args || {});
     return Mock[cmd] ? Mock[cmd](args || {}) : null;
   }
 
@@ -77,7 +80,8 @@
   };
 
   window.PolarisAPI = {
-    isTauri,
+    isHost,
+    isTauri: isHost,   // 兼容旧字段
     getStatus: () => invoke("get_status"),
     connect: () => invoke("connect"),
     disconnect: () => invoke("disconnect"),
