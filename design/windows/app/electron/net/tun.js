@@ -17,6 +17,10 @@ const log = require('../logger');
 
 const ADAPTER = 'Polaris';
 
+let cache = null;
+let cachedAt = 0;
+const TTL_MS = 60 * 1000;
+
 function ps(script, timeoutMs = 20000) {
   return new Promise((resolve) => {
     execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', script],
@@ -26,23 +30,34 @@ function ps(script, timeoutMs = 20000) {
   });
 }
 
-/** 查询 Polaris 虚拟网卡状态 */
-async function status() {
+/**
+ * 查询 Polaris 虚拟网卡状态。
+ * 每次都起一个 PowerShell，冷启动实测 ~2.7 秒 —— 不能放在应用启动路径上，
+ * 所以加 60 秒缓存，并让 UI 只在进设置页时刷新。
+ */
+async function status(force = false) {
   if (process.platform !== 'win32') return { supported: false, exists: false };
+  if (!force && cache && Date.now() - cachedAt < TTL_MS) return cache;
   const { err, out } = await ps(
     `$a = Get-NetAdapter -Name '${ADAPTER}' -ErrorAction SilentlyContinue; ` +
     `if ($a) { "$($a.Status)|$($a.InterfaceDescription)|$($a.ifIndex)" } else { 'NONE' }`,
   );
-  if (err) return { supported: true, exists: false, error: err.message };
-  if (out === 'NONE' || !out) return { supported: true, exists: false };
-  const [state, desc, index] = out.split('|');
-  return { supported: true, exists: true, state, description: desc, ifIndex: Number(index) || 0 };
+  if (err) cache = { supported: true, exists: false, error: err.message };
+  else if (out === 'NONE' || !out) cache = { supported: true, exists: false };
+  else {
+    const [state, desc, index] = out.split('|');
+    cache = { supported: true, exists: true, state, description: desc, ifIndex: Number(index) || 0 };
+  }
+  cachedAt = Date.now();
+  return cache;
 }
+
+function invalidate() { cache = null; cachedAt = 0; }
 
 /** 删除残留的 Polaris 虚拟网卡（需要管理员） */
 async function cleanup() {
   if (process.platform !== 'win32') return { ok: false, msg: '仅支持 Windows' };
-  const st = await status();
+  const st = await status(true);
   if (!st.exists) return { ok: true, msg: '没有残留的虚拟网卡' };
   if (st.state === 'Up') return { ok: false, msg: '虚拟网卡正在使用中，请先断开连接' };
   const { err } = await ps(`Remove-NetAdapter -Name '${ADAPTER}' -Confirm:$false -ErrorAction Stop`);
@@ -72,4 +87,4 @@ function stopProcess(proc, graceMs = 1200) {
   });
 }
 
-module.exports = { status, cleanup, stopProcess, ADAPTER };
+module.exports = { status, invalidate, cleanup, stopProcess, ADAPTER };

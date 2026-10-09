@@ -37,8 +37,8 @@
     return `<div class="empty"><div class="empty-t">${h(text)}</div>${hint ? `<div class="empty-s">${h(hint)}</div>` : ""}</div>`;
   }
 
-  function err(text) {
-    return text ? `<div class="inline-err">${h(text)}</div>` : "";
+  function err(text, id) {
+    return `<div class="inline-err"${id ? ` id="${id}"` : ""}>${h(text || "")}</div>`;
   }
 
   const Views = {};
@@ -240,7 +240,7 @@
     <input class="field" id="login-panel" placeholder="面板地址 https://" value="${h(s.settings.panel_url || "")}">
     <input class="field" id="login-email" placeholder="邮箱" value="${h(s.settings.last_email || "")}">
     <input class="field" id="login-pass" type="password" placeholder="密码">
-    ${err(s.authError)}
+    ${err(s.authError, "auth-err")}
     <button class="btn btn-primary" id="btn-login" style="width:100%;height:48px;font-size:15px">登录</button>
     <div class="auth-links"><span data-nav="register">注册账号</span><span data-nav="forgot">忘记密码</span></div>
     ${s.settings.version ? `<div class="auth-ver">Polaris ${h(s.settings.version)}</div>` : ""}`);
@@ -253,7 +253,7 @@
     <input class="field" id="reg-pass" type="password" placeholder="密码（至少 8 位）">
     <input class="field" id="reg-pass2" type="password" placeholder="确认密码">
     ${s.registerConfig.invite_force ? `<input class="field" id="reg-invite" placeholder="邀请码（必填）">` : `<input class="field" id="reg-invite" placeholder="邀请码（选填）">`}
-    ${err(s.authError)}
+    ${err(s.authError, "auth-err")}
     <button class="btn btn-primary" id="btn-register" style="width:100%;height:48px;font-size:15px">注册</button>
     <div class="auth-links"><span data-nav="login">已有账号，去登录</span></div>`);
 
@@ -263,7 +263,7 @@
     <input class="field" id="fg-email" placeholder="邮箱">
     <div class="field-row"><input class="field" id="fg-code" placeholder="邮箱验证码"><button class="btn btn-outline" id="btn-send-code">获取</button></div>
     <input class="field" id="fg-pass" type="password" placeholder="新密码（至少 8 位）">
-    ${err(s.authError)}
+    ${err(s.authError, "auth-err")}
     <button class="btn btn-primary" id="btn-forgot" style="width:100%;height:48px;font-size:15px">重置密码</button>
     <div class="auth-links"><span data-nav="login">返回登录</span></div>`);
 
@@ -320,7 +320,7 @@
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">兑换礼品卡</div>
     <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px">输入卡密，流量或时长即时到账</div>
     <input class="field" id="gift-code" placeholder="请输入卡密" style="text-align:center" autocomplete="off">
-    ${err(s.giftError)}
+    ${err(s.giftError, "gift-err")}
     <button class="btn btn-primary" id="btn-redeem" style="width:100%;height:48px;font-size:15px"${s.redeeming ? " disabled" : ""}>${s.redeeming ? "兑换中…" : "兑换"}</button>
   </div>
   ${s.giftHistory.length ? `<div class="section-label">兑换记录</div><div class="card">` +
@@ -363,7 +363,7 @@
       <h2>新建工单</h2><div class="dsub">描述您遇到的问题，客服将尽快回复</div>
       <input class="field" id="ticket-subject" placeholder="标题（例如：节点连接超时）">
       <textarea class="field" id="ticket-content" placeholder="问题描述…" style="height:110px;padding-top:14px;resize:none"></textarea>
-      ${err("")}
+      ${err("", "dialog-err")}
       <button class="btn btn-primary" id="btn-submit-ticket" style="width:100%;height:46px">提交</button>
     </div></div>`,
 
@@ -390,7 +390,7 @@
       <input class="field" id="cp-old" type="password" placeholder="当前密码">
       <input class="field" id="cp-new" type="password" placeholder="新密码（至少 8 位）">
       <input class="field" id="cp-new2" type="password" placeholder="确认新密码">
-      ${err("")}
+      ${err("", "dialog-err")}
       <button class="btn btn-primary" id="btn-change-pwd" style="width:100%;height:46px">确认修改</button>
     </div></div>`,
 

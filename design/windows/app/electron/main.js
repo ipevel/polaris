@@ -1,12 +1,26 @@
 'use strict';
 /** 主进程入口：窗口、托盘、单实例、生命周期。 */
 
+const fs = require('fs');
 const path = require('path');
 const { app, BrowserWindow, Menu, Tray, nativeImage, shell, dialog, ipcMain } = require('electron');
 
 const paths = require('./paths');
 const log = require('./logger');
 const store = require('./store');
+
+// Electron 自己的 userData / sessionData / cache 默认落在 %APPDATA%\Polaris ——
+// 便携应用不能这样。必须在 app ready 之前改到 data/ 下，否则"整目录拷走"只搬走了
+// 我们的数据，缓存还留在别人机器上（而且多个实例会抢同一个缓存目录报 EBUSY）。
+try {
+  const electronData = path.join(paths.root(), 'data', 'electron');
+  fs.mkdirSync(electronData, { recursive: true });
+  app.setPath('userData', electronData);
+  app.setPath('sessionData', electronData);
+} catch (e) {
+  // 只读介质等情况：退回默认路径，不因为这个起不来
+  console.warn('无法重定向 Electron 数据目录，将使用默认位置:', e && e.message);
+}
 const { register: registerCommands } = require('./ipc');
 const { buildTray, updateTray } = require('./tray');
 
@@ -121,6 +135,32 @@ app.whenReady().then(async () => {
   mainWindow = createWindow();
 
   app.on('activate', () => showMain());
+
+  // 界面驱动自检：真的去点界面（拖不动/最大化错位/点了没反应这类只有驱动才测得到）
+  if (process.argv.includes('--uitest')) {
+    const { run } = require('../scripts/selftest-ui');
+    setTimeout(async () => {
+      let result = { pass: 0, fail: 1, failures: ['界面自检未运行'], steps: [] };
+      const lines = [];
+      const log = (m) => { lines.push(m); console.log(m); };
+      try {
+        const win = mainWindow;
+        result = await run(win, { log });
+      } catch (e) {
+        result.failures.push(String((e && e.stack) || e));
+      }
+      try {
+        fs.mkdirSync(paths.data(), { recursive: true });
+        fs.writeFileSync(paths.file('uitest-report.txt'),
+          [`Polaris 界面自检 ${new Date().toISOString()}`,
+            `结果：${result.pass} 通过 / ${result.fail} 失败`,
+            result.failures.length ? '失败项：\n' + result.failures.map((f) => '  - ' + f).join('\n') : '失败项：无',
+            '', ...lines].join('\n'), 'utf8');
+      } catch (_) {}
+      quitting = true;
+      app.exit(result.fail ? 1 : 0);
+    }, 1200);
+  }
 });
 
 // 自检模式：起窗口、跑一会儿、留日志、自己退出（供 CI / 无头验证用）
@@ -128,7 +168,6 @@ app.whenReady().then(async () => {
 if (process.argv.includes('--smoke')) {
   log.info('smoke mode armed');
   setTimeout(async () => {
-    const fs = require('fs');
     const out = { ok: true, checks: {}, dom: null, errors: [], console_errors: [] };
 
     // 收集渲染层的报错，别只依赖 main 侧的日志

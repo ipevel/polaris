@@ -1,0 +1,97 @@
+/* 真窗口外壳 —— 把 design.css 里"网页里画一个假窗口"的写法改造成真正的应用窗口。
+ *
+ * design.css 是设计系统，也是 16 张静态设计稿的样式源。那些稿子是画在浏览器里的，
+ * 所以有 body 居中 + 渐变背景 + .window 写死 1400×880 + 圆角阴影。真窗口不需要这些，
+ * 且会让「最大化」彻底失效（内容永远 1400×880 居中）。
+ *
+ * 这里只做"外壳"层面的覆盖，不碰设计系统本身的字号/间距/配色。 */
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: block;
+  background: var(--bg);
+}
+
+/* 窗口铺满，去掉"模拟窗口"的边框、圆角、投影 */
+.window {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ---- 拖动：无边框窗口必须显式声明可拖区域 ---- */
+.titlebar {
+  -webkit-app-region: drag;
+}
+.titlebar .drag {
+  -webkit-app-region: drag;
+  height: 100%;
+}
+/* 拖动区域内不能放可交互元素，否则点不动 */
+.win-btns,
+.win-btn,
+.titlebar button,
+.titlebar input,
+.titlebar a {
+  -webkit-app-region: no-drag;
+}
+
+/* ---- 内容区滚动 ---- */
+.content {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ---- 弹窗遮罩铺满整窗，不留圆角 ---- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  border-radius: 0;
+}
+
+/* ---- 登录页：同样铺满 ---- */
+.login-wrap {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ---- 可点击元素给出手型光标（无障碍与可发现性）---- */
+.nav-item,
+.win-btn,
+.btn,
+.row[data-click],
+.node-row,
+.opt,
+.acc-head,
+[data-nav],
+[data-click],
+[data-group],
+[data-ticket],
+[data-pay],
+[data-buy],
+.auth-links span,
+.switch {
+  cursor: pointer;
+}
+.win-btn { cursor: pointer; }
+.btn:disabled,
+.btn[disabled] {
+  opacity: .55;
+  cursor: defaults;
+}
+
+/* ---- 窄窗口保护：侧边栏收窄，避免内容被挤没 ---- */
+@media (max-width: 1120px) {
+  .sidebar { width: 172px; padding: 14px 10px; }
+  .nav-item { padding: 0 12px; gap: 10px; font-size: 14px; }
+  .content { padding: 20px 22px; }
+}

@@ -316,7 +316,7 @@ const commands = {
 
   restart_as_admin: async () => elevate.restartAsAdmin(),
 
-  get_tun_status: async () => require('./net/tun').status(),
+  get_tun_status: async ({ force } = {}) => require('./net/tun').status(!!force),
 
   cleanup_tun: async () => require('./net/tun').cleanup(),
 

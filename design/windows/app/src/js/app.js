@@ -176,6 +176,10 @@
     }
   }
 
+  function errBox(sel) {
+    return $(sel || "#auth-err", overlayRoot) || $("#auth-err");
+  }
+
   function bindDialog(name, arg) {
     if (name === "proxy") {
       $$("[data-mode]", overlayRoot).forEach((el) => el.addEventListener("click", async () => {
@@ -218,7 +222,7 @@
         const oldPwd = $("#cp-old").value;
         const p1 = $("#cp-new").value;
         const p2 = $("#cp-new2").value;
-        const box = $(".inline-err", overlayRoot);
+        const box = errBox("#dialog-err");
         if (p1.length < 8) { if (box) box.textContent = "新密码至少 8 位"; return; }
         if (p1 !== p2) { if (box) box.textContent = "两次输入的新密码不一致"; return; }
         const r = await guard("修改密码", () => api.changePassword(oldPwd, p1));
@@ -439,6 +443,7 @@
   }
 
   function bindSettings() {
+    loadTunStatus();
     $$(".switch[data-setting]").forEach((sw) => sw.addEventListener("click", async () => {
       const k = sw.dataset.setting;
       const next = !state.settings[k];
@@ -629,7 +634,6 @@
     if (includeAuth) {
       state.settings = await api.getSettings().catch(() => state.settings);
       state.appInfo = await api.getAppInfo().catch(() => state.appInfo);
-      state.tunStatus = await api.invoke("get_tun_status").catch(() => null);
       applyTheme(state.settings.theme || "system");
     }
     await refreshStatus();
@@ -683,7 +687,6 @@
   async function boot() {
     state.settings = await api.getSettings().catch(() => ({}));
     state.appInfo = await api.getAppInfo().catch(() => ({}));
-    state.tunStatus = await api.invoke("get_tun_status").catch(() => null);
     applyTheme(state.settings.theme || "system");
 
     if (!state.settings.authed) {
@@ -700,6 +703,13 @@
     state.booted = true;
     bindLiveStatus();
     autoRefreshSubscription();
+    // 虚拟网卡状态要起 PowerShell，放到界面出来之后再查，不占启动路径
+    loadTunStatus();
+  }
+
+  async function loadTunStatus() {
+    state.tunStatus = await api.invoke("get_tun_status").catch(() => null);
+    if (state.route === "settings") render();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
