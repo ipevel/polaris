@@ -75,6 +75,22 @@ struct Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct UpdateInfo { has_update: bool, version: String, size: String, notes: String }
 
+/* 与前端 api.js 的 mock 形状一致的统一响应（Result 的 Err 只用于真正的异常） */
+#[derive(Debug, Clone, Serialize)]
+struct NodeResult { ok: bool, node: String }
+#[derive(Debug, Clone, Serialize)]
+struct RefreshResult { ok: bool, count: i64 }
+#[derive(Debug, Clone, Serialize)]
+struct OrderResult { ok: bool, order_no: String }
+#[derive(Debug, Clone, Serialize)]
+struct TicketResult { ok: bool, no: String }
+#[derive(Debug, Clone, Serialize)]
+struct RedeemResult { ok: bool, reward: String, msg: String }
+#[derive(Debug, Clone, Serialize)]
+struct ModeResult { ok: bool, mode: String }
+#[derive(Debug, Clone, Serialize)]
+struct LoginResult { ok: bool, email: String, msg: String }
+
 /* ---------------- 命令 ---------------- */
 
 #[tauri::command]
@@ -94,8 +110,10 @@ fn disconnect(s: State<AppState>) -> Result<(), String> {
 fn get_nodes(s: State<AppState>) -> Vec<Node> { s.core.lock().unwrap().nodes() }
 
 #[tauri::command]
-fn select_node(s: State<AppState>, name: String) -> Result<String, String> {
-    s.core.lock().unwrap().select_node(&name).map_err(|e| e.to_string())
+fn select_node(s: State<AppState>, name: String) -> Result<NodeResult, String> {
+    s.core.lock().unwrap().select_node(&name)
+        .map(|n| NodeResult { ok: true, node: n })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -104,10 +122,10 @@ fn speed_test(s: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn refresh_subscription(s: State<AppState>) -> Result<i64, String> {
+fn refresh_subscription(s: State<AppState>) -> Result<RefreshResult, String> {
     // TODO(真实实现): 从面板拉取订阅并重载内核配置
     let _ = s;
-    Ok(32)
+    Ok(RefreshResult { ok: true, count: 32 })
 }
 
 #[tauri::command]
@@ -138,10 +156,10 @@ fn get_plans(_s: State<AppState>) -> Vec<PlanOffer> {
 }
 
 #[tauri::command]
-fn create_order(_s: State<AppState>, plan_id: String) -> Result<String, String> {
+fn create_order(_s: State<AppState>, plan_id: String) -> Result<OrderResult, String> {
     // TODO(真实实现): 调面板下单接口，返回支付链接/二维码
     let _ = plan_id;
-    Ok("No.202610091205".into())
+    Ok(OrderResult { ok: true, order_no: "No.202610091205".into() })
 }
 
 #[tauri::command]
@@ -172,10 +190,10 @@ fn get_tickets(_s: State<AppState>) -> Vec<Ticket> {
 }
 
 #[tauri::command]
-fn create_ticket(_s: State<AppState>, subject: String, content: String) -> Result<String, String> {
+fn create_ticket(_s: State<AppState>, subject: String, content: String) -> Result<TicketResult, String> {
     // TODO(真实实现): 调面板 /api/v1/ticket/save
     let _ = (subject, content);
-    Ok("No.202610091301".into())
+    Ok(TicketResult { ok: true, no: "No.202610091301".into() })
 }
 
 #[tauri::command]
@@ -188,10 +206,14 @@ fn get_invite(_s: State<AppState>) -> Invite {
 fn get_gift_history(_s: State<AppState>) -> Vec<GiftRecord> { vec![] }
 
 #[tauri::command]
-fn redeem_gift(_s: State<AppState>, code: String) -> Result<String, String> {
+fn redeem_gift(_s: State<AppState>, code: String) -> RedeemResult {
     // TODO(真实实现): 调面板礼品卡兑换接口
     let digits: String = code.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    if digits.len() == 16 { Ok("50 GB".into()) } else { Err("卡密格式不正确".into()) }
+    if digits.len() == 16 {
+        RedeemResult { ok: true, reward: "50 GB".into(), msg: "".into() }
+    } else {
+        RedeemResult { ok: false, reward: "".into(), msg: "卡密格式不正确".into() }
+    }
 }
 
 #[tauri::command]
@@ -205,8 +227,10 @@ fn get_notices(_s: State<AppState>) -> Vec<Notice> {
 }
 
 #[tauri::command]
-fn set_proxy_mode(s: State<AppState>, mode: String) -> Result<String, String> {
-    s.core.lock().unwrap().set_mode(&mode).map_err(|e| e.to_string())
+fn set_proxy_mode(s: State<AppState>, mode: String) -> Result<ModeResult, String> {
+    s.core.lock().unwrap().set_mode(&mode)
+        .map(|m| ModeResult { ok: true, mode: m })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -237,12 +261,14 @@ fn check_update(_s: State<AppState>) -> UpdateInfo {
 }
 
 #[tauri::command]
-fn login(s: State<AppState>, email: String, password: String, panel: String) -> Result<String, String> {
+fn login(s: State<AppState>, email: String, password: String, panel: String) -> LoginResult {
     // TODO(真实实现): 调面板 /api/v1/passport/auth/login，保存 token（Windows Credential Manager）
-    if email.is_empty() || password.is_empty() { return Err("请输入邮箱和密码".into()); }
     let _ = panel;
+    if email.is_empty() || password.is_empty() {
+        return LoginResult { ok: false, email: "".into(), msg: "请输入邮箱和密码".into() };
+    }
     *s.authed.lock().unwrap() = true;
-    Ok(email)
+    LoginResult { ok: true, email: email.clone(), msg: "".into() }
 }
 
 #[tauri::command]
@@ -270,7 +296,10 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .item(&quit)
         .build()?;
     TrayIconBuilder::new()
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(app.default_window_icon().cloned().unwrap_or_else(|| {
+            // 打包时若未生成图标则退化为空图标，不 panic
+            tauri::image::Image::new_owned(vec![0; 4], 1, 1)
+        }))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {

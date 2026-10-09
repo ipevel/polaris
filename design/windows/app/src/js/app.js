@@ -44,7 +44,8 @@
     bindCommon();
     ({ nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
        orders: bindOrders, tickets: bindTickets, invite: bindInvite,
-       giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting }[state.route] || (() => {}))();
+       giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting,
+       home: bindHome }[state.route] || (() => {}))();
   }
 
   function nav(route) { state.route = route; render(); }
@@ -134,12 +135,22 @@
   window.PolarisToast = toast;
 
   /* ---------- 各页事件 ---------- */
+  function bindHome() {
+    const pw = $("#power");
+    if (pw) pw.addEventListener("click", async () => {
+      if (state.connected) { await api.disconnect(); state.connected = false; }
+      else { await api.connect(); state.connected = true; }
+      render();
+      toast(state.connected ? "已连接" : "已断开");
+    });
+  }
+
   function bindLogin() {
     $("#btn-login").addEventListener("click", async () => {
       const email = $("#login-email").value.trim();
       const pass = $("#login-pass").value;
       const r = await api.login(email, pass, $("#login-panel").value.trim());
-      if (r.ok) { state.loggedIn = true; state.email = email; await boot(true); }
+      if (r.ok) { state.loggedIn = true; state.email = email; await boot(false); }
       else $("#login-err").textContent = r.msg || "登录失败";
     });
   }
