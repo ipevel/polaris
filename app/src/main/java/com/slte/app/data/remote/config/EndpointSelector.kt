@@ -99,7 +99,13 @@ constructor() {
 
         val currentHealth = currentPrimary?.let { healthMap[it] }
         val currentOpen = currentPrimary != null && EndpointHealthRules.isOpen(currentHealth ?: EndpointHealth(currentPrimary), now)
-        val currentLatency = currentPrimary?.let { healthy[it] }
+        // 当前主地址处于健康态时不会进 fresh probe（prober 跳过健康端点），
+        // 粘滞比较必须回退到它的历史延迟；否则 currentLatency 恒为 null，
+        // 下面那段粘滞逻辑整段失效，任何被探测的候选都能无条件抢走主地址 → 主地址震荡。
+        val currentLatency =
+            currentPrimary?.let {
+                healthy[it] ?: healthMap[it]?.lastLatencyMs?.takeIf { ms -> ms > 0L }
+            }
 
         if (!currentOpen && currentLatency != null && currentPrimary in candidates) {
             val faster =

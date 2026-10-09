@@ -47,6 +47,17 @@ internal object SecurePreferences {
         val legacy = createEncrypted(context, fileName, LEGACY_KEY_ALIAS) ?: return null
         AppLog.w(TAG, "检测到旧版本加密数据，迁移到新别名: $fileName")
         val snapshot = legacy.all
+        // 先确认新主密钥可用再删旧文件：Keystore 层故障时旧文件保持原样，
+        // 走外层自愈（删除重建 / 内存降级），而不是把唯一一份用户数据直接删掉。
+        runCatching {
+            MasterKey
+                .Builder(context, keyAlias)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+        }.onFailure {
+            AppLog.w(TAG, "新主密钥不可用，跳过迁移并保留旧文件: $fileName")
+            return null
+        }
         runCatching { context.deleteSharedPreferences(fileName) }
         val fresh = createEncrypted(context, fileName, keyAlias) ?: return null
         if (snapshot.isNotEmpty()) {
@@ -64,7 +75,10 @@ internal object SecurePreferences {
                 }
             }
             if (!editor.commit()) {
-                AppLog.w(TAG, "迁移旧数据写回失败（数据可能丢失）: $fileName")
+                // 文件此时已是新加密格式，旧文件也删了：丢了快照就是真丢，重试一次。
+                if (!editor.commit()) {
+                    AppLog.w(TAG, "迁移旧数据写回失败（数据可能丢失）: $fileName")
+                }
             }
         }
         return fresh
