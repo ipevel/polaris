@@ -48,11 +48,13 @@ impl MockCore {
             latency: 45,
             mode: "规则模式".into(),
             nodes: vec![
-                super::Node { name: "香港 01".into(), region: "香港".into(), latency: 45, group: "节点选择".into() },
-                super::Node { name: "香港 02".into(), region: "香港".into(), latency: 62, group: "节点选择".into() },
-                super::Node { name: "新加坡 01".into(), region: "新加坡".into(), latency: 188, group: "节点选择".into() },
-                super::Node { name: "日本 01".into(), region: "日本".into(), latency: 92, group: "节点选择".into() },
-                super::Node { name: "美国 01".into(), region: "美国".into(), latency: -1, group: "节点选择".into() },
+                super::Node { name: "香港 01".into(), region: "香港".into(), latency: 45, group: "节点选择".into(), offline: false },
+                super::Node { name: "香港 02".into(), region: "香港".into(), latency: 62, group: "节点选择".into(), offline: false },
+                super::Node { name: "新加坡 01".into(), region: "新加坡".into(), latency: 188, group: "节点选择".into(), offline: false },
+                super::Node { name: "日本 01".into(), region: "日本".into(), latency: 92, group: "节点选择".into(), offline: false },
+                // offline = 探测确认不可达（区别于"未测/超时"）：由内核 urlTest 分类，
+                // 经 SpeedResultStore 持久化，订阅刷新后依然保留
+                super::Node { name: "美国 01".into(), region: "美国".into(), latency: -1, group: "节点选择".into(), offline: true },
             ],
         }
     }

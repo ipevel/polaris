@@ -36,7 +36,7 @@ struct Status {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Node { name: String, region: String, latency: i64, group: String }
+struct Node { name: String, region: String, latency: i64, group: String, offline: bool }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TrafficInfo {

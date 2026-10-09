@@ -81,7 +81,7 @@
       if (u.has_update) openDialog("update", { ...u, current: state.settings.version });
       else toast("已是最新版本");
     }
-    else if (action === "logout") { await api.logout(); state.loggedIn = false; nav("login"); }
+    else if (action === "logout") openDialog("logoutConfirm");
     else if (action === "nav-orders") nav("orders");
     else if (action === "nav-tickets") nav("tickets");
     else if (action === "nav-invite") nav("invite");
@@ -111,6 +111,11 @@
             setTimeout(() => { closeDialog(); toast("已更新到最新版本"); }, 900);
           }
         }, 220);
+      });
+    }
+    if (name === "logoutConfirm") {
+      $("#btn-logout-confirm").addEventListener("click", async () => {
+        await api.logout(); state.loggedIn = false; closeDialog(); nav("login");
       });
     }
     if (name === "newTicket") {

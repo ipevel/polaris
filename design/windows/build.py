@@ -87,15 +87,19 @@ HOME_CONTENT = """
 </div>"""
 
 # ============ 2. 节点 ============
-def node_row(nm, region, ms, sel=False):
-    badge = {"45ms": "b-green", "62ms": "b-green", "92ms": "b-green", "188ms": "b-orange", "未测": "b-gray"}[ms]
-    return f'<div class="node-row"><span class="nm">{nm}</span><span class="badge b-blue">{region}</span><span class="badge {badge}">{ms}</span><span class="radio{" sel" if sel else ""}"></span></div>'
+def node_row(nm, region, ms, sel=False, offline=False):
+    if offline:
+        tail = '<span style="color:var(--red);font-weight:700;font-size:13px">离线</span>'
+    else:
+        badge = {"45ms": "b-green", "62ms": "b-green", "92ms": "b-green", "188ms": "b-orange", "未测": "b-gray"}[ms]
+        tail = f'<span class="badge {badge}">{ms}</span>'
+    return f'<div class="node-row"><span class="nm">{nm}</span><span class="badge b-blue">{region}</span>{tail}<span class="radio{" sel" if sel else ""}"></span></div>'
 
 NODES_CONTENT = head("节点", "32 个节点 · 5 个分组",
     '<span class="search-wrap"><input class="search" placeholder="搜索节点"></span><button class="btn btn-outline btn-sm" style="height:40px">测速</button><button class="btn btn-primary btn-sm" style="height:40px">刷新订阅</button>') + """
 <div class="card" style="margin-bottom:14px">
   <div class="acc-head"><div><div class="acc-title">节点选择</div><div class="acc-sub">当前：香港 01</div></div><span class="chev" style="font-size:20px">⌃</span></div>
-""" + node_row("香港 01", "香港", "45ms", True) + node_row("香港 02", "香港", "62ms") + node_row("新加坡 01", "新加坡", "188ms") + node_row("日本 01", "日本", "92ms") + node_row("美国 01", "美国", "未测") + """
+""" + node_row("香港 01", "香港", "45ms", True) + node_row("香港 02", "香港", "62ms") + node_row("新加坡 01", "新加坡", "188ms") + node_row("日本 01", "日本", "92ms") + node_row("美国 01", "美国", "未测", offline=True) + """
 </div>
 <div class="card" style="margin-bottom:14px"><div class="acc-head" style="padding:0"><div class="acc-title" style="font-size:15px">国外网站分流</div><span class="chev" style="font-size:20px">⌄</span></div></div>
 <div class="card"><div class="acc-head" style="padding:0"><div class="acc-title" style="font-size:15px">流媒体分流</div><span class="chev" style="font-size:20px">⌄</span></div></div>"""
@@ -181,7 +185,7 @@ def plan_card(name, price, unit, feats, hot=False):
         "".join(f"<li>{f}</li>" for f in feats) + \
         f'</ul><button class="btn {"btn-primary" if hot else "btn-outline"}">立即购买</button></div>'
 
-PLANS_CONTENT = head("购买套餐") + '<div class="plan-grid">' + \
+PLANS_CONTENT = head("购买套餐", "", '<button class="btn btn-outline btn-sm" style="height:40px">🎁 礼品卡</button>') + '<div class="plan-grid">' + \
     plan_card("月度套餐", "19.9", "月", ["100GB 流量", "2 台设备"]) + \
     plan_card("年度套餐", "169", "年", ["500GB 流量", "5 台设备", "优先线路"], hot=True) + \
     plan_card("季度套餐", "49", "季", ["200GB 流量", "3 台设备"]) + \
@@ -272,6 +276,12 @@ UPDATE_OVERLAY = """<div class="overlay"><div class="dialog">
 <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent">稍后再说</button>
 </div></div>"""
 
+LOGOUT_OVERLAY = """<div class="overlay"><div class="dialog">
+<h2>退出登录</h2><div class="dsub">确定要退出当前账号吗？</div>
+<button class="btn btn-danger" style="width:100%;height:46px;margin-bottom:10px">退出登录</button>
+<button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent">取消</button>
+</div></div>"""
+
 # ============ 16. 托盘菜单 ============
 TRAY_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <link rel="stylesheet" href="../css/design.css"></head><body style="display:block">
@@ -297,7 +307,7 @@ page("home", "home", HOME_CONTENT)
 page("nodes", "nodes", NODES_CONTENT)
 page("traffic", "traffic", TRAFFIC_CONTENT)
 page("settings", "settings", SETTINGS_CONTENT)
-page("me", "me", ME_CONTENT)
+page("me", "me", ME_CONTENT, overlay=LOGOUT_OVERLAY)
 open(os.path.join(PAGES, "login.html"), "w", encoding="utf-8").write(LOGIN_HTML)
 page("plans", "me", PLANS_CONTENT)
 page("orders", "me", ORDERS_CONTENT)

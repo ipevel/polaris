@@ -59,7 +59,7 @@
     const list = s.nodes.filter((n) => !q || n.name.toLowerCase().includes(q) || n.region.includes(s.nodeFilter || ""));
     const rows = list.map((n) => `
       <div class="node-row" data-node="${h(n.name)}" style="cursor:pointer">
-        <span class="nm">${h(n.name)}</span>${badge(h(n.region), "b-blue")}${latBadge(n.latency)}
+        <span class="nm">${h(n.name)}</span>${badge(h(n.region), "b-blue")}${n.offline ? '<span style="color:var(--red);font-weight:700;font-size:13px">离线</span>' : latBadge(n.latency)}
         <span class="radio${n.name === s.node ? " sel" : ""}"></span>
       </div>`).join("");
     return head("节点", `${s.nodes.length} 个节点 · 5 个分组`,
@@ -162,7 +162,8 @@
   </div>`;
 
   /* ---------- 购买套餐 ---------- */
-  Views.plans = (s) => head("购买套餐") + `<div class="plan-grid">` +
+  Views.plans = (s) => head("购买套餐", "",
+    `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="giftcard">🎁 礼品卡</button>`) + `<div class="plan-grid">` +
     s.plans.map((p) => `
     <div class="plan-card${p.hot ? " hot" : ""}">
       ${p.hot ? '<div class="ribbon">最受欢迎</div>' : ""}
@@ -265,6 +266,12 @@
         <input class="field" id="ticket-subject" placeholder="标题（例如：节点连接超时）">
         <textarea class="field" id="ticket-content" placeholder="问题描述…" style="height:110px;padding-top:14px;resize:none"></textarea>
         <button class="btn btn-primary" id="btn-submit-ticket" style="width:100%;height:46px">提交</button>
+      </div></div>`,
+    logoutConfirm: () => `
+      <div class="overlay" data-overlay><div class="dialog">
+        <h2>退出登录</h2><div class="dsub">确定要退出当前账号吗？</div>
+        <button class="btn btn-danger" id="btn-logout-confirm" style="width:100%;height:46px;margin-bottom:10px">退出登录</button>
+        <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent" data-overlay-close>取消</button>
       </div></div>`,
     notice: (n) => `
       <div class="overlay" data-overlay><div class="dialog">

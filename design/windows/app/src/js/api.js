@@ -23,7 +23,7 @@
       { name: "香港 02", region: "香港", latency: 62, group: "节点选择" },
       { name: "新加坡 01", region: "新加坡", latency: 188, group: "节点选择" },
       { name: "日本 01", region: "日本", latency: 92, group: "节点选择" },
-      { name: "美国 01", region: "美国", latency: -1, group: "节点选择" },
+      { name: "美国 01", region: "美国", latency: -1, group: "节点选择", offline: true },
     ]),
     select_node: (a) => Promise.resolve({ ok: true, node: a.name }),
     speed_test: () => new Promise((r) => setTimeout(() => r({ ok: true }), 1200)),

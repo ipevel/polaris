@@ -104,6 +104,8 @@ body {
   font-size: 14px; font-weight: 600; font-family: var(--font); cursor: default;
 }
 .btn-primary { background: var(--blue); color: #fff; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { background: #d62f34; }
 .btn-outline { background: transparent; color: var(--blue); border: 1.5px solid var(--blue); }
 .btn-ghost { background: var(--blue-soft); color: var(--blue); }
 .btn-sm { height: 32px; padding: 0 16px; font-size: 13px; border-radius: 8px; }
