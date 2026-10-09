@@ -217,6 +217,62 @@ async function run(win, { log = console.log } = {}) {
       JSON.stringify(routingPage));
     R.check('  └ 分流页高亮「节点」（它是节点页的子页）', routingPage.active === 'nodes', String(routingPage.active));
 
+    // 内置分流：27 组开关、默认 6 组打开、开关能真的落盘（离线也要能改）
+    const rsInfo = await js(`(() => {
+      const rows = document.querySelectorAll('.row[data-ruleset-pick]');
+      const switches = document.querySelectorAll('.switch[data-ruleset]');
+      let on = 0;
+      switches.forEach((s) => { if (s.classList.contains('on') || s.getAttribute('aria-checked') === 'true') on += 1; });
+      const adRow = Array.from(rows).find((r) => (r.textContent || '').includes('广告拦截'));
+      return {
+        rows: rows.length,
+        switches: switches.length,
+        on,
+        hasReset: !!document.querySelector('#btn-ruleset-reset'),
+        adOn: adRow ? !!adRow.querySelector('.switch.on') : null,
+        label: (document.querySelector('.section-label') || {}).textContent || '',
+      };
+    })()`);
+    R.check('内置分流列出 27 组开关', rsInfo.rows === 27 && rsInfo.switches === 27, JSON.stringify(rsInfo));
+    R.check('  └ 默认 6 组打开', rsInfo.on === 6, String(rsInfo.on));
+    R.check('  └ 有「恢复默认」按钮', rsInfo.hasReset === true);
+    R.check('  └ 广告拦截默认关闭', rsInfo.adOn === false, String(rsInfo.adOn));
+
+    const toggled = await js(`(() => {
+      const row = Array.from(document.querySelectorAll('.row[data-ruleset-pick]'))
+        .find((r) => (r.textContent || '').includes('广告拦截'));
+      if (!row) return 'no-row';
+      row.querySelector('.switch[data-ruleset]').click();
+      return true;
+    })()`);
+    R.check('点开关能触发', toggled === true, String(toggled));
+    await sleep(1200);
+    const rsAfter = await js(`(() => {
+      const row = Array.from(document.querySelectorAll('.row[data-ruleset-pick]'))
+        .find((r) => (r.textContent || '').includes('广告拦截'));
+      const on = document.querySelectorAll('.switch[data-ruleset].on').length;
+      return { adOn: row ? !!row.querySelector('.switch.on') : null, on, toast: document.querySelectorAll('.toast').length };
+    })()`);
+    R.check('  └ 开关状态真的翻转（离线也生效）', rsAfter.adOn === true && rsAfter.on === 7, JSON.stringify(rsAfter));
+    const back2 = await js(`(() => {
+      const b = document.querySelector('#btn-ruleset-reset');
+      if (!b) return 'no-btn';
+      b.click();
+      return true;
+    })()`);
+    R.check('  └ 有恢复默认入口', back2 === true, String(back2));
+    await sleep(600);
+    const confirmBtn = await js(`(() => {
+      const b = document.querySelector('#btn-confirm-yes');
+      if (!b) return 'no-confirm';
+      b.click();
+      return true;
+    })()`);
+    R.check('  └ 恢复默认需二次确认', confirmBtn === true, String(confirmBtn));
+    await sleep(1200);
+    const rsReset = await js(`document.querySelectorAll('.switch[data-ruleset].on').length`);
+    R.check('  └ 恢复默认后回到 6 组', rsReset === 6, String(rsReset));
+
     /* ---------------- 3c. 流量页真的画出曲线 ---------------- */
     // 这里曾经读的是 state.series（不存在），曲线区永远走空态。
     // traffic.series('today') 至少返回 1 个点，所以「有没有 svg」是确定性断言。

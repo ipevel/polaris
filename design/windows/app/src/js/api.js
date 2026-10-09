@@ -62,6 +62,21 @@
     ]),
     set_routing_group: (a) => ({ ok: true, now: a.node }),
     reset_routing_groups: () => ({ ok: true }),
+    get_rulesets: () => ({
+      total: 26,
+      enabled: ["苹果服务", "Google Play", "Google", "哔哩哔哩", "国内直连", "国外穿墙"],
+      groups: [
+        { name: "广告拦截", out: "block", enabled: false, count: 1, inline: 0, default_on: false, now: "", live: false },
+        { name: "苹果服务", out: "direct", enabled: true, count: 2, inline: 1, default_on: true, now: "DIRECT", live: true },
+        { name: "油管视频", out: "proxy", enabled: false, count: 2, inline: 0, default_on: false, now: "", live: false },
+        { name: "Google", out: "proxy", enabled: true, count: 2, inline: 1, default_on: true, now: "香港 01", live: true },
+        { name: "哔哩哔哩", out: "direct", enabled: true, count: 1, inline: 0, default_on: true, now: "DIRECT", live: true },
+        { name: "国内直连", out: "direct", enabled: true, count: 2, inline: 0, default_on: true, now: "DIRECT", live: true },
+        { name: "国外穿墙", out: "proxy", enabled: true, count: 1, inline: 0, default_on: true, now: "香港 01", live: true },
+      ],
+    }),
+    set_ruleset: (a) => ({ ok: true, enabled: !!a.on, applied: false }),
+    reset_rulesets: () => ({ ok: true, applied: false }),
     get_plan: () => ({ name: "旗舰套餐", used: 86, total: 200, expire: "2026-11-05" }),
     get_plans: () => ([
       { id: "1", name: "轻量套餐", price: "19", unit: "月", feats: ["100 GB 流量", "3 台设备"], hot: false },
@@ -139,6 +154,9 @@
     getRoutingGroups: () => listMethod("get_routing_groups"),
     setRoutingGroup: (name, node) => invoke("set_routing_group", { name, node }),
     resetRoutingGroups: () => invoke("reset_routing_groups"),
+    getRulesets: () => invoke("get_rulesets"),
+    setRuleset: (name, on) => invoke("set_ruleset", { name, on }),
+    resetRulesets: () => invoke("reset_rulesets"),
 
     /* 套餐 / 订单 */
     getPlan: () => invoke("get_plan"),

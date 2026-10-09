@@ -59,6 +59,11 @@
         "filter": ["**/*"]
       },
       {
+        "from": "resources/rules",
+        "to": "rules",
+        "filter": ["**/*"]
+      },
+      {
         "from": "build/portable-readme.txt",
         "to": "../使用说明.txt"
       }

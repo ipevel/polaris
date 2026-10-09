@@ -7,10 +7,11 @@
  * 覆盖：
  *   1. 订阅清洗规则（去重名 / 剔伪节点 / 夺控制面 / 直连规则注入）
  *   2. 配置组装（端口、secret、DNS、TUN、兜底规则）
- *   3. 直连域名与更新地址（订阅域名必须真被记住；Windows 不得用安卓 APK 地址）
- *   4. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
+ *   3. 内置分流规则（27 组 × 48 个离线规则集，策略组语义、订阅冲突、开关）
+ *   4. 直连域名与更新地址（订阅域名必须真被记住；Windows 不得用安卓 APK 地址）
+ *   5. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
  *
- * 第 3 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
+ * 第 5 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
  * "内核能被我们生成的配置喂起来并被控制"，不是"能翻墙"。
  */
 
@@ -171,7 +172,121 @@ function testBuilder() {
   check('YAML 序列化/反序列化无损', round['external-controller'] === c['external-controller'] && round.proxies.length === c.proxies.length);
 }
 
-/* ---------------- 4. 直连域名 / 更新地址 ---------------- */
+/* ---------------- 4. 内置分流规则 ---------------- */
+
+function testRulesets() {
+  section('内置分流规则');
+  const paths = require('../electron/paths');
+  const rulesets = require('../electron/core/rulesets');
+
+  const keys = rulesets.allProviderKeys();
+  check('规则集共 48 个', keys.length === 48, String(keys.length));
+  check('规则集键不重复', new Set(keys).size === 48, String(new Set(keys).size));
+  const missing = keys.filter((k) => {
+    const f = path.join(paths.rules(), rulesets.seedFile(k));
+    return !fs.existsSync(f) || fs.statSync(f).size === 0;
+  });
+  check('每个键都有对应种子文件', missing.length === 0, missing.join(','));
+  const orphan = fs.readdirSync(paths.rules()).filter((f) => f.endsWith('.yaml') && !keys.includes(f.replace(/\.yaml$/, '')));
+  check('种子目录没有多余文件', orphan.length === 0, orphan.join(','));
+  check('种子路径是 data 内相对路径（mihomo IsSafePath 要求）',
+    keys.every((k) => rulesets.seedPath(k) === `rules/${k}.yaml` && !path.isAbsolute(rulesets.seedPath(k))));
+
+  check('分流表 27 组', rulesets.TABLE.length === 27, String(rulesets.TABLE.length));
+  check('默认启用 6 组', rulesets.defaultEnabled().length === 6, rulesets.defaultEnabled().join(','));
+  check('normalizeEnabled 去重并丢弃未知组',
+    JSON.stringify(rulesets.normalizeEnabled(['🛑 广告拦截', '不存在', '🛑 广告拦截'])) === JSON.stringify(['🛑 广告拦截']),
+    JSON.stringify(rulesets.normalizeEnabled(['🛑 广告拦截', '不存在', '🛑 广告拦截'])));
+
+  const ordered = rulesets.orderedTable(['🌏 国外穿墙', '🛑 广告拦截']);
+  check('orderedTable 按用户顺序置顶且不丢组',
+    ordered.length === 27 && ordered[0].name === '🌏 国外穿墙' && ordered[1].name === '🛑 广告拦截' &&
+    new Set(ordered.map((g) => g.name)).size === 27, ordered.slice(0, 3).map((g) => g.name).join(','));
+  check('orderedTable 忽略未知组名', rulesets.orderedTable(['不存在']).length === 27);
+
+  // 默认配置（6 组）→ 16 个规则集
+  const doc = {
+    proxies: [{ name: '香港 01' }, { name: '日本 01' }],
+    'proxy-groups': [{ name: '流媒体分流', type: 'select', proxies: ['香港 01'] }],
+    rules: ['GEOIP,CN,DIRECT', 'MATCH,节点选择'],
+  };
+  const r = builder.build(doc, { directDomains: ['panel.example.com'], routing: { enabled: rulesets.defaultEnabled() } });
+  const c = r.config;
+  const pv = c['rule-providers'] || {};
+  check('默认 6 组生成 16 个 rule-provider', Object.keys(pv).length === 16, String(Object.keys(pv).length));
+  check('rule-provider 是 file 型且指向 data 内相对路径',
+    Object.keys(pv).every((k) => pv[k].type === 'file' && pv[k].path === rulesets.seedPath(k)));
+  check('订阅自带的策略组保留', c['proxy-groups'].some((g) => g.name === '流媒体分流'));
+  check('启用组各自建了同名策略组',
+    ['🍎 苹果服务', '🌏 Google Play', '🌏 Google', '📺 哔哩哔哩', '🎯 国内直连', '🌏 国外穿墙']
+      .every((n) => c['proxy-groups'].some((g) => g.name === n)));
+  check('未启用组不建组也不加规则',
+    !c['proxy-groups'].some((g) => g.name === '🐱 GitHub') && !(c.rules || []).some((x) => x.includes('gs_github')));
+  check('策略组名不重复', new Set(c['proxy-groups'].map((g) => g.name)).size === c['proxy-groups'].length);
+
+  const setRules = c.rules.filter((x) => x.startsWith('RULE-SET,'));
+  check('16 条 RULE-SET', setRules.length === 16, String(setRules.length));
+  check('ipcidr 规则集带 no-resolve',
+    setRules.filter((x) => x.includes(',no-resolve')).length === 3 &&
+    setRules.some((x) => x === 'RULE-SET,gp_cn,🎯 国内直连,no-resolve') &&
+    setRules.some((x) => x === 'RULE-SET,acl_chinacompanyip,🎯 国内直连,no-resolve'),
+    setRules.filter((x) => x.includes('no-resolve')).join(' | '));
+  check('规则集规则排在内网直连之后、订阅规则之前',
+    c.rules.indexOf('RULE-SET,gs_apple,🍎 苹果服务') > c.rules.findIndex((x) => x.startsWith('IP-CIDR,192.168.0.0/16')) &&
+    c.rules.indexOf('RULE-SET,gs_apple,🍎 苹果服务') < c.rules.indexOf('GEOIP,CN,DIRECT'));
+  check('MATCH 兜底仍在最后', c.rules[c.rules.length - 1] === 'MATCH,节点选择');
+  check('默认配置无告警', r.warnings.length === 0, r.warnings.join(' | '));
+
+  const g = (n) => c['proxy-groups'].find((x) => x.name === n);
+  check('proxy 语义组默认出口是主选择组', g('🌏 Google').proxies[0] === '节点选择');
+  check('direct 语义组默认出口是 DIRECT', g('🍎 苹果服务').proxies[0] === 'DIRECT');
+  check('block 语义组默认出口是 REJECT', g('🛑 广告拦截') === undefined);
+  check('组内并入全部节点供单独指定',
+    g('🌏 Google').proxies.includes('香港 01') && g('🌏 Google').proxies.includes('日本 01'),
+    g('🌏 Google').proxies.join(','));
+
+  // 打开拦截组 + 苹果推送（纯内联组）
+  const r2 = builder.build(doc, {
+    routing: { enabled: rulesets.normalizeEnabled([...rulesets.defaultEnabled(), '🛑 广告拦截', '📢 苹果推送通知']) },
+  });
+  const c2 = r2.config;
+  check('开启广告拦截后规则集变 18 个', Object.keys(c2['rule-providers'] || {}).length === 18,
+    String(Object.keys(c2['rule-providers'] || {}).length));
+  const block = c2['proxy-groups'].find((x) => x.name === '🛑 广告拦截');
+  check('拦截组默认出口是 REJECT', block && block.proxies[0] === 'REJECT', block && block.proxies.slice(0, 3).join(','));
+  check('拦截规则指向内置组',
+    c2.rules.includes('RULE-SET,gs_category_ads_all,🛑 广告拦截') && c2.rules.includes('RULE-SET,acl_banad,🛑 广告拦截'));
+  const inline = c2.rules.filter((x) => x.endsWith(',📢 苹果推送通知,no-resolve') || x.endsWith(',📢 苹果推送通知'));
+  check('纯内联组生成 12 条内联规则（{t} 已替换）', inline.length === 12, String(inline.length));
+  check('内联组不产生规则集文件',
+    rulesets.providerKeys(rulesets.TABLE.find((x) => x.name === '📢 苹果推送通知')).length === 0 &&
+    !Object.keys(c2['rule-providers'] || {}).some((k) => k === 'apple_push'),
+    Object.keys(c2['rule-providers'] || {}).join(','));
+
+  // 订阅自带同名规则集 / 同名策略组
+  const r3 = builder.build({
+    proxies: [{ name: '香港 01' }],
+    'proxy-groups': [{ name: '🐱 GitHub', type: 'select', proxies: ['香港 01'] }],
+    'rule-providers': { gs_github: { type: 'http', behavior: 'domain', format: 'yaml', url: 'https://example.com/gh.yaml' } },
+    rules: ['MATCH,节点选择'],
+  }, { routing: { enabled: ['🐱 GitHub'] } });
+  const c3 = r3.config;
+  check('订阅同名规则集不被覆盖', c3['rule-providers'].gs_github.type === 'http', c3['rule-providers'].gs_github.type);
+  check('同名冲突有告警', r3.warnings.some((w) => w.includes('gs_github')), r3.warnings.join(' | '));
+  check('订阅同名策略组被复用不重建',
+    c3['proxy-groups'].filter((x) => x.name === '🐱 GitHub').length === 1 &&
+    c3['proxy-groups'].find((x) => x.name === '🐱 GitHub').proxies.length === 1);
+  check('规则照样指向该组', c3.rules.includes('RULE-SET,gs_github,🐱 GitHub'));
+
+  // 不传 routing 时完全保持旧行为（老配置/老断言不受影响）
+  const r4 = builder.build(doc, {});
+  check('不传 routing 时不生成规则集', !r4.config['rule-providers'], JSON.stringify(r4.config['rule-providers']));
+  check('不传 routing 时无内置组', !r4.config['proxy-groups'].some((x) => x.name === '🎯 国内直连'));
+  check('内网直连规则始终注入（含未启用内置分流时）',
+    r4.config.rules.some((x) => x.startsWith('IP-CIDR,192.168.0.0/16')));
+}
+
+/* ---------------- 5. 直连域名 / 更新地址 ---------------- */
 
 async function testDirectAndUpdate() {
   section('直连域名与更新地址');
@@ -263,7 +378,7 @@ async function testDirectAndUpdate() {
   }
 }
 
-/* ---------------- 5. 地区识别 ---------------- */
+/* ---------------- 6. 地区识别 ---------------- */
 
 function testRegion() {
   section('地区识别');
@@ -288,7 +403,7 @@ function testRegion() {
   }
 }
 
-/* ---------------- 4. 真实拉起 mihomo ---------------- */
+/* ---------------- 7. 真实拉起 mihomo ---------------- */
 
 const FAKE_SUB = `
 proxies:
@@ -379,6 +494,7 @@ async function testKernel() {
   console.log('node', process.version);
   testSanitizer();
   testBuilder();
+  testRulesets();
   await testDirectAndUpdate();
   testRegion();
   await testKernel();

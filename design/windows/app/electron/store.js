@@ -36,6 +36,9 @@ const DEFAULTS = {
   last_status: null,
   subscription_updated_at: 0,
   subscribe_hosts: [],        // 见过的订阅域名，永远直连（见 core/remote.js）
+  // —— 内置分流规则（离线 rule-provider，见 core/rulesets.js）——
+  routing_rules: null,        // null = 用内置表的 defaultOn；数组 = 用户显式开关的组名
+  routing_order: null,        // null = 用内置表顺序；数组 = 用户自定义顺序（预留）
 };
 
 let cache = null;

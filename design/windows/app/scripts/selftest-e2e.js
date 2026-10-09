@@ -224,6 +224,83 @@ app.whenReady().then(async () => {
       check(`切换到${m}`, r.ok === true && r.mode === m, JSON.stringify(r));
     }
 
+    /* ---------- 内置分流规则（离线规则集） ---------- */
+    section('内置分流规则');
+    const rulesets = require('../electron/core/rulesets');
+    const seedKeys = rulesets.allProviderKeys();
+    const seedMiss = seedKeys.filter((k) => !fs.existsSync(path.join(paths.ruleSeeds(), rulesets.seedFile(k))));
+    check('规则集种子已铺到 data/rules', seedKeys.length === 48 && seedMiss.length === 0,
+      `keys=${seedKeys.length} missing=${seedMiss.join(',')}`);
+
+    const readCfg = () => yaml.load(fs.readFileSync(paths.file('config.yaml'), 'utf8'));
+    const cfg0 = readCfg();
+    const providers0 = Object.keys(cfg0['rule-providers'] || {});
+    check('默认启用 6 组 → 16 个 rule-provider', providers0.length === 16, String(providers0.length));
+    check('rule-provider 一律 file + data 内相对路径', providers0.every((k) => {
+      const p = cfg0['rule-providers'][k];
+      return p && p.type === 'file' && p.path === rulesets.seedPath(k) && !path.isAbsolute(p.path);
+    }), JSON.stringify(cfg0['rule-providers'][providers0[0]] || {}));
+    check('生成 16 条 RULE-SET 且 MATCH 兜底在最后',
+      (cfg0.rules || []).filter((r) => String(r).startsWith('RULE-SET,')).length === 16 &&
+      String((cfg0.rules || []).slice(-1)[0]).startsWith('MATCH,'),
+      String((cfg0.rules || []).slice(-1)[0]));
+    const lanIdx = (cfg0.rules || []).findIndex((r) => String(r).startsWith('IP-CIDR,192.168.0.0/16'));
+    const setIdx = (cfg0.rules || []).findIndex((r) => String(r).startsWith('RULE-SET,'));
+    check('内网直连规则排在内置分流之前', lanIdx >= 0 && setIdx > lanIdx, `lan=${lanIdx} set=${setIdx}`);
+
+    // 内核侧的 provider 初始化是异步的：必须轮询，否则会读到还没解析完的 0 条
+    const providerCounts = async () => {
+      const pr = await core.S.controller.get('/providers/rules');
+      return pr && pr.providers ? pr.providers : pr;
+    };
+    let prov = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      prov = await providerCounts();
+      if (providers0.every((k) => prov[k] && prov[k].ruleCount > 0)) break;
+    }
+    const zero = providers0.filter((k) => !prov[k] || prov[k].ruleCount <= 0);
+    check('内核把 16 个规则集全部解析出规则', zero.length === 0,
+      zero.map((k) => `${k}:${prov[k] ? prov[k].ruleCount : 'missing'}`).join(' '));
+    const ruleTotal = providers0.reduce((a, k) => a + ((prov[k] && prov[k].ruleCount) || 0), 0);
+    check('规则总数 > 1000 条', ruleTotal > 1000, String(ruleTotal));
+
+    const rs0 = await commands.get_rulesets();
+    check('分流表 27 组 / 默认启用 6 组',
+      rs0 && rs0.total === 27 && Array.isArray(rs0.enabled) && rs0.enabled.length === 6,
+      JSON.stringify({ total: rs0 && rs0.total, enabled: rs0 && rs0.enabled && rs0.enabled.length }));
+    check('每组带出口语义与规则集数量',
+      Array.isArray(rs0.groups) && rs0.groups.length === 27 &&
+      rs0.groups.every((g) => ['direct', 'block', 'proxy'].includes(g.out) && g.count >= 0),
+      JSON.stringify(rs0.groups && rs0.groups[0]));
+
+    // 开关 + 热重载：配置与运行中的内核都要跟着变
+    const on = await commands.set_ruleset({ name: '🛑 广告拦截', on: true });
+    check('开启「广告拦截」并热重载', on && on.ok === true && on.applied === true, JSON.stringify(on));
+    const cfg1 = readCfg();
+    check('热重载后配置多出 2 个广告规则集',
+      Object.keys(cfg1['rule-providers'] || {}).length === 18,
+      String(Object.keys(cfg1['rule-providers'] || {}).length));
+    const adLine = String((cfg1.rules || []).find((r) => String(r).startsWith('RULE-SET,gs_category_ads_all,')) || '');
+    check('广告规则集出口指向内置组', adLine === 'RULE-SET,gs_category_ads_all,🛑 广告拦截', adLine);
+    let prov1 = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      prov1 = await providerCounts();
+      if (prov1.gs_category_ads_all && prov1.gs_category_ads_all.ruleCount > 0) break;
+    }
+    check('热重载后内核真的加载了新增规则集',
+      !!prov1.gs_category_ads_all && prov1.gs_category_ads_all.ruleCount > 0,
+      JSON.stringify(prov1.gs_category_ads_all || null));
+
+    await expectReject('开启不存在的分流组会报错', () => commands.set_ruleset({ name: '不存在的分流组', on: true }));
+    const back = await commands.reset_rulesets();
+    check('恢复默认分流', back && back.ok === true && back.applied === true, JSON.stringify(back));
+    const cfg2 = readCfg();
+    check('恢复默认后规则集回到 16 个',
+      Object.keys(cfg2['rule-providers'] || {}).length === 16,
+      String(Object.keys(cfg2['rule-providers'] || {}).length));
+
     /* ---------- 系统代理 ---------- */
     if (WITH_SYSPROXY) {
       section('系统代理');

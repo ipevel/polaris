@@ -32,6 +32,7 @@
     plan: { name: "—", used: 0, total: 0, expire: "" },
     nodes: [],
     groups: [],
+    rulesets: { groups: [], total: 0 },
     nodeFilter: "",
     testing: false,
     refreshing: false,
@@ -453,12 +454,53 @@
   function bindRouting() {
     const b = $("#btn-routing-reset");
     if (b) b.addEventListener("click", () => openDialog("confirm", {
-      title: "恢复默认分流", body: "将丢弃本地的分组选择，回到订阅自带的分流规则。", yes: "恢复默认",
+      title: "恢复默认出口", body: "把所有策略组切回它们的第一个出口（主选择组回到订阅默认）。", yes: "恢复默认",
       onYes: async () => {
-        const r = await guard("恢复默认", () => api.resetRoutingGroups());
-        if (r) { state.groups = await api.getRoutingGroups().catch(() => state.groups); render(); toast("已恢复默认分流规则"); }
+        const r = await guard("恢复默认出口", () => api.resetRoutingGroups());
+        if (r) { state.groups = await api.getRoutingGroups().catch(() => state.groups); render(); toast("已恢复默认出口"); }
       },
     }));
+    const rb = $("#btn-ruleset-reset");
+    if (rb) rb.addEventListener("click", () => openDialog("confirm", {
+      title: "恢复内置分流默认", body: "按产品预设恢复各分类的开关（苹果服务、Google、哔哩哔哩、国内直连、国外穿墙默认开启）。已连接时会热重载配置。", yes: "恢复默认",
+      onYes: async () => {
+        const r = await guard("恢复默认", () => api.resetRulesets());
+        if (r) { await refreshRoutes(); render(); toast("已恢复内置分流默认"); }
+      },
+    }));
+    // 开关：切换某一分类是否参与分流
+    $$(".switch[data-ruleset]").forEach((sw) => sw.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const name = sw.dataset.ruleset;
+      const next = !sw.classList.contains("on");
+      sw.classList.toggle("on", next);
+      const r = await guard("切换分流", () => api.setRuleset(name, next));
+      if (!r) { sw.classList.toggle("on", !next); return; }
+      await refreshRoutes();
+      render();
+      toast(next ? `${name}已开启` : `${name}已关闭`);
+    }));
+    // 点行：给这个分类单独指定出口
+    $$("[data-ruleset-pick]").forEach((el) => el.addEventListener("click", async (e) => {
+      if (e.target.closest(".switch")) return;
+      const name = el.dataset.rulesetPick;
+      const rs = ((state.rulesets || {}).groups || []).find((x) => x.name === name);
+      if (rs && !rs.enabled) { toast("先开启该分类，才能单独指定出口"); return; }
+      if (!state.connected) { toast("连接后才能单独指定出口"); return; }
+      const g = (state.groups || []).find((x) => x.name === name);
+      if (!g) { toast("该分组尚未在内核中生效"); return; }
+      openDialog("groupPick", g);
+    }));
+  }
+
+  /** 只刷新分流相关数据（比 refreshAll 便宜） */
+  async function refreshRoutes() {
+    const [groups, rulesets] = await Promise.all([
+      api.getRoutingGroups().catch(() => state.groups),
+      api.getRulesets().catch(() => state.rulesets),
+    ]);
+    state.groups = groups;
+    state.rulesets = rulesets;
   }
 
   function bindSettings() {
@@ -657,9 +699,10 @@
       applyTheme(state.settings.theme || "system");
     }
     await refreshStatus();
-    const [nodes, groups, plan, plans, orders, tickets, invite, gh, notices, site, rcfg] = await Promise.all([
+    const [nodes, groups, rulesets, plan, plans, orders, tickets, invite, gh, notices, site, rcfg] = await Promise.all([
       api.getNodes().catch(() => []),
       api.getRoutingGroups().catch(() => []),
+      api.getRulesets().catch(() => state.rulesets),
       api.getPlan().catch(() => null),
       api.getPlans().catch(() => []),
       api.getOrders().catch(() => []),
@@ -672,6 +715,7 @@
     ]);
     state.nodes = nodes || [];
     state.groups = groups || [];
+    if (rulesets) state.rulesets = rulesets;
     if (plan) state.plan = plan;
     state.plans = (plans || []).length ? plans : state.plans;
     state.orders = orders || [];

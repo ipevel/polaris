@@ -70,6 +70,12 @@ const paths = {
   logs: () => path.join(root(), 'data', 'logs'),
   profiles: () => path.join(root(), 'data', 'profiles'),
   providers: () => path.join(root(), 'data', 'providers'),
+  /** 内置分流规则种子（resources/rules/*.yaml，随包分发，离线可用） */
+  rules: () => (IS_PACKAGED
+    ? path.join(process.resourcesPath, 'rules')
+    : path.resolve(__dirname, '..', 'resources', 'rules')),
+  /** 内核实际读取的规则集目录：必须在 data/ 内，否则 mihomo 会以「不安全路径」拒载 */
+  ruleSeeds: () => path.join(root(), 'data', 'rules'),
   cache: () => path.join(root(), 'data', 'cache'),
   file: (...rel) => path.join(root(), 'data', ...rel),
   core: () => (IS_PACKAGED
@@ -80,7 +86,7 @@ const paths = {
     ? path.join(process.resourcesPath, 'geo')
     : path.resolve(__dirname, '..', 'resources', 'geo')),
   ensureAll() {
-    for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.cache()]) {
+    for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.ruleSeeds(), paths.cache()]) {
       fs.mkdirSync(d, { recursive: true });
     }
     return paths;

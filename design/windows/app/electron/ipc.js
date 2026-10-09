@@ -89,6 +89,9 @@ const commands = {
   get_routing_groups: async () => core.routingGroups(),
   set_routing_group: async ({ name, node }) => core.setRoutingGroup(name, node),
   reset_routing_groups: async () => core.resetRoutingGroups(),
+  get_rulesets: async () => core.rulesetState(),
+  set_ruleset: async ({ name, on }) => ok(await core.setRuleset(name, !!on)),
+  reset_rulesets: async () => ok(await core.resetRulesets()),
 
   /* ================= 流量 ================= */
   get_traffic: async ({ range }) => {

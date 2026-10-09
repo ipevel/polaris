@@ -1,6 +1,6 @@
 node_modules/
 dist/
 .devdata/
-core/
+/core/
 core.lock.json
 build/icon.ico

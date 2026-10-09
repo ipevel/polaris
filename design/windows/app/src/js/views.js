@@ -151,10 +151,39 @@
   };
 
   /* ---------------- 分流规则 ---------------- */
-  Views.routing = (s) => head("分流规则", "本地规则优先于订阅规则",
-    `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-routing-reset">恢复默认</button>`) +
-    (s.groups.length
-      ? s.groups.map((g) => `
+  const OUT_LABEL = { direct: "直连", block: "拦截", proxy: "节点选择" };
+
+  function rulesetRow(g) {
+    const out = OUT_LABEL[g.out] || "节点选择";
+    const cur = g.out === "proxy" ? (g.now || out) : out;
+    const sub = `${g.count} 个规则集${g.inline ? ` · ${g.inline} 条内联` : ""}${g.live ? "" : " · 未生效"}`;
+    return `<div class="row" data-ruleset-pick="${h(g.name)}" style="cursor:pointer">
+      <div class="k"><span style="display:flex;flex-direction:column"><span>${h(g.name)}</span>
+      <span style="font-size:11px;color:var(--text3);margin-top:2px">${h(sub)}</span></span></div>
+      <div class="v" style="display:flex;align-items:center;gap:8px">${badge(cur, g.out === "direct" ? "b-gray" : g.out === "block" ? "b-red" : "b-blue")}
+      <div class="switch${g.enabled ? " on" : ""}" data-ruleset="${h(g.name)}"></div>
+      <span class="chev">›</span></div></div>`;
+  }
+
+  Views.routing = (s) => {
+    const rs = s.rulesets || {};
+    const builtin = Array.isArray(rs.groups) ? rs.groups : [];
+    const names = new Set(builtin.map((g) => g.name));
+    const subs = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !names.has(g.name));
+    const onCount = builtin.filter((g) => g.enabled).length;
+    return head("分流规则", "本地规则优先于订阅规则",
+      `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-routing-reset">恢复出口</button>`) +
+      `<div class="section-label">内置分流 · 离线可用 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
+      `<div class="card">` +
+      (builtin.length
+        ? builtin.map(rulesetRow).join("") +
+          `<div class="row"><div class="k"><span>恢复默认开关</span></div>` +
+          `<div class="v"><button class="btn btn-outline btn-sm" id="btn-ruleset-reset">恢复默认</button></div></div>`
+        : empty("没有内置分流规则", "缺少 resources/rules 规则集，请重新解压完整目录")) +
+      `</div>` +
+      `<div class="section-label">策略组出口</div>` +
+      (subs.length
+        ? subs.map((g) => `
       <div class="card" style="margin-bottom:14px;${g.builtin ? "" : "cursor:pointer"}"${g.builtin ? "" : ` data-group="${h(g.name)}"`}>
         <div class="acc-head" style="padding:0">
           <div><div class="acc-title" style="font-size:15px">${h(g.name)}</div>
@@ -162,7 +191,8 @@
           <div style="display:flex;align-items:center;gap:8px">${badge(g.now || "—", g.now === "DIRECT" || g.now === "REJECT" ? "b-gray" : "b-blue")}${g.builtin ? "" : '<span class="chev" style="font-size:20px">›</span>'}</div>
         </div>
       </div>`).join("")
-      : empty("暂无分流分组", "订阅里没有 proxy-groups，或尚未连接"));
+        : empty("暂无其他策略组", "订阅里没有代理组，或尚未连接"));
+  };
 
   /* ---------------- 设置 ---------------- */
   const LANGS = { "zh-CN": "简体中文", "zh-TW": "繁體中文", "en-US": "English" };
