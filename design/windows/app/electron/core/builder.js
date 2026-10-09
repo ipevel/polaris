@@ -37,7 +37,8 @@ function groupMembers(defaultOut, nodeNames) {
 /**
  * @param {object} doc   sanitizer.sanitize 的产物
  * @param {object} opts  { mixedPort, controllerPort, secret, mode, tun, allowLan, ipv6,
- *                         tunStack, directDomains, routing: { enabled, order } }
+ *                         tunStack, directDomains,
+ *                         routing: { enabled, order, custom: [{name,out,enabled,rules}] } }
  */
 function build(doc, opts = {}) {
   const mixedPort = opts.mixedPort || randomPort();
@@ -125,6 +126,16 @@ function build(doc, opts = {}) {
   const ruleProviders = Object.assign({}, out['rule-providers'] || {});
   const mine = new Set();
   if (routing) {
+    // 用户自定义分流组排在**最前面**：自己写的规则要能覆盖内置分类。
+    // 内置分类里有 gs_geolocation_ncn 这种"整个非中国"的大网，排后面就永远轮不到自定义规则。
+    for (const g of rulesets.normalizeCustom(routing.custom)) {
+      if (!g.enabled) continue;
+      if (!names.has(g.name)) {
+        groups.push({ name: g.name, type: 'select', proxies: groupMembers(g.out, nodeNames) });
+        names.add(g.name);
+      }
+      for (const r of g.rules) setRules.push(rulesets.ruleLine(r, g.name));
+    }
     const enabled = new Set(rulesets.normalizeEnabled(routing.enabled));
     for (const g of rulesets.orderedTable(routing.order)) {
       if (!enabled.has(g.name)) continue;

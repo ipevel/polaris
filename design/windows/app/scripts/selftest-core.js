@@ -288,6 +288,174 @@ function testRulesets() {
     r4.config.rules.some((x) => x.startsWith('IP-CIDR,192.168.0.0/16')));
 }
 
+/* ---------------- 5. 自定义分流组 ---------------- */
+
+/**
+ * 用户自己写的分流组：解析/校验/组装顺序/策略组复用。
+ * 重点在"一条错规则会让内核拒绝整个配置"，所以校验必须严格、组装必须只吃干净数据。
+ */
+function testCustomRulesets() {
+  section('自定义分流组');
+  const rulesets = require('../electron/core/rulesets');
+
+  // --- 规则解析 ---
+  check('空行与注释被跳过',
+    rulesets.parseRuleLine('') === null && rulesets.parseRuleLine('   ') === null && rulesets.parseRuleLine('# 备注') === null);
+  const r1 = rulesets.parseRuleLine('DOMAIN-SUFFIX,example.com');
+  check('普通规则解析出类型与内容',
+    r1 && r1.type === 'DOMAIN-SUFFIX' && r1.value === 'example.com' && r1.noResolve === false, JSON.stringify(r1));
+  check('类型大小写不敏感', rulesets.parseRuleLine('domain-keyword,github').type === 'DOMAIN-KEYWORD');
+  const r2 = rulesets.parseRuleLine('IP-CIDR,10.0.0.0/8');
+  check('IP 类规则自动补 no-resolve', r2.noResolve === true, JSON.stringify(r2));
+  const r3 = rulesets.parseRuleLine('IP-CIDR,10.0.0.0/8,no-resolve');
+  check('显式写 no-resolve 也接受', r3.noResolve === true, JSON.stringify(r3));
+  const r4 = rulesets.parseRuleLine('GEOIP,CN');
+  check('GEOIP 自动补 no-resolve', r4.noResolve === true, JSON.stringify(r4));
+  check('域名类规则不加 no-resolve', rulesets.parseRuleLine('GEOSITE,openai').noResolve === false);
+  // 实测（core\mihomo.exe -t）：mihomo 接受 DOMAIN-SUFFIX,a.com,DIRECT,no-resolve，
+  // 所以这里不拦——用户从别处抄来的规则不该被我们拒之门外。
+  check('域名规则显式写 no-resolve 也照收（mihomo 实测接受）',
+    rulesets.parseRuleLine('DOMAIN-SUFFIX,a.com,no-resolve').noResolve === true);
+
+  const bad = [
+    ['NOSUCHTYPE,x.com', '未知类型'],
+    ['DOMAIN-SUFFIX', '缺内容'],
+    ['DOMAIN-SUFFIX,a.com,extra,more', '段数过多'],
+    ['DOMAIN-SUFFIX,a b.com', '内容含空格'],
+    ['MATCH,节点选择', 'MATCH 会吃掉后面的规则'],
+    ['', '空行'],
+  ];
+  bad.forEach(([line, why]) => {
+    let threw = null;
+    try { rulesets.parseRuleLine(line); } catch (e) { threw = e.message; }
+    if (why === '空行') { check(`${why} 返回 null 而不是抛错`, threw === null && rulesets.parseRuleLine(line) === null); return; }
+    check(`拒绝非法规则「${line}」（${why}）`, !!threw, threw || '没有抛错');
+  });
+  let matchMsg = '';
+  try { rulesets.parseRuleLine('MATCH,x'); } catch (e) { matchMsg = e.message; }
+  check('MATCH 的报错说明了原因', /MATCH/.test(matchMsg) && /吃掉|所有规则|最后/.test(matchMsg), matchMsg);
+
+  // --- 拼回文本 / 规则行 ---
+  check('ruleText 能原样拼回', rulesets.ruleText(rulesets.parseRuleLine('DOMAIN-SUFFIX,example.com')) === 'DOMAIN-SUFFIX,example.com');
+  check('ruleText 保留 no-resolve', rulesets.ruleText(r2) === 'IP-CIDR,10.0.0.0/8,no-resolve', rulesets.ruleText(r2));
+  check('ruleLine 把出口插在 no-resolve 之前',
+    rulesets.ruleLine(r2, '我的组') === 'IP-CIDR,10.0.0.0/8,我的组,no-resolve', rulesets.ruleLine(r2, '我的组'));
+  check('ruleLine 普通规则直接补出口',
+    rulesets.ruleLine(r1, '我的组') === 'DOMAIN-SUFFIX,example.com,我的组', rulesets.ruleLine(r1, '我的组'));
+
+  // --- normalizeCustom：永不抛错 ---
+  const norm = rulesets.normalizeCustom([
+    { name: '我的组', out: 'direct', enabled: true, rules: ['DOMAIN-SUFFIX,a.com', 'BADTYPE,x'] },
+    { name: '🎯 国内直连', out: 'proxy', enabled: true, rules: ['DOMAIN-SUFFIX,b.com'] },
+    { name: '空的', out: 'proxy', enabled: true, rules: [] },
+    { name: '', out: 'proxy', enabled: true, rules: ['DOMAIN-SUFFIX,c.com'] },
+    { name: '关着的', out: 'proxy', enabled: false, rules: ['DOMAIN-SUFFIX,d.com'] },
+    null,
+  ]);
+  check('normalizeCustom 丢掉坏规则但保留好规则',
+    norm.length === 2 && norm[0].name === '我的组' && norm[0].rules.length === 1, JSON.stringify(norm.map((x) => x.name)));
+  check('normalizeCustom 丢掉与内置同名的组', !norm.some((x) => x.name === '🎯 国内直连'));
+  check('normalizeCustom 丢掉没有有效规则的组', !norm.some((x) => x.name === '空的' || x.name === ''));
+  check('normalizeCustom 保留关闭的组（用户只是暂时关掉）', norm.some((x) => x.name === '关着的' && x.enabled === false));
+  check('normalizeCustom 不认识 out 时回落到 proxy',
+    rulesets.normalizeCustom([{ name: 'x', out: 'whatever', rules: ['DOMAIN,a.com'] }])[0].out === 'proxy');
+  check('normalizeCustom 对非数组返回空', rulesets.normalizeCustom(null).length === 0 && rulesets.normalizeCustom('x').length === 0);
+
+  check('serializeCustom 回写成文本数组',
+    JSON.stringify(rulesets.serializeCustom([{ name: 'a', out: 'proxy', enabled: true, rules: ['DOMAIN,x.com'] }])) ===
+    JSON.stringify([{ name: 'a', out: 'proxy', enabled: true, rules: ['DOMAIN,x.com'] }]));
+  // 回归：validateCustom 返回的 rules 是"已解析对象"，直接喂给 serializeCustom 曾经会被
+  // normalizeCustom 当文本行解析失败 → 整组静默丢光（保存看起来成功、配置里却没有）。
+  const roundTrip = rulesets.serializeCustom([rulesets.validateCustom({ name: '往返', out: 'block', rules: ['DOMAIN,x.com', 'IP-CIDR,10.0.0.0/8'] })]);
+  check('validateCustom → serializeCustom 往返不丢组',
+    roundTrip.length === 1 && roundTrip[0].rules.length === 2 &&
+    roundTrip[0].rules[1] === 'IP-CIDR,10.0.0.0/8,no-resolve', JSON.stringify(roundTrip));
+  check('normalizeCustom 也能吃已解析对象',
+    rulesets.normalizeCustom([{ name: 'obj', out: 'direct', rules: [{ type: 'DOMAIN', value: 'a.com', noResolve: false }] }])
+      .map((g) => rulesets.ruleText(g.rules[0]))[0] === 'DOMAIN,a.com');
+
+  // --- validateCustom：严格抛错 ---
+  const vcases = [
+    [{ name: '', out: 'proxy', rules: ['DOMAIN,a.com'] }, /名字/],
+    [{ name: '🎯 国内直连', out: 'proxy', rules: ['DOMAIN,a.com'] }, /同名|内置/],
+    [{ name: 'a:b', out: 'proxy', rules: ['DOMAIN,a.com'] }, /名字/],
+    [{ name: 'x'.repeat(25), out: 'proxy', rules: ['DOMAIN,a.com'] }, /名字|长/],
+    [{ name: 'ok', out: 'proxy', rules: [] }, /规则/],
+    [{ name: 'ok', out: 'proxy', rules: ['BADTYPE,a.com'] }, /第 1 行/],
+    [{ name: 'ok', out: 'proxy', rules: ['DOMAIN,a.com', 'BADTYPE,b.com'] }, /第 2 行/],
+  ];
+  vcases.forEach(([input, re]) => {
+    let msg = null;
+    try { rulesets.validateCustom(input); } catch (e) { msg = e.message; }
+    check(`validateCustom 拦下非法输入（${re.source}）`, !!msg && re.test(msg), msg || '没有抛错');
+  });
+  let okOut = null;
+  try { okOut = rulesets.validateCustom({ name: '公司内网', out: 'direct', rules: ['DOMAIN-SUFFIX,corp.com'] }); } catch (e) { okOut = e.message; }
+  check('validateCustom 接受合法输入并规范化',
+    okOut && okOut.name === '公司内网' && okOut.out === 'direct' && okOut.rules.length === 1, JSON.stringify(okOut));
+
+  // --- 组装：自定义规则必须排在内置分类之前 ---
+  const doc = {
+    proxies: [{ name: '香港 01' }, { name: '日本 01' }],
+    'proxy-groups': [
+      { name: '流媒体分流', type: 'select', proxies: ['香港 01'] },
+      { name: '🚀 节点选择', type: 'select', proxies: ['香港 01', '日本 01'] },
+    ],
+    rules: ['GEOIP,CN,DIRECT', 'MATCH,🚀 节点选择'],
+  };
+  const routing = {
+    enabled: rulesets.defaultEnabled(),
+    custom: [
+      { name: '公司内网', out: 'direct', enabled: true, rules: ['DOMAIN-SUFFIX,corp.com', 'IP-CIDR,10.0.0.0/8'] },
+      { name: '🚀 节点选择', out: 'proxy', enabled: true, rules: ['DOMAIN-KEYWORD,work'] },
+      { name: '关掉的组', out: 'block', enabled: false, rules: ['DOMAIN,ads.example.com'] },
+    ],
+  };
+  const built = builder.build(doc, { routing }).config;
+  const rules = built.rules;
+  const firstSet = rules.findIndex((x) => x.startsWith('RULE-SET,'));
+  const corpIdx = rules.findIndex((x) => x.includes('corp.com'));
+  const workIdx = rules.findIndex((x) => x.includes('DOMAIN-KEYWORD,work'));
+  const offIdx = rules.findIndex((x) => x.includes('ads.example.com'));
+  check('自定义规则排在所有内置 RULE-SET 之前',
+    corpIdx >= 0 && firstSet >= 0 && corpIdx < firstSet, `custom=${corpIdx} firstSet=${firstSet}`);
+  check('自定义规则排在订阅规则之前', corpIdx < rules.findIndex((x) => x === 'GEOIP,CN,DIRECT'));
+  check('IP 类自定义规则带 no-resolve', rules[corpIdx + 1] === 'IP-CIDR,10.0.0.0/8,公司内网,no-resolve', rules[corpIdx + 1]);
+  check('域名规则指向自定义组', rules[corpIdx] === 'DOMAIN-SUFFIX,corp.com,公司内网', rules[corpIdx]);
+  check('关闭的自定义组不产生规则', offIdx === -1);
+  check('关闭的自定义组不建策略组', !built['proxy-groups'].some((g) => g.name === '关掉的组'));
+  check('MATCH 仍然在最后', rules[rules.length - 1].startsWith('MATCH,'), rules[rules.length - 1]);
+
+  const corp = built['proxy-groups'].find((g) => g.name === '公司内网');
+  check('自定义组被建成策略组', !!corp && corp.type === 'select', JSON.stringify(corp));
+  check('out=direct 的组首成员是 DIRECT', corp.proxies[0] === 'DIRECT', corp.proxies.join(','));
+  check('与订阅策略组同名时复用不重建',
+    built['proxy-groups'].filter((g) => g.name === '🚀 节点选择').length === 1 &&
+    rules[workIdx] === 'DOMAIN-KEYWORD,work,🚀 节点选择', rules[workIdx]);
+  check('没有 rule-provider 被自定义组带进来',
+    Object.keys(built['rule-providers']).every((k) => k.startsWith('gs_') || k.startsWith('gp_') || k.startsWith('acl_')));
+
+  const blockDoc = builder.build(doc, {
+    routing: { enabled: [], custom: [{ name: '拦截测试', out: 'block', enabled: true, rules: ['DOMAIN,x.com'] }] },
+  }).config;
+  const bg = blockDoc['proxy-groups'].find((g) => g.name === '拦截测试');
+  check('out=block 的组首成员是 REJECT', bg.proxies[0] === 'REJECT', bg.proxies.join(','));
+  check('只开自定义、不开内置时也能组装出规则',
+    blockDoc.rules.includes('DOMAIN,x.com,拦截测试') && blockDoc.rules.some((x) => x.startsWith('MATCH,')), blockDoc.rules.slice(0, 3).join(' | '));
+  check('内网直连仍然排在最前面（自定义规则不抢它的位置）',
+    blockDoc.rules.findIndex((x) => x.startsWith('IP-CIDR,192.168.0.0/16')) <
+    blockDoc.rules.indexOf('DOMAIN,x.com,拦截测试'), blockDoc.rules.slice(0, 3).join(' | '));
+
+  // --- 与内置同名的自定义组在组装层被丢弃（不顶掉内置语义）---
+  const clashDoc = builder.build(doc, {
+    routing: { enabled: rulesets.defaultEnabled(), custom: [{ name: '🎯 国内直连', out: 'proxy', enabled: true, rules: ['DOMAIN,x.com'] }] },
+  }).config;
+  check('组装层丢弃与内置同名的自定义组',
+    !clashDoc.rules.some((x) => x.includes(',🎯 国内直连') && x.startsWith('DOMAIN,x.com')) &&
+    clashDoc['proxy-groups'].filter((g) => g.name === '🎯 国内直连').length === 1);
+}
+
+
 /* ---------------- 5. 直连域名 / 更新地址 ---------------- */
 
 /**
@@ -701,6 +869,7 @@ async function testKernel() {
   testSanitizer();
   testBuilder();
   testRulesets();
+  testCustomRulesets();
   await testDirectAndUpdate();
   await testUpdater();
   testSysproxyGuard();

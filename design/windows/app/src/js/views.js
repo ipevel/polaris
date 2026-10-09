@@ -152,15 +152,29 @@
 
   /* ---------------- 分流规则 ---------------- */
   const OUT_LABEL = { direct: "直连", block: "拦截", proxy: "节点选择" };
+  const OUT_LABEL_LONG = { proxy: "节点选择", direct: "直连", block: "拦截" };
 
-  function rulesetRow(g) {
+  /**
+   * 一行分流组。mv=是否显示 ↑↓（顺序 = 匹配优先级，越靠前越先匹配）；
+   * edit=自定义组才有的"编辑"入口。
+   */
+  function rulesetRow(g, opts) {
+    const o = opts || {};
     const out = OUT_LABEL[g.out] || "节点选择";
     const cur = g.out === "proxy" ? (g.now || out) : out;
-    const sub = `${g.count} 个规则集${g.inline ? ` · ${g.inline} 条内联` : ""}${g.live ? "" : " · 未生效"}`;
+    const sub = g.custom
+      ? `${g.inline} 条自定义规则${g.live ? "" : " · 未生效"}`
+      : `${g.count} 个规则集${g.inline ? ` · ${g.inline} 条内联` : ""}${g.live ? "" : " · 未生效"}`;
+    const moves = o.mv
+      ? `<span class="ruleset-mv" data-ruleset-move="${h(g.name)}" data-dir="-1" title="上移（更优先）">↑</span>` +
+        `<span class="ruleset-mv" data-ruleset-move="${h(g.name)}" data-dir="1" title="下移">↓</span>`
+      : "";
     return `<div class="row" data-ruleset-pick="${h(g.name)}" style="cursor:pointer">
       <div class="k"><span style="display:flex;flex-direction:column"><span>${h(g.name)}</span>
       <span style="font-size:11px;color:var(--text3);margin-top:2px">${h(sub)}</span></span></div>
       <div class="v" style="display:flex;align-items:center;gap:8px">${badge(cur, g.out === "direct" ? "b-gray" : g.out === "block" ? "b-red" : "b-blue")}
+      ${moves}
+      ${o.edit ? `<span class="ruleset-mv" data-ruleset-edit="${h(g.name)}" title="编辑规则">✎</span>` : ""}
       <div class="switch${g.enabled ? " on" : ""}" data-ruleset="${h(g.name)}"></div>
       <span class="chev">›</span></div></div>`;
   }
@@ -168,16 +182,27 @@
   Views.routing = (s) => {
     const rs = s.rulesets || {};
     const builtin = Array.isArray(rs.groups) ? rs.groups : [];
+    const custom = Array.isArray(rs.custom) ? rs.custom : [];
     const names = new Set(builtin.map((g) => g.name));
-    const subs = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !names.has(g.name));
+    const subs = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !names.has(g.name) && !custom.some((c) => c.name === g.name));
     const onCount = builtin.filter((g) => g.enabled).length;
-    return head("分流规则", "本地规则优先于订阅规则",
+    const customOn = custom.filter((g) => g.enabled).length;
+    return head("分流规则", "自定义规则优先于内置分类",
       `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-routing-reset">恢复出口</button>`) +
+      `<div class="section-label">自定义分流组 · 已启用 ${customOn}/${custom.length}</div>` +
+      `<div class="card">` +
+      (custom.length
+        ? custom.map((g) => rulesetRow(g, { mv: true, edit: true })).join("")
+        : `<div class="row"><div class="k"><span style="color:var(--text3);font-size:13px">还没有自定义分流组</span></div>` +
+          `<div class="v"><span style="color:var(--text3);font-size:12px">自己写规则，永远最先匹配</span></div></div>`) +
+      `<div class="row"><div class="k"><span>新建分流组</span></div>` +
+      `<div class="v"><button class="btn btn-outline btn-sm" id="btn-custom-new">新建</button></div></div>` +
+      `</div>` +
       `<div class="section-label">内置分流 · 离线可用 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
       `<div class="card">` +
       (builtin.length
-        ? builtin.map(rulesetRow).join("") +
-          `<div class="row"><div class="k"><span>恢复默认开关</span></div>` +
+        ? builtin.map((g) => rulesetRow(g, { mv: true })).join("") +
+          `<div class="row"><div class="k"><span>恢复默认开关与顺序</span></div>` +
           `<div class="v"><button class="btn btn-outline btn-sm" id="btn-ruleset-reset">恢复默认</button></div></div>`
         : empty("没有内置分流规则", "缺少 resources/rules 规则集，请重新解压完整目录")) +
       `</div>` +
@@ -441,6 +466,31 @@
       <div style="font-size:14px;color:var(--text2);white-space:pre-line;line-height:1.7;max-height:320px;overflow:auto">${h(t.content || "（无内容）")}</div>
       <button class="btn btn-primary" data-overlay-close style="width:100%;height:44px;margin-top:20px">关闭</button>
     </div></div>`,
+
+    customRuleset: (a) => {
+      const g = a || {};
+      const editing = !!g.name;
+      const cur = g.out || "proxy";
+      return `<div class="overlay" data-overlay><div class="dialog">
+      <h2>${editing ? "编辑分流组" : "新建分流组"}</h2>
+      <div class="dsub">自己写的规则永远排在内置分类之前</div>
+      <input class="field" id="cr-name" placeholder="分组名字（例如：公司内网）" value="${h(g.name || "")}">
+      <div class="section-label" style="margin:6px 0 6px">出口</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        ${["proxy", "direct", "block"].map((v) => `
+        <div class="opt${cur === v ? " sel" : ""}" data-cr-out="${v}" style="flex:1;padding:10px 8px">
+          <span class="radio${cur === v ? " sel" : ""}"></span>
+          <div><div style="font-weight:700;font-size:13.5px">${OUT_LABEL_LONG[v]}</div></div>
+        </div>`).join("")}
+      </div>
+      <textarea class="field" id="cr-rules" spellcheck="false" placeholder="DOMAIN-SUFFIX,example.com&#10;DOMAIN-KEYWORD,github&#10;IP-CIDR,10.0.0.0/8" style="height:132px;padding-top:14px;resize:none;font-family:ui-monospace,Consolas,monospace;font-size:12.5px">${h((g.rules || []).join("\n"))}</textarea>
+      <div class="dsub" style="text-align:left;margin:8px 0 0;line-height:1.6">一行一条，写「类型,内容」就行，出口会自动补上（IP 类规则自动加 no-resolve）。支持 DOMAIN / DOMAIN-SUFFIX / DOMAIN-KEYWORD / GEOSITE / IP-CIDR / IP-CIDR6 / GEOIP / PROCESS-NAME 等。</div>
+      ${err("", "dialog-err")}
+      <button class="btn btn-primary" id="btn-save-custom" style="width:100%;height:46px;margin-top:14px">${editing ? "保存修改" : "创建"}</button>
+      ${editing ? `<button class="btn btn-danger" id="btn-delete-custom" style="width:100%;height:44px;margin-top:10px">删除这个分流组</button>` : ""}
+      <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent" data-overlay-close>取消</button>
+    </div></div>`;
+    },
 
     changePassword: () => `<div class="overlay" data-overlay><div class="dialog">
       <h2>修改密码</h2><div class="dsub">修改后需要重新登录</div>

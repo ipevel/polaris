@@ -50,6 +50,15 @@
 }
 .content::-webkit-scrollbar-track { background: transparent; }
 
+/* ---------- 分流组的排序/编辑小按钮 ---------- */
+.ruleset-mv {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  font-size: 12px; line-height: 1; color: var(--text2);
+  background: var(--line); cursor: pointer; user-select: none;
+}
+.ruleset-mv:hover { color: var(--text); background: rgba(120, 120, 128, .28); }
+
 /* ---------- 深色主题 ---------- */
 :root[data-theme="dark"] {
   --blue: #4c8dff;

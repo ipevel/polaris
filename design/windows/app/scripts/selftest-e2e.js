@@ -302,6 +302,103 @@ app.whenReady().then(async () => {
       Object.keys(cfg2['rule-providers'] || {}).length === 16,
       String(Object.keys(cfg2['rule-providers'] || {}).length));
 
+    /* ---------- 自定义分流组 ---------- */
+    section('自定义分流组');
+    {
+      const C1 = '端到端测试组A';
+      const C2 = '端到端测试组B';
+      const readCfg2 = () => yaml.load(fs.readFileSync(paths.file('config.yaml'), 'utf8'));
+      const kernelProxies = async () => {
+        const pr = await core.S.controller.get('/proxies');
+        return (pr && pr.proxies) || {};
+      };
+
+      const s1 = await commands.save_custom_ruleset({
+        name: C1, out: 'direct', rules: ['DOMAIN-SUFFIX,e2e-custom.example', 'IP-CIDR,10.9.0.0/16'],
+      });
+      check('保存自定义分流组并热重载', s1 && s1.ok === true && s1.applied === true && s1.name === C1, JSON.stringify(s1));
+      const cfgC1 = readCfg2();
+      const c1Idx = (cfgC1.rules || []).findIndex((r) => String(r) === `DOMAIN-SUFFIX,e2e-custom.example,${C1}`);
+      const setIdx1 = (cfgC1.rules || []).findIndex((r) => String(r).startsWith('RULE-SET,'));
+      check('自定义规则进了配置', c1Idx >= 0, String(c1Idx));
+      check('自定义规则排在内置分流之前', c1Idx >= 0 && c1Idx < setIdx1, `custom=${c1Idx} set=${setIdx1}`);
+      check('IP 类自定义规则带 no-resolve',
+        String((cfgC1.rules || [])[c1Idx + 1]) === `IP-CIDR,10.9.0.0/16,${C1},no-resolve`, String((cfgC1.rules || [])[c1Idx + 1]));
+      const cg1 = (cfgC1['proxy-groups'] || []).find((g) => g.name === C1);
+      check('自定义组被建成策略组且出口是直连', !!cg1 && cg1.proxies[0] === 'DIRECT', JSON.stringify(cg1));
+      let kp = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        kp = await kernelProxies();
+        if (kp[C1]) break;
+      }
+      check('运行中的内核真的多了这个策略组', !!kp[C1], Object.keys(kp).filter((k) => k.includes('端到端')).join(','));
+
+      const s2 = await commands.save_custom_ruleset({ name: C2, out: 'block', rules: ['DOMAIN-KEYWORD,e2e-ads'] });
+      check('第二个自定义组也保存成功', s2 && s2.ok === true, JSON.stringify(s2));
+      const cfgC2 = readCfg2();
+      const aIdx = (cfgC2.rules || []).findIndex((r) => String(r).endsWith(`,${C1}`));
+      const bIdx = (cfgC2.rules || []).findIndex((r) => String(r).endsWith(`,${C2}`));
+      check('自定义组之间按创建顺序排列', aIdx >= 0 && bIdx > aIdx, `A=${aIdx} B=${bIdx}`);
+
+      const mv = await commands.move_ruleset({ name: C2, dir: -1 });
+      check('↑ 把自定义组提到前面', mv && mv.ok === true && mv.moved === true, JSON.stringify(mv));
+      const cfgMv = readCfg2();
+      const bIdx2 = (cfgMv.rules || []).findIndex((r) => String(r).endsWith(`,${C2}`));
+      const aIdx2 = (cfgMv.rules || []).findIndex((r) => String(r).endsWith(`,${C1}`));
+      check('配置里的顺序真的换了', bIdx2 >= 0 && aIdx2 > bIdx2, `A=${aIdx2} B=${bIdx2}`);
+      const mvTop = await commands.move_ruleset({ name: C2, dir: -1 });
+      check('已经在最前时不再移动', mvTop && mvTop.ok === true && mvTop.moved === false, JSON.stringify(mvTop));
+
+      const rsC = await commands.get_rulesets();
+      check('get_rulesets 带回自定义组与规则文本',
+        rsC && rsC.custom_total === 2 && rsC.custom[0].name === C2 &&
+        Array.isArray(rsC.custom[0].rules) && rsC.custom[0].rules.length === 1,
+        JSON.stringify(rsC && rsC.custom));
+      check('自定义组标记为 custom 且不计入内置 27 组', rsC.custom.every((g) => g.custom === true) && rsC.groups.length === 27);
+
+      // 内置组的排序：拿当前第二个内置组往上提
+      const orderBefore = (await commands.get_rulesets()).groups.map((g) => g.name);
+      const second = orderBefore[1];
+      const mvB = await commands.move_ruleset({ name: second, dir: -1 });
+      check('内置组也能上移', mvB && mvB.ok === true && mvB.moved === true && mvB.order[0] === second,
+        JSON.stringify({ moved: mvB && mvB.moved, head: mvB && mvB.order && mvB.order[0] }));
+      const orderAfter = (await commands.get_rulesets()).groups.map((g) => g.name);
+      check('上移后内置顺序真的变了', orderAfter[0] === second && orderAfter[1] === orderBefore[0],
+        `${orderBefore.slice(0, 2).join(',')} → ${orderAfter.slice(0, 2).join(',')}`);
+      check('内置与自定义不会互相跨越', (await commands.get_rulesets()).custom.map((g) => g.name).join(',') === `${C2},${C1}`);
+
+      await expectReject('同名自定义组会被拒绝',
+        () => commands.save_custom_ruleset({ name: C1, out: 'proxy', rules: ['DOMAIN,x.com'] }));
+      await expectReject('与内置组同名会被拒绝',
+        () => commands.save_custom_ruleset({ name: '🎯 国内直连', out: 'proxy', rules: ['DOMAIN,x.com'] }));
+      await expectReject('非法规则类型会被拒绝',
+        () => commands.save_custom_ruleset({ name: '坏规则组', out: 'proxy', rules: ['NOSUCHTYPE,x.com'] }));
+      await expectReject('空规则会被拒绝',
+        () => commands.save_custom_ruleset({ name: '空规则组', out: 'proxy', rules: [] }));
+
+      const rs2 = await commands.reset_rulesets();
+      check('恢复默认不会动自定义组', rs2 && rs2.ok === true, JSON.stringify(rs2));
+      const rsAfterReset = await commands.get_rulesets();
+      check('恢复默认后自定义组还在', rsAfterReset.custom_total === 2, String(rsAfterReset.custom_total));
+
+      const d1 = await commands.delete_custom_ruleset({ name: C1 });
+      const d2 = await commands.delete_custom_ruleset({ name: C2 });
+      check('删除自定义组', d1 && d1.ok === true && d2 && d2.ok === true, JSON.stringify([d1, d2]));
+      const cfgEnd = readCfg2();
+      check('删除后规则从配置里消失',
+        !(cfgEnd.rules || []).some((r) => String(r).includes(C1) || String(r).includes(C2)));
+      check('删除后策略组也没了', !(cfgEnd['proxy-groups'] || []).some((g) => g.name === C1 || g.name === C2));
+      let kpEnd = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        kpEnd = await kernelProxies();
+        if (!kpEnd[C1] && !kpEnd[C2]) break;
+      }
+      check('内核里的策略组也消失了', !kpEnd[C1] && !kpEnd[C2], Object.keys(kpEnd).filter((k) => k.includes('端到端')).join(','));
+      check('清理干净：自定义组为 0', (await commands.get_rulesets()).custom_total === 0);
+    }
+
     /* ---------- 自动更新 ---------- */
     section('自动更新');
     {

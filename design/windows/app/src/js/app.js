@@ -249,6 +249,51 @@
         toast("正在退出并安装，稍后会自动重启");
       });
     }
+    if (name === "customRuleset") {
+      const a = arg || {};
+      const box = errBox("#dialog-err");
+      const outOf = () => {
+        const sel = $("[data-cr-out].sel", overlayRoot);
+        return sel ? sel.dataset.crOut : "proxy";
+      };
+      $$("[data-cr-out]", overlayRoot).forEach((el) => el.addEventListener("click", () => {
+        $$("[data-cr-out]", overlayRoot).forEach((o) => {
+          o.classList.toggle("sel", o === el);
+          const r = o.querySelector(".radio");
+          if (r) r.classList.toggle("sel", o === el);
+        });
+      }));
+      $("#btn-save-custom").addEventListener("click", async () => {
+        if (box) box.textContent = "";
+        const nameEl = $("#cr-name");
+        const name = nameEl ? nameEl.value.trim() : "";
+        const rules = ($("#cr-rules").value || "").split("\n").map((x) => x.trim()).filter(Boolean);
+        if (!name) { if (box) box.textContent = "请填写分组名字"; return; }
+        if (!rules.length) { if (box) box.textContent = "至少写一条规则"; return; }
+        const r = await guard("保存分流组", () => api.saveCustomRuleset({
+          name, out: outOf(), rules, original: a.name || "",
+        }));
+        if (!r) return;
+        await refreshRoutes();
+        closeDialog();
+        render();
+        toast(r.renamed ? `已保存为「${r.name}」` : `分流组「${r.name}」已保存`);
+      });
+      const del = $("#btn-delete-custom");
+      if (del) del.addEventListener("click", () => {
+        const nm = a.name;
+        openDialog("confirm", {
+          title: "删除分流组", body: `「${nm}」的规则会被移除，连接中的内核会热重载配置。`, yes: "删除",
+          onYes: async () => {
+            const r = await guard("删除分流组", () => api.deleteCustomRuleset(nm));
+            if (!r) return;
+            await refreshRoutes();
+            render();
+            toast(`已删除「${nm}」`);
+          },
+        });
+      });
+    }
     if (name === "logoutConfirm") {
       $("#btn-logout-confirm").addEventListener("click", async () => {
         await guard("退出登录", () => api.logout());
@@ -495,11 +540,29 @@
     }));
     const rb = $("#btn-ruleset-reset");
     if (rb) rb.addEventListener("click", () => openDialog("confirm", {
-      title: "恢复内置分流默认", body: "按产品预设恢复各分类的开关（苹果服务、Google、哔哩哔哩、国内直连、国外穿墙默认开启）。已连接时会热重载配置。", yes: "恢复默认",
+      title: "恢复内置分流默认", body: "按产品预设恢复各分类的开关与顺序（苹果服务、Google、哔哩哔哩、国内直连、国外穿墙默认开启）。不影响你自己建的分流组。已连接时会热重载配置。", yes: "恢复默认",
       onYes: async () => {
         const r = await guard("恢复默认", () => api.resetRulesets());
         if (r) { await refreshRoutes(); render(); toast("已恢复内置分流默认"); }
       },
+    }));
+    // 顺序：↑↓ 调整匹配优先级（越靠前越先匹配）
+    $$("[data-ruleset-move]").forEach((el) => el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const dir = Number(el.dataset.dir) < 0 ? -1 : 1;
+      const r = await guard("调整顺序", () => api.moveRuleset(el.dataset.rulesetMove, dir));
+      if (!r) return;
+      if (r.moved === false) { toast(dir < 0 ? "已经是最优先了" : "已经是最末位了"); return; }
+      await refreshRoutes();
+      render();
+    }));
+    // 自定义分流组：新建 / 编辑 / 删除
+    const cn = $("#btn-custom-new");
+    if (cn) cn.addEventListener("click", () => openDialog("customRuleset", { out: "proxy", rules: [] }));
+    $$("[data-ruleset-edit]").forEach((el) => el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const g = findRuleset(el.dataset.rulesetEdit);
+      if (g) openDialog("customRuleset", g);
     }));
     // 开关：切换某一分类是否参与分流
     $$(".switch[data-ruleset]").forEach((sw) => sw.addEventListener("click", async (e) => {
@@ -513,17 +576,25 @@
       render();
       toast(next ? `${name}已开启` : `${name}已关闭`);
     }));
-    // 点行：给这个分类单独指定出口
+    // 点行：内置分类 → 单独指定出口；自定义组 → 打开编辑器
     $$("[data-ruleset-pick]").forEach((el) => el.addEventListener("click", async (e) => {
-      if (e.target.closest(".switch")) return;
+      if (e.target.closest(".switch") || e.target.closest(".ruleset-mv")) return;
       const name = el.dataset.rulesetPick;
-      const rs = ((state.rulesets || {}).groups || []).find((x) => x.name === name);
+      const rs = findRuleset(name);
+      if (rs && rs.custom) { openDialog("customRuleset", rs); return; }
       if (rs && !rs.enabled) { toast("先开启该分类，才能单独指定出口"); return; }
       if (!state.connected) { toast("连接后才能单独指定出口"); return; }
       const g = (state.groups || []).find((x) => x.name === name);
       if (!g) { toast("该分组尚未在内核中生效"); return; }
       openDialog("groupPick", g);
     }));
+  }
+
+  /** 在内置分类与自定义组里找同名项 */
+  function findRuleset(name) {
+    const rs = state.rulesets || {};
+    const all = (rs.groups || []).concat(rs.custom || []);
+    return all.find((x) => x.name === name);
   }
 
   /** 只刷新分流相关数据（比 refreshAll 便宜） */

@@ -281,6 +281,136 @@ async function run(win, { log = console.log } = {}) {
     const rsReset = await js(`document.querySelectorAll('.switch[data-ruleset].on').length`);
     R.check('  └ 恢复默认后回到 6 组', rsReset === 6, String(rsReset));
 
+    /* ---------------- 3b-2. 分流组排序 + 自定义分流组 ---------------- */
+    R.section('分流组排序与自定义分流组');
+    const sortInfo = await js(`(() => {
+      const rows = Array.from(document.querySelectorAll('.row[data-ruleset-pick]'));
+      return {
+        rows: rows.length,
+        moves: document.querySelectorAll('[data-ruleset-move]').length,
+        edits: document.querySelectorAll('[data-ruleset-edit]').length,
+        hasNew: !!document.querySelector('#btn-custom-new'),
+        order: rows.map((r) => r.dataset.rulesetPick),
+      };
+    })()`);
+    R.check('每个内置组都有 ↑↓ 两个排序按钮',
+      sortInfo.rows === 27 && sortInfo.moves === 54, JSON.stringify({ rows: sortInfo.rows, moves: sortInfo.moves }));
+    R.check('  └ 有「新建分流组」入口', sortInfo.hasNew === true);
+    R.check('  └ 还没有自定义组时没有编辑入口', sortInfo.edits === 0, String(sortInfo.edits));
+
+    const moved = await js(`(() => {
+      const rows = Array.from(document.querySelectorAll('.row[data-ruleset-pick]'));
+      const target = rows[1];
+      if (!target) return 'no-row';
+      const btn = target.querySelector('[data-ruleset-move][data-dir="-1"]');
+      if (!btn) return 'no-btn';
+      btn.click();
+      return target.dataset.rulesetPick;
+    })()`);
+    await sleep(1500);
+    const orderAfter = await js(`Array.from(document.querySelectorAll('.row[data-ruleset-pick]')).map((r) => r.dataset.rulesetPick)`);
+    R.check('点 ↑ 把第二组提到最前（顺序真的落盘）',
+      moved !== 'no-row' && moved !== 'no-btn' && orderAfter[0] === moved,
+      `clicked=${moved} head=${orderAfter[0]}`);
+
+    const openNew = await js(`(() => {
+      const b = document.querySelector('#btn-custom-new');
+      if (!b) return 'no-btn';
+      b.click();
+      return {
+        name: !!document.querySelector('#cr-name'),
+        rules: !!document.querySelector('#cr-rules'),
+        outs: document.querySelectorAll('[data-cr-out]').length,
+        save: !!document.querySelector('#btn-save-custom'),
+        del: !!document.querySelector('#btn-delete-custom'),
+      };
+    })()`);
+    R.check('「新建」打开编辑器（名字/规则/三个出口/保存）',
+      openNew && openNew.name && openNew.rules && openNew.outs === 3 && openNew.save && !openNew.del,
+      JSON.stringify(openNew));
+
+    const emptyErr = await js(`(() => {
+      document.querySelector('#cr-name').value = '';
+      document.querySelector('#cr-rules').value = 'DOMAIN-SUFFIX,ui-test.example';
+      document.querySelector('#btn-save-custom').click();
+      return document.querySelector('#dialog-err') ? document.querySelector('#dialog-err').textContent : '';
+    })()`);
+    R.check('  └ 名字留空时给出提示且弹窗不关',
+      /名字/.test(emptyErr) && !!(await js(`!!document.querySelector('#cr-name')`)), JSON.stringify(emptyErr));
+
+    const created = await js(`(() => {
+      document.querySelector('#cr-name').value = '界面测试组';
+      document.querySelector('#cr-rules').value = 'DOMAIN-SUFFIX,ui-test.example\\nIP-CIDR,10.7.0.0/16';
+      const out = document.querySelector('[data-cr-out="direct"]');
+      if (out) out.click();
+      document.querySelector('#btn-save-custom').click();
+      return true;
+    })()`);
+    R.check('填写后能点保存', created === true);
+    await sleep(1800);
+    const afterCreate = await js(`(() => {
+      const rows = Array.from(document.querySelectorAll('.row[data-ruleset-pick]'));
+      const mine = rows.find((r) => r.dataset.rulesetPick === '界面测试组');
+      return {
+        dialogClosed: !document.querySelector('#cr-name'),
+        exists: !!mine,
+        isFirst: rows.length ? rows[0].dataset.rulesetPick === '界面测试组' : false,
+        sub: mine ? mine.textContent : '',
+        edits: document.querySelectorAll('[data-ruleset-edit]').length,
+        switches: document.querySelectorAll('.switch[data-ruleset]').length,
+      };
+    })()`);
+    R.check('自定义组出现在列表最前（优先于内置分类）',
+      afterCreate.dialogClosed === true && afterCreate.exists === true && afterCreate.isFirst === true,
+      JSON.stringify({ closed: afterCreate.dialogClosed, exists: afterCreate.exists, first: afterCreate.isFirst }));
+    R.check('  └ 副标题显示规则条数', /2 条自定义规则/.test(afterCreate.sub), afterCreate.sub.slice(0, 60));
+    R.check('  └ 自定义组也有开关，且多了编辑入口',
+      afterCreate.switches === 28 && afterCreate.edits === 1, JSON.stringify({ sw: afterCreate.switches, ed: afterCreate.edits }));
+
+    const reopen = await js(`(() => {
+      const b = document.querySelector('[data-ruleset-edit]');
+      if (!b) return 'no-btn';
+      b.click();
+      return {
+        name: document.querySelector('#cr-name') ? document.querySelector('#cr-name').value : null,
+        rules: document.querySelector('#cr-rules') ? document.querySelector('#cr-rules').value : null,
+        outSel: document.querySelector('[data-cr-out].sel') ? document.querySelector('[data-cr-out].sel').dataset.crOut : null,
+        del: !!document.querySelector('#btn-delete-custom'),
+      };
+    })()`);
+    R.check('点 ✎ 能打开并预填原来的名字/规则/出口',
+      reopen && reopen.name === '界面测试组' && /ui-test\.example/.test(reopen.rules) && reopen.outSel === 'direct' && reopen.del === true,
+      JSON.stringify(reopen));
+
+    const delFlow = await js(`(() => {
+      const b = document.querySelector('#btn-delete-custom');
+      if (!b) return 'no-btn';
+      b.click();
+      return true;
+    })()`);
+    R.check('删除需要二次确认', delFlow === true);
+    await sleep(600);
+    const delConfirm = await js(`(() => {
+      const b = document.querySelector('#btn-confirm-yes');
+      if (!b) return 'no-confirm';
+      b.click();
+      return true;
+    })()`);
+    R.check('  └ 确认删除', delConfirm === true, String(delConfirm));
+    await sleep(1800);
+    const afterDelete = await js(`(() => {
+      const rows = Array.from(document.querySelectorAll('.row[data-ruleset-pick]'));
+      return {
+        exists: rows.some((r) => r.dataset.rulesetPick === '界面测试组'),
+        rows: rows.length,
+        edits: document.querySelectorAll('[data-ruleset-edit]').length,
+        first: rows.length ? rows[0].dataset.rulesetPick : null,
+      };
+    })()`);
+    R.check('删除后自定义组从列表消失',
+      afterDelete.exists === false && afterDelete.rows === 27 && afterDelete.edits === 0, JSON.stringify(afterDelete));
+    R.check('  └ 内置组还在（删的是自定义的）', afterDelete.rows === 27, String(afterDelete.rows));
+
     /* ---------------- 3c. 流量页真的画出曲线 ---------------- */
     // 这里曾经读的是 state.series（不存在），曲线区永远走空态。
     // traffic.series('today') 至少返回 1 个点，所以「有没有 svg」是确定性断言。

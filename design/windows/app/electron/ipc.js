@@ -92,6 +92,9 @@ const commands = {
   reset_routing_groups: async () => core.resetRoutingGroups(),
   get_rulesets: async () => core.rulesetState(),
   set_ruleset: async ({ name, on }) => ok(await core.setRuleset(name, !!on)),
+  move_ruleset: async ({ name, dir }) => ok(await core.moveRuleset(name, Number(dir) < 0 ? -1 : 1)),
+  save_custom_ruleset: async (arg) => ok(await core.saveCustomRuleset(arg || {})),
+  delete_custom_ruleset: async ({ name }) => ok(await core.deleteCustomRuleset(name)),
   reset_rulesets: async () => ok(await core.resetRulesets()),
 
   /* ================= 流量 ================= */

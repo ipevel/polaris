@@ -76,6 +76,9 @@
       ],
     }),
     set_ruleset: (a) => ({ ok: true, enabled: !!a.on, applied: false }),
+    move_ruleset: () => ({ ok: true, moved: false, applied: false }),
+    save_custom_ruleset: (a) => ({ ok: true, name: (a && a.name) || "", applied: false }),
+    delete_custom_ruleset: () => ({ ok: true, applied: false }),
     reset_rulesets: () => ({ ok: true, applied: false }),
     get_plan: () => ({ name: "旗舰套餐", used: 86, total: 200, expire: "2026-11-05" }),
     get_plans: () => ([
@@ -160,6 +163,9 @@
     resetRoutingGroups: () => invoke("reset_routing_groups"),
     getRulesets: () => invoke("get_rulesets"),
     setRuleset: (name, on) => invoke("set_ruleset", { name, on }),
+    moveRuleset: (name, dir) => invoke("move_ruleset", { name, dir }),
+    saveCustomRuleset: (arg) => invoke("save_custom_ruleset", arg || {}),
+    deleteCustomRuleset: (name) => invoke("delete_custom_ruleset", { name }),
     resetRulesets: () => invoke("reset_rulesets"),
 
     /* 套餐 / 订单 */

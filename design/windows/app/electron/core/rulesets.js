@@ -198,6 +198,128 @@ function orderedTable(order) {
   return out;
 }
 
+/* ------------------------------------------------------------------ */
+/* 用户自定义分流组                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * mihomo 支持的规则类型白名单（MATCH 除外 —— 它会吃掉后面所有规则）。
+ *
+ * 为什么要白名单：一条拼错的规则会让 mihomo **拒绝整个配置**，内核直接起不来，
+ * 用户表现是"点了连接没反应"。所以在保存时就拦住，而不是等内核报错。
+ */
+const RULE_TYPES = new Set([
+  'DOMAIN', 'DOMAIN-SUFFIX', 'DOMAIN-KEYWORD', 'DOMAIN-REGEX', 'GEOSITE',
+  'IP-CIDR', 'IP-CIDR6', 'IP-SUFFIX', 'IP-ASN', 'GEOIP',
+  'SRC-IP-CIDR', 'SRC-PORT', 'DST-PORT', 'PROCESS-NAME', 'PROCESS-PATH', 'RULE-SET',
+]);
+
+// IP 类规则默认补 no-resolve：不补的话 mihomo 会为了匹配 IP 规则去解析每个域名
+const NEED_RESOLVE_TYPES = new Set(['IP-CIDR', 'IP-CIDR6', 'IP-SUFFIX', 'GEOIP']);
+
+const OUTS = new Set(['proxy', 'direct', 'block']);
+const CUSTOM_MAX = 20;         // 自定义分流组数量上限
+const CUSTOM_RULES_MAX = 200;  // 每组规则条数上限
+const CUSTOM_NAME_MAX = 24;    // 组名长度上限
+
+/** 解析一行用户写的规则 → {type, value, noResolve}；空行/注释返回 null；不合法抛错 */
+function parseRuleLine(line) {
+  const raw = String(line == null ? '' : line).trim();
+  if (!raw || raw.startsWith('#')) return null;
+  const parts = raw.split(',').map((s) => s.trim());
+  const shown = parts[0] || '(空)';
+  const type = shown.toUpperCase();
+  if (type === 'MATCH') throw new Error('不能用 MATCH —— 它会吃掉后面所有规则');
+  if (!RULE_TYPES.has(type)) throw new Error(`不支持的规则类型「${shown}」`);
+  const value = parts[1] || '';
+  if (!value) throw new Error(`${type} 缺少内容`);
+  if (parts.length > 3) throw new Error(`${type} 参数太多（最多 3 段）`);
+  if (/\s/.test(value)) throw new Error(`${type} 的内容里不能有空格`);
+  let noResolve = false;
+  if (parts.length === 3) {
+    if (parts[2].toLowerCase() !== 'no-resolve') throw new Error('第三段只能是 no-resolve');
+    noResolve = true;
+  }
+  if (!noResolve && NEED_RESOLVE_TYPES.has(type)) noResolve = true; // 自动补，省得用户忘
+  return { type, value, noResolve };
+}
+
+/** 解析后的规则 → 用户看到/存储的写法（不带目标组） */
+function ruleText(rule) {
+  return `${rule.type},${rule.value}${rule.noResolve ? ',no-resolve' : ''}`;
+}
+
+/** 解析后的规则 → 配置里的规则行（目标组插在 no-resolve 前面） */
+function ruleLine(rule, target) {
+  return `${rule.type},${rule.value},${target}${rule.noResolve ? ',no-resolve' : ''}`;
+}
+
+/**
+ * 规范化存储里的自定义分流组（**永不抛错**）。
+ * 设置文件可能被手改坏，或者旧版本写过不认识的东西 —— 配置组装绝不能因此崩，
+ * 所以这里只做"能用的留下、不能用的丢掉"；严格校验在 validateCustom（保存时）。
+ */
+function normalizeCustom(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of list.slice(0, CUSTOM_MAX)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const name = String(raw.name == null ? '' : raw.name).trim().slice(0, CUSTOM_NAME_MAX);
+    // 与内置组同名的一律丢弃：内置组的语义是产品定义的，不能被顶掉
+    if (!name || seen.has(name) || BY_NAME.has(name)) continue;
+    const rules = [];
+    const lines = Array.isArray(raw.rules) ? raw.rules : String(raw.rules || '').split(/\r?\n/);
+    for (const line of lines.slice(0, CUSTOM_RULES_MAX)) {
+      let r = null;
+      try {
+        // 两种形状都要吃：存储里是文本行（settings.json），内存里可能是已解析的规则对象
+        // （validateCustom 的返回值）。只认文本的话，saveCustomRuleset 存回去时会静默丢光。
+        r = line && typeof line === 'object' && typeof line.type === 'string'
+          ? parseRuleLine(ruleText(line))
+          : parseRuleLine(line);
+      } catch (_) { r = null; }
+      if (r) rules.push(r);
+    }
+    if (!rules.length) continue;
+    seen.add(name);
+    out.push({ name, out: OUTS.has(raw.out) ? raw.out : 'proxy', enabled: raw.enabled !== false, rules });
+  }
+  return out;
+}
+
+/** 规范化结果 → 存储形状（规则回写成文本） */
+function serializeCustom(list) {
+  return normalizeCustom(list).map((g) => ({
+    name: g.name, out: g.out, enabled: g.enabled, rules: g.rules.map(ruleText),
+  }));
+}
+
+/**
+ * 保存前的严格校验（**会抛错**，错误信息带行号，直接给用户看）。
+ * @param {{name?:string,out?:string,rules?:string[]|string,enabled?:boolean}} input
+ */
+function validateCustom(input) {
+  const src = input || {};
+  const name = String(src.name == null ? '' : src.name).trim();
+  if (!name) throw new Error('分流组名字不能为空');
+  if (name.length > CUSTOM_NAME_MAX) throw new Error(`名字太长（最多 ${CUSTOM_NAME_MAX} 个字）`);
+  if (/[,:{}[\]"'\\#\r\n\t]/.test(name)) throw new Error('名字里不能有 , : { } [ ] " \' \\ # 这些字符');
+  if (BY_NAME.has(name)) throw new Error(`「${name}」是内置分流组，换个名字`);
+  const out = OUTS.has(src.out) ? src.out : 'proxy';
+  const lines = Array.isArray(src.rules) ? src.rules : String(src.rules || '').split(/\r?\n/);
+  if (lines.length > CUSTOM_RULES_MAX * 2) throw new Error('规则行太多了');
+  const rules = [];
+  lines.forEach((line, i) => {
+    let r = null;
+    try { r = parseRuleLine(line); } catch (e) { throw new Error(`第 ${i + 1} 行：${e.message}`); }
+    if (r) rules.push(r);
+  });
+  if (!rules.length) throw new Error('至少要写一条规则');
+  if (rules.length > CUSTOM_RULES_MAX) throw new Error(`规则太多（最多 ${CUSTOM_RULES_MAX} 条）`);
+  return { name, out, enabled: src.enabled !== false, rules };
+}
+
 /** 某个分流组用到的规则集键（去重，保持声明顺序） */
 function providerKeys(group) {
   const seen = new Set();
@@ -239,6 +361,10 @@ module.exports = {
   TABLE,
   APPLE_PUSH_RULES,
   LAN_DIRECT_RULES,
+  RULE_TYPES,
+  CUSTOM_MAX,
+  CUSTOM_RULES_MAX,
+  CUSTOM_NAME_MAX,
   defaultEnabled,
   normalizeEnabled,
   orderedTable,
@@ -247,4 +373,10 @@ module.exports = {
   seedFile,
   seedPath,
   providerConfig,
+  parseRuleLine,
+  ruleText,
+  ruleLine,
+  normalizeCustom,
+  serializeCustom,
+  validateCustom,
 };

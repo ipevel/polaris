@@ -92,7 +92,7 @@ function prepareConfig(opts = {}) {
     allowLan: store.get('allow_lan'),
     ipv6: store.get('ipv6'),
     directDomains: S.directDomains,
-    routing: { enabled: store.get('routing_rules'), order: store.get('routing_order') },
+    routing: { enabled: store.get('routing_rules'), order: store.get('routing_order'), custom: store.get('custom_rulesets') },
   });
   for (const w of result.warnings || []) log.warn(`routing: ${w}`);
   fs.mkdirSync(paths.data(), { recursive: true });
@@ -558,21 +558,108 @@ async function rulesetState() {
       live: !!p,
     };
   });
-  return { groups, enabled: [...enabled], total: rulesets.TABLE.length };
+  const custom = rulesets.normalizeCustom(store.get('custom_rulesets')).map((g) => {
+    const p = live ? live[g.name] : null;
+    return {
+      name: g.name,
+      out: g.out,
+      enabled: g.enabled,
+      count: 0,
+      inline: g.rules.length,
+      default_on: false,
+      now: p && p.now ? p.now : '',
+      live: !!p,
+      custom: true,
+      rules: g.rules.map(rulesets.ruleText),   // 编辑弹窗直接拿来预填
+    };
+  });
+  return {
+    groups,
+    enabled: [...enabled],
+    total: rulesets.TABLE.length,
+    custom,
+    custom_total: custom.length,
+  };
 }
 
-/** 开关一个内置分流组（写设置 → 重新生成配置 → 在线时热重载） */
+/** 开关一个分流组（内置或自定义）：写设置 → 重新生成配置 → 在线时热重载 */
 async function setRuleset(name, on) {
   const group = rulesets.TABLE.find((g) => g.name === name);
-  if (!group) throw new Error(`内置分流组「${name}」不存在`);
-  const next = new Set(rulesets.normalizeEnabled(store.get('routing_rules')));
-  if (on) next.add(name); else next.delete(name);
-  store.set('routing_rules', rulesets.normalizeEnabled([...next]));
+  if (group) {
+    const next = new Set(rulesets.normalizeEnabled(store.get('routing_rules')));
+    if (on) next.add(name); else next.delete(name);
+    store.set('routing_rules', rulesets.normalizeEnabled([...next]));
+    const r = await reloadConfig();
+    return { ok: true, enabled: next.has(name), applied: !!r.applied };
+  }
+  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
+  const mine = list.find((g) => g.name === name);
+  if (!mine) throw new Error(`分流组「${name}」不存在`);
+  mine.enabled = !!on;
+  store.set('custom_rulesets', rulesets.serializeCustom(list));
   const r = await reloadConfig();
-  return { ok: true, enabled: next.has(name), applied: !!r.applied };
+  return { ok: true, enabled: !!on, applied: !!r.applied };
 }
 
-/** 恢复内置分流的默认开关与顺序 */
+/**
+ * 把某个分流组在匹配顺序里上移/下移一位（越靠前越先匹配）。
+ * 内置组与自定义组各自成一段：自定义规则永远排在所有内置分类之前（见 builder），
+ * 所以这里不会让内置组跨过自定义组。
+ */
+async function moveRuleset(name, dir) {
+  const step = dir < 0 ? -1 : 1;
+  if (rulesets.TABLE.some((g) => g.name === name)) {
+    const cur = rulesets.orderedTable(store.get('routing_order')).map((g) => g.name);
+    const i = cur.indexOf(name);
+    const j = i + step;
+    if (j < 0 || j >= cur.length) return { ok: true, moved: false, order: cur };
+    const next = cur.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    store.set('routing_order', next);
+    const r = await reloadConfig();
+    return { ok: true, moved: true, order: next, applied: !!r.applied };
+  }
+  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
+  const i = list.findIndex((g) => g.name === name);
+  if (i < 0) throw new Error(`分流组「${name}」不存在`);
+  const j = i + step;
+  if (j < 0 || j >= list.length) return { ok: true, moved: false, order: list.map((g) => g.name) };
+  [list[i], list[j]] = [list[j], list[i]];
+  store.set('custom_rulesets', rulesets.serializeCustom(list));
+  const r = await reloadConfig();
+  return { ok: true, moved: true, order: list.map((g) => g.name), applied: !!r.applied };
+}
+
+/** 新建/修改一个自定义分流组（保存前严格校验，错误信息直接给用户看） */
+async function saveCustomRuleset(input) {
+  const clean = rulesets.validateCustom(input);   // 会抛错：行号 + 原因
+  const original = String((input && input.original) || '').trim();
+  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
+  const at = original ? list.findIndex((g) => g.name === original) : -1;
+  if (original && at < 0) throw new Error(`要修改的分流组「${original}」已经不在了`);
+  const clash = list.findIndex((g) => g.name === clean.name);
+  if (clash >= 0 && clash !== at) throw new Error(`已经有同名的分流组「${clean.name}」了`);
+  if (at < 0 && list.length >= rulesets.CUSTOM_MAX) {
+    throw new Error(`自定义分流组最多 ${rulesets.CUSTOM_MAX} 个`);
+  }
+  if (at >= 0) list[at] = clean; else list.push(clean);
+  store.set('custom_rulesets', rulesets.serializeCustom(list));
+  const r = await reloadConfig();
+  return { ok: true, name: clean.name, renamed: !!original && original !== clean.name, applied: !!r.applied };
+}
+
+/** 删除一个自定义分流组 */
+async function deleteCustomRuleset(name) {
+  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
+  const at = list.findIndex((g) => g.name === name);
+  if (at < 0) throw new Error(`分流组「${name}」不存在`);
+  list.splice(at, 1);
+  store.set('custom_rulesets', rulesets.serializeCustom(list));
+  const r = await reloadConfig();
+  return { ok: true, applied: !!r.applied };
+}
+
+/** 恢复内置分流的默认开关与顺序（**不动**用户自己写的自定义分流组） */
 async function resetRulesets() {
   store.set('routing_rules', null);
   store.set('routing_order', null);
@@ -683,6 +770,7 @@ module.exports = {
   prepareConfig, loadNodes, cachedNodes, selectNode, speedTest, setMode,
   routingGroups, setRoutingGroup, resetRoutingGroups,
   rulesetState, setRuleset, resetRulesets, reloadConfig,
+  moveRuleset, saveCustomRuleset, deleteCustomRuleset,
   requireCore, setDirectDomains, mixedPort: () => S.mixedPort,
   S,
 };
