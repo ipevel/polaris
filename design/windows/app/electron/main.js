@@ -26,6 +26,15 @@ const { buildTray, updateTray } = require('./tray');
 
 const pkg = require('../package.json');
 
+// 模块级可变状态。**必须声明在所有 `return` 分支之前**：
+// 下面 `--doctor` / `--updtest` 两个分支会在模块顶层 return，它们之后的
+// `let` 声明永远不会执行；而定时器/回调是在模块求值完才跑的，一旦那时去碰
+// 这些绑定就是 TDZ 崩（`Cannot access 'quitting' before initialization`），
+// 表现是主进程弹一个模态错误框卡死。曾经就是这么崩的，见 DEVNOTES A-10。
+let mainWindow = null;
+let tray = null;
+let quitting = false;
+
 // 诊断模式：跑端到端自检（本地假面板 + 真实内核 + 真实系统代理），不受单实例锁影响。
 // 放在最前面 —— 正常启动的窗口/托盘/锁全部跳过。
 if (process.argv.includes('--doctor')) {
@@ -40,8 +49,9 @@ const MOCK = process.argv.includes('--mock');
 // 下载 → 解压 → 写替换脚本 → 退出，由脚本覆盖安装目录并重启。
 // 这条路径平时只能在真实发版时走一次，坏了就是把用户的安装目录搞坏，
 // 所以留一个能在成品包上直接演练的开关（跑之前请先把整个目录拷一份）。
-// 注意 1：这个分支在模块顶层 return，后面的 `quitting` 等声明都不会执行，
-//         所以这里不能碰它们（曾经在这里赋 `quitting = true`，直接 TDZ 崩在主进程里）。
+// 注意 1：这个分支在模块顶层 return，后面还有函数声明与事件注册不会执行。
+//         模块级状态（`quitting` 等）已提到本分支之前声明，所以这里碰它们不会 TDZ；
+//         但**不要再往后加新的模块级 `let`**，否则同样的崩会回来（DEVNOTES A-10）。
 // 注意 2：**开关要写在 URL 前面，或者用 `--updtest-version=9.9.9` 这种等号形式**。
 //         位置参数（那个 URL）之后再跟 `--switch value`，Electron 会在主进程起来之前就退出，
 //         实测 exit code -1、日志一个字都不写，排查起来极像"应用崩了"。
@@ -70,10 +80,6 @@ if (process.argv.includes('--updtest')) {
   });
   return;
 }
-
-let mainWindow = null;
-let tray = null;
-let quitting = false;
 
 /* ---------- 单实例 ---------- */
 if (!app.requestSingleInstanceLock()) {

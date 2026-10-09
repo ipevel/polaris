@@ -10,10 +10,11 @@
  *   3. 内置分流规则（27 组 × 48 个离线规则集，策略组语义、订阅冲突、开关）
  *   4. 直连域名与更新地址（订阅域名必须真被记住；Windows 不得用安卓 APK 地址）
  *   5. 自动更新（真下载 → zip 校验 → 真解压 → 结构校验 → 替换脚本）
- *   6. 系统代理还原护栏（快照丢了绝不许写注册表 —— 否则用户的系统代理被永久改掉）
- *   7. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
+ *   6. 启动模式（`--updtest` 这类在 main.js 顶层 return 的分支必须能自己退出，不许 TDZ 崩）
+ *   7. 系统代理还原护栏（快照丢了绝不许写注册表 —— 否则用户的系统代理被永久改掉）
+ *   8. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
  *
- * 第 7 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
+ * 第 8 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
  * "内核能被我们生成的配置喂起来并被控制"，不是"能翻墙"。
  */
 
@@ -627,6 +628,63 @@ async function testUpdater() {
   }
 }
 
+/**
+ * 启动模式自检：`--doctor` / `--updtest` 这两个分支在 main.js 的**模块顶层 return**，
+ * 它们之后的 `let` 声明永远不会执行。曾经的崩法：`--updtest` 分支里给 `quitting` 赋值
+ * → 定时器回调跑进 TDZ → `Cannot access 'quitting' before initialization`
+ * → 主进程弹一个模态错误框卡住（用户只看到一个「A JavaScript error occurred in the
+ * main process」的窗口，日志里什么都没有）。
+ *
+ * 这里真去拉一次 `--updtest`（给一个连不上的地址），要的就是「能自己退出」：
+ *   - 正常：下载失败 → 记日志 → app.exit(2)
+ *   - 崩了：模态框挂住进程 → 超时 → 报 FAIL
+ * 顺便断言输出里不许出现 before initialization / Uncaught Exception。
+ */
+async function testStartupPaths() {
+  section('启动模式（模块顶层 return 的分支不许崩）');
+
+  const electron = (() => {
+    // 纯 Node 下 require('electron') 拿到的是 exe 路径字符串（npm 包导出的就是它）
+    try { const e = require('electron'); return typeof e === 'string' ? e : null; } catch (_) { return null; }
+  })();
+  if (!electron || !fs.existsSync(electron)) {
+    console.log('  SKIP  拿不到 electron.exe 路径，跳过（只在纯 Node 下跑）');
+    return;
+  }
+  const appDir = path.join(__dirname, '..');
+
+  const runMode = (args, timeoutMs) => new Promise((resolve) => {
+    // 本机 harness 会带 ELECTRON_RUN_AS_NODE=1，不摘掉的话 electron.exe 会当 Node 跑
+    const env = { ...process.env };
+    for (const k of Object.keys(env)) if (k.toUpperCase() === 'ELECTRON_RUN_AS_NODE') delete env[k];
+    const p = spawn(electron, ['.', ...args], { cwd: appDir, env, windowsHide: true });
+    let out = '';
+    const eat = (b) => { out += String(b); };
+    p.stdout.on('data', eat); p.stderr.on('data', eat);
+    let done = false;
+    const t = setTimeout(() => {
+      if (done) return; done = true;
+      try { p.kill(); } catch (_) {}
+      resolve({ code: null, out, timedOut: true });
+    }, timeoutMs);
+    p.on('exit', (code) => {
+      if (done) return; done = true;
+      clearTimeout(t);
+      resolve({ code, out, timedOut: false });
+    });
+  });
+
+  // 9 号端口是 discard，连上去必被拒 —— 要的就是「快失败」
+  const r = await runMode(['--updtest', 'http://127.0.0.1:9/nope.zip', '--updtest-version=0.0.0'], 30000);
+  check('--updtest 走失败路径会自己退出（不是弹模态框卡住）', !r.timedOut,
+    r.timedOut ? '30s 内没退出，多半是主进程崩在 TDZ 上（弹了模态框）' : '');
+  check('--updtest 失败退出码是 2', r.code === 2, 'code=' + r.code);
+  // GUI 进程的 stdout 通常为空（错误走的是模态框），这条只在有输出时才真正起作用；
+  // 真正能抓住回归的是上面那条超时判断。
+  check('--updtest 输出里没有 TDZ 崩', !/before initialization/i.test(r.out), r.out.slice(0, 300));
+  check('--updtest 输出里没有未捕获异常', !/Uncaught Exception/i.test(r.out), r.out.slice(0, 300));
+}
+
 async function testDirectAndUpdate() {
   section('直连域名与更新地址');
   const http = require('http');
@@ -872,6 +930,7 @@ async function testKernel() {
   testCustomRulesets();
   await testDirectAndUpdate();
   await testUpdater();
+  await testStartupPaths();
   testSysproxyGuard();
   testRegion();
   await testKernel();
