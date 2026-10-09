@@ -140,6 +140,18 @@ object Clash {
         Bridge.nativeHealthCheckAll()
     }
 
+    /**
+     * 对单个节点跑一次真实测速，并区分失败原因。
+     *
+     * 返回 null 表示内核里根本没有这个节点（已从订阅里删掉）——调用方应
+     * 按"超时"处理，而不是按"离线"，否则删节点会连带把同名新节点标离线。
+     */
+    fun urlTest(name: String, timeoutMs: Int): UrlTestResult? {
+        return Bridge.nativeUrlTest(name, timeoutMs)?.let {
+            Json.Default.decodeFromString(UrlTestResult.serializer(), it)
+        }
+    }
+
     fun patchSelector(selector: String, name: String): Boolean {
         return Bridge.nativePatchSelector(selector, name)
     }

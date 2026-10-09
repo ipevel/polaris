@@ -90,6 +90,11 @@ func healthCheckAll() {
 	tunnel.HealthCheckAll()
 }
 
+//export urlTest
+func urlTest(name C.c_string, timeoutMs C.int) *C.char {
+	return marshalJson(tunnel.UrlTest(C.GoString(name), int(timeoutMs)))
+}
+
 //export patchSelector
 func patchSelector(selector, name C.c_string) C.int {
 	s := C.GoString(selector)

@@ -150,6 +150,7 @@ extern char* queryGroupNames(int excludeNotSelectable);
 extern char* queryGroup(c_string name, c_string sortMode);
 extern void healthCheck(void* completable, c_string name);
 extern void healthCheckAll(void);
+extern char* urlTest(c_string name, int timeoutMs);
 extern int patchSelector(c_string selector, c_string name);
 extern char* queryProviders(void);
 extern void updateProvider(void* completable, c_string pType, c_string name);

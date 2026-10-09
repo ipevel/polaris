@@ -88,6 +88,42 @@
   通过；`go test ./native/config/routing/...` 通过（含新增的 `TestOrderedTable` /
   `TestBuildAppliesGroupOrder`）。
 
+## 2026-10-09 重建记录（上游 shgnx/slte 内核健壮性跟进 + 节点离线标识）
+
+- 变更（全部为上游 `shgnx/slte` 已修、Polaris 未跟的崩溃/泄漏/投毒面，逐 hunk 移植）：
+  - `native/tunnel/urltest.go`（新增）＋ `native/tunnel.go` 新增 `//export urlTest`：
+    对**单个节点**跑一次真实 URLTest 并按错误文本分类返回 `{"delay":N,"kind":K}`，
+    `kind` 取 `""`（存活）/ `"timeout"`（抖动、需重试）/ `"offline"`（NXDOMAIN、连接被拒、
+    无路由——域名层面的确定性失败）。应用层据此把「超时」与「离线」分开显示：
+    延迟超时只说明这一次没通，不能据此判定节点已下线。
+  - `kernel-core/src/main/cpp/libclash.h` 增 `extern char* urlTest(c_string name, int timeoutMs);`，
+    `cpp/main.c` 增 `Java_..._Bridge_nativeUrlTest`（新增导出，其余函数体改动不涉及符号）。
+  - `native/utils.go` `marshalJson`：序列化失败由 `panic(err.Error())` 改为回退
+    `[]byte("{}")`。cgo 导出函数内的 panic 无法被 Kotlin 侧捕获，会直接终止常驻
+    VPN 进程（用户表现为「内核突然没了」）。
+  - `native/app.go`：`C.malloc(1024)` → `C.calloc(1, 1024)`，错误缓冲清零后再交给
+    C 侧 `strncpy`（超长时 strncpy 不写 NUL）。
+  - `native/tunnel.go` `healthCheck`：`C.complete(completable, nil)` 之后补
+    `C.release_object(completable)`。原实现每次组健康检查泄漏一个 JNI 全局引用，
+    常驻进程内无界累积；与 `updateProvider` 的成对释放范式对齐。
+  - `native/config/process.go` `patchGeneral`：补 `cfg.NTP = config.DefaultRawConfig().NTP`。
+    订阅不得指定 NTP 服务器（时间源劫持），回退内置默认。**注意** geox-url 不在此处
+    复位——`patchGeoXUrl` 用 `officialGeoXUrls` 单独兜底，比无脑重置更明确。
+- 未变更既有导出符号（仅在末尾新增 `urlTest`），因此 `libclash.h` 仍沿用 Polaris 的
+  手工维护版（与 `cpp/libclash.h` 只差 cgo 样板：Go 1.23.4 起不再生成
+  `_GoStringLen`/`_GoStringPtr` 声明，C 侧也无任何调用方）；本次只把新增的 `urlTest`
+  声明按同一风格补进两个头文件。`cpp/libclash.h` 才是编译期实际包含的头，
+  `jniLibs/arm64-v8a/libclash.h` 是随产物存档的镜像。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=C:\Android\Sdk\ndk\28.2.13676358\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+  （Go 1.23.4 windows/amd64；产物 75,181,976 字节）
+- 验证：`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags "android cmfa with_gvisor" ./native/...`
+  通过（EXIT=0）；`go vet -tags "android cmfa with_gvisor" ./native/...` 通过（EXIT=0，
+  与 CI 同款）；`go test -count=1 ./native/config/routing/...` 通过
+  （`ok cfa/native/config/routing 0.872s`）。
+- 产物摘要：见同目录 `SHA256SUMS`（`2739cf53…5091aee`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。

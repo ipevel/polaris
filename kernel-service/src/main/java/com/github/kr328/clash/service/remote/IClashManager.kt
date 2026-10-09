@@ -31,6 +31,15 @@ interface IClashManager {
 
     suspend fun healthCheck(group: String)
     fun healthCheckAll()
+
+    /**
+     * 对单个节点跑一次真实测速并分类失败原因。
+     *
+     * 节点不在内核里（已从订阅删除）时 kind 返回 [UrlTestResult.KIND_TIMEOUT]，
+     * 不返回 OFFLINE —— 否则删掉节点会连带把新同名节点标成离线。
+     */
+    fun urlTest(name: String, timeoutMs: Int): UrlTestResult
+
     suspend fun updateProvider(type: Provider.Type, name: String)
 
     fun queryOverride(slot: Clash.OverrideSlot): ConfigurationOverride
