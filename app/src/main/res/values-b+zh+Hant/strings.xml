@@ -29,6 +29,8 @@
     <string name="register_invite_optional">邀請碼（選填）</string>
     <string name="register_button">註冊</string>
     <string name="register_back_to_login">返回登入</string>
+    <!-- 面板下發了信箱後綴白名單時，註冊頁只讓使用者填 @ 前面的部分，後綴從下拉選 -->
+    <string name="register_email_suffix_label">選擇電子郵件網域</string>
 
     <!-- Forgot Password -->
     <string name="forgot_title">重設密碼</string>
@@ -43,6 +45,7 @@
     <string name="error_network">請求失敗</string>
     <string name="error_email_send_failed">驗證碼傳送失敗</string>
     <string name="error_email_required">輸入信箱</string>
+    <string name="error_email_suffix_not_allowed">此電子郵件網域不在允許清單中</string>
     <string name="error_code_required">輸入驗證碼</string>
     <string name="error_password_required">輸入密碼</string>
     <string name="error_new_password_required">輸入新密碼</string>

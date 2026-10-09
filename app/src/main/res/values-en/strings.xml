@@ -29,6 +29,8 @@
     <string name="register_invite_optional">Invite code (optional)</string>
     <string name="register_button">Sign up</string>
     <string name="register_back_to_login">Back to login</string>
+    <!-- Shown only when the panel ships an email suffix whitelist: the local part is typed, the domain is picked -->
+    <string name="register_email_suffix_label">Choose email domain</string>
 
     <!-- Forgot Password -->
     <string name="forgot_title">Reset password</string>
@@ -43,6 +45,7 @@
     <string name="error_network">Request failed</string>
     <string name="error_email_send_failed">Failed to send code</string>
     <string name="error_email_required">Enter email</string>
+    <string name="error_email_suffix_not_allowed">This email domain is not allowed</string>
     <string name="error_code_required">Enter code</string>
     <string name="error_password_required">Enter password</string>
     <string name="error_new_password_required">Enter new password</string>

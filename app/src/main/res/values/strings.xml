@@ -29,6 +29,8 @@
     <string name="register_invite_optional">邀请码（选填）</string>
     <string name="register_button">注册</string>
     <string name="register_back_to_login">返回登录</string>
+    <!-- 面板下发了邮箱后缀白名单时，注册页只让用户填 @ 前面的部分，后缀从下拉里选 -->
+    <string name="register_email_suffix_label">选择邮箱后缀</string>
 
     <!-- Forgot Password -->
     <string name="forgot_title">重置密码</string>
@@ -43,6 +45,7 @@
     <string name="error_network">请求失败</string>
     <string name="error_email_send_failed">验证码发送失败</string>
     <string name="error_email_required">请输入邮箱</string>
+    <string name="error_email_suffix_not_allowed">邮箱后缀不在允许的列表中</string>
     <string name="error_code_required">请输入验证码</string>
     <string name="error_password_required">请输入密码</string>
     <string name="error_new_password_required">请输入新密码</string>

@@ -13,6 +13,7 @@ import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.InviteStat
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class XiaoV2bLoginRequest(
@@ -77,6 +78,9 @@ data class XiaoV2bSiteConfig(
     val appUrl: String? = null,
     val is_email_verify: Int? = 0,
     val is_invite_force: Int? = 0,
+    // 邮箱后缀白名单：各面板可能是数组 / 字符串 / 0，统一交给 parseEmailWhitelistSuffixes
+    @SerialName("email_whitelist_suffix")
+    val emailWhitelistSuffix: JsonElement? = null,
 ) {
     val appName: String? get() = _appName ?: _title ?: _siteName
 }

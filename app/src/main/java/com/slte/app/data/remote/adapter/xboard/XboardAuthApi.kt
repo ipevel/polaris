@@ -9,6 +9,7 @@ import com.slte.app.data.remote.adapter.AdapterExecute
 import com.slte.app.data.remote.adapter.orEmptyLogged
 import com.slte.app.data.remote.adapter.orFalseLogged
 import com.slte.app.data.remote.adapter.orNullLogged
+import com.slte.app.data.remote.adapter.parseEmailWhitelistSuffixes
 import com.slte.app.data.remote.api.AuthApi
 import com.slte.app.data.remote.api.dto.CheckoutResultDto
 import com.slte.app.data.remote.api.dto.CouponCheckResultDto
@@ -21,6 +22,7 @@ import com.slte.app.data.remote.api.dto.SubscribeInfoDto
 import com.slte.app.data.remote.api.dto.UserInfoDto
 import com.slte.app.domain.model.CommissionRecord
 import com.slte.app.domain.model.EmailCodePurpose
+import com.slte.app.domain.model.EmailWhitelist
 import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
@@ -38,6 +40,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import retrofit2.Response
 
 class XboardAuthApi(
@@ -83,6 +86,7 @@ class XboardAuthApi(
         return RegisterConfig(
             emailVerifyEnabled = data.is_email_verify == 1,
             inviteForceEnabled = data.is_invite_force == 1,
+            emailWhitelist = EmailWhitelist(parseEmailWhitelistSuffixes(data.emailWhitelistSuffix)),
         )
     }
 
@@ -286,7 +290,12 @@ class XboardAuthApi(
     override suspend fun redeemGiftCard(code: String) {
         // 成功：data 返回兑换结果；失败：data=null 且 message 携带后端原文（如「兑换码不存在」），
         // typed() 会抛出带原文的 ApiException，由 UI 层映射本地化文案或透传。
-        AdapterExecute.typed { userApi.redeemGiftCard(XboardGiftCardRedeemRequest(code)) }
+        val response = AdapterExecute.typed { userApi.redeemGiftCard(XboardGiftCardRedeemRequest(code)) }
+        // 与 v2board 对齐：HTTP 200 但 data 不是 JSON true 仍然是失败，不能静默报成功。
+        // xboard 各版本对 data 的形态不统一（有的是 true，有的是 {"balance":...} 这类对象），
+        // 所以只认布尔 true；其余一律按后端原文抛错。
+        val redeemed = (response.data as? JsonPrimitive)?.booleanOrNull == true
+        if (!redeemed) throw ApiException(response.message ?: "兑换失败", ApiErrors.GIFT_CARD)
         AppLog.i("Polaris-Api", "redeemGiftCard: 兑换成功")
     }
 
