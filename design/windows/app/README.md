@@ -2,6 +2,8 @@
 
 基于 `design/windows` 设计系统构建的 **Windows 桌面应用**。目标是**便携版**：解压到任意目录（含 U 盘）双击即用，不装任何运行时、不写注册表。
 
+> **接手前先读 [`docs/DEVNOTES.md`](docs/DEVNOTES.md)** —— 现状、架构决策的理由、以及踩过的坑（尤其「换壳留下的隐性地雷」那一节，那类问题代码能跑、测试全绿，但用户一碰就废）。
+
 ## 为什么是 Electron 而不是 Tauri
 
 原始骨架是 Tauri 2，但 Tauri 的 exe 依赖系统 WebView2 运行时。要满足"任何 Win10+ 机器解压即用、不装额外依赖"，就得把 WebView2 固定版（约 180 MB）一起打包，体积和 Electron 持平，却多一道 Rust 工具链门槛。Electron 自带 Chromium，真正零依赖，所以改用 Electron。
