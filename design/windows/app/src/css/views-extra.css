@@ -1,0 +1,79 @@
+/* 在 design.css 之上补齐功能性样式：空状态、提示条、表单行、选择列表、深色主题。
+ * 只加类，不改原有设计系统。 */
+
+/* ---------- 空状态 ---------- */
+.empty { padding: 44px 20px; text-align: center; }
+.empty-t { font-size: 14.5px; color: var(--text2); font-weight: 600; }
+.empty-s { font-size: 13px; color: var(--text3); margin-top: 6px; }
+
+/* ---------- 行内错误 ---------- */
+.inline-err { color: var(--red); font-size: 13px; min-height: 20px; margin-bottom: 8px; line-height: 1.5; }
+
+/* ---------- 轻提示 ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%);
+  background: rgba(30, 30, 34, .94); color: #fff; font-size: 13.5px;
+  padding: 10px 22px; border-radius: 10px; z-index: 999;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+  max-width: 70vw; text-align: center; animation: toast-in .18s ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---------- 登录/注册 ---------- */
+.field-row { display: flex; gap: 10px; align-items: stretch; }
+.field-row .field { flex: 1; min-width: 0; }
+.field-row .btn { flex: none; height: 46px; padding: 0 18px; }
+.auth-links { display: flex; justify-content: space-between; font-size: 13px; color: var(--text3); margin-top: 16px; }
+.auth-links span { color: var(--blue); font-weight: 600; cursor: pointer; }
+.auth-links span:hover { text-decoration: underline; }
+.auth-ver { text-align: center; font-size: 12px; color: var(--text3); margin-top: 22px; }
+
+/* ---------- 选择列表（弹窗内滚动） ---------- */
+.pick-list { max-height: 46vh; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+
+/* ---------- 代码/长文本块 ---------- */
+.code-box {
+  background: var(--bg); border-radius: 12px; padding: 14px 16px;
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 12.5px; color: var(--text2); white-space: pre-wrap;
+  word-break: break-all; line-height: 1.6; max-height: 240px; overflow: auto;
+}
+
+/* ---------- 电源键忙碌态 ---------- */
+.power-btn.busy { opacity: .7; cursor: progress; }
+.power-btn:disabled { cursor: default; }
+
+/* ---------- 滚动条（内容区） ---------- */
+.content::-webkit-scrollbar, .pick-list::-webkit-scrollbar, .code-box::-webkit-scrollbar { width: 10px; }
+.content::-webkit-scrollbar-thumb, .pick-list::-webkit-scrollbar-thumb, .code-box::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .16); border-radius: 6px; border: 3px solid transparent; background-clip: content-box;
+}
+.content::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- 深色主题 ---------- */
+:root[data-theme="dark"] {
+  --blue: #4c8dff;
+  --blue-soft: #1d2b45;
+  --bg: #16171a;
+  --card: #1f2024;
+  --text: #f2f2f4;
+  --text2: #a9a9b0;
+  --text3: #7c7c85;
+  --line: #2c2d33;
+  --green: #3ddc6b;
+  --green-soft: #17361f;
+  --orange: #ffa93d;
+  --orange-soft: #3a2a12;
+  --red: #ff5f56;
+  --red-soft: #3d1c1a;
+  --shadow: 0 2px 14px rgba(0, 0, 0, .35);
+}
+:root[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+:root[data-theme="dark"] .titlebar { background: #1c1d21; border-bottom-color: var(--line); }
+:root[data-theme="dark"] .sidebar { background: #1a1b1f; border-right-color: var(--line); }
+:root[data-theme="dark"] .nav-item.active { background: var(--blue-soft); color: var(--blue); }
+:root[data-theme="dark"] .win-btn:hover { background: rgba(255, 255, 255, .08); }
+:root[data-theme="dark"] .card { border-color: var(--line); }
+:root[data-theme="dark"] .row .k .mini-icon { color: #fff; }
+:root[data-theme="dark"] img.app-icon { filter: none; }
+:root[data-theme="dark"] .toast { background: rgba(240, 240, 245, .96); color: #16171a; }

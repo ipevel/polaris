@@ -23,7 +23,7 @@ function regQuery(name) {
     const out = execFileSync(
       'reg',
       ['query', KEY, '/v', name],
-      { encoding: 'utf8', windowsHide: true, timeout: 5000 },
+      { encoding: 'utf8', windowsHide: true, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
     );
     const m = out.match(new RegExp(`${name}\\s+(\\S+)\\s+(.*)$`, 'm'));
     if (!m) return null;
@@ -39,13 +39,15 @@ function regSet(name, type, value) {
   execFileSync(
     'reg',
     ['add', KEY, '/v', name, '/t', type, '/d', String(value), '/f'],
-    { windowsHide: true, timeout: 5000 },
+    { windowsHide: true, timeout: 5000, stdio: 'ignore' },
   );
 }
 
+/** 删一个本来就不存在的值会返回非零并往 stderr 吐内容，这里静默处理 */
 function regDelete(name) {
   try {
-    execFileSync('reg', ['delete', KEY, '/v', name, '/f'], { windowsHide: true, timeout: 5000 });
+    execFileSync('reg', ['delete', KEY, '/v', name, '/f'],
+      { windowsHide: true, timeout: 5000, stdio: 'ignore' });
   } catch (_) {
     /* 本来就没有，忽略 */
   }

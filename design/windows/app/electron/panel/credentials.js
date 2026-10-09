@@ -6,25 +6,30 @@
  */
 
 const fs = require('fs');
-const { safeStorage } = require('electron');
 const paths = require('../paths');
 const log = require('../logger');
+
+let safeStorage = null;
+try {
+  const mod = require('electron');
+  safeStorage = mod && mod.safeStorage ? mod.safeStorage : null;
+} catch (_) {
+  safeStorage = null;
+}
 
 let cache = null;
 
 function file() { return paths.file('credentials.dat'); }
 
 function available() {
-  try { return safeStorage.isEncryptionAvailable(); } catch (_) { return false; }
+  try { return !!(safeStorage && safeStorage.isEncryptionAvailable()); } catch (_) { return false; }
 }
 
 function load() {
   if (cache) return cache;
   try {
     const raw = fs.readFileSync(file());
-    const text = available()
-      ? safeStorage.decryptString(raw)
-      : raw.toString('utf8');
+    const text = available() ? safeStorage.decryptString(raw) : raw.toString('utf8');
     cache = JSON.parse(text);
   } catch (_) {
     cache = null;
@@ -36,8 +41,15 @@ function save(obj) {
   cache = obj;
   try {
     const text = JSON.stringify(obj);
-    const buf = available() ? safeStorage.encryptString(text) : Buffer.from(text, 'utf8');
-    fs.writeFileSync(file(), buf);
+    if (available()) {
+      fs.writeFileSync(file(), safeStorage.encryptString(text));
+    } else if (process.env.POLARIS_ALLOW_PLAINTEXT_CREDENTIALS === '1') {
+      // 仅自检用：Electron 之外没有 DPAPI，允许明文落盘以便跑端到端测试
+      fs.writeFileSync(file(), Buffer.from(text, 'utf8'));
+      log.warn('credentials stored WITHOUT encryption (self-test mode)');
+    } else {
+      log.error('safeStorage 不可用，拒绝明文保存凭据');
+    }
   } catch (e) {
     log.error('credentials save failed:', e && e.message);
   }

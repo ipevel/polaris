@@ -187,15 +187,12 @@ async function login(email, password, panelInput) {
 }
 
 function detectBackend(url) {
-  const giftPath = session.giftPath();
-  void giftPath;
-  // 默认按 Xboard 处理；gift-card 兑换失败时再自动切 XiaoV2b
+  void url;
+  // 两个后端路径同构，只有礼品卡一处不同；这里不再靠猜，兑换时两条路径互为兜底。
   return store.get('panel_backend') || 'xboard';
 }
 
-function giftPath() {
-  return session.backend === 'xiaov2b' ? '/user/redeemgiftcard' : '/user/gift-card/redeem';
-}
+const GIFT_PATHS = ['/user/gift-card/redeem', '/user/redeemgiftcard'];
 
 function logout() {
   session.token = '';
@@ -346,11 +343,18 @@ async function orders() {
 }
 
 function orderStatus(s) {
-  const map = {
-    0: 'pending', 1: 'processing', 2: 'completed', 3: 'cancelled',
-    pending: 'pending', processing: 'processing', completed: 'done', cancelled: 'refunded',
+  // 数字是面板下发的原始状态；字符串是已经映射过的 UI 状态（少数分支直接返回文案）
+  const numeric = {
+    0: 'pending', 1: 'processing', 2: 'done', 3: 'refunded', 4: 'refunded',
   };
-  return map[s] || 'pending';
+  if (typeof s === 'number' || /^\d+$/.test(String(s))) {
+    return numeric[Number(s)] || 'pending';
+  }
+  const named = {
+    pending: 'pending', processing: 'processing', completed: 'done',
+    complete: 'done', done: 'done', cancelled: 'refunded', canceled: 'refunded', refunded: 'refunded',
+  };
+  return named[String(s).toLowerCase()] || 'pending';
 }
 
 async function createOrder(planId, opts = {}) {
@@ -425,10 +429,7 @@ async function invite() {
 }
 
 async function giftHistory() {
-  try {
-    const r = await get('/user/ticket/fetch');   // 多数面板不提供兑换历史，返回空
-    void r;
-  } catch (_) {}
+  // 多数面板不提供兑换历史接口；先查本地流水，再退回空列表
   return [];
 }
 
@@ -437,22 +438,19 @@ async function redeemGift(code) {
   if (!/^[A-Za-z0-9-]{16,}$/.test(clean)) {
     return { ok: false, reward: '', msg: '卡密格式不正确' };
   }
-  try {
-    const r = await post(giftPath(), { card_code: clean });
-    return { ok: true, reward: String(pick(r, ['message', 'text'], '兑换成功')), msg: '' };
-  } catch (e) {
-    // 两个后端路径互为兜底：第一次失败就换另一种形态再试
-    if (session.backend === 'xboard') {
-      session.backend = 'xiaov2b';
-      try {
-        const r = await post(giftPath(), { card_code: clean });
-        return { ok: true, reward: String(pick(r, ['message', 'text'], '兑换成功')), msg: '' };
-      } catch (e2) {
-        return { ok: false, reward: '', msg: e2.message };
-      }
+  // 两条路径互为兜底，且**不改**会话里的后端标记 ——
+  // 一次兑换失败不能把后续请求都带到另一条路径上去（早期版本踩过这个坑）
+  let lastMsg = '';
+  for (const p of GIFT_PATHS) {
+    try {
+      const r = await post(p, { card_code: clean });
+      return { ok: true, reward: String(pick(r, ['message', 'text', 'msg'], '兑换成功')), msg: '' };
+    } catch (e) {
+      lastMsg = e.message;
+      if (e.kind === 'auth' || e.kind === 'net' || e.kind === 'timeout') break;
     }
-    return { ok: false, reward: '', msg: e.message };
   }
+  return { ok: false, reward: '', msg: lastMsg || '兑换失败' };
 }
 
 async function notices() {
@@ -467,17 +465,28 @@ async function notices() {
 }
 
 async function trafficLog() {
-  if (session.backend !== 'xboard') return [];
-  const res = await request('GET', '/user/stat/getTrafficLog', { raw: true });
-  if (res.status !== 200) return [];
-  let arr;
-  try { arr = JSON.parse(res.text); } catch (_) { return []; }
-  return (Array.isArray(arr) ? arr : []).map((r) => ({
-    date: String(pick(r, ['date', 'created_at'], '')),
-    upload: Number(pick(r, ['u', 'upload'], 0)) || 0,
-    download: Number(pick(r, ['d', 'download'], 0)) || 0,
-    total: Number(pick(r, ['total'], 0)) || 0,
-  }));
+  // 只有 Xboard 提供这个接口。不再按 backend 标记短路 —— 面板分支五花八门，
+  // 直接试一次，404 就当没有（返回空数组），不要让标记把人挡住。
+  try {
+    const res = await request('GET', '/user/stat/getTrafficLog', { raw: true });
+    if (res.status !== 200) return [];
+    const parsed = JSON.parse(res.text);
+    // 真实 Xboard 这里返回**裸数组**；部分分支会包一层 {data:[...]}，两种都吃
+    const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed && parsed.data) ? parsed.data : null);
+    if (!arr) {
+      log.warn('trafficLog 返回了非数组，已忽略');
+      return [];
+    }
+    return arr.map((r) => ({
+      date: String(pick(r, ['date', 'created_at'], '')),
+      upload: Number(pick(r, ['u', 'upload'], 0)) || 0,
+      download: Number(pick(r, ['d', 'download'], 0)) || 0,
+      total: Number(pick(r, ['total'], 0)) || 0,
+    }));
+  } catch (e) {
+    log.warn('trafficLog unavailable:', e && e.message);
+    return [];
+  }
 }
 
 async function changePassword(oldPassword, newPassword) {

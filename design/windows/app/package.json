@@ -11,6 +11,9 @@
     "start": "electron .",
     "mock": "electron . --mock",
     "test": "node scripts/selftest-core.js",
+    "test:e2e": "electron scripts/selftest-e2e.js",
+    "core": "python scripts/fetch-core.py",
+    "geo": "python scripts/fetch-geo.py",
     "pack": "electron-builder --win --x64 --dir",
     "dist": "electron-builder --win --x64",
     "clean": "node scripts/clean.js"
@@ -44,6 +47,11 @@
       {
         "from": "core",
         "to": "core",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/geo",
+        "to": "geo",
         "filter": ["**/*"]
       },
       {

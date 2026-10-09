@@ -75,6 +75,10 @@ const paths = {
   core: () => (IS_PACKAGED
     ? path.join(process.resourcesPath, 'core')
     : path.resolve(__dirname, '..', 'core')),
+  /** 规则库（geoip.metadb / geosite.dat / ASN.mmdb），随包分发 */
+  geo: () => (IS_PACKAGED
+    ? path.join(process.resourcesPath, 'geo')
+    : path.resolve(__dirname, '..', 'resources', 'geo')),
   ensureAll() {
     for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.cache()]) {
       fs.mkdirSync(d, { recursive: true });

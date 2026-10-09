@@ -1,111 +1,180 @@
-/* 数据层：优先走 Tauri 后端命令，非 Tauri 环境（浏览器预览）用本地 mock。
- * 后端实现见 src-tauri/src/main.rs，所有命令名与之一一对应。 */
+/* 数据层：宿主（Electron 主进程）→ 真实命令；浏览器 → 内置演示数据。
+ *
+ * 命令名与后端 electron/ipc.js 逐条对应。所有方法返回 Promise；
+ * 业务失败返回 {ok:false,msg}，真异常直接 reject（由调用方 toast）。 */
 (function () {
-  /* 宿主探测：Electron 走 IPC，浏览器预览走内置 mock。
-   * ?mock=1（或启动参数 --mock）强制走 mock，方便纯设计调试。 */
   const isMock = /(\?|&)mock=1/.test(location.search);
-  const isHost = !isMock && !!(window.polaris && window.polaris.invoke);
+  const host = !isMock && window.polaris && window.polaris.invoke ? window.polaris : null;
+  const isHost = !!host;
 
-  async function invoke(cmd, args) {
-    if (isHost) return window.polaris.invoke(cmd, args || {});
-    return Mock[cmd] ? Mock[cmd](args || {}) : null;
+  function invoke(cmd, args) {
+    if (isHost) return host.invoke(cmd, args || {});
+    const fn = Mock[cmd];
+    if (!fn) return Promise.resolve(null);
+    try { return Promise.resolve(fn(args || {})); }
+    catch (e) { return Promise.reject(e); }
   }
 
-  /* ---------- 本地 mock（仅浏览器预览用，打包后走 Rust 实现） ---------- */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* ---------------- 演示数据（仅浏览器预览 / --mock） ---------------- */
+  const NODES = [
+    { name: "🇭🇰 香港 01", region: "香港", latency: 45, offline: false },
+    { name: "🇭🇰 香港 02", region: "香港", latency: 62, offline: false },
+    { name: "🇯🇵 日本 东京 01", region: "日本", latency: 78, offline: false },
+    { name: "🇸🇬 新加坡 01", region: "新加坡", latency: 92, offline: false },
+    { name: "🇺🇸 美国 洛杉矶 01", region: "美国", latency: 168, offline: false },
+    { name: "🇺🇸 美国 圣何塞 02", region: "美国", latency: -1, offline: true },
+    { name: "🇩🇪 德国 法兰克福", region: "德国", latency: 210, offline: false },
+  ];
+
   const Mock = {
-    get_status: () => Promise.resolve({
-      connected: true, node: "香港 01", latency: 45,
-      up_speed: 2.1, down_speed: 12.4,
-      up_total: "1.2 GB", down_total: "8.6 GB", uptime: "02:34:18",
-      mode: "规则模式",
+    get_status: () => ({
+      connected: false, node: "", latency: 0,
+      up_speed: 0, down_speed: 0, up_total: "0 B", down_total: "0 B",
+      uptime: "00:00:00", mode: "规则模式", phase: "idle", core_alive: false,
     }),
-    connect: () => Promise.resolve({ ok: true }),
-    disconnect: () => Promise.resolve({ ok: true }),
-    get_nodes: () => Promise.resolve([
-      { name: "香港 01", region: "香港", latency: 45, group: "节点选择" },
-      { name: "香港 02", region: "香港", latency: 62, group: "节点选择" },
-      { name: "新加坡 01", region: "新加坡", latency: 188, group: "节点选择" },
-      { name: "日本 01", region: "日本", latency: 92, group: "节点选择" },
-      { name: "美国 01", region: "美国", latency: -1, group: "节点选择", offline: true },
-    ]),
-    select_node: (a) => Promise.resolve({ ok: true, node: a.name }),
-    speed_test: () => new Promise((r) => setTimeout(() => r({ ok: true }), 1200)),
-    refresh_subscription: () => new Promise((r) => setTimeout(() => r({ ok: true, count: 32 }), 1500)),
-    get_traffic: (a) => Promise.resolve({
-      range: a.range || "today",
-      down_today: "8.6 GB", up_today: "1.2 GB",
-      total_down: "128.4 GB", total_up: "36.2 GB",
-      peak: "24.8 MB/s", online_nodes: 28,
+    connect: () => ({ ok: true, connected: true }),
+    disconnect: () => ({ ok: true }),
+    get_nodes: () => NODES.map((n) => Object.assign({}, n)),
+    select_node: (a) => ({ ok: true, node: a.name }),
+    speed_test: async () => { await sleep(900); return { ok: true }; },
+    refresh_subscription: async () => { await sleep(700); return { ok: true, count: NODES.length }; },
+    set_proxy_mode: (a) => ({ ok: true, mode: a.mode }),
+    get_traffic: () => ({
+      range: "today", down_today: "8.62 GB", up_today: "1.24 GB",
+      total_down: "186.4 GB", total_up: "22.7 GB",
+      peak: "42.1 / 6.8 MB/s", online_nodes: 6,
     }),
-    get_plan: () => Promise.resolve({ name: "旗舰套餐", used: 86, total: 200, unit: "GB", expire: "2026-11-05" }),
-    get_plans: () => Promise.resolve([
-      { id: "m", name: "月度套餐", price: "19.9", unit: "月", feats: ["100GB 流量", "2 台设备"] },
-      { id: "y", name: "年度套餐", price: "169", unit: "年", feats: ["500GB 流量", "5 台设备", "优先线路"], hot: true },
-      { id: "q", name: "季度套餐", price: "49", unit: "季", feats: ["200GB 流量", "3 台设备"] },
+    get_traffic_series: () => ({
+      points: Array.from({ length: 24 }, (_, i) => ({
+        label: String(i).padStart(2, "0") + ":00",
+        down: Math.round(40 + Math.random() * 90),
+        up: Math.round(8 + Math.random() * 30),
+      })),
+      unit: "MB",
+    }),
+    get_traffic_log: () => [],
+    get_routing_groups: () => ([
+      { name: "国外网站分流", type: "select", now: "香港 01", count: 128, options: NODES.map((n) => n.name), builtin: false },
+      { name: "流媒体分流", type: "select", now: "新加坡 01", count: 46, options: NODES.map((n) => n.name), builtin: false },
+      { name: "本地直连", type: "select", now: "DIRECT", count: 0, options: ["DIRECT"], builtin: true },
     ]),
-    create_order: (a) => Promise.resolve({ ok: true, order_no: "No.202610091205" }),
-    get_orders: () => Promise.resolve([
-      { name: "旗舰年付套餐", no: "No.202610091201", date: "2026-10-09", amount: "169", status: "done" },
-      { name: "旗舰年付套餐", no: "No.202610071103", date: "2026-10-07", amount: "169", status: "pending" },
-      { name: "月度套餐", no: "No.20260912088", date: "2026-09-12", amount: "19.9", status: "refunded" },
+    set_routing_group: (a) => ({ ok: true, now: a.node }),
+    reset_routing_groups: () => ({ ok: true }),
+    get_plan: () => ({ name: "旗舰套餐", used: 86, total: 200, expire: "2026-11-05" }),
+    get_plans: () => ([
+      { id: "1", name: "轻量套餐", price: "19", unit: "月", feats: ["100 GB 流量", "3 台设备"], hot: false },
+      { id: "2", name: "旗舰套餐", price: "39", unit: "月", feats: ["200 GB 流量", "5 台设备", "全节点解锁"], hot: true },
+      { id: "3", name: "无限套餐", price: "79", unit: "月", feats: ["不限流量", "10 台设备", "专属线路"], hot: false },
     ]),
-    pay_order: () => new Promise((r) => setTimeout(() => r({ ok: true }), 800)),
-    get_tickets: () => Promise.resolve([
-      { subject: "节点连接超时", no: "No.2026100801", date: "2026-10-08", status: "replied" },
-      { subject: "支付结算异常", no: "No.2026100703", date: "2026-10-07", status: "pending" },
-      { subject: "账户登录失败", no: "No.2026100509", date: "2026-10-05", status: "closed" },
+    create_order: () => ({ ok: true, order_no: "PL" + Date.now() }),
+    get_orders: () => ([
+      { no: "PL20260901001", name: "旗舰套餐", amount: "39.00", date: "2026-09-01 12:04", status: "done" },
+      { no: "PL20260801007", name: "旗舰套餐", amount: "39.00", date: "2026-08-01 09:31", status: "done" },
     ]),
-    create_ticket: (a) => Promise.resolve({ ok: true, no: "No.202610091301" }),
-    get_invite: () => Promise.resolve({ code: "AB12CD", link: "https://polaris.app/i/AB12CD", invited: 3, earned: "30 GB" }),
-    get_gift_history: () => Promise.resolve([
-      { code: "XXXX-XXXX-XXXX-1234", reward: "已到账 50 GB", date: "2024-06-12 14:23" },
-      { code: "XXXX-XXXX-XXXX-5678", reward: "已到账 30 天", date: "2024-06-10 09:05" },
+    pay_order: () => ({ ok: true, url: "" }),
+    get_payment_methods: () => ([{ id: "1", name: "支付宝" }, { id: "2", name: "微信支付" }]),
+    get_tickets: () => ([
+      { no: "1024", subject: "节点连接超时", date: "2026-10-06 14:22", status: "replied" },
+      { no: "1011", subject: "支付后套餐未生效", date: "2026-09-18 08:05", status: "closed" },
     ]),
-    redeem_gift: (a) => (/^[A-Za-z0-9-]{16,}$/.test((a.code || "").replace(/-/g, "")) && a.code.replace(/-/g, "").length === 16)
-      ? Promise.resolve({ ok: true, reward: "50 GB" })
-      : Promise.resolve({ ok: false, msg: "卡密格式不正确" }),
-    get_notices: () => Promise.resolve([
-      { title: "v1.7.4 版本更新说明", date: "2026-10-09", unread: true, body: "1. 修复后台运行时长清零问题\n2. 速率显示采用非对称 EMA 平滑\n3. 优化节点测速逻辑" },
-      { title: "香港线路维护通知", date: "2026-10-07", body: "香港 03 节点将于 10-10 02:00-04:00 维护，届时自动切换。" },
-      { title: "国庆活动：年付 8 折", date: "2026-10-01", body: "活动期间年度套餐 8 折优惠，自动生效。" },
+    create_ticket: () => ({ ok: true, no: "1025" }),
+    get_invite: () => ({ code: "ABC123", link: "https://panel.example.com/register?code=ABC123", invited: 3, earned: "￥45" }),
+    get_gift_history: () => [],
+    redeem_gift: (a) => (String(a.code || "").length >= 16 ? { ok: true, reward: "30 天时长", msg: "" } : { ok: false, reward: "", msg: "卡密格式不正确" }),
+    get_notices: () => ([
+      { id: "1", title: "国庆假期节点维护通知", date: "2026-09-30", unread: true, body: "10 月 1 日至 3 日期间，部分香港节点将进行线路维护。" },
+      { id: "2", title: "新增 3 条 IEPL 专线", date: "2026-09-22", unread: false, body: "新增香港、日本、新加坡各一条 IEPL 专线，已加入默认分组。" },
     ]),
-    set_proxy_mode: (a) => Promise.resolve({ ok: true, mode: a.mode }),
-    get_settings: () => Promise.resolve({ theme: "system", lang: "zh-CN", tun: "System", expire_notify: true, traffic_notify: true, autostart: false, version: "1.7.4" }),
-    set_setting: () => Promise.resolve({ ok: true }),
-    check_update: () => new Promise((r) => setTimeout(() => r({ has_update: true, version: "1.7.5", size: "34.6 MB", notes: "1. 修复后台运行时长清零问题\n2. 速率显示更加平滑\n3. 优化节点测速逻辑" }), 900)),
-    login: (a) => (a.email && a.password)
-      ? Promise.resolve({ ok: true, email: a.email })
-      : Promise.resolve({ ok: false, msg: "请输入邮箱和密码" }),
-    logout: () => Promise.resolve({ ok: true }),
+    login: (a) => ({ ok: true, email: a.email, msg: "" }),
+    logout: () => ({ ok: true }),
+    register: () => ({ ok: true, email: "", msg: "" }),
+    forgot_password: () => ({ ok: true, msg: "" }),
+    send_email_code: () => ({ ok: true, msg: "" }),
+    change_password: () => ({ ok: true, msg: "" }),
+    get_site_info: () => ({ appName: "Polaris 演示面板", appDescription: "演示数据", appUrl: "", telegramUrl: "" }),
+    get_settings: () => ({
+      theme: "system", lang: "zh-CN", tun: "gvisor",
+      expire_notify: true, traffic_notify: true, autostart: false,
+      version: "1.8.0", panel_url: "", last_email: "", email: "u***@example.com",
+      sys_proxy: true, tun_mode: false, allow_lan: false, ipv6: false,
+      auto_update: true, authed: true,
+    }),
+    set_setting: () => ({ ok: true }),
+    get_app_info: () => ({ version: "1.8.0", portable: false, data_dir: "(浏览器预览)", is_admin: false }),
+    check_update: () => ({ has_update: false, version: "1.8.0", size: "", notes: "" }),
+    open_external: () => ({ ok: true }),
+    export_logs: () => ({ ok: false }),
+    is_admin: () => false,
+    restart_as_admin: () => ({ ok: false, msg: "浏览器预览不支持" }),
   };
+
+  async function listMethod(cmd) {
+    const r = await invoke(cmd);
+    return Array.isArray(r) ? r : [];
+  }
 
   window.PolarisAPI = {
     isHost,
-    isTauri: isHost,   // 兼容旧字段
+    isTauri: isHost,          // 兼容旧字段
+    invoke,
+
+    /* 内核 */
     getStatus: () => invoke("get_status"),
     connect: () => invoke("connect"),
     disconnect: () => invoke("disconnect"),
-    getNodes: () => invoke("get_nodes"),
+    getNodes: () => listMethod("get_nodes"),
     selectNode: (name) => invoke("select_node", { name }),
     speedTest: () => invoke("speed_test"),
     refreshSubscription: () => invoke("refresh_subscription"),
-    getTraffic: (range) => invoke("get_traffic", { range }),
-    getPlan: () => invoke("get_plan"),
-    getPlans: () => invoke("get_plans"),
-    createOrder: (plan_id) => invoke("create_order", { plan_id }),
-    getOrders: () => invoke("get_orders"),
-    payOrder: (no) => invoke("pay_order", { order_no: no }),
-    getTickets: () => invoke("get_tickets"),
-    createTicket: (subject, content) => invoke("create_ticket", { subject, content }),
-    getInvite: () => invoke("get_invite"),
-    getGiftHistory: () => invoke("get_gift_history"),
-    redeemGift: (code) => invoke("redeem_gift", { code }),
-    getNotices: () => invoke("get_notices"),
     setProxyMode: (mode) => invoke("set_proxy_mode", { mode }),
-    getSettings: () => invoke("get_settings"),
-    setSetting: (k, v) => invoke("set_setting", { key: k, value: v }),
-    checkUpdate: () => invoke("check_update"),
+
+    /* 流量 */
+    getTraffic: (range) => invoke("get_traffic", { range }),
+    getTrafficSeries: (range) => invoke("get_traffic_series", { range }),
+    getTrafficLog: () => listMethod("get_traffic_log"),
+
+    /* 分流 */
+    getRoutingGroups: () => listMethod("get_routing_groups"),
+    setRoutingGroup: (name, node) => invoke("set_routing_group", { name, node }),
+    resetRoutingGroups: () => invoke("reset_routing_groups"),
+
+    /* 套餐 / 订单 */
+    getPlan: () => invoke("get_plan"),
+    getPlans: () => listMethod("get_plans"),
+    createOrder: (planId, coupon) => invoke("create_order", { plan_id: planId, coupon }),
+    getOrders: () => listMethod("get_orders"),
+    payOrder: (orderNo, method) => invoke("pay_order", { order_no: orderNo, method }),
+    getPaymentMethods: () => listMethod("get_payment_methods"),
+
+    /* 工单 */
+    getTickets: () => listMethod("get_tickets"),
+    createTicket: (subject, content) => invoke("create_ticket", { subject, content }),
+
+    /* 邀请 / 礼品卡 / 公告 */
+    getInvite: () => invoke("get_invite"),
+    getGiftHistory: () => listMethod("get_gift_history"),
+    redeemGift: (code) => invoke("redeem_gift", { code }),
+    getNotices: () => listMethod("get_notices"),
+
+    /* 账号 */
     login: (email, password, panel) => invoke("login", { email, password, panel }),
     logout: () => invoke("logout"),
+    register: (email, password, code, invite) => invoke("register", { email, password, code, invite }),
+    forgotPassword: (email, code, password) => invoke("forgot_password", { email, code, password }),
+    sendEmailCode: (email, purpose) => invoke("send_email_code", { email, purpose }),
+    changePassword: (oldPwd, newPwd) => invoke("change_password", { old_password: oldPwd, new_password: newPwd }),
+    getSiteInfo: () => invoke("get_site_info"),
+
+    /* 设置 / 系统 */
+    getSettings: () => invoke("get_settings"),
+    setSetting: (key, value) => invoke("set_setting", { key, value }),
+    getAppInfo: () => invoke("get_app_info"),
+    checkUpdate: () => invoke("check_update"),
+    openExternal: (url) => invoke("open_external", { url }),
+    exportLogs: () => invoke("export_logs"),
+    isAdmin: () => invoke("is_admin"),
+    restartAsAdmin: () => invoke("restart_as_admin"),
   };
 })();
