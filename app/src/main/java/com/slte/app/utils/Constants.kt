@@ -74,6 +74,14 @@ object Constants {
     const val DELAY_PENDING = 0
 
     const val DELAY_INVALID_MAX = 65535
+
+    /**
+     * 单节点离线复核（urlTest）的超时。
+     *
+     * 只对**测速已经失败**的节点跑，节点数通常是个位数；2s 足够覆盖一次 TCP+TLS
+     * 握手，又不会让测速收尾拖太久（复核是并发跑的，总耗时约等于单个超时）。
+     */
+    const val NODE_URLTEST_TIMEOUT_MS = 2_000
 }
 
 object Stickers {

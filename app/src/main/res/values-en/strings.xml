@@ -366,6 +366,8 @@
     <string name="v5_no_nodes">No nodes yet — update your subscription first</string>
     <string name="v5_nodes_offline_hint">Not connected — these nodes come from your subscription; connect to switch</string>
     <string name="v5_nodes_summary_offline">%1$d nodes · not connected</string>
+    <!-- Probed unreachable (NXDOMAIN / refused / no route). Distinct from the grey "Timeout": a timeout may just be a blip. -->
+    <string name="v5_node_offline">Offline</string>
     <string name="v5_state_loading">Loading…</string>
     <string name="v5_state_retry">Retry</string>
     <string name="v5_routing_groups">Routing rule groups</string>

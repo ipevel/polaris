@@ -360,6 +360,8 @@
     <string name="v5_no_nodes">暫無節點，請先更新訂閱</string>
     <string name="v5_nodes_offline_hint">尚未連線：以下是訂閱裡的節點，連線後即可切換</string>
     <string name="v5_nodes_summary_offline">%1$d 個節點 · 未連線</string>
+    <!-- 探測確認不可達（網域不存在／連線被拒／無路由），與灰色的「逾時」區分：逾時可能只是抖動 -->
+    <string name="v5_node_offline">離線</string>
     <string name="v5_state_loading">正在載入…</string>
     <string name="v5_state_retry">重試</string>
     <string name="v5_routing_groups">分流規則組</string>

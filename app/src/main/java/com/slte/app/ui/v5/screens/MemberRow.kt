@@ -7,6 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import com.slte.app.R
 import com.slte.app.kernel.KernelProxyMember
 import com.slte.app.kernel.KernelProxyMemberKind
@@ -69,6 +70,8 @@ internal fun memberLabel(member: KernelProxyMember): String = when (member.kind)
 internal fun MemberRow(
     member: KernelProxyMember,
     selected: Boolean,
+    // 探测确认不可达（不是"这次超时"）：节点页据此显示离线角标。
+    offline: Boolean = false,
     // 可为 null：内核未运行时的只读兜底名单没有任何可切换目标，
     // 传 null 让整行不可点且无涟漪（V5RowItem 的 v5Clickable 语义），
     // 避免"点得动但什么都没发生"的假交互。
@@ -89,6 +92,15 @@ internal fun MemberRow(
         leading = { RadioDot(on = selected) },
         trailing = {
             when {
+                // 离线优先于一切：节点都没了，延迟数字与"未测/超时"占位符都没有意义。
+                // 用实色区分于灰色的「超时」——两者含义完全不同，不能长得一样。
+                offline ->
+                    Text(
+                        text = stringResource(R.string.v5_node_offline),
+                        fontSize = V5Type.sp12_5,
+                        fontWeight = FontWeight.SemiBold,
+                        color = V5ThemeColors.current.danger,
+                    )
                 // 结构项若真拿到实测值（组拨测结果已回读）照样显示数字，不被占位符吞掉
                 mark == DelayMark.MEASURED && label != null -> LatencyText(label, tone)
                 // 超时是真实信号，优先于占位符

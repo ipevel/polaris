@@ -362,6 +362,8 @@
     <string name="v5_no_nodes">暂无节点，请先更新订阅</string>
     <string name="v5_nodes_offline_hint">尚未连接：以下是订阅里的节点，连接后即可切换</string>
     <string name="v5_nodes_summary_offline">%1$d 个节点 · 未连接</string>
+    <!-- 探测确认不可达（域名不存在/连接被拒/无路由），与灰色的「超时」区分：超时可能只是抖动 -->
+    <string name="v5_node_offline">离线</string>
     <string name="v5_state_loading">正在加载…</string>
     <string name="v5_state_retry">重试</string>
     <string name="v5_routing_groups">分流规则组</string>
