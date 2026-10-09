@@ -11,7 +11,8 @@
  *   4. 分流规则页有入口且能进去；流量页真的画出曲线（不是空态）
  *   5. 打开/关闭弹窗；更新弹窗不再弹「只允许打开 http(s) 链接」
  *   6. 设置页不自我重绘、弹窗不被重绘吃掉（历史上这里是无界死循环）
- *   7. 最大化窗口后重新量一遍布局
+ *   7. 最大化窗口后重新量一遍布局；窄窗口（1100px，断点 1120px 下沿）也不许溢出/截断
+ *   8. 暗色主题下关键文字对比度达到 WCAG AA（4.5:1）
  *
  * 用法：Polaris.exe --uitest   （会自己起一个本地假面板）
  */
@@ -399,6 +400,152 @@ async function run(win, { log = console.log } = {}) {
     const restored = await js(`(() => { const w = document.querySelector('.window');
       return { winW: w.getBoundingClientRect().width, viewW: window.innerWidth }; })()`);
     R.check('还原后窗口仍然铺满', Math.abs(restored.winW - restored.viewW) <= 1, JSON.stringify(restored));
+
+    /* ---------------- 6b. 窄窗口（断点在 1120px，窗口下限 1100px） ---------------- */
+    // shell.css 里 `@media (max-width:1120px)` 会收窄侧边栏。1100~1120 这 20px 是最容易出事的区间：
+    // 窗口下限就是 1100，用户拖到最小就会落在这里。
+    R.section('窄窗口布局');
+    win.setSize(1100, 760);
+    await sleep(800);
+    const narrow = await js(`(() => {
+      const win = document.querySelector('.window');
+      const c = document.querySelector('.content');
+      const sb = document.querySelector('.sidebar');
+      const navs = Array.from(document.querySelectorAll('.nav-item'));
+      const clipped = navs.filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent.trim());
+      const title = document.querySelector('.page-title');
+      return {
+        viewW: window.innerWidth,
+        winW: win.getBoundingClientRect().width,
+        docScrollW: document.documentElement.scrollWidth,
+        bodyScrollW: document.body.scrollWidth,
+        contentScrollW: c.scrollWidth, contentClientW: c.clientWidth,
+        sidebarW: sb.getBoundingClientRect().width,
+        navCount: navs.length,
+        navVisible: navs.filter((n) => n.getBoundingClientRect().width > 0).length,
+        clipped,
+        titleClipped: title ? title.scrollWidth > title.clientWidth + 1 : null,
+        titleText: title ? title.textContent : '',
+      };
+    })()`);
+    R.check('窄窗口下窗口仍铺满视口', Math.abs(narrow.winW - narrow.viewW) <= 1, JSON.stringify(narrow));
+    R.check('  └ 页面无横向溢出', narrow.docScrollW <= narrow.viewW + 1 && narrow.bodyScrollW <= narrow.viewW + 1,
+      `doc=${narrow.docScrollW} body=${narrow.bodyScrollW} view=${narrow.viewW}`);
+    R.check('  └ 内容区无横向溢出', narrow.contentScrollW <= narrow.contentClientW + 1,
+      `content=${narrow.contentScrollW} client=${narrow.contentClientW}`);
+    R.check('  └ 侧边栏未被压到不可用', narrow.sidebarW >= 150, String(narrow.sidebarW));
+    R.check('  └ 侧边栏 5 项都还在', narrow.navCount === 5 && narrow.navVisible === 5, JSON.stringify(narrow));
+    R.check('  └ 导航文字没被截断', narrow.clipped.length === 0, JSON.stringify(narrow.clipped));
+    R.check('  └ 页面标题没被截断', narrow.titleClipped === false, `${narrow.titleText} clipped=${narrow.titleClipped}`);
+
+    win.setSize(1400, 880);
+    await sleep(600);
+
+    /* ---------------- 6c. 主题对比度（WCAG AA 正文 4.5:1） ---------------- */
+    // 浅色配色来自设计稿（design.css 的 :root），属设计方的调色板，本脚本只测量不篡改；
+    // 深色配色是这个 Windows 端自己补的（views-extra.css），错了就该改。
+    R.section('主题对比度');
+    const measure = `(() => {
+      const lum = (c) => {
+        const m = (c || '').match(/[\\d.]+/g);
+        if (!m) return null;
+        const f = m.slice(0, 3).map((v) => {
+          const x = Number(v) / 255;
+          return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+      };
+      const bgOf = (el) => {
+        let n = el;
+        while (n && n !== document.documentElement) {
+          const c = getComputedStyle(n).backgroundColor;
+          const m = (c || '').match(/[\\d.]+/g);
+          if (m && (m.length < 4 || Number(m[3]) > 0.5)) return c;
+          n = n.parentElement;
+        }
+        return getComputedStyle(document.body).backgroundColor || 'rgb(255,255,255)';
+      };
+      const ratio = (a, b) => {
+        const l1 = lum(a), l2 = lum(b);
+        if (l1 === null || l2 === null) return null;
+        const hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+        return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100;
+      };
+      const probes = [
+        ['页面标题', '.page-title'],
+        ['页面副标题', '.page-sub'],
+        ['分组标题', '.section-label'],
+        ['设置项名称', '.row .k'],
+        ['设置项取值', '.row .v'],
+        ['导航项', '.nav-item'],
+      ];
+      const out = {};
+      probes.forEach(([name, sel]) => {
+        const el = document.querySelector(sel);
+        if (!el) { out[name] = 'no-el'; return; }
+        const cs = getComputedStyle(el);
+        out[name] = ratio(cs.color, bgOf(el));
+      });
+      return {
+        theme: document.documentElement.dataset.theme || '',
+        bodyBg: getComputedStyle(document.body).backgroundColor,
+        out,
+      };
+    })()`;
+    const worstOf = (o) => {
+      const e = Object.entries(o).filter(([, v]) => typeof v === 'number');
+      return e.length ? e.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
+    };
+
+    // 先量浅色（当前就在浅色）
+    const lightC = await js(measure);
+    log(`  对比度（浅色，背景 ${lightC.bodyBg}）：${JSON.stringify(lightC.out)}`);
+    const lightWorst = worstOf(lightC.out);
+    // 浅色 --text3（#8e8e93）在 #f5f5f7 上只有 2.99:1 —— 这是设计稿的三级文字色，
+    // 要压到 AA 的 4.5:1 就得让它等于二级文字（--text2 #6e6e73），文字层级会塌掉，
+    // 所以这里只测量、不设 4.5 的硬门；设计方要不要改由设计方定（已记在 DEVNOTES §五）。
+    R.check('浅色主题正文对比度 >= 4.5:1（WCAG AA）',
+      lightC.out['页面标题'] >= 4.5 && lightC.out['设置项名称'] >= 4.5,
+      `title=${lightC.out['页面标题']} key=${lightC.out['设置项名称']}`);
+    R.check('浅色主题三级文字仍有可读性（>= 2.9:1，实测 2.99）',
+      lightWorst && lightWorst[1] >= 2.9,
+      `worst=${lightWorst ? lightWorst[0] + ' ' + lightWorst[1] : 'n/a'} :: ${JSON.stringify(lightC.out)}`);
+
+    // 切到暗色
+    await js(`(() => {
+      const row = document.querySelector('[data-click="set-theme"]');
+      if (row) row.click();
+      return true;
+    })()`);
+    await sleep(400);
+    const picked = await js(`(() => {
+      const el = document.querySelector('[data-pick-value="dark"]');
+      if (!el) return 'no-option';
+      el.click();
+      return true;
+    })()`);
+    R.check('能切到暗色主题', picked === true, String(picked));
+    await sleep(700);
+
+    const darkC = await js(measure);
+    R.check('主题已切到暗色', darkC.theme === 'dark', JSON.stringify(darkC));
+    log(`  对比度（暗色，背景 ${darkC.bodyBg}）：${JSON.stringify(darkC.out)}`);
+    const darkWorst = worstOf(darkC.out);
+    R.check('暗色下关键文字对比度 >= 4.5:1（WCAG AA）',
+      Object.keys(darkC.out).length >= 4 && darkWorst && darkWorst[1] >= 4.5,
+      `worst=${darkWorst ? darkWorst[0] + ' ' + darkWorst[1] : 'n/a'} :: ${JSON.stringify(darkC.out)}`);
+    // 切回浅色，别把后面的断言带进暗色
+    await js(`(() => {
+      const row = document.querySelector('[data-click="set-theme"]');
+      if (row) row.click();
+      return true;
+    })()`);
+    await sleep(400);
+    await js(`(() => { const el = document.querySelector('[data-pick-value="light"]');
+      if (el) el.click(); return true; })()`);
+    await sleep(500);
+    R.check('能切回浅色主题',
+      (await js(`document.documentElement.dataset.theme || ''`)) === 'light');
 
     /* ---------------- 7. 渲染层报错汇总 ---------------- */
     R.section('渲染层报错');
