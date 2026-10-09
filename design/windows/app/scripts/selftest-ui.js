@@ -8,8 +8,10 @@
  *   1. 真窗口外壳（拖动区域、内容可滚动、最大化后无横向溢出）
  *   2. 真的填表单、真的点「登录」，看路由有没有变成首页
  *   3. 逐个点侧边栏，每页渲染完不能有渲染层报错
- *   4. 打开/关闭弹窗
- *   5. 最大化窗口后重新量一遍布局
+ *   4. 分流规则页有入口且能进去；流量页真的画出曲线（不是空态）
+ *   5. 打开/关闭弹窗；更新弹窗不再弹「只允许打开 http(s) 链接」
+ *   6. 设置页不自我重绘、弹窗不被重绘吃掉（历史上这里是无界死循环）
+ *   7. 最大化窗口后重新量一遍布局
  *
  * 用法：Polaris.exe --uitest   （会自己起一个本地假面板）
  */
@@ -194,6 +196,44 @@ async function run(win, { log = console.log } = {}) {
     R.check('节点名来自订阅而非占位', nodesPage.names.some((n) => /香港|日本|新加坡/.test(n)),
       JSON.stringify(nodesPage.names));
 
+    /* ---------------- 3b. 分流规则页（侧边栏没有入口，必须能从节点页进） ---------------- */
+    R.section('分流规则页');
+    const routingEntry = await js(`(() => {
+      const b = document.querySelector('[data-click="nav-routing"]');
+      if (!b) return 'no-entry';
+      b.click();
+      return true;
+    })()`);
+    R.check('节点页有「分流规则」入口', routingEntry === true, String(routingEntry));
+    await sleep(800);
+    const routingPage = await js(`(() => ({
+      title: (document.querySelector('.page-title') || {}).textContent || '',
+      hasReset: !!document.querySelector('#btn-routing-reset'),
+      active: (document.querySelector('.nav-item.active') || {}).dataset
+        ? document.querySelector('.nav-item.active').dataset.route : null,
+      text: (document.body.innerText || '').length,
+    }))()`);
+    R.check('进入分流规则页', routingPage.title === '分流规则' && routingPage.hasReset === true,
+      JSON.stringify(routingPage));
+    R.check('  └ 分流页高亮「节点」（它是节点页的子页）', routingPage.active === 'nodes', String(routingPage.active));
+
+    /* ---------------- 3c. 流量页真的画出曲线 ---------------- */
+    // 这里曾经读的是 state.series（不存在），曲线区永远走空态。
+    // traffic.series('today') 至少返回 1 个点，所以「有没有 svg」是确定性断言。
+    R.section('流量曲线');
+    await js(`(() => { document.querySelector('.nav-item[data-route="traffic"]').click(); return true; })()`);
+    await sleep(900);
+    const chart = await js(`(() => {
+      const svg = document.querySelector('.card svg');
+      return {
+        hasSvg: !!svg,
+        paths: svg ? svg.querySelectorAll('path').length : 0,
+        unit: svg ? (svg.querySelector('text') || {}).textContent || '' : '',
+        empty: !!document.querySelector('.empty'),
+      };
+    })()`);
+    R.check('流量页画出曲线而不是空态', chart.hasSvg === true && chart.paths >= 3, JSON.stringify(chart));
+
     /* ---------------- 4. 弹窗 ---------------- */
     R.section('弹窗');
     await js(`(() => { const el = document.querySelector('.nav-item[data-route="home"]'); el.click(); return true; })()`);
@@ -216,6 +256,21 @@ async function run(win, { log = console.log } = {}) {
     // 关掉残留
     await js(`(() => { const c = document.querySelector('[data-overlay-close]'); if (c) c.click(); return true; })()`);
 
+    /* ---------------- 5b. 更新弹窗 ---------------- */
+    // 「前往下载」曾经恒传空串给 open_external，每次必弹「只允许打开 http(s) 链接」。
+    R.section('更新弹窗');
+    await js(`(() => { window.PolarisDialog.open('update', {
+      version: '9.9.9', url: '', notes: '自检占位', size: '12 MB' }); return true; })()`);
+    await sleep(400);
+    R.check('能打开更新弹窗', (await js(`!!document.querySelector('#btn-open-download')`)) === true);
+    await js(`(() => { document.querySelectorAll('.toast').forEach((t) => t.remove());
+      const b = document.querySelector('#btn-open-download'); if (b) b.click(); return true; })()`);
+    await sleep(900);
+    const updToasts = await js(`[...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ')`);
+    R.check('点「前往下载」不再报「只允许打开 http(s) 链接」', !/只允许打开/.test(updToasts), JSON.stringify(updToasts));
+    await js(`(() => { window.PolarisDialog.close();
+      document.querySelectorAll('.toast').forEach((t) => t.remove()); return true; })()`);
+
     /* ---------------- 5. 设置页滚动 ---------------- */
     R.section('设置页滚动');
     await js(`(() => { document.querySelector('.nav-item[data-route="settings"]').click(); return true; })()`);
@@ -236,6 +291,27 @@ async function run(win, { log = console.log } = {}) {
         bottomGap: c.scrollHeight - c.scrollTop - c.clientHeight }), 200));
     })()`);
     R.check('能滚到底部（内容没被裁掉）', scrolled.top > 0 && scrolled.bottomGap <= 4, JSON.stringify(scrolled));
+
+    /* ---------------- 5c. 设置页稳定性 ---------------- */
+    // 曾经 bindSettings 无条件 loadTunStatus()，而它结束时又 render()：
+    // render→bindSettings→loadTunStatus→render 无界重绘，设置页没法用。
+    R.section('设置页稳定性');
+    await sleep(3500); // 首次 TUN 查询要起 PowerShell（实测冷启动 ~2.7s）
+    const rc1 = await js(`window.__polarisRenderCount || 0`);
+    await sleep(1500);
+    const rc2 = await js(`window.__polarisRenderCount || 0`);
+    R.check('设置页不再自我重绘（渲染计数稳定）', rc1 > 0 && rc2 === rc1, `rc1=${rc1} rc2=${rc2}`);
+    const keepOpen = await js(`(async () => {
+      const row = document.querySelector('[data-click="set-theme"]');
+      if (!row) return 'no-row';
+      row.click();
+      await new Promise((r) => setTimeout(r, 1200));
+      return !!document.querySelector('.overlay .dialog');
+    })()`);
+    R.check('设置页弹窗不会被自己的重绘吃掉', keepOpen === true, String(keepOpen));
+    await js(`(() => { window.PolarisDialog.close(); return true; })()`);
+    const rc3 = await js(`window.__polarisRenderCount || 0`);
+    R.check('开关弹窗本身不触发重绘', rc3 === rc2, `rc2=${rc2} rc3=${rc3}`);
 
     /* ---------------- 6. 最大化布局 ---------------- */
     R.section('最大化布局');

@@ -183,6 +183,12 @@ if (process.argv.includes('--smoke')) {
           sidebarVisible: (document.querySelector('#sidebar') || {}).style
             ? document.querySelector('#sidebar').style.display !== 'none' : null,
           textLength: (document.body.innerText || '').length,
+          // 留一小段正文：textLength 不达标时，光看数字查不出「页面渲染成了什么」
+          textPreview: (document.body.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 160),
+          route: document.querySelector('#btn-login') ? 'login'
+            : (document.querySelector('.nav-item.active') || {}).dataset
+              ? document.querySelector('.nav-item.active').dataset.route : null,
+          hasLogin: !!document.querySelector('#btn-login'),
           theme: document.documentElement.dataset.theme || null,
           apiHost: !!(window.PolarisAPI && window.PolarisAPI.isHost),
           views: Object.keys(window.PolarisViews || {}).length,
@@ -195,8 +201,12 @@ if (process.argv.includes('--smoke')) {
         if (!domInfo || domInfo.readyState !== 'complete') out.ok = false;
         if (!domInfo || domInfo.navItems !== 5) out.ok = false;
         if (!domInfo || domInfo.views < 12 || domInfo.dialogs < 10) out.ok = false;
-        // 空页面也算失败：渲染出来但内容是空的，比报错更难发现
-        if (!domInfo || domInfo.textLength < 60) out.ok = false;
+        // 空页面也算失败：渲染出来但内容是空的，比报错更难发现。
+        // 登录页要单独判：它的文案天生就短（表单靠 placeholder 表达，不算 innerText），
+        // 旧的「一律 >= 60」会把「登录页渲染正确」误判成空页面。
+        const loginOk = domInfo && domInfo.hasLogin === true && domInfo.textLength >= 30;
+        const innerOk = domInfo && domInfo.route !== 'login' && domInfo.textLength >= 60;
+        if (!domInfo || (!loginOk && !innerOk)) out.ok = false;
       } else {
         out.ok = false;
         out.errors.push('没有窗口');

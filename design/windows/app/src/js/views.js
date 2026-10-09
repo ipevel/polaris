@@ -86,6 +86,7 @@
       </div>`).join("");
     return head("节点", `${s.nodes.length} 个节点${s.groups.length > 1 ? " · " + s.groups.length + " 个分组" : ""}`,
       `<span class="search-wrap"><input class="search" id="node-search" placeholder="搜索节点" value="${h(s.nodeFilter)}"></span>` +
+      `<button class="btn btn-outline btn-sm" style="height:40px" data-click="nav-routing">分流规则</button>` +
       `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-speedtest"${s.testing ? " disabled" : ""}>${s.testing ? "测速中…" : "测速"}</button>` +
       `<button class="btn btn-primary btn-sm" style="height:40px" id="btn-refresh-sub"${s.refreshing ? " disabled" : ""}>${s.refreshing ? "刷新中…" : "刷新订阅"}</button>`) + `
     <div class="card" style="margin-bottom:14px">
@@ -104,7 +105,10 @@
     const t = s.traffic || {};
     const r = s.trafficRange;
     const seg = (k, label) => `<button class="btn ${r === k ? "btn-primary" : "btn-ghost"} btn-sm" style="height:40px" data-range="${k}">${label}</button>`;
-    const pts = (s.series && s.series.points) || [];
+    // 字段名必须是 state.trafficSeries —— 旧代码读 s.series（不存在），
+    // 导致曲线区永远走 empty()，用户永远看不到任何流量图。
+    const series = s.trafficSeries || {};
+    const pts = series.points || [];
     const max = Math.max(1, ...pts.map((p) => Math.max(p.down, p.up)));
     const W = 620, H = 170, PAD = 34;
     const x = (i) => PAD + (i / Math.max(1, pts.length - 1)) * (W - PAD - 10);
@@ -127,9 +131,9 @@
           const i = pts.indexOf(p);
           return `<text x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="middle">${h(p.label)}</text>`;
         }).join("")}</g>
-        <g font-size="11" fill="#8e8e93"><text x="4" y="26">${h(s.series.unit)}</text><text x="4" y="${H - 22}">0</text></g>
+        <g font-size="11" fill="#8e8e93"><text x="4" y="26">${h(series.unit || "MB")}</text><text x="4" y="${H - 22}">0</text></g>
       </svg>` : empty("暂无流量记录", "连接后开始统计")}
-      <div style="font-size:13px;color:var(--text2);margin-top:4px">当前下载 ${fmt.speed(s.down_speed)} · 当前上传 ${fmt.speed(s.up_speed)}</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">当前下载 <span id="down-speed">${fmt.speed(s.down_speed)}</span> · 当前上传 <span id="up-speed">${fmt.speed(s.up_speed)}</span></div>
     </div>
     <div class="speed-row" style="margin:0 0 4px">
       <div class="speed-tile up"><span><div class="lb">本次下载</div><div class="vl">${h(t.down_today || "0 B")}</div></span></div>
@@ -139,7 +143,7 @@
     <div class="card">
       ${row("总下载", h(t.total_down || "—"), { chev: false, vcls: "strong" })}
       ${row("总上传", h(t.total_up || "—"), { chev: false, vcls: "strong" })}
-      ${row("峰值速率", h(t.peak || "—"), { chev: false, vcls: "strong" })}
+      ${row("本次峰值", h(t.peak || "—"), { chev: false, vcls: "strong" })}
       ${row("在线节点", String(t.online_nodes || 0), { chev: false, vcls: "strong" })}
     </div>
     ${s.trafficLog && s.trafficLog.length ? `<div class="section-label">面板流量明细</div><div class="card">` +
@@ -223,6 +227,7 @@
       ${row("邀请好友", "", { icon: ["🎁", "#34c759"], click: "nav-invite" })}
       ${row("礼品卡兑换", "", { icon: ["💳", "#af8cf8"], click: "nav-giftcard" })}
       ${row("公告", s.unreadNotices ? badge(s.unreadNotices + " 条未读", "b-red") : "", { icon: ["📢", "#ff9f43"], click: "nav-notices" })}
+      ${row("分流规则", "", { icon: ["⑃", "#5ac8fa"], click: "nav-routing" })}
       ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
       ${row("关于", "", { icon: ["ℹ️", "#8e8e93"], click: "nav-settings" })}
       <div class="row" style="justify-content:center;cursor:pointer" data-click="logout"><span style="color:var(--red);font-weight:600">退出登录</span></div>

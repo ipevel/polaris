@@ -35,6 +35,7 @@ const DEFAULTS = {
   // —— 运行态快照（跨启动恢复展示）——
   last_status: null,
   subscription_updated_at: 0,
+  subscribe_hosts: [],        // 见过的订阅域名，永远直连（见 core/remote.js）
 };
 
 let cache = null;

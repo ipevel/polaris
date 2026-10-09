@@ -7,7 +7,8 @@
  * 覆盖：
  *   1. 订阅清洗规则（去重名 / 剔伪节点 / 夺控制面 / 直连规则注入）
  *   2. 配置组装（端口、secret、DNS、TUN、兜底规则）
- *   3. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
+ *   3. 直连域名与更新地址（订阅域名必须真被记住；Windows 不得用安卓 APK 地址）
+ *   4. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
  *
  * 第 3 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
  * "内核能被我们生成的配置喂起来并被控制"，不是"能翻墙"。
@@ -170,7 +171,99 @@ function testBuilder() {
   check('YAML 序列化/反序列化无损', round['external-controller'] === c['external-controller'] && round.proxies.length === c.proxies.length);
 }
 
-/* ---------------- 3. 地区识别 ---------------- */
+/* ---------------- 4. 直连域名 / 更新地址 ---------------- */
+
+async function testDirectAndUpdate() {
+  section('直连域名与更新地址');
+  const http = require('http');
+  const store = require('../electron/store');
+  const remote = require('../electron/core/remote');
+
+  const savedHosts = store.get('subscribe_hosts');
+  const savedPanel = store.get('panel_url');
+  const savedDownload = store.get('download_url');
+  const savedSources = store.get('remote_config_urls');
+
+  // 本地起一个远程配置源，验证真实拉取路径而不是凭空造 cache
+  const cfg = {
+    config_version: 7,
+    direct_domains: ['direct.example.com'],
+    update_version: '9.9.9',
+    update_size: '12 MB',
+    update_changelog: '安卓更新日志',
+    update_url: 'https://dl.example.com/Polaris-9.9.9.apk',
+    update_apk_url: 'https://dl.example.com/Polaris-9.9.9.apk',
+    update_windows_url: 'https://dl.example.com/Polaris-9.9.9-win.zip',
+    update_windows_changelog: 'Windows 更新日志',
+  };
+  let hits = 0;
+  const server = http.createServer((req, res) => {
+    hits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(cfg));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+
+  try {
+    store.set('subscribe_hosts', []);
+    store.set('panel_url', 'https://panel.example.com');
+    store.set('download_url', '');
+    store.set('remote_config_urls', `http://127.0.0.1:${port}/config.json`);
+    await remote.load(true);
+
+    check('远程配置已拉到', hits > 0, `hits=${hits}`);
+    const dd = remote.directDomains();
+    check('远程配置的直连域名生效', dd.includes('direct.example.com'), JSON.stringify(dd));
+    check('面板域名进直连列表', dd.includes('panel.example.com'), JSON.stringify(dd));
+
+    // 订阅域名必须真的被记住 —— 旧代码取了 host 就丢，等于没做
+    const added = remote.rememberDirectHost('Sub.CDN-Example.NET');
+    check('订阅域名被记入直连列表', added === true && remote.directDomains().includes('sub.cdn-example.net'),
+      JSON.stringify(remote.directDomains()));
+    check('重复记住同一域名返回 false', remote.rememberDirectHost('sub.cdn-example.net') === false);
+    check('订阅域名持久化到 settings', Array.isArray(store.get('subscribe_hosts'))
+      && store.get('subscribe_hosts').includes('sub.cdn-example.net'));
+    check('直连域名去重', remote.directDomains().length === new Set(remote.directDomains()).size);
+
+    // 面板直连 + 订阅直连都要出现在生成的规则最前面
+    const built = builder.build({ proxies: [], rules: ['MATCH,DIRECT'] }, {
+      directDomains: remote.directDomains(),
+    });
+    check('订阅域名生成 DOMAIN-SUFFIX,DIRECT 规则',
+      built.config.rules.includes('DOMAIN-SUFFIX,sub.cdn-example.net,DIRECT'),
+      JSON.stringify(built.config.rules.slice(0, 4)));
+    check('面板/订阅域名进 fake-ip-filter',
+      built.config.dns['fake-ip-filter'].includes('+.sub.cdn-example.net'),
+      JSON.stringify(built.config.dns['fake-ip-filter'].slice(-3)));
+
+    // 更新地址：Windows 端绝不能把安卓 APK 地址当成自己的更新包
+    const u = remote.updateInfo();
+    check('优先取 Windows 专用更新地址', u.url === 'https://dl.example.com/Polaris-9.9.9-win.zip', JSON.stringify(u));
+    check('安卓地址单独暴露，不混进 url', u.android_url === 'https://dl.example.com/Polaris-9.9.9.apk', u.android_url);
+    check('Windows 专用更新日志优先', u.notes === 'Windows 更新日志', u.notes);
+    check('版本不同即提示有更新', u.has_update === true && u.version === '9.9.9', JSON.stringify(u));
+
+    // 面板只给了安卓地址时：宁可用本机配置的下载页，也不给安卓包
+    delete cfg.update_windows_url;
+    delete cfg.update_windows_changelog;
+    await remote.load(true);
+    check('无 Windows 地址时不回落安卓 APK', remote.updateInfo().url === '',
+      JSON.stringify(remote.updateInfo()));
+    store.set('download_url', 'https://polaris.example.com/download');
+    check('本机配置的下载页优先于安卓地址',
+      remote.updateInfo().url === 'https://polaris.example.com/download',
+      remote.updateInfo().url);
+  } finally {
+    try { server.close(); } catch (_) {}
+    store.set('subscribe_hosts', savedHosts);
+    store.set('panel_url', savedPanel);
+    store.set('download_url', savedDownload);
+    store.set('remote_config_urls', savedSources);
+  }
+}
+
+/* ---------------- 5. 地区识别 ---------------- */
 
 function testRegion() {
   section('地区识别');
@@ -286,6 +379,7 @@ async function testKernel() {
   console.log('node', process.version);
   testSanitizer();
   testBuilder();
+  await testDirectAndUpdate();
   testRegion();
   await testKernel();
   console.log(`\n结果：${pass} 通过 / ${fail} 失败`);

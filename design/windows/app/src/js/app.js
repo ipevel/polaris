@@ -9,12 +9,17 @@
 
   const MAIN_ROUTES = ["home", "nodes", "traffic", "routing", "settings", "me"];
   const AUTH_ROUTES = ["login", "register", "forgot"];
+  /** 有实时速率/连接态可刷新的页面（paintLive 只改这两个元素的文本） */
+  const LIVE_ROUTES = ["home", "nodes", "traffic", "me"];
 
   const state = {
     route: "home",
     booted: false,
     loggedIn: false,
     busy: false,
+    // 内核状态机相位（idle/starting/connected/stopping）——主进程一直在推，
+    // 但旧代码只比它、从不存它，state.phase 恒为 undefined。
+    phase: "idle",
     connected: false,
     node: "",
     latency: 0,
@@ -57,7 +62,12 @@
   const sidebar = $("#sidebar");
 
   /* ---------------- 渲染 ---------------- */
+  let renderCount = 0;
   function render() {
+    // 自检用：设置页曾经因为 loadTunStatus→render 互相调用而无限重绘，
+    // 只有数渲染次数才测得到（DOM 断言在同一个 JS 帧里看不出问题）。
+    renderCount += 1;
+    window.__polarisRenderCount = renderCount;
     overlayRoot.innerHTML = "";
     if (AUTH_ROUTES.includes(state.route)) {
       state.loggedIn = false;
@@ -86,6 +96,9 @@
     if (route === "register" || route === "forgot" || route === "login") state.authError = "";
     state.route = route;
     render();
+    // 虚拟网卡状态要起 PowerShell（冷启动实测 ~2.7s），只在进设置页时查一次。
+    // 绝不能放在 bindSettings 里 —— 那会变成 render→loadTunStatus→render 死循环。
+    if (route === "settings") loadTunStatus();
   }
   window.PolarisNav = nav;
 
@@ -156,7 +169,7 @@
     } else if (action === "license") openDialog("about", state.appInfo);
     else if (action === "cleanup-tun") {
       const r = await guard("清理虚拟网卡", () => api.invoke("cleanup_tun"));
-      if (r) { toast(r.msg || "已处理"); state.tunStatus = await api.invoke("get_tun_status").catch(() => state.tunStatus); render(); }
+      if (r) { toast(r.msg || "已处理"); loadTunStatus(true); }
     }
     else if (action === "set-panel") {
       await guard("退出登录", () => api.logout());
@@ -171,7 +184,7 @@
       const info = await guard("获取订阅链接", () => api.invoke("get_subscribe_url"));
       if (info) openDialog("subscribeUrl", info);
     }
-    else if (["nav-orders", "nav-tickets", "nav-invite", "nav-giftcard", "nav-notices", "nav-settings"].includes(action)) {
+    else if (["nav-orders", "nav-tickets", "nav-invite", "nav-giftcard", "nav-notices", "nav-settings", "nav-routing"].includes(action)) {
       nav(action.replace("nav-", ""));
     }
   }
@@ -191,9 +204,15 @@
     if (name === "update") {
       const btn = $("#btn-open-download");
       if (btn) btn.addEventListener("click", async () => {
-        await guard("打开下载页", () => api.openExternal(arg && arg.version ? "" : ""));
-        await guard("打开下载页", () => api.invoke("open_download"));
-        closeDialog();
+        // 旧代码写的是 api.openExternal(arg && arg.version ? "" : "") —— 恒传空串，
+        // open_external 必然抛「只允许打开 http(s) 链接」，用户每次都先吃一条红 toast。
+        // 现在：拿到具体地址就直接开，拿不到才退回主进程按配置解析。
+        const direct = String((arg && arg.url) || "").trim();
+        const r = direct
+          ? await guard("打开下载页", () => api.openExternal(direct))
+          : await guard("打开下载页", () => api.invoke("open_download"));
+        if (r && r.ok === false) { toast(r.msg || "未配置更新地址"); return; }
+        if (r) closeDialog();
       });
     }
     if (name === "logoutConfirm") {
@@ -443,7 +462,6 @@
   }
 
   function bindSettings() {
-    loadTunStatus();
     $$(".switch[data-setting]").forEach((sw) => sw.addEventListener("click", async () => {
       const k = sw.dataset.setting;
       const next = !state.settings[k];
@@ -576,7 +594,9 @@
     liveBound = true;
     window.polaris.on("status", (st) => {
       if (!st) return;
-      const was = state.connected;
+      const wasConnected = state.connected;
+      const wasPhase = state.phase;
+      const wasNode = state.node;
       state.connected = !!st.connected;
       state.node = st.node || state.node;
       state.latency = st.latency || 0;
@@ -586,15 +606,15 @@
       state.down_total = st.down_total;
       state.uptime = st.uptime;
       if (st.mode) state.mode = st.mode;
-      if (state.phase !== st.phase && (st.phase === "starting" || st.phase === "stopping")) {
-        state.busy = true;
-      } else if (st.phase === "connected" || st.phase === "idle") {
-        state.busy = false;
-      }
-      if (state.route === "home") {
-        paintLive();
-        if (was !== state.connected) render();
-      }
+      state.phase = st.phase || state.phase;
+      // 旧代码：phase 不落 state，且只在 home 路由重绘 —— 在节点页/我的页里
+      // 连接状态、当前节点、连接中动画全都不会变。
+      state.busy = state.phase === "starting" || state.phase === "stopping";
+      if (LIVE_ROUTES.includes(state.route)) paintLive();
+      if (overlayRoot.children.length) return;   // 有弹窗时重绘会把弹窗抹掉
+      const meaningful = wasConnected !== state.connected || wasPhase !== state.phase;
+      const nodeChanged = state.route === "nodes" && wasNode !== state.node;
+      if (meaningful || nodeChanged) render();
     });
     window.polaris.on("toast", (t) => { if (t && t.message) toast(t.message); });
     window.polaris.on("navigate", (t) => { if (t && t.route) nav(t.route); });
@@ -707,9 +727,24 @@
     loadTunStatus();
   }
 
-  async function loadTunStatus() {
-    state.tunStatus = await api.invoke("get_tun_status").catch(() => null);
-    if (state.route === "settings") render();
+  let tunInflight = null;
+  /**
+   * 查虚拟网卡状态。主进程侧还有 60s 缓存，这里再加一道在途去重，
+   * 并且**只在结果真的变了**的时候重绘 —— 否则就是 render 死循环。
+   */
+  function loadTunStatus(force) {
+    if (tunInflight) return tunInflight;
+    const before = JSON.stringify(state.tunStatus || null);
+    tunInflight = (async () => {
+      try {
+        state.tunStatus = await api.invoke("get_tun_status", force ? { force: true } : undefined)
+          .catch(() => state.tunStatus);
+        if (state.route === "settings" && JSON.stringify(state.tunStatus || null) !== before) render();
+      } finally {
+        tunInflight = null;
+      }
+    })();
+    return tunInflight;
   }
 
   document.addEventListener("DOMContentLoaded", () => {

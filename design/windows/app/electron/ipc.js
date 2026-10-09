@@ -25,7 +25,10 @@ const fmt = require('./util/format');
 const ui = require('./ui');
 
 const CH = 'polaris:invoke';
+// 本次会话的峰值速率（MB/s）。旧代码从不重置 —— 断开重连后「峰值」还是
+// 几小时前那一次的最高值，用户以为刚才跑出了那个速度。
 const peak = { down: 0, up: 0 };
+function resetPeak() { peak.down = 0; peak.up = 0; }
 
 function needAuth() {
   if (!panel.isAuthed()) throw new Error('尚未登录面板');
@@ -40,6 +43,7 @@ const commands = {
 
   connect: async () => {
     needAuth();
+    resetPeak();                     // 新会话从 0 起算
     const st = await core.connect();
     return ok({ connected: st.connected, node: st.node });
   },
@@ -64,9 +68,12 @@ const commands = {
   refresh_subscription: async () => {
     needAuth();
     await panel.refreshSubscription();
+    // 订阅域名可能是第一次见到，立刻并入直连域名再生成配置
+    core.setDirectDomains(remote.directDomains());
     const { count } = core.prepareConfig();
     if (core.status().connected) {
       // 已在连接：重载配置而不是让用户手动断开重连
+      resetPeak();
       await core.disconnect();
       await core.connect();
     }

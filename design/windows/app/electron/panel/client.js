@@ -272,15 +272,11 @@ async function refreshSubscription() {
   fs.writeFileSync(path.join(paths.profiles(), 'subscribe.yaml'), res.text, 'utf8');
   store.set('subscription_updated_at', Date.now());
 
-  // 订阅域名必须直连，否则开代理后自己拉不到自己
+  // 订阅域名必须直连，否则开代理后自己拉不到自己。
+  // 旧代码这里只取了 host 就 `void host` 丢掉，等于什么都没做。
   try {
     const host = new URL(abs).hostname;
-    if (host) {
-      const existing = require('../core/remote').directDomains();
-      require('../core/remote').load();
-      void existing;
-      void host;
-    }
+    if (host) require('../core/remote').rememberDirectHost(host);
   } catch (_) {}
   log.info(`subscription refreshed (${res.text.length} bytes)`);
   return { bytes: res.text.length };
