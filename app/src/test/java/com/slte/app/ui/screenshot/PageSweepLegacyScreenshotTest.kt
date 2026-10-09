@@ -51,6 +51,8 @@ import com.slte.app.ui.screen.about.UpdateViewModel
 import com.slte.app.ui.screen.forgot.ForgotPasswordScreen
 import com.slte.app.ui.screen.forgot.ForgotPasswordUiState
 import com.slte.app.ui.screen.forgot.ForgotPasswordViewModel
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemState
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemViewModel
 import com.slte.app.ui.screen.invite.InviteScreen
 import com.slte.app.ui.screen.invite.InviteViewModel
 import com.slte.app.ui.screen.login.LoginScreen
@@ -233,6 +235,22 @@ class PageSweepLegacyScreenshotTest {
         return vm
     }
 
+    /**
+     * 套餐页顶栏的礼品卡入口依赖 [GiftCardRedeemViewModel]。这里必须显式传入：
+     * 默认值是 `hiltViewModel()`，而截图测试用的是裸 `ComponentActivity`，
+     * 拿不到 Hilt 组件，会抛 `Given component holder class ... does not implement
+     * interface dagger.hilt.internal.GeneratedComponent`。
+     *
+     * 三个 StateFlow 也必须桩成真的（relaxed mock 返回的是普通值，collect 处会 CCE）。
+     */
+    private fun giftCardViewModel(): GiftCardRedeemViewModel {
+        val vm = mockk<GiftCardRedeemViewModel>(relaxed = true)
+        every { vm.state } returns MutableStateFlow(GiftCardRedeemState())
+        every { vm.tip } returns MutableStateFlow(null)
+        every { vm.redeemed } returns MutableStateFlow(0)
+        return vm
+    }
+
     private fun purchaseViewModel() = PurchaseViewModel(
         couponChecker = CouponChecker(orderRepository),
         paymentLoader = OrderPaymentLoader(orderRepository),
@@ -345,6 +363,7 @@ class PageSweepLegacyScreenshotTest {
                 viewModel = vm,
                 purchaseViewModel = purchaseViewModel(),
                 profileViewModel = profileViewModel(),
+                giftCardViewModel = giftCardViewModel(),
             )
         }
     }
@@ -361,6 +380,7 @@ class PageSweepLegacyScreenshotTest {
                 viewModel = vm,
                 purchaseViewModel = purchaseViewModel(),
                 profileViewModel = profileViewModel(),
+                giftCardViewModel = giftCardViewModel(),
             )
         }
     }
@@ -377,6 +397,7 @@ class PageSweepLegacyScreenshotTest {
                 viewModel = vm,
                 purchaseViewModel = purchaseViewModel(),
                 profileViewModel = profileViewModel(),
+                giftCardViewModel = giftCardViewModel(),
             )
         }
     }
@@ -393,6 +414,7 @@ class PageSweepLegacyScreenshotTest {
                 viewModel = vm,
                 purchaseViewModel = purchaseViewModel(),
                 profileViewModel = profileViewModel(),
+                giftCardViewModel = giftCardViewModel(),
             )
         }
     }
@@ -410,6 +432,7 @@ class PageSweepLegacyScreenshotTest {
                 viewModel = vm,
                 purchaseViewModel = purchase,
                 profileViewModel = profileViewModel(),
+                giftCardViewModel = giftCardViewModel(),
             )
         }
     }

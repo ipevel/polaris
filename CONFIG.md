@@ -111,3 +111,19 @@ Polaris 的配置分三层，按优先级从高到低：
   `app/gradle.properties` + 远程配置下发。
 - 远程配置中的 `api_base_url` / `update_apk_url` / `direct_domains` 均经过域名白名单校验，
   非白名单域名会被拒绝。
+
+---
+
+## 五、密钥托管（发布签名）
+
+- 发布密钥（`release.keystore` 与三个口令）只存两处：**本机**与 **GitHub Actions Secrets**，
+  仓库内不保留任何副本（`*.keystore` / `.signing-env` / `app/gradle.properties` 均被 .gitignore 忽略）。
+- 当前 GitHub Secrets 命名为 `SLTE_*`（`SLTE_RELEASE_STORE_B64` 存 base64 的 keystore，
+  三个口令见 `.github/workflows/build.yml` 的「单元测试 + 编译」步骤）。仓库代码侧的
+  Gradle 变量已统一为 `POLARIS_*`；Secret 名称的改名需先在 GitHub Settings 建好同名
+  `POLARIS_*` 并验证过一次发版后才能删除旧名，具体以 `build.yml` 中的注释为准。
+- **密钥丢失的后果是单向且不可逆的**：Android 不允许签名不同的 APK 覆盖安装，
+  已发布的应用将永远无法以新密钥升级，只能换包名重新发行（等于丢掉全部存量用户）。
+- 因此必须：在密码管理器与离线介质各留一份 `release.keystore` 与三个口令
+  （store password / key alias / key password），并定期验证可解密、可 `apksigner verify`。
+- 发布产物里的 `dist/SIGNING.txt`（签名证书指纹）可用于核对某次发版用的是不是这把密钥。

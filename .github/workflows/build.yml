@@ -3,9 +3,13 @@ name: Polaris Build
 # 打包并（可选）发布到 GitHub Releases。
 #
 # 用法：Actions → Polaris Build → Run workflow，填参数后运行。
-#   - buildType=release 需要仓库 Secrets 四件套：
-#       SLTE_RELEASE_STORE_B64 / POLARIS_RELEASE_STORE_PASSWORD
+#   - buildType=release 需要仓库 Secrets 四件套（全部 POLARIS_ 前缀）：
+#       POLARIS_RELEASE_STORE_B64 / POLARIS_RELEASE_STORE_PASSWORD
 #       POLARIS_RELEASE_KEY_ALIAS / POLARIS_RELEASE_KEY_PASSWORD
+#     这些 Secret 原为 fork 残留的 SLTE_ 前缀，已统一改名。迁移顺序：先在
+#     Settings → Secrets and variables → Actions 建好全部 POLARIS_*，用它成功
+#     发一次版（核对 SIGNING.txt 指纹与旧版一致），再删除旧的 SLTE_*。
+#     ⚠️ 两者不可长期并存半改名状态：本文件任一步骤取不到值，release 构建即失败。
 #   - publishRelease=true 时，构建成功后自动创建/更新 Release 并附上 APK、
 #     SHA256SUMS.txt 与签名证书指纹（SIGNING.txt）。
 #   - 重复运行同一标签（releaseTag 相同）会更新既有 Release 的资产与说明，不会失败。
@@ -226,9 +230,9 @@ jobs:
       - name: 还原发布签名
         if: inputs.buildType == 'release'
         env:
-          STORE_B64: ${{ secrets.SLTE_RELEASE_STORE_B64 }}
+          STORE_B64: ${{ secrets.POLARIS_RELEASE_STORE_B64 }}
         run: |
-          test -n "$STORE_B64" || { echo "::error::缺少 Secret SLTE_RELEASE_STORE_B64（release 构建必需，见网站签名面板）"; exit 1; }
+          test -n "$STORE_B64" || { echo "::error::缺少 Secret POLARIS_RELEASE_STORE_B64（release 构建必需，见网站签名面板）"; exit 1; }
           echo "$STORE_B64" | base64 -d > release.keystore
 
       - name: 应用自定义图标
@@ -326,11 +330,14 @@ jobs:
           POLARIS_USE_MIRROR: 'false'
 
           POLARIS_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
-          # 注意：GitHub Secrets 值不可读复制，secret 名保留 SLTE_ 前缀（与仓库实际配置一致），
-          # 仅 env 变量名使用 POLARIS_ 前缀传入 Gradle。
-          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}
-          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.SLTE_RELEASE_KEY_ALIAS }}
-          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.SLTE_RELEASE_KEY_PASSWORD }}
+          # 这些 Secret 原为 fork 残留的 SLTE_ 前缀，已随 Gradle 变量统一改名 POLARIS_。
+          # ⚠️ 改名生效的前置条件：必须先在 GitHub Settings → Secrets and variables → Actions
+          # 建好 POLARIS_RELEASE_STORE_PASSWORD / POLARIS_RELEASE_KEY_ALIAS /
+          # POLARIS_RELEASE_KEY_PASSWORD 三个同名 Secret，否则 release 构建会因取不到值而失败。
+          # 迁移顺序：新建 POLARIS_* → 用它成功发一次版（验证签名指纹一致）→ 再删除旧的 SLTE_*。
+          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}
+          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}
+          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.POLARIS_RELEASE_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
 
@@ -391,8 +398,8 @@ jobs:
             "$APKSIGNER" verify --print-certs "$APK" > dist/SIGNING.txt 2>&1 || true
           else
             keytool -list -v -keystore release.keystore \
-              -alias "${{ secrets.SLTE_RELEASE_KEY_ALIAS }}" \
-              -storepass "${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || \
+              -alias "${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}" \
+              -storepass "${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || \
               echo "::warning::SIGNING.txt 生成失败（apksigner 与 keytool 回退均不可用）"
           fi
           echo "--- SHA256SUMS.txt ---"
