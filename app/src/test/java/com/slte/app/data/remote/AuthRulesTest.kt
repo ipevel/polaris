@@ -50,50 +50,70 @@ class AuthRulesTest {
 
     @Test
     fun `注入token：有token处白名单且无Authorization头`() {
-        assertTrue(AuthRules.decide("tok", isAllowedHost = true, hasAuthHeader = false, 200, false).attachToken)
+        assertTrue(AuthRules.decide("tok", isAllowedHost = true, hasAuthHeader = false, 200, false, true).attachToken)
 
-        assertFalse(AuthRules.decide(null, true, false, 200, false).attachToken)
+        assertFalse(AuthRules.decide(null, true, false, 200, false, true).attachToken)
 
-        assertFalse(AuthRules.decide("tok", false, false, 200, false).attachToken)
+        assertFalse(AuthRules.decide("tok", false, false, 200, false, true).attachToken)
 
-        assertFalse(AuthRules.decide("tok", true, true, 200, false).attachToken)
+        assertFalse(AuthRules.decide("tok", true, true, 200, false, true).attachToken)
     }
 
     @Test
-    fun `401始终清会话`() {
-        assertTrue(AuthRules.decide("tok", true, false, 401, false).clearSession)
+    fun `鉴权路径上的401清会话`() {
+        assertTrue(AuthRules.decide("tok", true, false, 401, false, true).clearSession)
 
-        assertTrue(AuthRules.decide("tok", true, false, 401, true).clearSession)
+        assertTrue(AuthRules.decide("tok", true, false, 401, true, true).clearSession)
 
-        assertFalse(AuthRules.decide(null, true, false, 401, false).clearSession)
+        assertFalse(AuthRules.decide(null, true, false, 401, false, true).clearSession)
+    }
+
+    @Test
+    fun `非鉴权路径的401不清会话`() {
+        // 订阅 CDN / WAF / 静态资源被拦一次就掉登录，是线上真实踩过的坑
+        assertFalse(AuthRules.decide("tok", true, false, 401, false, false).clearSession)
+
+        assertFalse(AuthRules.decide("tok", true, false, 401, true, false).clearSession)
+    }
+
+    @Test
+    fun `非可信主机的401不清会话`() {
+        // 重定向到了第三方主机，或凭据压根没送到那个主机上
+        assertFalse(AuthRules.decide("tok", false, false, 401, false, true).clearSession)
+
+        assertFalse(AuthRules.decide("tok", false, false, 401, true, true).clearSession)
     }
 
     @Test
     fun `403仅在响应体含失效关键词时清会话`() {
-        assertTrue(AuthRules.decide("tok", true, false, 403, isAuthFailureBody = true).clearSession)
+        assertTrue(AuthRules.decide("tok", true, false, 403, isAuthFailureBody = true, isAuthPath = true).clearSession)
 
-        assertFalse(AuthRules.decide("tok", true, false, 403, isAuthFailureBody = false).clearSession)
+        assertFalse(AuthRules.decide("tok", true, false, 403, isAuthFailureBody = false, isAuthPath = true).clearSession)
+
+        // 非鉴权路径的 403 同样不该清会话（WAF 拦截页就是这种）
+        assertFalse(AuthRules.decide("tok", true, false, 403, isAuthFailureBody = true, isAuthPath = false).clearSession)
     }
 
     @Test
     fun `200及非失效状态不清会话`() {
-        assertFalse(AuthRules.decide("tok", true, false, 200, false).clearSession)
-        assertFalse(AuthRules.decide("tok", true, false, 400, true).clearSession)
-        assertFalse(AuthRules.decide("tok", true, false, 500, false).clearSession)
+        assertFalse(AuthRules.decide("tok", true, false, 200, false, true).clearSession)
+        assertFalse(AuthRules.decide("tok", true, false, 400, true, true).clearSession)
+        assertFalse(AuthRules.decide("tok", true, false, 500, false, true).clearSession)
     }
 
     @Test
     fun `注入与清会话相互独立`() {
-        val noToken = AuthRules.decide(null, true, false, 401, false)
+        val noToken = AuthRules.decide(null, true, false, 401, false, true)
         assertFalse(noToken.attachToken)
         assertFalse(noToken.clearSession)
 
-        val withHeader = AuthRules.decide("tok", true, true, 401, false)
+        val withHeader = AuthRules.decide("tok", true, true, 401, false, true)
         assertFalse(withHeader.attachToken)
         assertTrue(withHeader.clearSession)
 
-        val notAllowedHost = AuthRules.decide("tok", false, false, 401, false)
+        val notAllowedHost = AuthRules.decide("tok", false, false, 401, false, true)
         assertFalse(notAllowedHost.attachToken)
-        assertTrue(notAllowedHost.clearSession)
+        // 主机不可信时不再清会话：清完会话用户直接被锁在门外
+        assertFalse(notAllowedHost.clearSession)
     }
 }

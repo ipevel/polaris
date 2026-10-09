@@ -46,18 +46,22 @@ class AuthInterceptorTest {
         code: Int,
         body: String = "{}",
     ): Interceptor.Chain {
-        val response =
+        val chain = mockk<Interceptor.Chain>()
+        every { chain.request() } returns request
+        // 用「实际发出的请求」构造响应：真实 OkHttp 的 response.request 就是带上
+        // 注入凭据后的那一个。清会话判据里有「凭据确实送到了该主机」这一条，
+        // 若这里回填原始 request，注入路径的用例会全部假失败。
+        every { chain.proceed(any()) } answers {
+            val sent = invocation.args[0] as Request
             Response
                 .Builder()
-                .request(request)
+                .request(sent)
                 .protocol(Protocol.HTTP_1_1)
                 .code(code)
                 .message("stub")
                 .body(body.toResponseBody())
                 .build()
-        val chain = mockk<Interceptor.Chain>()
-        every { chain.request() } returns request
-        every { chain.proceed(any()) } returns response
+        }
         return chain
     }
 
@@ -179,19 +183,36 @@ class AuthInterceptorTest {
     }
 
     @Test
-    fun `非认证接口的401同样清会话`() {
+    fun `非认证接口的401不清会话`() {
+        // 订阅、静态资源、guest 接口都在 /api/v1/user/ 之外：这些路径的 401
+        // 只说明该请求被拒，不代表登录态失效（上游 7d0ac2e 的 401 路径门控）。
         every { sessionStore.getAuthData() } returns "token-a"
         val chain = chain(request(url = "https://example.com${ApiPaths.PREFIX}/guest/comm/config"), code = 401)
 
         interceptor.intercept(chain)
 
-        verify { sessionStore.clear() }
+        verify(exactly = 0) { sessionStore.clear() }
     }
 
     @Test
-    fun `非白名单主机的401也会清会话`() {
+    fun `非白名单主机的401不清会话`() {
+        // 订阅 CDN / WAF 也会返回 401：主机不可信时绝不能据此登出用户。
         every { sessionStore.getAuthData() } returns "token-a"
+        every { apiUrlStore.isCurrentHost(any()) } returns false
         val chain = chain(request(url = "https://third-party.example.org/api/v1/user/info"), code = 401)
+
+        interceptor.intercept(chain)
+
+        verify(exactly = 0) { sessionStore.clear() }
+    }
+
+    @Test
+    fun `自定义面板主机的鉴权401仍清会话`() {
+        // 自建面板域名不在 BuildConfig 白名单里，但它就是用户当前登录的面板：
+        // 主机可信判据必须把它算进来，否则自建面板的会话永远不会被清理。
+        every { sessionStore.getAuthData() } returns "token-a"
+        every { apiUrlStore.isCurrentHost("panel.example.org") } returns true
+        val chain = chain(request(url = "https://panel.example.org/api/v1/user/info"), code = 401)
 
         interceptor.intercept(chain)
 

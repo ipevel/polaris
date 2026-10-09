@@ -113,6 +113,18 @@ constructor(
 
     override fun getSpeedResults(): Map<String, Int>? = readCached(KEY_SPEED_RESULTS) { Json.decodeFromString<Map<String, Int>>(it) }
 
+    override fun clearSpeedResults() {
+        prefs.edit { remove(KEY_SPEED_RESULTS) }
+    }
+
+    override fun saveOfflineNodes(names: Set<String>) {
+        prefs.edit {
+            putString(KEY_OFFLINE_NODES, Json.encodeToString(names))
+        }
+    }
+
+    override fun getOfflineNodes(): Set<String>? = readCached(KEY_OFFLINE_NODES) { Json.decodeFromString<Set<String>>(it) }
+
     fun saveTrafficLog(records: List<TrafficLogRecord>) {
         prefs.edit {
             putString(KEY_TRAFFIC_LOG, Json.encodeToString(records))
@@ -133,6 +145,7 @@ constructor(
             remove(KEY_SERVER_NODES)
             remove(KEY_SERVER_NODES_FETCHED_AT)
             remove(KEY_SPEED_RESULTS)
+            remove(KEY_OFFLINE_NODES)
             remove(KEY_TRAFFIC_LOG)
         }
     }
@@ -163,6 +176,7 @@ constructor(
             remove(KEY_SERVER_NODES)
             remove(KEY_SERVER_NODES_FETCHED_AT)
             remove(KEY_SPEED_RESULTS)
+            remove(KEY_OFFLINE_NODES)
             remove(KEY_TRAFFIC_LOG)
         }
     }
@@ -181,6 +195,7 @@ constructor(
         private const val KEY_SERVER_NODES = "server_nodes"
         private const val KEY_SERVER_NODES_FETCHED_AT = "server_nodes_fetched_at"
         private const val KEY_SPEED_RESULTS = "speed_results"
+        private const val KEY_OFFLINE_NODES = "offline_nodes"
         private const val KEY_TRAFFIC_LOG = "traffic_log"
         private const val KEY_CONNECTED_SINCE = "connected_since_elapsed"
     }
