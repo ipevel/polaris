@@ -156,6 +156,13 @@ async function run(win, { log = console.log } = {}) {
     R.check('落在首页', afterLogin.route === 'home', JSON.stringify(afterLogin));
     R.check('登录后显示侧边栏', afterLogin.sidebarVisible === true);
     R.check('首页主体已渲染', afterLogin.hero === true);
+    // 首页「会话」三个数字靠 paintLive() 逐个补，不再是整页重绘才刷新；
+    // 这行只是防止以后有人把 id 删掉 —— 删了就静默退回「数字永远不动」。
+    const liveIds = await js(`(() => ({
+      ids: ['live-up-total', 'live-down-total', 'live-uptime'].filter((i) => document.querySelector('#' + i + ' .v span')),
+      up: (document.querySelector('#down-speed') || {}).textContent || '',
+    }))()`);
+    R.check('首页会话数字有可单独刷新的挂点（id 齐全）', liveIds.ids.length === 3, JSON.stringify(liveIds));
 
     /* ---------------- 3. 逐页点击 ---------------- */
     R.section('逐页点击');

@@ -81,11 +81,16 @@ function broadcast() {
 function snapshot() {
   const snap = {};
   for (const v of VALUES) snap[v] = regQuery(v);
+  // 读失败不能当成「用户本来没设代理」——否则还原时会把用户的配置删掉/清零
+  if (snap.ProxyEnable == null && snap.ProxyServer == null && snap.ProxyOverride == null) return null;
   return snap;
 }
 
 function restore(snap) {
-  if (!snap) return;
+  if (!snap || typeof snap !== 'object') {
+    log.warn('sysproxy restore skipped: no valid snapshot');
+    return;
+  }
   try {
     regSet('ProxyEnable', 'REG_DWORD', snap.ProxyEnable == null ? 0 : snap.ProxyEnable);
     if (snap.ProxyServer) regSet('ProxyServer', 'REG_SZ', snap.ProxyServer);
@@ -122,6 +127,11 @@ function bypassList(extraDomains = []) {
  */
 function enable(host, port, extraDomains = []) {
   const before = snapshot();
+  // 拿不到快照就不动注册表：改了却还原不回去，等于永久改掉用户的系统代理
+  if (!before) {
+    log.warn('sysproxy enable skipped: cannot read current settings');
+    return null;
+  }
   try {
     regDelete('AutoConfigURL'); // 与 PAC 互斥
     regSet('ProxyServer', 'REG_SZ', `${host}:${port}`);
@@ -136,9 +146,20 @@ function enable(host, port, extraDomains = []) {
   }
 }
 
-/** 关闭并还原进入前的值 */
+/**
+ * 关闭并还原进入前的值。
+ *
+ * 关键：拿不到快照时**绝不能写注册表**。旧实现是 `restore(before || snapshot())`，
+ * 快照丢了就把「当前值」（也就是 Polaris 自己刚写进去的 127.0.0.1:<内核端口>）
+ * 当成用户的原始设置还原回去 —— 结果是内核端口一换，用户的系统代理就永久指向一个
+ * 死端口，而且此后再也还原不回来（快照被污染成 Polaris 自己的值）。
+ */
 function disable(before) {
-  restore(before || snapshot());
+  if (!before || typeof before !== 'object') {
+    log.warn('sysproxy disable skipped: no snapshot to restore');
+    return;
+  }
+  restore(before);
   log.info('system proxy restored');
 }
 

@@ -60,9 +60,9 @@
     <div class="section-label">会话</div>
     <div class="card">
       ${row("代理模式", h(s.mode), { click: "proxy-mode" })}
-      ${row("本次上传", h(s.up_total), { chev: false, vcls: "strong" })}
-      ${row("本次下载", h(s.down_total), { chev: false, vcls: "strong" })}
-      ${row("运行时间", h(s.uptime), { chev: false, vcls: "strong" })}
+      ${row("本次上传", h(s.up_total), { chev: false, vcls: "strong", id: "live-up-total" })}
+      ${row("本次下载", h(s.down_total), { chev: false, vcls: "strong", id: "live-down-total" })}
+      ${row("运行时间", h(s.uptime), { chev: false, vcls: "strong", id: "live-uptime" })}
     </div>
     <div class="section-label">当前套餐</div>
     <div class="card">

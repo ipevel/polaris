@@ -110,12 +110,31 @@ function createWindow() {
 
   win.once('ready-to-show', () => win.show());
 
-  // 开发期把渲染层异常也收进日志，否则只在 DevTools 里一闪而过
+  // 开发期把渲染层异常也收进日志，否则只在 DevTools 里一闪而过。
+  // 只把 level>=3（error）当异常收：警告混进来会让「有没有渲染层错误」这个自检信号失效。
   const consoleErrors = [];
-  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+  const consoleWarnings = [];
+  win.webContents.on('console-message', (...a) => {
+    // 老签名 (event, level:number, message, line, sourceId)；
+    // 新 Electron 只给一个事件对象、level 是 'error'|'warning'|'info' 字符串。两种都吃。
+    let level, message, line, sourceId;
+    if (a.length === 1 && a[0] && typeof a[0] === 'object' && 'level' in a[0]) {
+      const e = a[0];
+      level = e.level === 'error' ? 3 : (e.level === 'warning' ? 2 : 1);
+      message = e.message; line = e.lineNumber; sourceId = e.sourceId;
+    } else {
+      [, level, message, line, sourceId] = a;
+    }
     const where = `${path.basename(sourceId || '')}:${line}`;
-    if (level >= 2) { consoleErrors.push(`${where}: ${message}`); log.error(`renderer ${where}:`, message); }
-    else log.info(`renderer ${where}:`, message);
+    if (level >= 3) {
+      consoleErrors.push(`${where}: ${message}`);
+      log.error(`renderer ${where}:`, message);
+    } else if (level === 2) {
+      consoleWarnings.push(`${where}: ${message}`);
+      log.warn(`renderer ${where}:`, message);
+    } else {
+      log.info(`renderer ${where}:`, message);
+    }
   });
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     consoleErrors.push(`load ${code} ${desc} ${url}`);
@@ -126,6 +145,7 @@ function createWindow() {
     log.error('preload failed:', file, err && err.message);
   });
   win.__consoleErrors = consoleErrors;
+  win.__consoleWarnings = consoleWarnings;
 
   win.on('close', (e) => {
     if (quitting) return;
@@ -195,6 +215,42 @@ app.whenReady().then(async () => {
       quitting = true;
       app.exit(result.fail ? 1 : 0);
     }, 1200);
+  }
+
+  // 运行时功能测试：真界面操作 → 真 IPC → 真内核，每步都从内核回读校验。
+  // 开关要写成 --soak=N（位置参数放在开关后面会让 Electron 在主进程起来前静默退出，见 DEVNOTES A-13）
+  if (process.argv.includes('--rttest')) {
+    const { run } = require('../scripts/rt-test');
+    const soakArg = process.argv.find((a) => a.startsWith('--soak='));
+    const si = process.argv.indexOf('--soak');
+    const soakMinutes = Number(soakArg ? soakArg.split('=')[1] : (si >= 0 ? process.argv[si + 1] : 0)) || 0;
+    const keep = process.argv.includes('--keep');
+    setTimeout(async () => {
+      let result = { pass: 0, fail: 1, failures: ['运行时测试未运行'], steps: [], notes: [] };
+      const lines = [];
+      const reportPath = paths.file('rt-report.txt');
+      // 边跑边落盘：跑到一半卡住/被杀也能看到进度（stdout 在 GUI 进程里本来就看不见）
+      const log = (m) => {
+        lines.push(m);
+        try { console.log(m); } catch (_) {}
+        try { fs.appendFileSync(reportPath, m + '\n', 'utf8'); } catch (_) {}
+      };
+      try {
+        result = await run(mainWindow, { log, keep, soakMinutes });
+      } catch (e) {
+        result.failures.push(String((e && e.stack) || e));
+      }
+      try {
+        fs.mkdirSync(paths.data(), { recursive: true });
+        fs.writeFileSync(reportPath,
+          [`Polaris 运行时功能测试 ${new Date().toISOString()}`,
+            `结果：${result.pass} 通过 / ${result.fail} 失败`,
+            result.failures.length ? '失败项：\n' + result.failures.map((f) => '  - ' + f).join('\n') : '失败项：无',
+            '', ...lines].join('\n'), 'utf8');
+      } catch (_) {}
+      quitting = true;
+      app.exit(result.fail ? 1 : 0);
+    }, 1500);
   }
 });
 
@@ -291,7 +347,11 @@ app.on('will-quit', async () => {
 });
 
 process.on('uncaughtException', (e) => {
-  log.error('uncaughtException:', e && e.stack);
+  const msg = String((e && e.message) || e);
+  // stdout 管道断了（父进程/控制台退出）不是程序缺陷；而 log.error 自己还要写一次
+  // stdout，不特判就会无限递归刷屏、应用卡在报错循环里（DEVNOTES A-14）
+  if (/EPIPE|EBADF|ERR_STREAM_DESTROYED/.test(msg)) return;
+  try { log.error('uncaughtException:', e && e.stack); } catch (_) {}
   try {
     if (mainWindow && !IS_DEV) {
       dialog.showMessageBox(mainWindow, {
@@ -307,7 +367,7 @@ process.on('uncaughtException', (e) => {
 });
 
 process.on('unhandledRejection', (e) => {
-  log.error('unhandledRejection:', e && (e.stack || e));
+  try { log.error('unhandledRejection:', e && (e.stack || e)); } catch (_) {}
 });
 
 module.exports = { showMain, getWindow: () => mainWindow, setTray: (t) => { tray = t; }, getTray: () => tray, updateTray, quit: () => { quitting = true; app.quit(); } };

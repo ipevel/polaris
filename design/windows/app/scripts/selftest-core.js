@@ -10,9 +10,10 @@
  *   3. 内置分流规则（27 组 × 48 个离线规则集，策略组语义、订阅冲突、开关）
  *   4. 直连域名与更新地址（订阅域名必须真被记住；Windows 不得用安卓 APK 地址）
  *   5. 自动更新（真下载 → zip 校验 → 真解压 → 结构校验 → 替换脚本）
- *   6. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
+ *   6. 系统代理还原护栏（快照丢了绝不许写注册表 —— 否则用户的系统代理被永久改掉）
+ *   7. 真实拉起 mihomo sidecar，控制面可用，节点可列出、可切换、可测速
  *
- * 第 6 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
+ * 第 7 步用一份本地合成的订阅（指向 127.0.0.1 的哑节点），验证的是
  * "内核能被我们生成的配置喂起来并被控制"，不是"能翻墙"。
  */
 
@@ -544,7 +545,42 @@ async function testDirectAndUpdate() {
   }
 }
 
-/* ---------------- 6. 地区识别 ---------------- */
+/* ---------------- 6. 系统代理还原的护栏 ---------------- */
+
+/**
+ * 真 bug 回归：sysproxy.disable(null) 旧实现是 `restore(before || snapshot())`，
+ * 快照丢了就把「当前值」（Polaris 自己刚写进去的 127.0.0.1:<内核端口>）当成用户的
+ * 原始设置写回去 —— 用户的系统代理从此永久指向一个死端口。
+ * 这里断言「拿不到快照时一个字都不写注册表」。
+ */
+function testSysproxyGuard() {
+  section('系统代理还原护栏');
+  const sysproxy = require('../electron/net/sysproxy');
+  const before = sysproxy.snapshot();
+  if (!before) {
+    check('能读到当前系统代理设置（护栏测试的前提）', false, 'reg query 没读出任何值');
+    return;
+  }
+  check('snapshot() 能读出 ProxyEnable/ProxyServer', before.ProxyEnable != null && before.ProxyServer != null,
+    JSON.stringify(before));
+  sysproxy.disable(null);
+  check('disable(null) 不写注册表（不把当前值当成用户原始值）',
+    JSON.stringify(sysproxy.snapshot()) === JSON.stringify(before), JSON.stringify(sysproxy.snapshot()));
+  sysproxy.disable(undefined);
+  check('disable(undefined) 不写注册表', JSON.stringify(sysproxy.snapshot()) === JSON.stringify(before));
+  sysproxy.restore(null);
+  check('restore(null) 不写注册表（否则会把用户配置删掉）',
+    JSON.stringify(sysproxy.snapshot()) === JSON.stringify(before));
+  // 快照内容必须原样还原：用「当前值」当快照调一次，注册表应保持完全一致
+  sysproxy.restore(before);
+  check('restore(有效快照) 幂等：注册表逐字段不变',
+    JSON.stringify(sysproxy.snapshot()) === JSON.stringify(before),
+    `${JSON.stringify(before)} → ${JSON.stringify(sysproxy.snapshot())}`);
+  const bp = sysproxy.bypassList(['example.com']);
+  check('bypassList 含内网段与额外域名', /<local>/.test(bp) && /192\.168\.\*/.test(bp) && /example\.com/.test(bp), bp);
+}
+
+/* ---------------- 7. 地区识别 ---------------- */
 
 function testRegion() {
   section('地区识别');
@@ -663,6 +699,7 @@ async function testKernel() {
   testRulesets();
   await testDirectAndUpdate();
   await testUpdater();
+  testSysproxyGuard();
   testRegion();
   await testKernel();
   console.log(`\n结果：${pass} 通过 / ${fail} 失败`);

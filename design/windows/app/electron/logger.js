@@ -26,6 +26,28 @@ function redact(value, depth = 0) {
 
 let stream = null;
 let disabled = false;
+let stdoutBroken = false;
+
+/**
+ * 往 stdout 写日志。
+ * 必须容错：父进程/控制台关闭后管道会断，process.stdout.write 抛 EPIPE，
+ * 而 uncaughtException 处理器又会调 log.error → 再写 stdout → 无限递归刷屏，
+ * 应用卡在报错循环里不再干活（DEVNOTES A-14）。断一次就永久闭嘴，文件日志照常。
+ */
+function toStdout(line) {
+  if (stdoutBroken) return;
+  if (process.env.POLARIS_LOG_STDOUT === '0' || process.env.NODE_ENV === 'production') return;
+  try {
+    process.stdout.write(line);
+  } catch (_) {
+    stdoutBroken = true;
+  }
+}
+
+// 管道异步断开时会在流上抛 error 事件；没有监听器就会变成未捕获异常
+try {
+  process.stdout.on('error', () => { stdoutBroken = true; });
+} catch (_) {}
 
 function open() {
   if (stream || disabled) return stream;
@@ -68,9 +90,7 @@ function safeJson(v) {
 
 function write(level, args) {
   const line = fmt(level, args);
-  if (process.env.POLARIS_LOG_STDOUT !== '0' && process.env.NODE_ENV !== 'production') {
-    process.stdout.write(line);
-  }
+  toStdout(line);
   const s = open();
   if (s) s.write(line);
 }

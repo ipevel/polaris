@@ -1,6 +1,7 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-09（内置分流已实装，见 §二.4 / §三 C-6 C-7）
+> 最后更新：2026-10-10（新增第四条自检线「运行时功能测试」：真界面驱动 + 从内核回读 + 长后台浸泡，
+> 见 §四；顺带修掉系统代理快照丢失、首页会话数字不刷新、EPIPE 死循环，见 §三 A-14 A-15 A-16）
 > 分支：`feat/windows-portable`（基线 `origin/ui/windows-design` @ `5328b55`）
 > 应用根目录：`design/windows/app/`
 
@@ -16,32 +17,33 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,914,150 B（~186 MB�
 
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。已验证。
 
-> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 75/0、`--doctor` 82/0、`--smoke` `ok:true`，
+> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 76/0、`--doctor` 82/0、`--smoke` `ok:true`，
 > `data/rules` 自动铺出 48 个种子。
 
 ### 规模
 
 | | |
 | --- | --- |
-| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` |
-| 相对基线 | +115,989 / −902 行，103 文件 |
-| 应用代码 | 主进程 ~3,460 行 JS，渲染层 ~1,423 行 JS，样式 ~380 行 |
+| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` `00846cc` |
+| 相对基线 | +115,989 / −902 行，103 文件（未含本轮自动更新与运行时测试） |
+| 应用代码 | 主进程 ~3,900 行 JS，渲染层 ~1,450 行 JS，样式 ~380 行 |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
 | 内置分流 | 48 个本地规则集 + 27 个分流组，1.42 MB（`resources/rules/`） |
 
-### 三条自检线（成品包自带，目标机器无需源码）
+### 四条自检线（成品包自带，目标机器无需源码）
 
 | 命令 | 规模 | 覆盖 |
 | --- | --- | --- |
-| `npm test` | 150 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、自动更新（下载/解压/替换脚本）、地区识别、真实拉起 mihomo |
+| `npm test` | 156 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、自动更新（下载/解压/替换脚本）、系统代理护栏、地区识别、真实拉起 mihomo |
 | `npm run test:e2e` | 82 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、自动更新（IPC + 进度事件）、系统代理还原 |
-| `Polaris.exe --uitest` | 75 项 | **界面驱动**：拖拽区、最大化、窄窗口（1100px）、滚动、填表点登录、逐页切换、分流页开关、流量曲线、弹窗、更新弹窗三种形态、设置页不自我重绘、两套主题的文字对比度 |
+| `Polaris.exe --uitest` | 76 项 | **界面驱动**：拖拽区、最大化、窄窗口（1100px）、滚动、填表点登录、逐页切换、分流页开关、流量曲线、弹窗、更新弹窗三种形态、设置页不自我重绘、两套主题的文字对比度 |
 | `Polaris.exe --doctor` | 82 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
+| `Polaris.exe --rttest` | 63 项 | **运行时功能测试**：真界面点连接/切模式/开关分流组 → 每次都从内核回读；异常路径（内核强杀自愈、面板挂掉）；`--soak=N` 追加 N 分钟浸泡 |
 | `Polaris.exe --smoke` | — | 窗口能起 + DOM 渲染断言 |
 | `Polaris.exe --updtest <zip>` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份** |
 
-当前全绿：**150 / 82 / 75**（开发态与成品包各跑一遍）。
+当前全绿：**156 / 82 / 76 / 63**（开发态与成品包各跑一遍）。
 
 ### 已实测通过
 
@@ -53,6 +55,14 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,914,150 B（~186 MB�
 - 内置分流：16 个默认规则集被内核**真正加载**（`/providers/rules` 逐个 `ruleCount > 0`，合计 > 1 万条），
   运行中开关分流组能热重载并让内核加载新规则集
 - 自动更新：下载（含 302）→ 校验 zip → 解压 → 写替换脚本 → 覆盖安装目录 → 重启，全程在成品包的**拷贝**上真跑过一遍
+- 运行时功能测试（`--rttest`，真界面驱动 + 内核回读）：点界面连接 → `/configs` 的 `mixed-port` 与
+  `core.mixedPort()` 一致、控制面只绑 `127.0.0.1`、`/traffic` WebSocket 真推数据、经代理 204；
+  国外域名命中 `RuleSet(gs_geolocation_ncn)`（链 `香港 01 → 节点选择 → 🌏 国外穿墙`）、国内域名走 DIRECT；
+  三种代理模式切换后 `/configs.mode` 跟着变；界面开关分流组后内核 `/providers/rules` 数量随之增减
+  （合计 56,283 条规则）；内核被 `taskkill /F` 后应用 20s 内不再谎报已连接、再点一次能自愈成新 pid；
+  面板进程被杀后界面不崩、代理仍 204；断开后系统代理 4 个值逐项回到进入测试前的状态
+- 长后台浸泡（`--rttest --soak=N`）：每分钟采样主进程/内核内存、线程、句柄、节点延迟与吞吐，
+  窗口周期性收进托盘，结束时按四分位比较首末段漂移（结果见 `data/rt-samples.jsonl`）
 
 ### 未验证 / 未做
 
@@ -320,6 +330,54 @@ app.setPath('sessionData', electronData);
 结论：**开关放位置参数前面，或者一律用 `--x=y`**。演练脚本已按等号形式写。
 （这只影响带命令行开关的自检/演练路径，正常用户是点界面触发的，不受影响。）
 
+**A-14 管道断了以后，日志会把应用卡死在报错循环里（11.63 GB 的日志）**
+
+用 `pwsh -Command "... electron.exe ... *> out.txt"` 起 Electron 时，PowerShell **不等 GUI 子进程**
+就退出了，管道随之关闭。之后应用每一次 `process.stdout.write` 都抛
+`EPIPE: broken pipe, write`（`logger.js` → 被 `main.js` 的 `uncaughtException` 接住），
+而那个处理器自己又调 `log.error` 写 stdout —— **同毫秒递归刷屏**，应用不再前进。
+
+实测证据：`.devdata/data/logs/polaris.log.1` 长到 **11.63 GB**，前 3000 行里 270 行是同一条 EPIPE。
+
+修法：`logger.js` 里给 stdout 加"断了就永久闭嘴"的开关（`stdoutBroken` + try/catch，
+并监听 `process.stdout.on('error')`）；`main.js` 的 `uncaughtException` 对
+`/EPIPE|EBADF|ERR_STREAM_DESTROYED/` 直接 return（这不是程序缺陷，且必须避免递归），
+`unhandledRejection` 同样包 try/catch。
+
+顺带一条：起 GUI 程序做诊断要用 Node `spawn(exe, args, { stdio: 'ignore' })`
+（本机 `E:\AI\_run.js` 就是干这个的），不要用 PowerShell —— 它不等 GUI 进程，
+而且本机 `Get-ChildItem Env:` / `Start-Process` 还会因为 `NO_PROXY` 与 `no_proxy` 重复键直接抛错。
+
+**A-15 系统代理快照一丢，就把 Polaris 自己的端口当成"用户原值"写回注册表（最危险的一个）**
+
+旧代码 `disable(before)` = `restore(before || snapshot())`。看着像"兜底"，实际是：
+**快照丢了的时候，它把当前注册表值（也就是 Polaris 刚写进去的 `127.0.0.1:<内核端口>` 和
+Polaris 自己的 bypass 列表）当成用户的原始设置写回去**。后果是用户的系统代理永久指向一个死端口，
+而且这个被污染的值会继续当快照用，再也还原不回来。
+
+快照丢失的现实路径：`manager.js` 里 mihomo 的 `exit` 处理器会 `disable(S.proxySnapshot)` 并把
+`S.proxySnapshot = null`，之后 `disconnect()`/`shutdown()` 再调一次 `disable(null)` ——
+第二次就把污染值写回去了。
+
+修法（护栏，宁可不动也不乱写）：
+- `disable(before)` / `restore(snap)` 拿到非对象一律只 `log.warn` 后 return，**绝不写注册表**；
+- `snapshot()` 三个值全读不到时返回 `null`（读失败 ≠ 用户本来没设代理，否则"还原"会把用户配置清掉）；
+- `enable()` 拿不到快照就 warn 并放弃（改了却还原不回去 = 永久改掉用户设置）。
+
+自检：`selftest-core.js` 的 `testSysproxyGuard()` 断言 `disable(null)`/`disable(undefined)`/`restore(null)`
+前后注册表 JSON **一字不差**；运行时测试在收尾断言"断开后自动还原到进入前的值"。
+
+**A-16 首页会话数字只有整页重绘才刷新（连上之后就冻住了）**
+
+首页「本次上传 / 本次下载 / 运行时间」是 `Views.home` 渲染出来的，而 `render()` 只在
+**连接态或 phase 变化**时触发；`paintLive()` 只更新下载/上传两个速率。
+结果：连上以后这三个数字一直停在最后一次重绘的值，收进托盘再恢复也一样
+（运行时测试的 5.2 就是这么抓到的：界面 `00:00:31` vs 内核 `00:00:48`）。
+
+修法：给三行加 id（`live-up-total` / `live-down-total` / `live-uptime`），
+`paintLive()` 里跟着状态推送逐个补。自检补了一条"id 齐全"的防回归断言
+（`selftest-ui.js`）—— 删掉 id 就会静默退回"数字永远不动"。
+
 ---
 
 ### B. 打包
@@ -539,6 +597,24 @@ mihomo 的 `type: file` provider 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Pa
 `api.js` 的内置 Mock，其 `get_settings` 返回 `authed: true`，界面直接进首页——**是 mock 把被测前提改掉了**，
 不是界面坏了。界面自检必须走真实 IPC + 自带的假面板（`selftest-ui.js` 自己 `mockPanel.start(0)`）。
 
+**E-7 运行时测试（照安卓那套六步法）：先断言"点击命中了元素"，再怀疑产品**
+
+`rt-test.js` 第一版白追了两轮假 bug，教训都在这三条上：
+
+- **点击要断言命中**。`el.click()` 找不到元素时是**静默 no-op**，表现和"点了没生效"一模一样。
+  第一版用 `.nav-item[data-route="routing"]` 进分流页 —— 侧边栏压根没这一项（设计稿就只有
+  首页/节点/流量/我的/设置五项），于是整节分流页的点击全部落空，报出 4 条"假 bug"。
+  现在每次点击未命中都记进 `missedClicks`，结尾统一断言"没有静默 no-op"。
+- **挑测试对象要挑对**。开分流组时挑了"第一个关闭的组"，结果挑到**内联组**（只有内联规则、
+  不带 rule-provider 文件），打开它内核 provider 数量当然不变 —— 又一条假 bug。
+  现在挑 `!enabled && !inline && count > 0`。
+- **设计上的拦截不是 bug**。连接态下点「关系统代理」会被拦住并提示"断开连接后再关闭系统代理"
+  （否则流量绕过内核）。测试该断言"拦住了 + 注册表没动"，而不是"关掉了 + 已还原"。
+
+另外：**操作之后一律从内核回读**（`/configs`、`/proxies`、`/connections`、`/providers/rules`），
+不要相信界面的乐观更新 —— 这正是运行时测试和 UI 自检的分工：UI 自检管"点得到、画得出"，
+运行时测试管"点下去之后内核真的变了"。
+
 ---
 
 ### F. 本机环境 / 工具链
@@ -570,9 +646,12 @@ npm run mock                  # 演示数据，不连内核
 npm start                     # 真实模式
 
 # 自检
-npm test                      # 核心层 145 项（纯 Node）
+npm test                      # 核心层 156 项（纯 Node）
 npm run test:e2e              # 端到端 82 项（起真 mihomo + 假面板 + 真流量）
 npm run test:e2e -- --sysproxy  # 连系统代理一起验（写 HKCU 并精确还原）
+node_modules\electron\dist\electron.exe . --uitest        # 界面 76 项
+node_modules\electron\dist\electron.exe . --rttest        # 运行时功能测试 63 项（真界面点 + 内核回读）
+node_modules\electron\dist\electron.exe . --rttest --soak=20   # 上面这套 + 20 分钟浸泡（长后台）
 
 # 打包
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
@@ -584,9 +663,15 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 Polaris.exe --doctor            端到端自检，报告 → data/doctor-report.txt
 Polaris.exe --doctor --sysproxy 连系统代理一起验
 Polaris.exe --uitest            界面驱动自检，报告 → data/uitest-report.txt
+Polaris.exe --rttest            运行时功能测试，报告 → data/rt-report.txt
+Polaris.exe --rttest --soak=20  再加 20 分钟浸泡，逐分钟采样 → data/rt-samples.jsonl
 Polaris.exe --mock              演示数据启动，看界面
 Polaris.exe --smoke             起窗口 + DOM 断言，结果 → data/smoke-result.json
 ```
+
+> `--rttest` 会真的连接内核、挂系统代理、切分流组、杀内核进程做自愈演练，
+> 并在收尾时把系统代理还原成"进入测试前的值"；`--keep` 可以留连接不还原（调试用）。
+> 它跑的是**真界面 + 真内核 + 假面板**（面板是本地 mock，所以不需要账号）。
 
 演练自我替换（**会覆盖当前目录，务必先整个拷一份再跑**）：
 
@@ -633,8 +718,10 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
      但要注意 `gs_*` 是 domain/`gp_*` 是 ipcidr/`acl_*` 是 classical，behavior 不能写错
 
 5. **补 UI 层面的更多断言**
-   目前 75 项（含窄窗口 1100px 与两套主题的对比度）。还可以补：长列表性能（要一份几百节点的订阅）、
+   目前 76 项（含窄窗口 1100px 与两套主题的对比度）。还可以补：长列表性能（要一份几百节点的订阅）、
    键盘可达性（Tab 顺序、Esc 关弹窗）、多屏 DPI 缩放。
+   运行时测试（`--rttest`，63 项）已经把"点下去之后内核真的变了"这一层补齐了；
+   下一层可以补"真实面板 + 真机 TUN"下的同一套断言。
 
 6. **浅色主题的三级文字对比度（设计决策，非代码问题）**
    `design.css` 的 `--text3: #8e8e93` 在 `--bg: #f5f5f7` 上实测 **2.99:1**，低于 WCAG AA 的 4.5:1。

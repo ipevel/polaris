@@ -133,7 +133,10 @@
       return await fn();
     } catch (e) {
       const msg = (e && e.message) ? e.message : String(e);
-      console.error(label, e);
+      // 这是「已处理」的失败（下面会弹 toast），用 warn 而不是 error：
+      // 否则断网/面板挂掉时满屏 error，真正的未捕获异常被淹掉，自检也没法拿
+      // 「有没有 console error」当异常信号。
+      console.warn(label, e);
       toast(label + "失败：" + msg);
       return null;
     }
@@ -730,6 +733,17 @@
     const d = $("#down-speed"), u = $("#up-speed");
     if (d) d.textContent = fmt.speed(state.down_speed);
     if (u) u.textContent = fmt.speed(state.up_speed);
+    // 会话三个数字（本次上传/下载、运行时间）原来只有整页 render() 才刷新，
+    // 而 render() 只在「连接态或阶段变化」时触发 —— 连上之后它们会一直停在
+    // 最后一次重绘的值（收进托盘再恢复也一样）。状态每秒都推，这里逐个补上。
+    const set = (id, v) => {
+      if (v === undefined || v === null) return;
+      const el = document.querySelector("#" + id + " .v span");
+      if (el) el.textContent = String(v);
+    };
+    set("live-up-total", state.up_total);
+    set("live-down-total", state.down_total);
+    set("live-uptime", state.uptime);
   }
 
   /* ---------------- 数据装载 ---------------- */
