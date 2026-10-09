@@ -1,0 +1,1 @@
+{"name":"polaris-windows","private":true,"scripts":{"build":"tauri build","dev":"tauri dev","preview":"npx serve src"},"type":"module","version":"1.7.4"}
