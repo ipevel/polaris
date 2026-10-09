@@ -127,20 +127,46 @@ object ErrorMessages {
     /**
      * 礼品卡兑换失败文案映射：识别后端常见错误描述转本地化提示；
      * 未识别返回 null（调用方决定透传后端原文还是兜底文案）。
+     *
+     * 三档必须分开，不能全塌到「无效或已过期」：「已使用」要告诉用户这张卡已被用掉
+     * （不是他填错了），「不满足使用条件」要指向套餐/使用门槛，否则用户只会反复重填同一个码。
+     * 顺序有意义：已使用 → 不满足条件 → 无效/过期，否则「已使用」会被「使用限制」类关键词抢走。
+     * 未识别与「unknown / save failed」统一走既有 error_gift_card_generic（语义等同上游 failed）。
      */
     fun giftCardMessageRes(backendMessage: String?): Int? {
         val message = backendMessage ?: return null
         return when {
-            message.contains("不存在", ignoreCase = true) ||
-                message.contains("无效", ignoreCase = true) ||
-                message.contains("已过期", ignoreCase = true) ||
-                message.contains("已使用", ignoreCase = true) ||
+            message.contains("已使用", ignoreCase = true) ||
+                message.contains("被使用", ignoreCase = true) ||
+                message.contains("使用过", ignoreCase = true) ||
                 message.contains("已兑换", ignoreCase = true) ||
+                message.contains("already been used", ignoreCase = true) ||
+                message.contains("already used", ignoreCase = true) ||
+                message.contains("redeemed", ignoreCase = true) -> R.string.error_gift_card_used
+
+            message.contains("使用限制", ignoreCase = true) ||
+                message.contains("使用条件", ignoreCase = true) ||
+                message.contains("不满足", ignoreCase = true) ||
+                message.contains("limit", ignoreCase = true) ||
+                message.contains("not suitable", ignoreCase = true) ||
+                message.contains("eligible", ignoreCase = true) ||
+                message.contains("condition", ignoreCase = true) -> R.string.error_gift_card_unavailable
+
+            message.contains("不存在", ignoreCase = true) ||
+                message.contains("不可用", ignoreCase = true) ||
+                message.contains("停用", ignoreCase = true) ||
+                message.contains("无效", ignoreCase = true) ||
+                message.contains("过期", ignoreCase = true) ||
+                message.contains("长度", ignoreCase = true) ||
                 message.contains("not found", ignoreCase = true) ||
+                message.contains("gift card does not exist", ignoreCase = true) ||
+                message.contains("gift card has expired", ignoreCase = true) ||
                 message.contains("invalid", ignoreCase = true) ||
                 message.contains("expired", ignoreCase = true) ||
-                message.contains("used", ignoreCase = true) ||
-                message.contains("redeemed", ignoreCase = true) -> R.string.error_gift_card_invalid
+                message.contains("length", ignoreCase = true) -> R.string.error_gift_card_invalid
+
+            message.contains("unknown", ignoreCase = true) ||
+                message.contains("save failed", ignoreCase = true) -> R.string.error_gift_card_generic
 
             else -> null
         }

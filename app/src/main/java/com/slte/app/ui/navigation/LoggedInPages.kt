@@ -33,6 +33,7 @@ import com.slte.app.ui.screen.plans.PlansViewModel
 import com.slte.app.ui.screen.plans.PurchaseFlow
 import com.slte.app.ui.screen.plans.PurchaseStep
 import com.slte.app.ui.screen.plans.PurchaseViewModel
+import com.slte.app.ui.screen.profile.LogoutConfirmSheet
 import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.screen.server.ServerViewModel
 import com.slte.app.ui.screen.settings.AppearanceMode
@@ -143,6 +144,10 @@ internal fun ProfilePageContent(
     LaunchedEffect(Unit) { profileViewModel.refresh() }
     val data by profileViewModel.data.collectAsStateWithLifecycle()
 
+    // 退出登录必须二次确认：v4 有 LogoutConfirmSheet，v5 迁移时把 onLogout 直接接到了
+    // logout() 上，误触即掉线（且会连带清掉本地会话）。这里把确认弹层接回来。
+    var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
+
     val giftCardState by giftCardViewModel.state.collectAsStateWithLifecycle()
     val giftCardTip by giftCardViewModel.tip.collectAsStateWithLifecycle()
     val giftCardRedeemed by giftCardViewModel.redeemed.collectAsStateWithLifecycle()
@@ -183,10 +188,20 @@ internal fun ProfilePageContent(
         onNotices = onNotice,
         onSettings = onSettings,
         onAbout = onAbout,
-        onLogout = profileViewModel::logout,
+        onLogout = { showLogoutConfirm = true },
         onNavSelect = onNavSelect,
         onTelegram = onTelegramClick,
     )
+
+    if (showLogoutConfirm) {
+        LogoutConfirmSheet(
+            onConfirm = {
+                showLogoutConfirm = false
+                profileViewModel.logout()
+            },
+            onDismiss = { showLogoutConfirm = false },
+        )
+    }
 
     if (giftCardState.visible) {
         GiftCardRedeemSheet(

@@ -438,6 +438,8 @@
     <string name="gift_card_redeem">Redeem</string>
     <string name="gift_card_code_hint">Enter redemption code</string>
     <string name="gift_card_success_toast">Redeemed successfully</string>
+    <string name="error_gift_card_used">This redemption code has already been used</string>
+    <string name="error_gift_card_unavailable">Your account does not meet this code\'s requirements</string>
     <string name="error_gift_card_invalid">Invalid or expired redemption code</string>
     <string name="error_gift_card_generic">Redemption failed, please try again later</string>
     <string name="purchase_confirm_order">Confirm order</string>

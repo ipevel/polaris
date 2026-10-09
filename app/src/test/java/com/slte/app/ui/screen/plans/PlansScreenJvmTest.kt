@@ -13,6 +13,8 @@ import com.slte.app.data.repository.OrderRepository
 import com.slte.app.support.FakeAuthApi
 import com.slte.app.support.RobolectricTestApplication
 import com.slte.app.ui.ContentPhase
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemState
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemViewModel
 import com.slte.app.ui.screen.profile.ProfileData
 import com.slte.app.ui.screen.profile.ProfileViewModel
 import com.slte.app.ui.theme.SlteTheme
@@ -69,6 +71,22 @@ class PlansScreenJvmTest {
         return vm
     }
 
+    /**
+     * 套餐页顶栏的礼品卡入口依赖 [GiftCardRedeemViewModel]。默认值是 `hiltViewModel()`，
+     * 而本测试用裸 `ComponentActivity` + 非 Hilt Application，拿不到 Hilt 组件，
+     * 会抛 `Given component holder class ... does not implement interface
+     * dagger.hilt.internal.GeneratedComponent`，故必须显式传入。
+     *
+     * 三个 StateFlow 必须桩成真的（relaxed mock 返回普通值，collect 处会 CCE）。
+     */
+    private fun giftCardViewModel(): GiftCardRedeemViewModel {
+        val vm = mockk<GiftCardRedeemViewModel>(relaxed = true)
+        every { vm.state } returns MutableStateFlow(GiftCardRedeemState())
+        every { vm.tip } returns MutableStateFlow(null)
+        every { vm.redeemed } returns MutableStateFlow(0)
+        return vm
+    }
+
     private fun content() {
         composeRule.setContent {
             SlteTheme {
@@ -77,6 +95,7 @@ class PlansScreenJvmTest {
                     viewModel = viewModel,
                     purchaseViewModel = purchaseViewModel(),
                     profileViewModel = profileViewModel(),
+                    giftCardViewModel = giftCardViewModel(),
                 )
             }
         }

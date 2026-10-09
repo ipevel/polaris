@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +39,11 @@ import com.slte.app.domain.model.SubscribeInfo
 import com.slte.app.ui.ContentPhase
 import com.slte.app.ui.component.RichText
 import com.slte.app.ui.component.formatCurrency
+import com.slte.app.ui.component.rememberToast
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemSheet
+import com.slte.app.ui.screen.giftcard.GiftCardRedeemViewModel
 import com.slte.app.ui.screen.profile.ProfileViewModel
+import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.v5.ButtonStyle
 import com.slte.app.ui.v5.ChipTone
@@ -53,6 +58,7 @@ import com.slte.app.ui.v5.V5PageScaffold
 import com.slte.app.ui.v5.V5PullRefresh
 import com.slte.app.ui.v5.V5StateScrollable
 import com.slte.app.ui.v5.V5TopBar
+import com.slte.app.ui.v5.V5TopIconButton
 import com.slte.app.utils.FormatUtils
 
 /**
@@ -74,6 +80,10 @@ fun PlansScreen(
     viewModel: PlansViewModel = hiltViewModel(),
     purchaseViewModel: PurchaseViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
+    // 与个人中心共用同一个 GiftCardRedeemViewModel 实例：全仓无 NavHost，无 key 的
+    // hiltViewModel() 一律落在 Activity store 并按类名取，因此两页拿到同一个 VM，
+    // 兑换成功后的余额/流量回拉、toast 与个人中心逐项一致。
+    giftCardViewModel: GiftCardRedeemViewModel = hiltViewModel(),
 ) {
     val data by viewModel.data.collectAsStateWithLifecycle()
     val purchaseStep by purchaseViewModel.step.collectAsStateWithLifecycle()
@@ -83,6 +93,13 @@ fun PlansScreen(
         V5TopBar(
             title = stringResource(R.string.plans_title),
             onBack = onBack,
+            actions = {
+                V5TopIconButton(
+                    icon = SlteIcons.InviteCode,
+                    onClick = giftCardViewModel::open,
+                    contentDescription = stringResource(R.string.gift_card_title),
+                )
+            },
         )
 
         val errorRes = data.errorMessageRes
@@ -143,6 +160,31 @@ fun PlansScreen(
                 }
             }
         }
+    }
+
+    // 礼品卡兑换弹层与提示：与个人中心共用同一个 GiftCardRedeemViewModel，但个人中心那份
+    // 渲染在 ProfilePageContent 里、管不到本页，所以这里必须自己渲染弹层与 toast。
+    val giftCardState by giftCardViewModel.state.collectAsStateWithLifecycle()
+    val giftCardTip by giftCardViewModel.tip.collectAsStateWithLifecycle()
+    val giftCardRedeemed by giftCardViewModel.redeemed.collectAsStateWithLifecycle()
+    val toast = rememberToast()
+
+    LaunchedEffect(giftCardTip) {
+        giftCardTip?.messageRes?.let { toast.show(it) }
+        if (giftCardTip != null) giftCardViewModel.clearTip()
+    }
+    // 兑换成功会改变余额/流量/到期，必须回拉当前套餐卡，否则用户看到的是旧数据。
+    LaunchedEffect(giftCardRedeemed) {
+        if (giftCardRedeemed > 0) profileViewModel.refresh()
+    }
+
+    if (giftCardState.visible) {
+        GiftCardRedeemSheet(
+            state = giftCardState,
+            onCodeChange = giftCardViewModel::updateCode,
+            onSubmit = giftCardViewModel::submit,
+            onDismiss = giftCardViewModel::dismiss,
+        )
     }
 
     PurchaseFlow(

@@ -90,8 +90,15 @@ internal fun V5MeScreen(
                                 color = c.text3,
                             )
                         }
-                        data.daysUntilExpired?.let { days ->
-                            V5Chip(if (days > 0) ChipTone.OK else ChipTone.DANGER, stringResource(R.string.v5_days_left, days))
+                        // 判据与首页 PlanUsageCard 完全一致（isValid = hasPlan && !expired）：
+                        // 此前这里只看 days > 0，过期用户（days == 0 但对象有效）会看到
+                        // 「剩 0 天」，与首页同一份数据给出的「已过期」自相矛盾。
+                        if (data.isValid) {
+                            data.daysUntilExpired?.takeIf { it > 0 }?.let { days ->
+                                V5Chip(ChipTone.OK, stringResource(R.string.v5_days_left, days))
+                            }
+                        } else {
+                            V5Chip(ChipTone.DANGER, stringResource(R.string.usage_expired))
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(V5Spacing.dp8)) {
