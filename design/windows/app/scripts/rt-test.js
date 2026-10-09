@@ -56,15 +56,18 @@ function portOpen(port, timeoutMs = 800) {
     s.once('error', () => done(false));
   });
 }
-/** 从内核 /connections 里找一条刚发起的连接，读它的 rule 与 chains */
-async function findConnection(hostPart, timeoutMs = 8000) {
+/** 从内核 /connections 里找一条刚发起的连接，读它的 rule 与 chains
+ *  excludeId：同一域名第二次抓连接时要排掉上一条（内核的连接表里旧连接还在，
+ *  否则会抓到切换模式之前那条，报出"切了全局还走直连"这种假 bug） */
+async function findConnection(hostPart, timeoutMs = 8000, excludeId = null) {
   const c = await controllerOf();
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     try {
       const data = await c.get('/connections');
       const list = (data && data.connections) || [];
-      const hit = list.find((x) => ((x.metadata && (x.metadata.host || x.metadata.destinationIP)) || '').includes(hostPart));
+      const hit = list.find((x) => ((x.metadata && (x.metadata.host || x.metadata.destinationIP)) || '').includes(hostPart)
+        && (!excludeId || x.id !== excludeId));
       if (hit) return hit;
     } catch (_) {}
     await sleep(250);
@@ -323,22 +326,32 @@ async function run(win, { log = console.log, keep = false, soakMinutes = 0 } = {
         note('国内域名没在 /connections 里抓到（可能太快），跳过这一条');
       }
       // 界面切模式 → 内核 mode 必须是那个值（每次先关掉可能残留的弹窗）
+      // 注意：机器被别的重活占满时（例如同时在打包压缩），内核应答会明显变慢，
+      // 10s 窗口里读到的还是上一个模式 —— 这时重试一次，并把"重试过"记进 note，
+      // 既不当成产品缺陷，也不把这种慢吞掉不说。
       const modeViaUI = async (label, expect) => {
         await clickNav('home');
         await closeOverlays();
-        await click('[data-click="proxy-mode"]');
-        await sleep(400);
-        const opened = await js(`!!document.querySelector('.overlay .opt[data-mode=${JSON.stringify(label)}]')`);
-        check(`代理模式弹窗里有「${label}」选项`, opened);
-        await click(`.opt[data-mode="${label}"]`);
-        const m = await until(async () => ((await c.get('/configs')).mode), 10000, 'mode 变 ' + expect).catch(() => null);
+        let m = null;
+        let tries = 0;
+        for (; tries < 2; tries++) {
+          await click('[data-click="proxy-mode"]');
+          await sleep(400);
+          const opened = await js(`!!document.querySelector('.overlay .opt[data-mode=${JSON.stringify(label)}]')`);
+          if (tries === 0) check(`代理模式弹窗里有「${label}」选项`, opened);
+          if (!opened) { await closeOverlays(); continue; }
+          await click(`.opt[data-mode="${label}"]`);
+          m = await until(async () => ((await c.get('/configs')).mode), 10000, 'mode 变 ' + expect).catch(() => null);
+          await closeOverlays();
+          if (m === expect) break;
+        }
+        if (tries > 0 && m === expect) note(`切「${label}」重试了 ${tries} 次才生效（机器当时在忙）`);
         check(`界面切「${label}」后内核 mode=${expect}`, m === expect, String(m));
-        await closeOverlays();
         return m;
       };
       await modeViaUI('全局模式', 'global');
       const curl3 = curlAsync(['--max-time', '12', '-o', 'NUL', '-x', proxy, 'https://www.baidu.com/']);
-      const conn3 = await findConnection('baidu.com');
+      const conn3 = await findConnection('baidu.com', 8000, conn2 && conn2.id);
       curl3.kill();
       if (conn3) check('全局模式下国内域名也走代理（不再 DIRECT）', (conn3.chains || [])[0] !== 'DIRECT', `chains=${(conn3.chains || []).join(' → ')}`);
       await modeViaUI('直连模式', 'direct');
@@ -555,6 +568,9 @@ async function soak(win, { log = console.log, minutes = 30, reporter } = {}) {
   const status = () => { try { return core.status() || {}; } catch (_) { return {}; } };
   const samples = [];
   const out = paths.file('rt-samples.jsonl');
+  // 回到首页再开始采样：否则 #content 里没有会话计时，uptime_ui 会一直是 null。
+  await js(`(() => { const n = document.querySelector('.nav-item[data-route="home"]'); if (n) n.click(); return !!n; })()`).catch(() => false);
+  await sleep(400);
   const proxy = () => `http://127.0.0.1:${core.mixedPort()}`;
   const nodeName = () => (core.S.node || '').trim();
   async function latency() {

@@ -442,10 +442,14 @@ async function testUpdater() {
       updater.S.phase === 'staged' && updater.S.version === '9.9.9', updater.S.phase + ' ' + updater.S.version);
 
     // 8) 丢弃
+    const pkgZip = updater.zipPath('9.9.9');
+    check('下载下来的包真的落在 data/update 里', fs.existsSync(pkgZip), pkgZip);
     updater.reset();
     check('丢弃后回到 idle 且 staging 被清掉',
       updater.S.phase === 'idle' && !fs.existsSync(updater.stagingDir()));
     check('丢弃后不再认为可以安装', updater.canApply() === false);
+    // 真包 ~186 MB，点了「丢弃更新包」就不能再占着磁盘
+    check('丢弃后下载下来的 zip 也删掉了', !fs.existsSync(pkgZip), pkgZip);
   } finally {
     off();
     updater.reset();

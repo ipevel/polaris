@@ -341,8 +341,14 @@ app.whenReady().then(async () => {
       try {
         const st0 = await commands.get_update_state();
         check('初始更新状态是 idle', st0.phase === 'idle', JSON.stringify(st0.phase));
-        check('开发态不允许自我替换',
-          st0.can_apply === false && st0.packaged === false, JSON.stringify({ can_apply: st0.can_apply, packaged: st0.packaged }));
+        if (st0.packaged) {
+          // 成品包里 can_apply 是"可写目录 + 已下好包"的函数，不该断言它一定是 false
+          check('成品包里 can_apply 与 packaged/portable/staged 自洽',
+            st0.can_apply === (st0.phase === 'staged' && st0.portable === true),
+            JSON.stringify({ can_apply: st0.can_apply, portable: st0.portable, phase: st0.phase }));
+        } else {
+          check('开发态不允许自我替换', st0.can_apply === false, JSON.stringify({ can_apply: st0.can_apply }));
+        }
         check('get_update_state 带回安装目录', !!st0.install_dir, st0.install_dir);
 
         const cu = await commands.check_update();
@@ -358,12 +364,24 @@ app.whenReady().then(async () => {
           events.includes('downloading') && events.includes('extracting') && events.includes('staged'),
           events.join('>'));
 
-        await expectReject('开发态 apply_update 被拦住', () => commands.apply_update());
+        // 自检**绝不能真的执行自我替换**：成品包 + 便携目录下 apply_update 会写
+        // apply-update.cmd、退出后 robocopy 覆盖整个安装目录 —— 用测试用的假 zip
+        // 一跑，用户的安装就被换成假 Polaris.exe 了（这个坑真踩过：在
+        // dist/win-unpacked 上跑 --doctor，脚本已经走到 "copying"，
+        // 只因当时另一个自检正占着 exe 才 robocopy failed 没被覆盖）。
+        if (updater.canApply()) {
+          check('成品包已就绪时允许自我替换（自检不真的执行安装）',
+            updater.applyBlockedReason() === '', JSON.stringify(updater.applyBlockedReason()));
+        } else {
+          await expectReject('开发态 apply_update 被拦住', () => commands.apply_update());
+        }
 
         const disc = await commands.discard_update();
         check('丢弃更新包返回 ok', disc && disc.ok === true, JSON.stringify(disc));
         const st1 = await commands.get_update_state();
         check('丢弃后回到 idle', st1.phase === 'idle', st1.phase);
+        check('丢弃后下载下来的 zip 也删掉了（真包 ~186 MB）',
+          !fs.existsSync(updater.zipPath('9.9.9')), updater.zipPath('9.9.9'));
       } finally {
         ui.emit = origEmit;
         try { srv.close(); } catch (_) {}

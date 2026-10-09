@@ -42,6 +42,7 @@
       "scripts/selftest-core.js",
       "scripts/selftest-e2e.js",
       "scripts/selftest-ui.js",
+      "scripts/rt-test.js",
       "scripts/mock-panel.js",
       "package.json",
       "node_modules/js-yaml/**/*",

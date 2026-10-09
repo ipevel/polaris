@@ -265,6 +265,16 @@ function restoreStaged() {
 function reset() {
   try { fs.rmSync(stagingDir(), { recursive: true, force: true }); } catch (_) {}
   try { fs.rmSync(stateFile(), { force: true }); } catch (_) {}
+  // 下载下来的 zip 也要删掉：一个真包 ~186 MB，用户点了「丢弃更新包」
+  // 却把包留在磁盘上（还可能是上一次没装成的旧版本）不合适。
+  // 只删更新目录里我们自己命名的 Polaris-*.zip，别碰用户放进去的东西。
+  try {
+    for (const name of fs.readdirSync(updateDir())) {
+      if (/^Polaris-.*\.zip$/i.test(name)) {
+        try { fs.rmSync(path.join(updateDir(), name), { force: true }); } catch (_) {}
+      }
+    }
+  } catch (_) { /* 目录不存在就算了 */ }
   set({ phase: 'idle', version: '', url: '', file: '', received: 0, total: 0, percent: 0, error: '', staged_at: 0, extractor: '' });
   return { ok: true };
 }

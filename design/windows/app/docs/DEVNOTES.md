@@ -1,7 +1,8 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
 > 最后更新：2026-10-10（新增第四条自检线「运行时功能测试」：真界面驱动 + 从内核回读 + 长后台浸泡，
-> 见 §四；顺带修掉系统代理快照丢失、首页会话数字不刷新、EPIPE 死循环，见 §三 A-14 A-15 A-16）
+> 见 §四；顺带修掉系统代理快照丢失、连接态打开系统代理开关不生效、首页会话数字不刷新、EPIPE 死循环，
+> 见 §三 A-14 A-15 A-16 A-17 A-18；并修掉一条**会毁掉成品包的自检写法**，见 E-8）
 > 分支：`feat/windows-portable`（基线 `origin/ui/windows-design` @ `5328b55`）
 > 应用根目录：`design/windows/app/`
 
@@ -12,21 +13,21 @@
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.8.0.zip     185,914,150 B（~186 MB）
+design/windows/app/dist/Polaris-portable-1.8.0.zip     185,930,449 B（~186 MB）
 ```
 
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。已验证。
 
-> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 76/0、`--doctor` 82/0、`--smoke` `ok:true`，
+> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 76/0、`--doctor` 83/0、`--smoke` `ok:true`，
 > `data/rules` 自动铺出 48 个种子。
 
 ### 规模
 
 | | |
 | --- | --- |
-| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` `00846cc` |
-| 相对基线 | +115,989 / −902 行，103 文件（未含本轮自动更新与运行时测试） |
-| 应用代码 | 主进程 ~3,900 行 JS，渲染层 ~1,450 行 JS，样式 ~380 行 |
+| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` `00846cc` `265e057` |
+| 相对基线 | +118,203 / −906 行，105 文件 |
+| 应用代码 | 主进程 ~3,970 行 JS，渲染层 ~1,540 行 JS，样式 ~380 行，自检脚本 ~2,300 行 |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
 | 内置分流 | 48 个本地规则集 + 27 个分流组，1.42 MB（`resources/rules/`） |
@@ -35,15 +36,16 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,914,150 B（~186 MB�
 
 | 命令 | 规模 | 覆盖 |
 | --- | --- | --- |
-| `npm test` | 156 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、自动更新（下载/解压/替换脚本）、系统代理护栏、地区识别、真实拉起 mihomo |
-| `npm run test:e2e` | 82 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、自动更新（IPC + 进度事件）、系统代理还原 |
+| `npm test` | 158 项 | 订阅清洗、配置组装、内置分流规则、直连域名与更新地址、自动更新（下载/解压/替换脚本）、系统代理护栏、地区识别、真实拉起 mihomo |
+| `npm run test:e2e` | 83 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、自动更新（IPC + 进度事件）、系统代理还原 |
 | `Polaris.exe --uitest` | 76 项 | **界面驱动**：拖拽区、最大化、窄窗口（1100px）、滚动、填表点登录、逐页切换、分流页开关、流量曲线、弹窗、更新弹窗三种形态、设置页不自我重绘、两套主题的文字对比度 |
-| `Polaris.exe --doctor` | 82 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
-| `Polaris.exe --rttest` | 63 项 | **运行时功能测试**：真界面点连接/切模式/开关分流组 → 每次都从内核回读；异常路径（内核强杀自愈、面板挂掉）；`--soak=N` 追加 N 分钟浸泡 |
+| `Polaris.exe --doctor` | 83 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
+| `Polaris.exe --rttest` | 63 项 | **运行时功能测试**：真界面点连接/切模式/开关分流组 → 每次都从内核回读；异常路径（内核强杀自愈、面板挂掉）；`--soak=N` 追加 N 分钟浸泡（20 分钟 = 71 项） |
 | `Polaris.exe --smoke` | — | 窗口能起 + DOM 渲染断言 |
 | `Polaris.exe --updtest <zip>` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份** |
 
-当前全绿：**156 / 82 / 76 / 63**（开发态与成品包各跑一遍）。
+当前全绿：**158 / 83 / 76 / 63**（开发态与成品包各跑一遍）；
+加上 20 分钟浸泡是 **71 项**（`--rttest --soak=20`）。
 
 ### 已实测通过
 
@@ -54,15 +56,19 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,914,150 B（~186 MB�
 - 便携性：删掉 `%APPDATA%\Polaris` 后跑成品，不再重建
 - 内置分流：16 个默认规则集被内核**真正加载**（`/providers/rules` 逐个 `ruleCount > 0`，合计 > 1 万条），
   运行中开关分流组能热重载并让内核加载新规则集
-- 自动更新：下载（含 302）→ 校验 zip → 解压 → 写替换脚本 → 覆盖安装目录 → 重启，全程在成品包的**拷贝**上真跑过一遍
+- 自动更新：下载（含 302）→ 校验 zip → 解压 → 写替换脚本 → 覆盖安装目录 → 重启，全程在成品包的**拷贝**上真跑过一遍；
+  点「丢弃更新包」后下载的 zip、解压目录、`staged.json` 一起清掉（不留 186 MB 在磁盘上）
 - 运行时功能测试（`--rttest`，真界面驱动 + 内核回读）：点界面连接 → `/configs` 的 `mixed-port` 与
   `core.mixedPort()` 一致、控制面只绑 `127.0.0.1`、`/traffic` WebSocket 真推数据、经代理 204；
   国外域名命中 `RuleSet(gs_geolocation_ncn)`（链 `香港 01 → 节点选择 → 🌏 国外穿墙`）、国内域名走 DIRECT；
   三种代理模式切换后 `/configs.mode` 跟着变；界面开关分流组后内核 `/providers/rules` 数量随之增减
   （合计 56,283 条规则）；内核被 `taskkill /F` 后应用 20s 内不再谎报已连接、再点一次能自愈成新 pid；
   面板进程被杀后界面不崩、代理仍 204；断开后系统代理 4 个值逐项回到进入测试前的状态
-- 长后台浸泡（`--rttest --soak=N`）：每分钟采样主进程/内核内存、线程、句柄、节点延迟与吞吐，
-  窗口周期性收进托盘，结束时按四分位比较首末段漂移（结果见 `data/rt-samples.jsonl`）
+- 长后台浸泡（`--rttest --soak=20`，20 分钟真连接 + 周期性收进托盘）：**71 通过 / 0 失败**。
+  主进程内存漂移 **−3.1 MB**、内核 **+2.1 MB**、内核句柄 **+39.8 个**、线程 **+1.2 个**（无泄漏）；
+  节点延迟首段 169ms → 末段 181ms（未劣化）；每 5 分钟一次 10MB 吞吐采样
+  **6.59 → 20.04 → 25.19 → 25.25 → 26.85 Mbps**（首采样是冷启动，之后稳定）；内核 pid 全程未变。
+  逐分钟样本在 `data/rt-samples.jsonl`
 
 ### 未验证 / 未做
 
@@ -378,6 +384,31 @@ Polaris 自己的 bypass 列表）当成用户的原始设置写回去**。后�
 `paintLive()` 里跟着状态推送逐个补。自检补了一条"id 齐全"的防回归断言
 （`selftest-ui.js`）—— 删掉 id 就会静默退回"数字永远不动"。
 
+**A-17 连接态下打开「系统代理」开关，注册表原样不动（开关显示已打开）**
+
+`set_setting` 只处理了**关**的那半边（连接态点关会被拦住），**开**的那半边只写 store：
+`sys_proxy=true` 存下了，但注册表还是用户原来的代理，要等下次重连（`manager.js` 的
+connect 流程里才 `sysproxy.enable`）才生效。用户看到的是"开关已经打开了、系统流量却还走原代理"。
+
+修法：连接态下打开时立刻 `sysproxy.enable('127.0.0.1', core.mixedPort(), core.S.directDomains)`
+并把返回的快照记下来；**只在没有快照时才拍快照**（已有快照说明注册表本来就是我们改的，
+再拍一次就把自己的值当成"用户原值"了 —— 和 A-15 是同一个陷阱）。
+
+自检：运行时测试 5.1 现在断言"连接态打开后注册表指向内核端口"，关掉后逐项还原。
+
+**A-18 点了「丢弃更新包」，186 MB 的包还留在磁盘上**
+
+`updater.reset()` 只删了 `staging/` 和 `staged.json`，**没删下载下来的 zip**
+（`data/update/Polaris-<版本>.zip`，真包 ~186 MB）。用户下载完又改主意点了「丢弃」，
+这 186 MB 就一直占着 —— 而且下次点了别的版本还会再多一个。
+
+修法：`reset()` 顺手清掉更新目录里所有 `Polaris-*.zip`（只匹配我们自己命名的文件，
+不动用户放进该目录的东西）。core 自检加两条：下载后包**确实落在** `data/update`、
+丢弃后**确实没了**；e2e 的 `discard_update` 之后也补了同一条。
+
+教训：这类"清理"函数要把**下载产物、解压产物、状态文件**三类一起想一遍，
+写的时候只盯着自己手边那个目录（staging）很容易漏掉最大的那个文件。
+
 ---
 
 ### B. 打包
@@ -615,6 +646,22 @@ mihomo 的 `type: file` provider 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Pa
 不要相信界面的乐观更新 —— 这正是运行时测试和 UI 自检的分工：UI 自检管"点得到、画得出"，
 运行时测试管"点下去之后内核真的变了"。
 
+**E-8 自检绝不能真的执行"自我替换"（差点把成品包换成测试假文件）**
+
+e2e 里那两条更新断言原来是按**开发态**写的：`can_apply === false`、
+`expectReject(apply_update)`。它们只在开发态成立。成品包 + 便携目录下
+`can_apply` 会是真的，于是 `--doctor` 在 `dist/win-unpacked` 上跑的时候：
+真的下载了测试用的假 zip（`Polaris-9.9.9.zip`，366 字节，里面是 `MZxxxx…` 的假
+`Polaris.exe`）、真的写了 `apply-update.cmd`、脚本真的走到了 `copying` 那一步 ——
+**只因当时另一个自检正占着 `Polaris.exe`，robocopy 才 `failed` 没覆盖成功**。
+（`data/update/apply-update.log` 里留着 `waiting for pid → copying → robocopy failed`。）
+
+修法：`updater.canApply()` 为真时**只断言"允许自装"**，绝不调用 `apply_update`；
+开发态才断言被拦住。另外那两条 `packaged === false` 的断言也改成按 `packaged` 分支。
+
+教训：**自检脚本里任何"会改安装目录/写注册表/杀进程"的调用，都要先问一句
+"在成品包里跑会怎样"** —— 开发态被拦住不等于成品包也被拦住。
+
 ---
 
 ### F. 本机环境 / 工具链
@@ -646,8 +693,8 @@ npm run mock                  # 演示数据，不连内核
 npm start                     # 真实模式
 
 # 自检
-npm test                      # 核心层 156 项（纯 Node）
-npm run test:e2e              # 端到端 82 项（起真 mihomo + 假面板 + 真流量）
+npm test                      # 核心层 158 项（纯 Node）
+npm run test:e2e              # 端到端 83 项（起真 mihomo + 假面板 + 真流量）
 npm run test:e2e -- --sysproxy  # 连系统代理一起验（写 HKCU 并精确还原）
 node_modules\electron\dist\electron.exe . --uitest        # 界面 76 项
 node_modules\electron\dist\electron.exe . --rttest        # 运行时功能测试 63 项（真界面点 + 内核回读）

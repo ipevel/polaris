@@ -307,6 +307,14 @@ const commands = {
       sysproxy.disable(core.S.proxySnapshot);
       core.S.proxySnapshot = null;
     }
+    if (key === 'sys_proxy' && value && core.status().connected && !core.S.proxySnapshot) {
+      // 连接态下把开关打开必须**立刻挂上**：旧行为只写 store，注册表原样不动，
+      // 用户看到开关已打开、系统流量却还是走原来的代理，要等下次重连才生效
+      // （运行时测试的 5.1 就是这么抓到的）。
+      // 只在没有快照时才拍快照 —— 已有快照说明注册表本来就是我们改的，
+      // 再拍一次会把我们自己的值当成"用户原值"（见踩坑 A-15）。
+      core.S.proxySnapshot = sysproxy.enable('127.0.0.1', core.mixedPort(), core.S.directDomains);
+    }
     store.set(key, BOOL_KEYS.includes(key) ? !!value : value);
     return ok();
   },
