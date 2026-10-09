@@ -46,6 +46,7 @@
     unreadNotices: 0,
     settings: {},
     appInfo: {},
+    tunStatus: null,
     siteInfo: {},
     registerConfig: { email_verify: 0, invite_force: 0 },
     email: "",
@@ -153,6 +154,10 @@
       const r = await guard("导出日志", () => api.exportLogs());
       if (r) toast(r.ok ? "日志已导出到 " + r.path : "已取消");
     } else if (action === "license") openDialog("about", state.appInfo);
+    else if (action === "cleanup-tun") {
+      const r = await guard("清理虚拟网卡", () => api.invoke("cleanup_tun"));
+      if (r) { toast(r.msg || "已处理"); state.tunStatus = await api.invoke("get_tun_status").catch(() => state.tunStatus); render(); }
+    }
     else if (action === "set-panel") {
       await guard("退出登录", () => api.logout());
       nav("login");
@@ -624,6 +629,7 @@
     if (includeAuth) {
       state.settings = await api.getSettings().catch(() => state.settings);
       state.appInfo = await api.getAppInfo().catch(() => state.appInfo);
+      state.tunStatus = await api.invoke("get_tun_status").catch(() => null);
       applyTheme(state.settings.theme || "system");
     }
     await refreshStatus();
@@ -677,6 +683,7 @@
   async function boot() {
     state.settings = await api.getSettings().catch(() => ({}));
     state.appInfo = await api.getAppInfo().catch(() => ({}));
+    state.tunStatus = await api.invoke("get_tun_status").catch(() => null);
     applyTheme(state.settings.theme || "system");
 
     if (!state.settings.authed) {

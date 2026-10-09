@@ -19,6 +19,9 @@ process.env.POLARIS_ALLOW_PLAINTEXT_CREDENTIALS = '1';
 
 const mockPanel = require('./mock-panel');
 
+// 打包后跑 --doctor 时，app 目录是 asar，__dirname 指向 asar 内的 scripts/
+const ASAR_ROOT = path.resolve(__dirname, '..');
+
 let pass = 0;
 let fail = 0;
 const failures = [];
@@ -70,7 +73,10 @@ app.whenReady().then(async () => {
 
   paths.ensureAll();
   console.log('Polaris 端到端自检');
+  console.log('app  =', ASAR_ROOT);
   console.log('data =', paths.data());
+  console.log('core =', paths.core());
+  console.log('geo  =', paths.geo(), fs.existsSync(paths.geo()) ? '(存在)' : '(缺失)');
 
   const { server, port } = await mockPanel.start(0);
   const panelUrl = `http://127.0.0.1:${port}`;
@@ -266,5 +272,14 @@ app.whenReady().then(async () => {
     console.log('失败项：');
     failures.forEach((f) => console.log('  - ' + f));
   }
+  try { fs.writeFileSync(path.join(paths.data(), 'doctor-report.txt'), report(), 'utf8'); } catch (_) {}
   app.exit(fail ? 1 : 0);
 });
+
+function report() {
+  return [
+    `Polaris 诊断报告 ${new Date().toISOString()}`,
+    `结果：${pass} 通过 / ${fail} 失败`,
+    failures.length ? '失败项：\n' + failures.map((f) => '  - ' + f).join('\n') : '失败项：无',
+  ].join('\n');
+}

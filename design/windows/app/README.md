@@ -61,18 +61,50 @@ app/
 ## 运行
 
 ```bash
-# 开发（带内置演示数据，不连内核）
+# 依赖与内核
+npm install
+npm run core     # 拉 mihomo.exe + wintun.dll 到 core/
+npm run geo      # 规则库到 resources/geo/（优先用同仓库 Android assets）
+
+# 开发（内置演示数据，不连内核）
 npm run mock
 
 # 开发（真实模式，需要已登录面板）
 npm start
 
-# 核心层自检（纯 Node，不启动 Electron）
-node scripts/selftest-core.js
+# 自检
+npm test          # 核心层 58 项，纯 Node，不需要 Electron
+npm run test:e2e  # 端到端 60 项：假面板 + 真实内核 + 真实系统代理
+                  #   加 -- --sysproxy 会连系统代理一起验（写 HKCU 并精确还原）
 
 # 打包便携版
-npm run dist      # 产物：dist/Polaris-portable-<version>.zip
+powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
+# 或： npm run dist   → dist/Polaris-portable-<version>.zip
 ```
+
+### 在别人机器上排查问题
+
+打包产物自带诊断模式，不需要源码也不需要 Node：
+
+```
+Polaris.exe --doctor            # 跑端到端自检，报告写到 data/doctor-report.txt
+Polaris.exe --doctor --sysproxy # 连系统代理读写一起验（会还原）
+Polaris.exe --mock              # 用演示数据启动，看 UI 是否有问题
+```
+
+### 自检覆盖什么
+
+| 脚本 | 覆盖 |
+| --- | --- |
+| `selftest-core.js` | 订阅清洗 21 项、配置组装 16 项、地区识别 12 项、**真实拉起 mihomo** 9 项 |
+| `selftest-e2e.js` | 登录与鉴权失败、订阅拉取与清洗、面板字段映射、真实内核、切分组/切节点（带回读确认）、真实测速、**经代理访问外网**、系统代理写入-验证-精确还原、退出登录清凭据 |
+| `--smoke` | 窗口能起、渲染层无 console 错误、DOM 真的渲染出内容（导航项数/视图数/文本长度断言）、四个后端命令返回结构正确 |
+
+`scripts/mock-panel.js` 是本地假 V2Board 面板，订阅里**故意混入脏数据**（重名节点、信息伪节点、被订阅劫持的 control-plane），用来验证清洗链路在真实网络路径下也生效。
+
+### 性能注意
+
+规则库（`resources/geo`，23.8 MB）随包分发。不这么做的话，mihomo 首次连接会自己去 GitHub 下 `GeoIP.dat`——实测 **19 秒**，而且没网就直接起不来。带上之后是 **2–13 ms**。
 
 ## 便携目录布局
 
@@ -96,7 +128,12 @@ Polaris/
 
 ## 前提与已知限制
 
-- **TUN 模式需要管理员权限**，默认走系统代理（免管理员）。首次开启 TUN 会 UAC 提权
+- **TUN 模式需要管理员权限**，默认走系统代理（免管理员）。在设置里开启 TUN 时会弹 UAC 重启应用
+- **TUN 残留**：Windows 上 Node 的 `child.kill()` 是强杀，内核来不及摘路由和虚拟网卡。
+  接口断开后不会影响上网，但会留下一张「已断开」的 `Polaris` 网卡；
+  设置页里有「虚拟网卡」状态和手动清理入口（需要管理员）
 - **系统代理只写 HKCU**（WinINET），不碰 WinHTTP 全局设置——那会影响整机，不适合便携应用
 - 关闭主窗口 = 收进托盘（`退出` 才真正退出）。退出时必定还原系统代理
 - 凭据用 DPAPI 加密，换机器即失效需重新登录（符合"无自建服务器、不采集"的隐私承诺）
+- **未接入的能力**：自定义 rule-provider 分流（订阅自带的分组可用，但本地规则集管理、
+  分组排序、自定义规则组未做）；面板登录态的活跃会话管理（踢设备）

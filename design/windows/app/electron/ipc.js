@@ -316,6 +316,10 @@ const commands = {
 
   restart_as_admin: async () => elevate.restartAsAdmin(),
 
+  get_tun_status: async () => require('./net/tun').status(),
+
+  cleanup_tun: async () => require('./net/tun').cleanup(),
+
   /* ================= 更新 / 诊断 ================= */
   check_update: async () => {
     await remote.load(true).catch(() => {});

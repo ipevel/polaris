@@ -39,6 +39,9 @@
     "files": [
       "electron/**/*",
       "src/**/*",
+      "scripts/selftest-core.js",
+      "scripts/selftest-e2e.js",
+      "scripts/mock-panel.js",
       "package.json",
       "node_modules/js-yaml/**/*",
       "node_modules/ws/**/*"

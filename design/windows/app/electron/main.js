@@ -12,6 +12,13 @@ const { buildTray, updateTray } = require('./tray');
 
 const pkg = require('../package.json');
 
+// 诊断模式：跑端到端自检（本地假面板 + 真实内核 + 真实系统代理），不受单实例锁影响。
+// 放在最前面 —— 正常启动的窗口/托盘/锁全部跳过。
+if (process.argv.includes('--doctor')) {
+  require('../scripts/selftest-e2e');
+  return;
+}
+
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 const MOCK = process.argv.includes('--mock');
 
@@ -55,17 +62,21 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
 
   // 开发期把渲染层异常也收进日志，否则只在 DevTools 里一闪而过
+  const consoleErrors = [];
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     const where = `${path.basename(sourceId || '')}:${line}`;
-    if (level >= 2) log.error(`renderer ${where}:`, message);
+    if (level >= 2) { consoleErrors.push(`${where}: ${message}`); log.error(`renderer ${where}:`, message); }
     else log.info(`renderer ${where}:`, message);
   });
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    consoleErrors.push(`load ${code} ${desc} ${url}`);
     log.error('window load failed:', code, desc, url);
   });
   win.webContents.on('preload-error', (_e, file, err) => {
+    consoleErrors.push(`preload ${file}: ${err && err.message}`);
     log.error('preload failed:', file, err && err.message);
   });
+  win.__consoleErrors = consoleErrors;
 
   win.on('close', (e) => {
     if (quitting) return;
@@ -118,7 +129,44 @@ if (process.argv.includes('--smoke')) {
   log.info('smoke mode armed');
   setTimeout(async () => {
     const fs = require('fs');
-    const out = { ok: true, checks: {}, errors: [] };
+    const out = { ok: true, checks: {}, dom: null, errors: [], console_errors: [] };
+
+    // 收集渲染层的报错，别只依赖 main 侧的日志
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (win) {
+        const domInfo = await win.webContents.executeJavaScript(`(() => ({
+          title: document.title,
+          readyState: document.readyState,
+          pageTitle: (document.querySelector('.page-title') || {}).textContent || null,
+          navItems: document.querySelectorAll('.nav-item').length,
+          cards: document.querySelectorAll('.card').length,
+          sidebarVisible: (document.querySelector('#sidebar') || {}).style
+            ? document.querySelector('#sidebar').style.display !== 'none' : null,
+          textLength: (document.body.innerText || '').length,
+          theme: document.documentElement.dataset.theme || null,
+          apiHost: !!(window.PolarisAPI && window.PolarisAPI.isHost),
+          views: Object.keys(window.PolarisViews || {}).length,
+          dialogs: Object.keys(window.PolarisDialogs || {}).length,
+          hasFormat: !!window.PolarisFormat,
+        }))()`);
+        out.dom = domInfo;
+        out.console_errors = win.__consoleErrors || [];
+        if (out.console_errors.length) out.ok = false;
+        if (!domInfo || domInfo.readyState !== 'complete') out.ok = false;
+        if (!domInfo || domInfo.navItems !== 5) out.ok = false;
+        if (!domInfo || domInfo.views < 12 || domInfo.dialogs < 10) out.ok = false;
+        // 空页面也算失败：渲染出来但内容是空的，比报错更难发现
+        if (!domInfo || domInfo.textLength < 60) out.ok = false;
+      } else {
+        out.ok = false;
+        out.errors.push('没有窗口');
+      }
+    } catch (e) {
+      out.ok = false;
+      out.errors.push('DOM 检查失败: ' + (e && e.message));
+    }
+
     try {
       const { commands } = require('./ipc');
       out.checks.status = await commands.get_status();
@@ -138,7 +186,7 @@ if (process.argv.includes('--smoke')) {
     log.info('smoke done ok=%s', out.ok);
     quitting = true;
     app.quit();
-  }, 2500);
+  }, 3000);
 }
 
 app.on('before-quit', () => { quitting = true; });

@@ -175,6 +175,9 @@
       ${rowSwitch("系统代理", "sys_proxy", s.settings.sys_proxy, ["⇄", "#7aa5f8"])}
       ${rowSwitch("TUN 模式", "tun_mode", s.settings.tun_mode, ["≋", "#af8cf8"])}
       ${row("TUN 堆栈", h((TUN_STACKS[s.settings.tun] || s.settings.tun).split("（")[0]), { click: "set-tun-stack" })}
+      ${s.tunStatus && s.tunStatus.supported ? row("虚拟网卡",
+        s.tunStatus.exists ? `${h(s.tunStatus.state)} · ${h(s.tunStatus.description || "")}` : "未创建",
+        { chev: s.tunStatus.exists && s.tunStatus.state !== "Up", click: s.tunStatus.exists && s.tunStatus.state !== "Up" ? "cleanup-tun" : undefined, vcls: "" }) : ""}
       ${rowSwitch("允许局域网连接", "allow_lan", s.settings.allow_lan)}
       ${rowSwitch("IPv6", "ipv6", s.settings.ipv6)}
     </div>

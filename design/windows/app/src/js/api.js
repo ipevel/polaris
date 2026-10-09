@@ -176,5 +176,7 @@
     exportLogs: () => invoke("export_logs"),
     isAdmin: () => invoke("is_admin"),
     restartAsAdmin: () => invoke("restart_as_admin"),
+    getTunStatus: () => invoke("get_tun_status"),
+    cleanupTun: () => invoke("cleanup_tun"),
   };
 })();

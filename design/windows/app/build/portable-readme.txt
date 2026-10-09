@@ -40,3 +40,11 @@
 出问题了
 --------
 先看 data/logs/polaris.log。设置页里也有「导出日志」。
+
+自带诊断模式，不需要装任何东西，在命令行里跑：
+
+    Polaris.exe --doctor             跑一遍端到端自检（用本地假面板，不碰你的账号）
+    Polaris.exe --doctor --sysproxy  连系统代理读写一起验（会自动还原）
+    Polaris.exe --mock               用演示数据启动，看界面是不是正常
+
+报告会写到 data/doctor-report.txt，发给我们就行。
