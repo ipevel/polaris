@@ -8,22 +8,48 @@ import com.github.kr328.clash.core.model.TunnelState
 import com.github.kr328.clash.service.remote.IClashManager
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.Constants
+import kotlinx.coroutines.delay
 
 suspend fun KernelProxy.selectNode(name: String): Boolean = safe(false, "selectNode") {
     val clash = manager.clash() ?: return@safe false
     val group = selectorGroup() ?: return@safe false
 
-    val proxy =
-        clash
-            .queryProxyGroup(group, ProxySort.Default)
-            .proxies
-            .firstOrNull { it.name == name } ?: return@safe false
+    // 与 selectInGroup 同一口径：归一化匹配，避免只差装饰的名字被判成「不存在」。
+    val members = clash.queryProxyGroup(group, ProxySort.Default).proxies.filterNot { it.isGroup }
+    val resolved = NodeNameResolver.resolve(members.map { it.name }, name)
+    if (resolved == null) {
+        AppLog.w(
+            "Polaris-Kernel",
+            "selectNode: 未匹配到节点 group=$group target=$name members=${members.size} " +
+                "sample=${members.take(NODE_NAME_SAMPLE).joinToString(",") { it.name }}",
+        )
+        return@safe false
+    }
 
-    val result = clash.patchSelector(group, proxy.name)
-    AppLog.d("Polaris-Kernel", "selectNode: group=$group proxy=${proxy.name} result=$result")
-    patchGlobalIfGlobal(proxy.name)
-    result
+    val result = clash.patchSelector(group, resolved)
+    var now = clash.queryProxyGroup(group, ProxySort.Default).now
+    var attempt = 0
+    while (now != resolved && attempt < VERIFY_ATTEMPTS) {
+        delay(VERIFY_DELAY_MS)
+        now = clash.queryProxyGroup(group, ProxySort.Default).now
+        attempt++
+    }
+    AppLog.d("Polaris-Kernel", "selectNode: group=$group proxy=$resolved result=$result now=$now")
+    if (now != resolved) {
+        AppLog.w("Polaris-Kernel", "selectNode: 切换未生效 group=$group target=$resolved now=$now")
+        return@safe false
+    }
+
+    patchGlobalIfGlobal(resolved)
+    true
 }
+
+private const val NODE_NAME_SAMPLE = 5
+
+/** 切换后回读确认的轮询次数与间隔（内核 patch 异步生效）。 */
+private const val VERIFY_ATTEMPTS = 2
+
+private const val VERIFY_DELAY_MS = 120L
 
 suspend fun KernelProxy.selectAuto(): Boolean = safe(false, "selectAuto") {
     val result = selectSpecialGroup("URLTest", "自动", "auto", "url")
@@ -195,16 +221,28 @@ suspend fun KernelProxy.selectInGroup(
         AppLog.w("Polaris-Kernel", "selectInGroup: 组 $groupName 类型 ${group.type} 不支持手动切换")
         return@safe false
     }
-    if (group.proxies.none { it.name == proxyName }) {
+    // 面板下发的成员名与内核里的名字常常只差装饰（全角/零宽字符、前后缀国旗或方括号标签），
+    // 精确匹配会让「点了一个看起来完全一样的节点」静默失败——用户只看到勾选不动。
+    // NodeNameResolver 在两边都做过折叠，是这条路径唯一的匹配口径。
+    val resolved = NodeNameResolver.resolve(group.proxies.map { it.name }, proxyName)
+    if (resolved == null) {
         AppLog.w("Polaris-Kernel", "selectInGroup: 组成员不存在 $proxyName")
         return@safe false
     }
-    val result = clash.patchSelector(groupName, proxyName)
-    val after = clash.queryProxyGroup(groupName, ProxySort.Default).now
-    val ok = after == proxyName
+    val result = clash.patchSelector(groupName, resolved)
+    // patchSelector 返回 true 只代表内核接受了请求（Set 失败时才返回 false），
+    // 生效是异步的：单次回读会偶发读到旧值而误报失败，因此轮询确认。
+    var after = clash.queryProxyGroup(groupName, ProxySort.Default).now
+    var attempt = 0
+    while (after != resolved && attempt < VERIFY_ATTEMPTS) {
+        delay(VERIFY_DELAY_MS)
+        after = clash.queryProxyGroup(groupName, ProxySort.Default).now
+        attempt++
+    }
+    val ok = after == resolved
     AppLog.d(
         "Polaris-Kernel",
-        "selectInGroup: $groupName -> $proxyName result=$result after=$after ok=$ok",
+        "selectInGroup: $groupName -> $resolved result=$result after=$after ok=$ok",
     )
     ok
 }
