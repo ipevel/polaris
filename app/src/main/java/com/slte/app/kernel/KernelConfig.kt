@@ -50,6 +50,12 @@ constructor(
 
     private val profileMutex = Mutex()
 
+    /**
+     * 已尝试过自愈重写的 profile（每个进程只试一次，避免订阅本身有问题时反复下载）。
+     */
+    @Volatile
+    private var healAttemptedFor: UUID? = null
+
     private suspend fun <T> safe(
         default: T,
         operation: String,
@@ -85,6 +91,9 @@ constructor(
             if (current == null || !current.imported) {
                 if (!downloadSubscribeToPending(uuid)) return@safe null
                 profiles.commit(uuid)
+            } else if (healIfDefective(uuid)) {
+                AppLog.w("Polaris-Kernel", "ensureProfile: 现有配置存在重名等致命问题，已用订阅重新写入")
+                profiles.commit(uuid)
             }
             val profile = profiles.queryByUUID(uuid) ?: return@safe null
             val activeChanged = profiles.queryActive()?.uuid != uuid
@@ -113,10 +122,33 @@ constructor(
         // 直连域名为空时降级：跳过直连规则注入，其余清洗/写入流程照常完成，不整体失败
         val domains = directDomains()
         val cleaned = sanitizeOrNull(yaml, domains) ?: return false
+        if (!SubscriptionSanitizer.isKernelLoadable(cleaned)) {
+            AppLog.w("Polaris-Kernel", "downloadSubscribeToPending: 订阅存在重名等致命问题，拒绝写入")
+            return false
+        }
         val file = context.filesDir.resolve("pending/$uuid/config.yaml")
         file.parentFile?.mkdirs()
         atomicWrite(file, cleaned)
         return true
+    }
+
+    /** 已导入的工作配置是否已损坏到内核加载不了（缺文件也算）。 */
+    private fun importedConfigDefective(uuid: UUID): Boolean {
+        val file = context.filesDir.resolve("imported/$uuid/config.yaml")
+        if (!file.exists()) return true
+        val text = runCatching { file.readText() }.getOrNull() ?: return false
+        return !SubscriptionSanitizer.isKernelLoadable(text)
+    }
+
+    /**
+     * 现有工作配置已损坏时，用订阅重写一次。每个 profile 每进程只尝试一次：
+     * 订阅本身有问题时反复下载既费流量又拖延连接。
+     */
+    private suspend fun healIfDefective(uuid: UUID): Boolean {
+        if (!importedConfigDefective(uuid)) return false
+        if (healAttemptedFor == uuid) return false
+        healAttemptedFor = uuid
+        return downloadSubscribeToPending(uuid)
     }
 
     suspend fun updateProfile(): ProfileUpdateResult = withContext(ioDispatcher) {
@@ -143,6 +175,11 @@ constructor(
                 // 直连域名为空时降级：跳过直连规则注入，订阅更新照常完成，不整体失败
                 val domains = directDomains()
                 val cleaned = sanitizeOrNull(yaml, domains) ?: return@withLock ProfileUpdateResult.FAILED
+                // 内核加载不了的配置绝不能覆盖现有工作配置：覆盖后全部节点不可用，且无从回滚
+                if (!SubscriptionSanitizer.isKernelLoadable(cleaned)) {
+                    AppLog.w("Polaris-Kernel", "updateProfile: 订阅存在重名等致命问题，保留现有配置")
+                    return@withLock ProfileUpdateResult.FAILED
+                }
                 val file = context.filesDir.resolve("imported/${profile.uuid}/config.yaml")
                 if (file.exists() && file.readText() == cleaned) {
                     AppLog.d("Polaris-Kernel", "updateProfile: 订阅内容未变化，跳过内核重载")

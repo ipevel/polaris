@@ -405,14 +405,25 @@ class SubscriptionSanitizerBoundaryTest {
     }
 
     @Test
-    fun `安全 - 大小写变体的geox-url被中和且不注入自身URL`() {
-        // geox-url 是内核的 geo 数据下载地址，可控即 SSRF。它必须与 secret 同级中和。
+    fun `安全 - 大小写变体的geox-url被整块丢弃且不注入自身URL`() {
+        // geox-url 是内核的 geo 数据下载地址，可控即 SSRF。已从「标量中和」升级为「整块丢弃」：
+        // 中和只能把标量置空，嵌套/锚点写法仍会漏过清洗层；内核侧 patchGeoXUrl 会回填官方地址。
         listOf("geox-url", "Geox-Url", "GEOX-URL", "\"GeOx-Url\"").forEach { spelling ->
             val out = sanitize("$spelling: https://attacker.example/geo.dat\n$baseProxies")
             assertTrue(spelling, out.isNotEmpty())
-            val value = parse(out)["geox-url"]
-            assertEquals(spelling, "", value)
+            assertFalse(spelling, parse(out).containsKey("geox-url"))
             assertFalse(spelling, out.contains("attacker.example"))
+        }
+    }
+
+    @Test
+    fun `安全 - ntp被整块丢弃`() {
+        // 订阅指定 NTP 服务器 = 时间源劫持；内核侧没有兜底，只能靠清洗层丢
+        listOf("ntp", "NTP", "Ntp").forEach { spelling ->
+            val out = sanitize("$spelling: time.attacker.example\n$baseProxies")
+            assertTrue(spelling, out.isNotEmpty())
+            assertFalse(spelling, parse(out).containsKey("ntp"))
+            assertFalse(spelling, out.contains("time.attacker.example"))
         }
     }
 
@@ -439,7 +450,7 @@ class SubscriptionSanitizerBoundaryTest {
         assertEquals(0, doc["mixed-port"])
         assertEquals(false, doc["allow-lan"])
         assertEquals("", doc["secret"])
-        assertEquals("", doc["geox-url"])
+        assertFalse(doc.containsKey("geox-url"))
         assertFalse(doc.containsKey("hosts"))
         assertEquals(false, (doc["tun"] as Map<*, *>)["enable"])
     }
@@ -449,7 +460,8 @@ class SubscriptionSanitizerBoundaryTest {
         // 归一化本身要落到输出文本上，否则内核仍按原大小写键读到非中和值
         val out = sanitize("Mixed-Port: 7890\nAllow-Lan: true\n$baseProxies")
         assertTrue(out.startsWith("mixed-port: 0\nallow-lan: false\n"))
-        assertEquals("", sanitize("Geox-Url: https://attacker.example/x\n$baseProxies").let { parse(it)["geox-url"] })
+        assertFalse(sanitize("Geox-Url: https://attacker.example/x\n$baseProxies").let { parse(it).containsKey("geox-url") })
+        assertFalse(sanitize("Ntp: time.attacker.example\n$baseProxies").let { parse(it).containsKey("ntp") })
         // 嵌套同类键（provider 内的 hosts）应保持原样，不得被顶层扁平化规则误伤
         val nested = sanitize("proxy-providers:\n  p:\n    type: http\n    url: https://example.com/s\n    Hosts:\n      'bank.example': 10.0.0.1\n$baseProxies")
         val provider = (parse(nested)["proxy-providers"] as Map<*, *>)["p"] as Map<*, *>

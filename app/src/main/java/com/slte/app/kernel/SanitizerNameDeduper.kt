@@ -23,6 +23,8 @@ internal object SanitizerNameDeduper {
 
     private const val GROUPS_KEY = "proxy-groups"
 
+    private const val PROVIDERS_KEY = "proxy-providers"
+
     /** `- name:` 形式的条目起始（值可能是引号包起来的，这里只看键） */
     private val ITEM_NAME_KEY = Regex("^-\\s*name\\s*:")
 
@@ -36,6 +38,50 @@ internal object SanitizerNameDeduper {
      */
     private val RESERVED_NAMES =
         setOf("DIRECT", "REJECT", "REJECT-DROP", "COMPATIBLE", "PASS", "PASS-RULE", "GLOBAL")
+
+    /**
+     * 只读检视：顶层 `proxies:` 里的节点名，按出现顺序（含重名）。
+     *
+     * 与 [dedupeProxyNames] 共用同一套解析，供写盘前的"内核能否加载"闸门使用。
+     */
+    fun proxyNames(text: String): List<String> {
+        val lines = SanitizerYamlLines.stripBom(text).lines()
+        return nameSpans(lines, blockRange(lines, PROXIES_KEY)).map { it.value }
+    }
+
+    /** 出现不止一次的名字。内核遇到重名代理会拒绝加载整份配置。 */
+    fun duplicateProxyNames(text: String): List<String> = proxyNames(text)
+        .groupingBy { it }
+        .eachCount()
+        .filterValues { it > 1 }
+        .keys
+        .toList()
+
+    /** 存在 `proxy-providers:` 段时 `proxies:` 允许为空（节点由 provider 提供）。 */
+    fun hasProxyProviders(text: String): Boolean = SanitizerYamlLines
+        .topLevelBlockIndices(SanitizerYamlLines.stripBom(text).lines(), PROVIDERS_KEY)
+        .isNotEmpty()
+
+    /**
+     * 顶层 `proxies:` 里缺 `name:` 的块状条目数。内核同样会拒绝加载整份配置。
+     *
+     * flow 写法（`- {name: x, …}`）本模块不解析，不能据此判成"缺名字"而误杀整份订阅。
+     */
+    fun itemsWithoutName(text: String): Int {
+        val lines = SanitizerYamlLines.stripBom(text).lines()
+        val block = blockRange(lines, PROXIES_KEY) ?: return 0
+        var missing = 0
+        for (i in block.start until block.end) {
+            val line = lines[i]
+            if (line.isBlank() || line.trimStart().startsWith("#")) continue
+            if (SanitizerYamlLines.leadingIndent(line) != block.itemIndent) continue
+            val trimmed = line.trimStart()
+            if (!SanitizerRules.LIST_ITEM.containsMatchIn(trimmed)) continue
+            if (trimmed.contains('{')) continue
+            if (itemNameSpan(line, block.itemIndent, i) == null) missing++
+        }
+        return missing
+    }
 
     /** 把顶层 `proxies:` 里的重名改成唯一名，返回改名条数。 */
     fun dedupeProxyNames(lines: MutableList<String>): Int {

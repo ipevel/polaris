@@ -36,11 +36,20 @@ internal object SanitizerRules {
             "external-ui",
             "external-ui-name",
             "external-ui-url",
-            "geox-url",
             "secret",
         )
 
-    val DROPPED_TOP_LEVEL_KEYS = setOf("hosts", "script", "scripting", "web", "listeners", "<<")
+    /**
+     * 整块丢弃的顶层键。
+     *
+     * `geox-url`：订阅可以指定 GeoIP/GeoSite 规则库的下载源，属于供应链投毒面。内核侧另有
+     * `patchGeoXUrl` 兜底回官方地址，所以这里整块丢更干净——放进下面的中性化集合只能把标量
+     * 置空，遇到嵌套写法（锚点/多行块）会整条漏过清洗层。
+     *
+     * `ntp`：订阅可以指定时间服务器做时间源劫持，且内核侧没有对应兜底，只能靠这里丢。
+     */
+    val DROPPED_TOP_LEVEL_KEYS =
+        setOf("hosts", "script", "scripting", "web", "listeners", "geox-url", "ntp", "<<")
 
     val FORCED_OFF_TOP_LEVEL_KEYS = setOf("tun")
 

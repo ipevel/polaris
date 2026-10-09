@@ -17,6 +17,22 @@ object SubscriptionSanitizer {
         return body.lineSequence().any { SanitizerRules.SUBSCRIBE_ENTRY_KEY.containsMatchIn(it.trimStart()) }
     }
 
+    /**
+     * 清洗后的配置能否被内核加载。
+     *
+     * 内核遇到重名代理、缺 `name:` 的代理条目会拒绝加载**整份**配置。订阅更新时若把这种
+     * 配置直接写进工作目录，用户就会在"更新订阅"之后全部节点不可用（旧配置已被覆盖，
+     * 无从回滚）——所以写盘前必须先过这道闸门，不通过就保留现有配置。
+     */
+    fun isKernelLoadable(text: String): Boolean {
+        if (text.isBlank()) return false
+        val names = SanitizerNameDeduper.proxyNames(text)
+        // 没有内联节点时，只有 proxy-providers 能提供节点；两者皆无则内核加载出空配置
+        if (names.isEmpty()) return SanitizerNameDeduper.hasProxyProviders(text)
+        if (SanitizerNameDeduper.itemsWithoutName(text) > 0) return false
+        return SanitizerNameDeduper.duplicateProxyNames(text).isEmpty()
+    }
+
     fun sanitize(
         text: String,
         domains: List<String>,
