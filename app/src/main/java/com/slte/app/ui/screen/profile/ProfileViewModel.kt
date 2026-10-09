@@ -9,6 +9,7 @@ import com.slte.app.data.local.SessionManager
 import com.slte.app.data.repository.AuthRepository
 import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.domain.model.SubscribeInfo
+import com.slte.app.domain.model.isPlanValid
 import com.slte.app.domain.usecase.DaysUntilExpiryUseCase
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.ErrorMessages
@@ -29,6 +30,14 @@ data class ProfileData(
     val balance: String = "0.00",
 
     val daysUntilExpired: Int? = null,
+
+    /**
+     * 套餐是否有效。判据与首页 `DashboardData.withSubscribeInfo` 完全一致
+     * （`isPlanValid` = `hasPlan && !expired`），**不是** `daysUntilExpired > 0`：
+     * 后者会让过期用户（days == 0 但对象有效）在个人中心看到「剩 0 天」，
+     * 与首页同一份数据给出的「已过期」自相矛盾。
+     */
+    val isValid: Boolean = false,
 
     /** 用户信息拉取失败：用于在个人中心展示错误卡片（复用 R.string.notice_error） */
     val userInfoError: Boolean = false,
@@ -69,6 +78,7 @@ constructor(
                     email = email,
                     balance = cachedUser?.balance ?: "0.00",
                     daysUntilExpired = expiryDays(cachedSubscribe),
+                    isValid = isPlanValid(cachedSubscribe),
                     isLoading = false,
                 )
             }
@@ -131,6 +141,7 @@ constructor(
             it.copy(
                 subscribeInfo = info,
                 daysUntilExpired = expiryDays(info),
+                isValid = isPlanValid(info),
                 isLoading = if (info == null) it.isLoading else false,
             )
         }

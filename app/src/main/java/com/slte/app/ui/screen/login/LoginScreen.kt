@@ -608,6 +608,7 @@ internal fun AuthField(
 /** 校验类错误文案 → 可内联到具体输入框；其余（网络/业务错误）仍只走 Toast。 */
 internal fun authFieldErrorRes(errorRes: Int?): Int? = when (errorRes) {
     R.string.error_email_required,
+    R.string.error_email_suffix_not_allowed,
     R.string.error_password_required,
     R.string.error_new_password_required,
     R.string.error_code_required,

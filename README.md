@@ -118,7 +118,9 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 
 > **安全白名单**：API 地址与远程配置中的直连域名只允许在白名单内切换（白名单 = `POLARIS_ALLOWED_DOMAINS` + API 地址域名 + 远程配置源域名，构建期自动并入，详见 [CONFIG.md](CONFIG.md)）。仓库内置占位符 `example.com`，部署前请注入你的域名。
 >
-> **内核直连兜底**：内核侧补丁链（`kernel-core/src/main/golang/native/config/process.go`）含独立直连域名占位，自持域名需同步，并在修改后重新交叉编译 `libclash.so`（`GOOS=linux GOARCH=arm64 go build -tags "android cmfa with_gvisor" ./native/config/`，无需 NDK）。
+> **内核直连兜底**：内核侧补丁链（`kernel-core/src/main/golang/native/config/process.go`）含独立直连域名占位，自持域名需同步，并在修改后重建 `libclash.so`。交叉编译命令以 `kernel-core/src/main/jniLibs/arm64-v8a/VERSION.md` 的构建记录为准，形如
+> `GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+> ——`GOOS` 是 `android` 不是 `linux`，目标包是 `./native` 不是 `./native/config/`，必须带 `-buildmode=c-shared`，且**需要 NDK 里的 clang 作交叉编译器**（CGO 要开）。重建后必须把新摘要写回同目录 `SHA256SUMS`，否则构建会被 `:kernel-core:verifyNativeLibraries` 拦下。
 
 ## 相关项目
 

@@ -29,6 +29,8 @@
     <string name="register_invite_optional">邀請碼（選填）</string>
     <string name="register_button">註冊</string>
     <string name="register_back_to_login">返回登入</string>
+    <!-- 面板下發了信箱後綴白名單時，註冊頁只讓使用者填 @ 前面的部分，後綴從下拉選 -->
+    <string name="register_email_suffix_label">選擇電子郵件網域</string>
 
     <!-- Forgot Password -->
     <string name="forgot_title">重設密碼</string>
@@ -43,6 +45,7 @@
     <string name="error_network">請求失敗</string>
     <string name="error_email_send_failed">驗證碼傳送失敗</string>
     <string name="error_email_required">輸入信箱</string>
+    <string name="error_email_suffix_not_allowed">此電子郵件網域不在允許清單中</string>
     <string name="error_code_required">輸入驗證碼</string>
     <string name="error_password_required">輸入密碼</string>
     <string name="error_new_password_required">輸入新密碼</string>
@@ -360,6 +363,8 @@
     <string name="v5_no_nodes">暫無節點，請先更新訂閱</string>
     <string name="v5_nodes_offline_hint">尚未連線：以下是訂閱裡的節點，連線後即可切換</string>
     <string name="v5_nodes_summary_offline">%1$d 個節點 · 未連線</string>
+    <!-- 探測確認不可達（網域不存在／連線被拒／無路由），與灰色的「逾時」區分：逾時可能只是抖動 -->
+    <string name="v5_node_offline">離線</string>
     <string name="v5_state_loading">正在載入…</string>
     <string name="v5_state_retry">重試</string>
     <string name="v5_routing_groups">分流規則組</string>
@@ -430,6 +435,8 @@
     <string name="gift_card_redeem">立即兌換</string>
     <string name="gift_card_code_hint">請輸入兌換碼</string>
     <string name="gift_card_success_toast">兌換成功</string>
+    <string name="error_gift_card_used">該兌換碼已被使用</string>
+    <string name="error_gift_card_unavailable">目前帳號不滿足該兌換碼的使用條件</string>
     <string name="error_gift_card_invalid">兌換碼無效或已過期</string>
     <string name="error_gift_card_generic">兌換失敗，請稍後重試</string>
     <string name="purchase_confirm_order">確認訂單</string>

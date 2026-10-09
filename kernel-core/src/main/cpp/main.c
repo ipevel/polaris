@@ -191,6 +191,21 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeQueryGroup(JNIEnv *env, job
     return new_string(response);
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_github_kr328_clash_core_bridge_Bridge_nativeUrlTest(JNIEnv *env, jobject thiz,
+                                                             jstring name, jint timeout_ms) {
+    TRACE_METHOD();
+
+    scoped_string _name = get_string(name);
+
+    scoped_string response = urlTest(_name, (int) timeout_ms);
+
+    if (response == NULL)
+        return NULL;
+
+    return new_string(response);
+}
+
 JNIEXPORT void JNICALL
 Java_com_github_kr328_clash_core_bridge_Bridge_nativeHealthCheck(JNIEnv *env, jobject thiz,
                                                                  jobject completable,
@@ -422,6 +437,8 @@ static void call_tun_interface_mark_socket_impl(void *tun_interface, int fd) {
     (*env)->CallVoidMethod(env, (jobject) tun_interface,
                            (jmethodID) m_tun_interface_mark_socket,
                            (jint) fd);
+
+    jni_catch_exception(env);
 }
 
 static int call_tun_interface_query_socket_uid_impl(void *tun_interface, int protocol,
@@ -430,11 +447,18 @@ static int call_tun_interface_query_socket_uid_impl(void *tun_interface, int pro
 
     ATTACH_JNI();
 
-    return (*env)->CallIntMethod(env, (jobject) tun_interface,
-                                 (jmethodID) m_tun_interface_query_socket_uid,
-                                 (jint) protocol,
-                                 (jstring) new_string(source),
-                                 (jstring) new_string(target));
+    int result = (*env)->CallIntMethod(env, (jobject) tun_interface,
+                                       (jmethodID) m_tun_interface_query_socket_uid,
+                                       (jint) protocol,
+                                       (jstring) new_string(source),
+                                       (jstring) new_string(target));
+
+    if (jni_catch_exception(env)) {
+        // 异常必须清干净再返回：内核热路径上滞留的异常会让下一次 JNI 调用 abort 进程
+        return -1;
+    }
+
+    return result;
 }
 
 static void call_completable_complete_impl(void *completable, const char *exception) {
@@ -460,6 +484,8 @@ static void call_completable_complete_impl(void *completable, const char *except
                                   (jmethodID) m_completable_complete_exceptionally,
                                   (jobject) _exception);
     }
+
+    jni_catch_exception(env);
 }
 
 static void call_fetch_callback_report_impl(void *fetch_callback, const char *status_json) {
@@ -473,6 +499,8 @@ static void call_fetch_callback_report_impl(void *fetch_callback, const char *st
                            (jobject) fetch_callback,
                            (jmethodID) m_fetch_callback_report,
                            (jstring) _status_json);
+
+    jni_catch_exception(env);
 }
 
 static void call_fetch_callback_complete_impl(void *fetch_callback, const char *error) {
@@ -489,6 +517,8 @@ static void call_fetch_callback_complete_impl(void *fetch_callback, const char *
                            (jobject) fetch_callback,
                            (jmethodID) m_fetch_callback_complete,
                            (jstring) _error);
+
+    jni_catch_exception(env);
 }
 
 static int call_logcat_interface_received_impl(void *callback, const char *payload) {
@@ -533,6 +563,9 @@ static int open_content_impl(const char *url, char *error, int error_length) {
 
             strncpy(error, _message, error_length - 1);
         }
+
+        // strncpy 超长时不写 NUL，而 Go 侧缓冲未清零——必须显式终止
+        error[error_length - 1] = '\0';
 
         return -1;
     }

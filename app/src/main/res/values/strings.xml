@@ -29,6 +29,8 @@
     <string name="register_invite_optional">邀请码（选填）</string>
     <string name="register_button">注册</string>
     <string name="register_back_to_login">返回登录</string>
+    <!-- 面板下发了邮箱后缀白名单时，注册页只让用户填 @ 前面的部分，后缀从下拉里选 -->
+    <string name="register_email_suffix_label">选择邮箱后缀</string>
 
     <!-- Forgot Password -->
     <string name="forgot_title">重置密码</string>
@@ -43,6 +45,7 @@
     <string name="error_network">请求失败</string>
     <string name="error_email_send_failed">验证码发送失败</string>
     <string name="error_email_required">请输入邮箱</string>
+    <string name="error_email_suffix_not_allowed">邮箱后缀不在允许的列表中</string>
     <string name="error_code_required">请输入验证码</string>
     <string name="error_password_required">请输入密码</string>
     <string name="error_new_password_required">请输入新密码</string>
@@ -362,6 +365,8 @@
     <string name="v5_no_nodes">暂无节点，请先更新订阅</string>
     <string name="v5_nodes_offline_hint">尚未连接：以下是订阅里的节点，连接后即可切换</string>
     <string name="v5_nodes_summary_offline">%1$d 个节点 · 未连接</string>
+    <!-- 探测确认不可达（域名不存在/连接被拒/无路由），与灰色的「超时」区分：超时可能只是抖动 -->
+    <string name="v5_node_offline">离线</string>
     <string name="v5_state_loading">正在加载…</string>
     <string name="v5_state_retry">重试</string>
     <string name="v5_routing_groups">分流规则组</string>
@@ -432,6 +437,8 @@
     <string name="gift_card_redeem">立即兑换</string>
     <string name="gift_card_code_hint">请输入兑换码</string>
     <string name="gift_card_success_toast">兑换成功</string>
+    <string name="error_gift_card_used">该兑换码已被使用</string>
+    <string name="error_gift_card_unavailable">当前账号不满足该兑换码的使用条件</string>
     <string name="error_gift_card_invalid">兑换码无效或已过期</string>
     <string name="error_gift_card_generic">兑换失败，请稍后重试</string>
     <string name="purchase_confirm_order">确认订单</string>

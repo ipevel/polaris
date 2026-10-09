@@ -140,6 +140,18 @@ object Clash {
         Bridge.nativeHealthCheckAll()
     }
 
+    /**
+     * 对单个节点跑一次真实测速，并区分失败原因。
+     *
+     * 返回 null 表示内核里根本没有这个节点（已从订阅里删掉）——调用方应
+     * 按"超时"处理，而不是按"离线"，否则删节点会连带把同名新节点标离线。
+     */
+    fun urlTest(name: String, timeoutMs: Int): UrlTestResult? {
+        return Bridge.nativeUrlTest(name, timeoutMs)?.let {
+            Json.Default.decodeFromString(UrlTestResult.serializer(), it)
+        }
+    }
+
     fun patchSelector(selector: String, name: String): Boolean {
         return Bridge.nativePatchSelector(selector, name)
     }
@@ -229,14 +241,16 @@ object Clash {
         )
     }
 
-    fun subscribeLogcat(): ReceiveChannel<LogMessage> {
-        return Channel<LogMessage>(32).apply {
-            Bridge.nativeSubscribeLogcat(object : LogcatInterface {
-                override fun received(jsonPayload: String) {
-                    trySend(Json.decodeFromString(LogMessage.serializer(), jsonPayload))
-                }
-            })
-        }
+    fun subscribeLogcat(): ReceiveChannel<LogMessage> = Channel<LogMessage>(32).apply {
+        Bridge.nativeSubscribeLogcat(object : LogcatInterface {
+            override fun received(jsonPayload: String) {
+                // 单条畸形日志解析失败只丢弃该条：向 C 侧抛异常会让内核退订，
+                // 日志流从此静默（直到 UI 重订阅）
+                runCatching {
+                    Json.decodeFromString(LogMessage.serializer(), jsonPayload)
+                }.onSuccess { trySend(it) }
+            }
+        })
     }
 
     fun setAgeSecretKey(key: String?) {

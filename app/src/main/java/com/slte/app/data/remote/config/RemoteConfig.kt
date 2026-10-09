@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -90,6 +92,8 @@ constructor(
 
     private val etagByUrl = ConcurrentHashMap<String, String>()
 
+    private val refreshMutex = Mutex()
+
     private val configClient: OkHttpClient =
         OkHttpClient
             .Builder()
@@ -101,6 +105,16 @@ constructor(
     private val _dataFlow = MutableStateFlow(sanitizeCachedConfig(store.load()?.config))
     val dataFlow: StateFlow<RemoteConfigData> = _dataFlow.asStateFlow()
     val data: RemoteConfigData get() = _dataFlow.value
+
+    init {
+        // ETag 只放内存会随进程重启丢失：把持久化的 etag 回灌进来，
+        // 否则重启后 If-None-Match 恒为空，304 永远命不中，每次冷启都要整份重拉配置。
+        store.load()?.let { cached ->
+            if (cached.sourceUrl.isNotBlank() && cached.etag.isNotBlank()) {
+                etagByUrl[cached.sourceUrl] = cached.etag
+            }
+        }
+    }
 
     override fun apiCandidates(primary: String): List<String> {
         // 仅以用户输入并保存的面板地址为准，不提供任何内置候选、不做兜底：
@@ -116,7 +130,11 @@ constructor(
         scope.launch { prober.loop(PROBE_LOOP_INTERVAL_MS) }
     }
 
-    suspend fun refresh(force: Boolean = false): Boolean {
+    // 启动首拉与手动强刷可能并发：竞速、探测、选主全程互斥，
+    // 否则两条流程会乱序写盘，探测流量也翻倍。
+    suspend fun refresh(force: Boolean = false): Boolean = refreshMutex.withLock { refreshLocked(force) }
+
+    private suspend fun refreshLocked(force: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
         val cached = store.load()
         if (!force && cached != null && ConfigValidation.isCacheFresh(cached.fetchedAt, now, CONFIG_CACHE_TTL_MS)) {

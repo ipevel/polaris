@@ -6,6 +6,18 @@
 # Purpose: run every check that CI runs remotely, BEFORE pushing, so we never
 # ship "passes locally but fails CI" again. Add one check here for every new
 # class of CI failure that ever happens.
+#
+# ENCODING: THIS FILE MUST STAY PURE ASCII. Do not add non-ASCII characters,
+# not even inside comments. Windows PowerShell 5.1 reads a BOM-less script using
+# the system ANSI code page (936 = GBK on the original dev machine), and a GBK
+# lead byte (0x81-0xFE) swallows the byte that follows it -- including a 0x0A
+# newline. The result is that a Chinese comment silently merges the NEXT line
+# into itself, so the following statement ends up commented out. This is not
+# hypothetical: it made `$dshPy = Join-Path ...` disappear and the [8/8] step
+# fail with "Cannot bind argument to parameter 'Path' because it is null".
+# Writing the file as UTF-8 with BOM would also work, but any editor that drops
+# the BOM would silently re-break it. ASCII cannot break. Keep runtime output
+# English as well.
 # =============================================================================
 
 $ErrorActionPreference = "Continue"
@@ -52,16 +64,18 @@ $failures = New-Object System.Collections.Generic.List[string]
 Write-Host "=== Polaris pre-check @ $(Get-Date -Format 'yyyy-MM-dd HH:mm') ===" -ForegroundColor Cyan
 
 # 0.5 throwaway keystore (CI static-check step generates it too)
-Write-Host "`n[0/7] generate throwaway keystore ..." -ForegroundColor Cyan
+Write-Host "`n[0/8] generate throwaway keystore ..." -ForegroundColor Cyan
 Remove-Item $kp -ErrorAction SilentlyContinue
 $null = & keytool -genkeypair -keystore $kp -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 -storepass build-throwaway -keypass build-throwaway -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN" 2>$null
 if ($LASTEXITCODE -ne 0) { $failures.Add("keystore gen failed") }
 
-# 1. Unit tests + instrumented-test compilation. `assembleDebugAndroidTest` 在 CI 里是独立一步，
-#    本地曾经漏跑：androidTest 只在 CI 编译，源码改坏了本地全绿、推上去才红。
-#    --continue 保证单测失败时 androidTest 的编译错误在同一次运行里也能看到。
+# 1. Unit tests + instrumented-test compilation. `assembleDebugAndroidTest` runs
+#    as its own step in CI; locally it used to be skipped, so androidTest sources
+#    were only ever compiled remotely: a broken androidTest stayed green locally
+#    and turned red after the push. --continue makes the androidTest compile
+#    errors show up in the same run even when a unit test already failed.
 #    (history: Dispatchers.IO leak / missing stub mock / ctor params / androidTest compile)
-Write-Host "`n[1/7] testDebugUnitTest + assembleDebugAndroidTest ..." -ForegroundColor Cyan
+Write-Host "`n[1/8] testDebugUnitTest + assembleDebugAndroidTest ..." -ForegroundColor Cyan
 $out = & .\gradlew.bat :app:testDebugUnitTest :app:assembleDebugAndroidTest --continue --no-daemon --warning-mode none 2>&1
 if ($LASTEXITCODE -ne 0) {
     $failures.Add("testDebugUnitTest/assembleDebugAndroidTest")
@@ -71,7 +85,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 2. ktlint (all source sets; history: import order LoginViewModel)
-Write-Host "`n[2/7] ktlintCheck ..." -ForegroundColor Cyan
+Write-Host "`n[2/8] ktlintCheck ..." -ForegroundColor Cyan
 $out = & .\gradlew.bat :app:ktlintCheck --no-daemon --warning-mode none 2>&1
 if ($LASTEXITCODE -ne 0) {
     $failures.Add("ktlintCheck")
@@ -81,7 +95,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 3. Android Lint (debug)
-Write-Host "`n[3/7] lintDebug ..." -ForegroundColor Cyan
+Write-Host "`n[3/8] lintDebug ..." -ForegroundColor Cyan
 $out = & .\gradlew.bat :app:lintDebug --no-daemon --warning-mode none 2>&1
 if ($LASTEXITCODE -ne 0) {
     $failures.Add("lintDebug")
@@ -91,7 +105,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 4. R8 keep rules (verifyReleaseApiSurvivors)
-Write-Host "`n[4/7] verifyReleaseApiSurvivors ..." -ForegroundColor Cyan
+Write-Host "`n[4/8] verifyReleaseApiSurvivors ..." -ForegroundColor Cyan
 $out = & .\gradlew.bat :app:verifyReleaseApiSurvivors --no-daemon --warning-mode none 2>&1
 if ($LASTEXITCODE -ne 0) {
     $failures.Add("verifyReleaseApiSurvivors")
@@ -101,10 +115,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 5. Bare Icons check (CI regex: capital Icons. ; import lines use lowercase icons. so they do NOT match)
-#    豁免目录必须与 ci.yml / build.yml 完全一致：rg 的两个 --glob 是
-#    '!**/ui/theme/SlteIcons.kt' 与 '!**/ui/v5/**'（ui/v5 设计系统的图标由组件自身定义）。
-#    历史上这里漏了 ui/v5 豁免，导致 27 处 v5 图标被误报为违规、每次门禁都假失败。
-Write-Host "`n[5/7] bare Icons.* reference check ..." -ForegroundColor Cyan
+#    The exempt paths must match ci.yml / build.yml exactly: rg gets the two
+#    --glob flags '!**/ui/theme/SlteIcons.kt' and '!**/ui/v5/**' (the ui/v5
+#    design system defines its own icons). This script once missed the ui/v5
+#    exemption, which reported 27 v5 icons as violations and failed the gate
+#    on every run.
+Write-Host "`n[5/8] bare Icons.* reference check ..." -ForegroundColor Cyan
 $files = Get-ChildItem -Path 'app\src\main\java' -Recurse -Include *.kt |
     Where-Object { $_.Name -ne 'SlteIcons.kt' -and $_.FullName -notmatch '\\ui\\v5\\' }
 $bare = @()
@@ -120,7 +136,7 @@ if ($bare.Count -gt 0) {
 }
 
 # 6. String locale key parity (history: missed login_backend_auto_hint in zh-Hant)
-Write-Host "`n[6/7] string locale key parity ..." -ForegroundColor Cyan
+Write-Host "`n[6/8] string locale key parity ..." -ForegroundColor Cyan
 function Get-StringKeys($path) {
     [regex]::Matches((Get-Content $path -Raw), '<string name="([^"]+)"') |
         ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
@@ -139,13 +155,63 @@ if ($missingEn -gt 0 -or $missingHant -gt 0 -or $extraEn -gt 0 -or $extraHant -g
 }
 
 # 7. Release compile (compile errors only surface in CI, e.g. LoggInApp typo)
-Write-Host "`n[7/7] compileReleaseKotlin ..." -ForegroundColor Cyan
+Write-Host "`n[7/8] compileReleaseKotlin ..." -ForegroundColor Cyan
 $out = & .\gradlew.bat :app:compileReleaseKotlin --no-daemon --warning-mode none 2>&1
 if ($LASTEXITCODE -ne 0) {
     $failures.Add("compileReleaseKotlin")
     $out | Select-String 'e: file' | Select-Object -First 8 | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
 } else {
     Write-Host "  PASSED" -ForegroundColor Green
+}
+
+# 8. Version gate self-test (.scripts/version_gate_test.py, 23 cases).
+#    Both the ci.yml version-gate job and the build.yml "gate self-test" step run
+#    it, yet locally it had never been run -- and the gate once failed silently
+#    (a historical audit parsed .gradle.kts text as JSON, so the check printed
+#    "passed" every time). A broken gate would go unnoticed. CI treats it as a
+#    release precondition, so the local script must too, otherwise we recreate
+#    exactly the "green locally, red in CI" situation this script exists to stop.
+#    Interpreter probe: prefer python3 / python on PATH; if neither works, skip
+#    with a WARN (not a failure) -- a machine without Python should not go red
+#    for it. On Windows `python` is often the Microsoft Store stub (exit 9009,
+#    executes nothing), so run `-c` for real and check the exit code and major
+#    version; Get-Command alone is not enough.
+Write-Host "`n[8/8] version gate self-test ..." -ForegroundColor Cyan
+$vgTest = Join-Path $root '.scripts\version_gate_test.py'
+$py = $null
+foreach ($cand in @('python3', 'python')) {
+    $exe = Get-Command $cand -ErrorAction SilentlyContinue
+    if (-not $exe) { continue }
+    $probe = (& $exe.Source -c "import sys; print(sys.version_info[0])" 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $probe -match '^3') { $py = $exe.Source; break }
+}
+if (-not $py) {
+    # Fallback: the Python bundled with the DSH runtime. Do not hard-code a user
+    # name (see the environment-probing convention at the top of this script),
+    # and guard every path expression against a null/empty environment variable.
+    $dshPy = $null
+    if ($env:USERPROFILE) {
+        $candidate = Join-Path $env:USERPROFILE '.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+        if (Test-Path $candidate) { $dshPy = $candidate }
+    }
+    if ($dshPy) {
+        $probe = (& $dshPy -c "import sys; print(sys.version_info[0])" 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $probe -match '^3') { $py = $dshPy }
+    }
+}
+if (-not $py) {
+    Write-Host "  WARN: no Python 3 interpreter found; skipping version gate self-test (CI still runs it)" -ForegroundColor Yellow
+} elseif (-not (Test-Path $vgTest)) {
+    $failures.Add("version_gate_test.py missing")
+    Write-Host "  missing $vgTest" -ForegroundColor Red
+} else {
+    $out = & $py $vgTest 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $failures.Add("version_gate_test")
+        $out | Select-Object -Last 6 | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    } else {
+        Write-Host "  PASSED ($py)" -ForegroundColor Green
+    }
 }
 
 # Summary
@@ -155,6 +221,6 @@ if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     exit 1
 } else {
-    Write-Host "ALL 7 PASSED" -ForegroundColor Green
+    Write-Host "ALL 8 PASSED" -ForegroundColor Green
     exit 0
 }

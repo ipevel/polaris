@@ -3,8 +3,10 @@
 
 package com.slte.app.ui.screen.register
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,12 +14,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -56,6 +65,7 @@ import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5Input
 import com.slte.app.ui.v5.V5PasswordInput
 import com.slte.app.ui.v5.v5Aurora
+import com.slte.app.ui.v5.v5Clickable
 import com.slte.app.utils.Dimens
 
 /**
@@ -103,7 +113,10 @@ fun RegisterScreen(
     }
     val emailError =
         fieldErrorRes
-            ?.takeIf { it == R.string.error_email_required }
+            ?.takeIf {
+                it == R.string.error_email_required ||
+                    it == R.string.error_email_suffix_not_allowed
+            }
             ?.let { stringResource(it) }
     val codeError =
         fieldErrorRes
@@ -161,18 +174,37 @@ fun RegisterScreen(
                     label = stringResource(R.string.login_account_hint),
                     error = emailError,
                 ) {
-                    V5Input(
-                        value = form.email,
-                        onValueChange = {
-                            if (fieldErrorRes == R.string.error_email_required) fieldErrorRes = null
-                            viewModel.onEmailChange(it)
-                        },
-                        placeholder = "",
-                        icon = SlteIcons.Account,
-                        keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Next,
-                        enabled = !isRegistering,
-                    )
+                    // 白名单启用时后缀只能选不能填：左边只收 `@` 前部分，右边从下拉里挑后缀
+                    if (form.emailWhitelist.isEnabled) {
+                        EmailSuffixInput(
+                            localPart = form.email.substringBefore('@'),
+                            suffixes = form.emailWhitelist.suffixes,
+                            selectedSuffix = form.emailSuffix,
+                            onLocalPartChange = {
+                                if (fieldErrorRes == R.string.error_email_required ||
+                                    fieldErrorRes == R.string.error_email_suffix_not_allowed
+                                ) {
+                                    fieldErrorRes = null
+                                }
+                                viewModel.onEmailChange(it)
+                            },
+                            onSelectSuffix = viewModel::onEmailSuffixChange,
+                            enabled = !isRegistering,
+                        )
+                    } else {
+                        V5Input(
+                            value = form.email,
+                            onValueChange = {
+                                if (fieldErrorRes == R.string.error_email_required) fieldErrorRes = null
+                                viewModel.onEmailChange(it)
+                            },
+                            placeholder = "",
+                            icon = SlteIcons.Account,
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Next,
+                            enabled = !isRegistering,
+                        )
+                    }
                 }
 
                 if (emailVerifyEnabled) {
@@ -285,4 +317,120 @@ fun RegisterScreen(
         message = errorMessageRes?.let { stringResource(it) },
         onDismiss = viewModel::dismissError,
     )
+}
+
+/**
+ * 邮箱输入（白名单启用时）：左边只填 `@` 前面的部分，右边从下拉里选后缀。
+ *
+ * 后缀只能选不能填，避免"输入完才被后端拒绝"；下拉沿用 v5 既有下拉样式
+ * （同 `WithdrawMethodField`），触发条沿用输入框尾部槽位的写法（同密码显隐按钮）。
+ */
+@Composable
+private fun EmailSuffixInput(
+    localPart: String,
+    suffixes: List<String>,
+    selectedSuffix: String?,
+    onLocalPartChange: (String) -> Unit,
+    onSelectSuffix: (String) -> Unit,
+    enabled: Boolean,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val c = V5ThemeColors.current
+    val haptic = LocalHapticFeedback.current
+    val shape = RoundedCornerShape(14.dp)
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val menuWidth = maxWidth
+
+        V5Input(
+            value = localPart,
+            onValueChange = onLocalPartChange,
+            placeholder = "",
+            icon = SlteIcons.Account,
+            keyboardType = KeyboardType.Email,
+            imeAction = ImeAction.Next,
+            enabled = enabled,
+            trailing = {
+                val onOpen: (() -> Unit)? =
+                    if (enabled) {
+                        {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            expanded = true
+                        }
+                    } else {
+                        null
+                    }
+                Row(
+                    modifier = Modifier
+                        .then(v5Clickable(onClick = onOpen))
+                        .padding(start = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "@${selectedSuffix.orEmpty()}",
+                        fontSize = 14.sp,
+                        color = if (enabled) c.accent else c.text3,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 120.dp),
+                    )
+                    Icon(
+                        imageVector = if (expanded) SlteIcons.ExpandLess else SlteIcons.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .padding(start = 2.dp),
+                        tint = c.text3,
+                    )
+                }
+            },
+        )
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(menuWidth).heightIn(max = 280.dp),
+            shape = shape,
+            containerColor = c.surface,
+            border = BorderStroke(1.dp, c.hairline),
+            shadowElevation = 6.dp,
+        ) {
+            suffixes.forEach { suffix ->
+                val isSelected = suffix == selectedSuffix
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            v5Clickable(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onSelectSuffix(suffix)
+                                    expanded = false
+                                },
+                            ),
+                        )
+                        .padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "@$suffix",
+                        fontSize = 14.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = c.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (isSelected) {
+                        Icon(
+                            imageVector = SlteIcons.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = c.accent,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

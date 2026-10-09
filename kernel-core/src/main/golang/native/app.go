@@ -21,7 +21,7 @@ import (
 
 func openRemoteContent(url string) (int, error) {
 	u := C.CString(url)
-	e := (*C.char)(C.malloc(1024))
+	e := (*C.char)(C.calloc(1, 1024))
 
 	log.Debugln("Open remote url: %s", url)
 

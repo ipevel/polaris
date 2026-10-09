@@ -30,6 +30,9 @@ multiprocess = "1.0.0"
 ktlint = "12.1.2"
 # Markdown 渲染：锁 0.28.0（0.41+ 需 Kotlin 2.2、0.43 需 compileSdk 37，与本项目 Kotlin 2.0.21/compileSdk 36 不兼容）
 markdownRenderer = "0.28.0"
+# 截图回归基线：锁 1.60.0（1.61+ 需 Kotlin 2.3，与本项目 Kotlin 2.0.21 不兼容）
+# 仅用于本地组件级基线（verifyRoborazziDebug / recordRoborazziDebug），不接 CI 与 precheck。
+roborazzi = "1.60.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -75,6 +78,9 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 kaidl = { group = "com.github.kr328.kaidl", name = "kaidl", version.ref = "kaidl" }
 kaidl-runtime = { group = "com.github.kr328.kaidl", name = "kaidl-runtime", version.ref = "kaidl" }
 rikkax-multiprocess = { group = "dev.rikka.rikkax.preference", name = "multiprocess", version.ref = "multiprocess" }
+roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
+roborazzi-junit-rule = { group = "io.github.takahirom.roborazzi", name = "roborazzi-junit-rule", version.ref = "roborazzi" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -85,3 +91,6 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
+# 截图回归：提供 recordRoborazziDebug / verifyRoborazziDebug / compareRoborazziDebug 三个显式任务。
+# 都是"点了才跑"，因此 testDebugUnitTest（CI 与 precheck 用的那个）行为不变。
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }

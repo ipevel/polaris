@@ -15,7 +15,6 @@ import com.github.kr328.clash.service.data.migrations.LEGACY_MIGRATION
 import com.github.kr328.clash.service.data.migrations.MIGRATIONS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.lang.ref.SoftReference
 import androidx.room.Database as DB
 
 @DB(
@@ -29,14 +28,17 @@ abstract class Database : RoomDatabase() {
     abstract fun openSelectionProxyDao(): SelectionDao
 
     companion object {
+        // 进程内常驻单例（跟随上游 52347a8）。原实现把已打开的库挂在 SoftReference 上：
+        // GC 在内存压力下会清掉它，下一次访问整套重新 open，既没省到内存也没有收益。
+        // 这里持有的是 Room 的连接池与 WAL 生命周期（由 Room 自己管理），不是页面缓存，
+        // 常驻不会造成"占着内存不放"的问题；改回 SoftReference 会让压力越大的设备越频繁重开。
+        @Volatile
+        private var instance: Database? = null
+
         val database: Database
             @Synchronized get() {
-                return softDatabase.get() ?: open(Global.application).apply {
-                    softDatabase = SoftReference(this)
-                }
+                return instance ?: open(Global.application).also { instance = it }
             }
-
-        private var softDatabase: SoftReference<Database?> = SoftReference(null)
 
         private fun open(context: Context): Database {
             return Room.databaseBuilder(

@@ -29,6 +29,8 @@
     <string name="register_invite_optional">Invite code (optional)</string>
     <string name="register_button">Sign up</string>
     <string name="register_back_to_login">Back to login</string>
+    <!-- Shown only when the panel ships an email suffix whitelist: the local part is typed, the domain is picked -->
+    <string name="register_email_suffix_label">Choose email domain</string>
 
     <!-- Forgot Password -->
     <string name="forgot_title">Reset password</string>
@@ -43,6 +45,7 @@
     <string name="error_network">Request failed</string>
     <string name="error_email_send_failed">Failed to send code</string>
     <string name="error_email_required">Enter email</string>
+    <string name="error_email_suffix_not_allowed">This email domain is not allowed</string>
     <string name="error_code_required">Enter code</string>
     <string name="error_password_required">Enter password</string>
     <string name="error_new_password_required">Enter new password</string>
@@ -366,6 +369,8 @@
     <string name="v5_no_nodes">No nodes yet — update your subscription first</string>
     <string name="v5_nodes_offline_hint">Not connected — these nodes come from your subscription; connect to switch</string>
     <string name="v5_nodes_summary_offline">%1$d nodes · not connected</string>
+    <!-- Probed unreachable (NXDOMAIN / refused / no route). Distinct from the grey "Timeout": a timeout may just be a blip. -->
+    <string name="v5_node_offline">Offline</string>
     <string name="v5_state_loading">Loading…</string>
     <string name="v5_state_retry">Retry</string>
     <string name="v5_routing_groups">Routing rule groups</string>
@@ -436,6 +441,8 @@
     <string name="gift_card_redeem">Redeem</string>
     <string name="gift_card_code_hint">Enter redemption code</string>
     <string name="gift_card_success_toast">Redeemed successfully</string>
+    <string name="error_gift_card_used">This redemption code has already been used</string>
+    <string name="error_gift_card_unavailable">Your account does not meet this code\'s requirements</string>
     <string name="error_gift_card_invalid">Invalid or expired redemption code</string>
     <string name="error_gift_card_generic">Redemption failed, please try again later</string>
     <string name="purchase_confirm_order">Confirm order</string>

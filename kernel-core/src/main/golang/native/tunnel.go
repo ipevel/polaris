@@ -78,12 +78,21 @@ func healthCheck(completable unsafe.Pointer, name C.c_string) {
 		tunnel.HealthCheck(name)
 
 		C.complete(completable, nil)
+		// 必须成对释放：completable 是 Kotlin 侧传进来的 JNI 全局引用，
+		// 常驻 VPN 进程里每做一次组健康检查就泄漏一个，长跑必 OOM。
+		// 对照 updateProvider / load / fetchAndValid 的成对释放范式。
+		C.release_object(completable)
 	}(C.GoString(name))
 }
 
 //export healthCheckAll
 func healthCheckAll() {
 	tunnel.HealthCheckAll()
+}
+
+//export urlTest
+func urlTest(name C.c_string, timeoutMs C.int) *C.char {
+	return marshalJson(tunnel.UrlTest(C.GoString(name), int(timeoutMs)))
 }
 
 //export patchSelector

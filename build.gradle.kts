@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.ktlint) apply false
+    // 截图回归基线：只注册任务，不参与 assemble/test 默认任务图（详见 app/build.gradle.kts）。
+    alias(libs.plugins.roborazzi) apply false
 }
 
 val jdkMajor = JavaVersion.current().majorVersion.toIntOrNull() ?: 0

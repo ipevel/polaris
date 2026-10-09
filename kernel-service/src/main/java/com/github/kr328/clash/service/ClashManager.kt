@@ -131,6 +131,12 @@ class ClashManager(private val context: Context) : IClashManager,
         Clash.healthCheckAll()
     }
 
+    override fun urlTest(name: String, timeoutMs: Int): UrlTestResult {
+        // null = 内核里没有该节点（已从订阅删除）。按超时处理而不是离线，
+        // 避免"删掉一个节点"把同名的新节点误标成离线。
+        return Clash.urlTest(name, timeoutMs) ?: UrlTestResult(0, UrlTestResult.KIND_TIMEOUT)
+    }
+
     override suspend fun updateProvider(type: Provider.Type, name: String) {
         return Clash.updateProvider(type, name).await()
     }

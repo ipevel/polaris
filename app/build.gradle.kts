@@ -9,6 +9,9 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ktlint)
+    // 截图回归基线（组件级）。插件只注册 record/verify/compare 三个显式任务，
+    // 不挂进 assemble / test 的默认任务图，所以 CI 与 .scripts/precheck.ps1 的行为不变。
+    alias(libs.plugins.roborazzi)
 }
 
 ktlint {
@@ -44,6 +47,19 @@ val slteAppName = slteValue("POLARIS_APP_NAME") ?: "Polaris"
 val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
 val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 54
 val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.7.6"
+
+// Android 包名的每一段必须以字母开头（数字不能打头：91.vip.fun 这类会被 AAPT 拒绝）。
+// POLARIS_APPLICATION_ID 由 build.yml 的手动输入提供，填错时 AAPT 要到资源链接阶段才报
+// "not a valid Android package name"，位置与信息都不直观；这里在配置阶段就校验并给出可读提示。
+val sltePackageSegment = "[A-Za-z][A-Za-z0-9_]*"
+val sltePackageRegex = Regex("$sltePackageSegment(\\.$sltePackageSegment)+")
+if (!sltePackageRegex.matches(slteApplicationId)) {
+    throw GradleException(
+        "应用包名（POLARIS_APPLICATION_ID）不合法：`$slteApplicationId`\n" +
+            "规则：至少两段、以点分隔，每一段必须以字母开头，可包含数字与下划线。\n" +
+            "正确示例：com.polaris.app；若域名以数字开头（如 91.vip.fun），把该段改成字母开头即可，例如 fun.vip.a91。",
+    )
+}
 
 // 占位回退值：真实面板地址由用户在登录时输入，构建时无需（也不应）写入生产地址。
 val slteApiBaseUrl = slteValue("POLARIS_API_BASE_URL")?.let(::slteHttps) ?: "https://api.example.com"
@@ -265,6 +281,11 @@ dependencies {
     testImplementation(libs.androidx.ui.test.junit4)
 
     testImplementation(libs.okhttp.mockwebserver)
+    // 截图回归基线（组件级，本地 verify）。基线 PNG 入库到 app/src/test/snapshots/，
+    // 见同目录 .gitignore 里的例外说明与 docs 中的用法。
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -345,3 +366,10 @@ val verifyKernelBinary =
         description = "校验预编译内核产物 libclash.so 的 SHA-256 与 SHA256SUMS 记录一致"
         dependsOn(":kernel-core:verifyNativeLibraries")
     }
+
+// R8 存活校验此前只 register 未接线：CI 与 .scripts/precheck.ps1 里都是显式调用，
+// 于是裸跑 assembleRelease（README 的发布命令、打包机脚本）会绕过它。
+// 挂到 assembleRelease 上后，任何 release 出包都先核对 mapping。
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    dependsOn(verifyReleaseApiSurvivors)
+}

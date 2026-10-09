@@ -47,17 +47,27 @@ internal object AuthRules {
         return isAuthFailureBodyText(text)
     }
 
+    /**
+     * 401 是否代表「会话失效」。
+     *
+     * 与 403 同门控，且比 403 更严：**必须同时满足**「主机可信」与「请求落在鉴权接口前缀下」
+     * 才允许清会话。此前 401 完全不看路径也不看主机，于是订阅 CDN / WAF / 任何第三方主机
+     * 返回的 401 都会把用户踢下线（订阅拉取、静态资源被拦一次即掉登录）。
+     */
     fun decide(
         token: String?,
         isAllowedHost: Boolean,
         hasAuthHeader: Boolean,
         responseCode: Int,
         isAuthFailureBody: Boolean,
+        isAuthPath: Boolean,
     ): Decision {
         val attachToken = token != null && isAllowedHost && !hasAuthHeader
+        // 主机可信 && 路径是鉴权接口，两者缺一不可；口令真正失效仍会被正确清理
         val authFailed =
-            responseCode == 401 ||
-                (responseCode == 403 && isAuthFailureBody)
+            isAllowedHost &&
+                (responseCode == 401 || (responseCode == 403 && isAuthFailureBody)) &&
+                isAuthPath
         val clearSession = authFailed && token != null
         return Decision(attachToken = attachToken, clearSession = clearSession)
     }
@@ -90,7 +100,7 @@ constructor(
         val token = sessionStore.getAuthData()
 
         // 自定义面板主机也要注入 token：不在 BuildConfig 白名单里，否则登录必失败
-        val canAttachToken = AllowedHosts.isAllowedHost(request.url.host) || apiUrlStore.isCurrentHost(request.url.host)
+        val canAttachToken = isTrustedHost(request.url.host)
         val decision =
             AuthRules.decide(
                 token = token,
@@ -98,6 +108,7 @@ constructor(
                 hasAuthHeader = request.header("Authorization") != null,
                 responseCode = 0,
                 isAuthFailureBody = false,
+                isAuthPath = AuthRules.isAuthPath(request.url.encodedPath),
             )
         val authenticated =
             if (decision.attachToken && token != null) {
@@ -116,10 +127,15 @@ constructor(
         val clearSession =
             AuthRules.decide(
                 token = token,
-                isAllowedHost = canAttachToken,
-                hasAuthHeader = request.header("Authorization") != null,
+                // 重定向会换主机：只有最终响应落在可信主机、且这次会话的凭据确实送到了那里，
+                // 才认它是「我们的鉴权接口说令牌失效了」
+                isAllowedHost =
+                isTrustedHost(response.request.url.host) &&
+                    response.request.header("Authorization") == token,
+                hasAuthHeader = response.request.header("Authorization") != null,
                 responseCode = response.code,
                 isAuthFailureBody = isAuthFailureResponse(response),
+                isAuthPath = AuthRules.isAuthPath(response.request.url.encodedPath),
             ).clearSession
         if (clearSession && token == sessionStore.getAuthData()) {
             sessionStore.clear()
@@ -128,6 +144,9 @@ constructor(
 
         return response
     }
+
+    /** 白名单主机，或用户当前登录所用的自定义面板主机。 */
+    private fun isTrustedHost(host: String): Boolean = AllowedHosts.isAllowedHost(host) || apiUrlStore.isCurrentHost(host)
 
     private fun isAuthFailureResponse(response: Response): Boolean {
         if (!AuthRules.isAuthPath(response.request.url.encodedPath)) {

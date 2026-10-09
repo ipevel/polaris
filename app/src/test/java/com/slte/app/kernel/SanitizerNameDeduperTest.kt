@@ -4,6 +4,7 @@
 package com.slte.app.kernel
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.yaml.snakeyaml.Yaml
@@ -281,5 +282,102 @@ class SanitizerNameDeduperTest {
         @Suppress("UNCHECKED_CAST")
         val group = (doc["proxy-groups"] as List<Map<String, Any?>>).first { it["name"] == "节点选择" }
         assertEquals("组引用仍指向首个节点", listOf("香港 01", "日本 01"), group["proxies"])
+    }
+
+    // --- 写盘前的「内核能否加载」闸门 ---
+
+    @Test
+    fun `可加载 - 名字唯一且有节点`() {
+        val src =
+            """
+            |proxies:
+            |${proxy("A")}
+            |${proxy("B")}
+            |
+            """.trimMargin()
+        assertTrue(SubscriptionSanitizer.isKernelLoadable(src))
+    }
+
+    @Test
+    fun `不可加载 - 重名`() {
+        val src =
+            """
+            |proxies:
+            |${proxy("A")}
+            |${proxy("A")}
+            |
+            """.trimMargin()
+        assertFalse("重名会让内核拒绝加载整份配置", SubscriptionSanitizer.isKernelLoadable(src))
+    }
+
+    @Test
+    fun `不可加载 - 条目缺 name`() {
+        val src =
+            """
+            |proxies:
+            |  - type: ss
+            |    server: 1.2.3.4
+            |    port: 8388
+            |
+            """.trimMargin()
+        assertFalse(SubscriptionSanitizer.isKernelLoadable(src))
+    }
+
+    @Test
+    fun `不可加载 - 空文本`() {
+        assertFalse(SubscriptionSanitizer.isKernelLoadable(""))
+        assertFalse(SubscriptionSanitizer.isKernelLoadable("   \n  "))
+    }
+
+    @Test
+    fun `可加载 - 只有 proxy-providers 没有内联节点`() {
+        val src =
+            """
+            |proxy-providers:
+            |  p:
+            |    type: http
+            |    url: https://example.com/sub
+            |
+            """.trimMargin()
+        assertTrue(SubscriptionSanitizer.isKernelLoadable(src))
+    }
+
+    @Test
+    fun `不可加载 - 既无内联节点也无 provider`() {
+        val src =
+            """
+            |rules:
+            |  - MATCH,DIRECT
+            |
+            """.trimMargin()
+        assertFalse(SubscriptionSanitizer.isKernelLoadable(src))
+    }
+
+    @Test
+    fun `可加载 - 清洗后的重名订阅被自动救回`() {
+        val src =
+            """
+            |proxies:
+            |${proxy("A")}
+            |${proxy("A")}
+            |
+            """.trimMargin()
+        assertFalse("清洗前不可加载", SubscriptionSanitizer.isKernelLoadable(src))
+        assertTrue("清洗后应可加载", SubscriptionSanitizer.isKernelLoadable(SubscriptionSanitizer.sanitize(src, listOf("example.com"))))
+    }
+
+    @Test
+    fun `检视接口 - 重名列表与 provider 探测`() {
+        val src =
+            """
+            |proxies:
+            |${proxy("A")}
+            |${proxy("B")}
+            |${proxy("A")}
+            |
+            """.trimMargin()
+        assertEquals(listOf("A", "B", "A"), SanitizerNameDeduper.proxyNames(src))
+        assertEquals(listOf("A"), SanitizerNameDeduper.duplicateProxyNames(src))
+        assertFalse(SanitizerNameDeduper.hasProxyProviders(src))
     }
 }

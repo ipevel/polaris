@@ -79,8 +79,14 @@ constructor(
         user
     }
 
+    @Volatile
+    private var cachedRegisterConfig: RegisterConfig? = null
+
+    /** 注册页直接读这份配置：登录页进注册页前刚拉过，避免重复请求，也不靠路由传参耦合。 */
+    fun cachedRegisterConfig(): RegisterConfig? = cachedRegisterConfig
+
     suspend fun fetchRegisterConfig(): Result<RegisterConfig> = runApi {
-        authApi.fetchRegisterConfig()
+        authApi.fetchRegisterConfig().also { cachedRegisterConfig = it }
     }
 
     @Volatile

@@ -525,6 +525,48 @@ class ServerViewModelTest {
         assertTrue("另一个账号的收起态不该生效", vm.collapsedSections.value.isEmpty())
     }
 
+    /**
+     * 离线角标必须跨"订阅刷新/冷启动"存活。
+     *
+     * 离线是上一次测速复核出来的结论，存在本地；如果 [applyNodes] 不读它，
+     * 用户重启 App 后角标就消失，只能靠再测一次速才知道节点已经没了。
+     */
+    @Test
+    fun `已探测离线的节点在加载时被标注`() = runTest(mainRule.dispatcher) {
+        coEvery { serverRepository.fetchServers(any()) } returns
+            Result.success(listOf(node("香港01", 1), node("美国01", 2)))
+        every { kernelProxy.speedResultStore.getOfflineNodes() } returns setOf("香港01")
+        val vm = viewModel()
+
+        vm.loadNodes(force = true)
+        advanceUntilIdle()
+
+        assertTrue(
+            "缓存里标记为离线的节点应带出 offline",
+            vm.data.value.nodes.first { it.name == "香港01" }.offline,
+        )
+        assertTrue(
+            "没被标记的节点不该被判离线",
+            !vm.data.value.nodes.first { it.name == "美国01" }.offline,
+        )
+    }
+
+    @Test
+    fun `没有离线缓存时所有节点都算在线`() = runTest(mainRule.dispatcher) {
+        coEvery { serverRepository.fetchServers(any()) } returns
+            Result.success(listOf(node("香港01", 1)))
+        every { kernelProxy.speedResultStore.getOfflineNodes() } returns null
+        val vm = viewModel()
+
+        vm.loadNodes(force = true)
+        advanceUntilIdle()
+
+        assertTrue(
+            "读不到离线名单时不能凭空标离线",
+            vm.data.value.nodes.none { it.offline },
+        )
+    }
+
     private companion object {
 
         const val GROUP_NAME = "节点选择"

@@ -12,11 +12,14 @@ import com.slte.app.data.repository.SubscribeRepository
 import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.kernel.KernelProxyGroupInfo
+import com.slte.app.kernel.KernelUrlTestFailure
 import com.slte.app.kernel.SpeedTestOutcome
+import com.slte.app.kernel.cachedOfflineNodes
 import com.slte.app.kernel.cachedSpeedResults
 import com.slte.app.kernel.groupByTypeCurrentNode
 import com.slte.app.kernel.primaryGroupOf
 import com.slte.app.kernel.proxyGroups
+import com.slte.app.kernel.saveOfflineNodes
 import com.slte.app.kernel.selectAuto
 import com.slte.app.kernel.selectFallback
 import com.slte.app.kernel.selectInGroup
@@ -24,11 +27,15 @@ import com.slte.app.kernel.selectPrimary
 import com.slte.app.kernel.speedTestOutcome
 import com.slte.app.kernel.speedTestProgressiveAndCache
 import com.slte.app.kernel.testGroup
+import com.slte.app.kernel.urlTestFailureKind
 import com.slte.app.utils.Constants
 import com.slte.app.utils.ErrorMessages
 import com.slte.app.utils.extractCountryCode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -211,6 +218,9 @@ constructor(
         delays: Map<String, Int>? = null,
     ) {
         val existing = _data.value.nodes.associate { it.name to it.delay }
+        // 上次探测确认离线的节点：订阅刷新后角标要跟着回来，否则用户重启 App
+        // 就看不到"这节点已经没了"，只能靠重新测速才知道。
+        val offline = kernelProxy.cachedOfflineNodes().orEmpty()
         val nodes =
             servers
                 .distinctBy { it.name }
@@ -222,6 +232,7 @@ constructor(
                         type = server.type.name,
                         host = server.host,
                         delay = delays?.get(server.name) ?: existing[server.name],
+                        offline = server.name in offline,
                     )
                 }
         _data.update { it.copy(nodes = nodes, isLoading = false) }
@@ -303,10 +314,20 @@ constructor(
             // 本地分流下结构组已 include-all，测速只 await 结构组（见 KernelProxySpeed）
             val delays = kernelProxy.speedTestProgressiveAndCache { }
             refreshGroups()
+            // 测速失败的节点再逐个复核一次：只有内核明确说"不可达"才标离线，
+            // 单纯超时可能只是一次抖动，标离线会误伤活节点。
+            // delays 为空 = 内核根本没跑起来，此时不做复核（否则整页节点都会被当成失败）。
+            val offline = if (delays.isEmpty()) null else probeFailedNodes(delays)
+            offline?.let { kernelProxy.saveOfflineNodes(it) }
             // 同一份 delays 回填节点列表：此前只刷新策略组，导致「全部节点」
             // 列表停留在旧值、与分组卡片显示两个不同数字
-            if (delays.isNotEmpty()) {
-                _data.update { state -> state.copy(nodes = mergeDelays(state.nodes, delays)) }
+            _data.update { state ->
+                state.copy(
+                    nodes =
+                    mergeDelays(state.nodes, delays).map { node ->
+                        if (offline == null) node else node.copy(offline = node.name in offline)
+                    },
+                )
             }
             _isTestingAll.value = false
             _speedTestTipRes.value =
@@ -315,6 +336,36 @@ constructor(
                     SpeedTestOutcome.PARTIAL -> R.string.server_speed_test_done
                     SpeedTestOutcome.EMPTY -> R.string.server_speed_test_failed
                 }
+        }
+    }
+
+    /**
+     * 对测速失败的节点逐个复核，返回内核明确判定"不可达"的节点名。
+     *
+     * 只在测速跑出结果后调用（见 [startSpeedTest]）：内核没起来时 delays 为空，
+     * 那时把整页节点当失败去复核，会把一次环境故障放大成"所有节点都离线"。
+     *
+     * 复核并发跑，总耗时约等于单个超时（[Constants.NODE_URLTEST_TIMEOUT_MS]）。
+     */
+    private suspend fun probeFailedNodes(delays: Map<String, Int>): Set<String> {
+        if (delays.isEmpty()) return emptySet()
+        val failed =
+            _data.value.nodes
+                .map { it.name }
+                .filter { delays[it] == null || delays[it] == Constants.DELAY_TIMEOUT }
+        if (failed.isEmpty()) return emptySet()
+        return coroutineScope {
+            failed
+                .map { name ->
+                    async {
+                        name.takeIf {
+                            kernelProxy.urlTestFailureKind(it, Constants.NODE_URLTEST_TIMEOUT_MS) ==
+                                KernelUrlTestFailure.OFFLINE
+                        }
+                    }
+                }.awaitAll()
+                .filterNotNull()
+                .toSet()
         }
     }
 
@@ -588,4 +639,11 @@ data class NodeItem(
     val type: String = "",
     val host: String = "",
     val delay: Int? = null,
+    /**
+     * 探测确认不可达（域名不存在 / 连接被拒 / 无路由）。
+     *
+     * 与"延迟超时"是两回事：超时可能只是一次抖动，这个标记只在 urlTest
+     * 明确分类为 offline 时才置位，节点页据此显示离线角标。
+     */
+    val offline: Boolean = false,
 )

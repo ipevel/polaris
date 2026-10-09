@@ -167,6 +167,9 @@ internal fun V5NodesScreen(
     val groupsForRouting = routingGroupsOf(groups, primary?.name)
     // 未连接（内核未运行）时用订阅缓存名单兜底，见 offlineMembersOf 的注释
     val offlineMembers = if (primary == null && members.isEmpty()) offlineMembersOf(data.nodes) else emptyList()
+    // 探测确认离线的节点名。节点行来自内核策略组，那里拿不到应用侧的探测结论，
+    // 所以按名字匹配回订阅名单（名字就是内核 proxy 名，见 ServerViewModel.NodeItem）。
+    val offlineNames = data.nodes.filter { it.offline }.map { it.name }.toSet()
 
     LaunchedEffect(Unit) { onAutoTestOnce() }
 
@@ -216,6 +219,7 @@ internal fun V5NodesScreen(
                 if (offlineMembers.isNotEmpty()) stringResource(R.string.v5_nodes_offline_hint) else null,
                 onToggle = { onToggleSection(PRIMARY_SECTION_KEY) },
                 onSelect = { onSelectPrimary(it) },
+                offlineNames = offlineNames,
             )
 
             // —— 分流规则组：与「节点选择」**同一套卡片 UI**（此前是 V5RowItem + 行内文字按钮 + 弹层，
@@ -242,6 +246,7 @@ internal fun V5NodesScreen(
                             isLoading = isLoadingGroups,
                             onToggle = { onToggleSection(group.name) },
                             onSelect = { onSelectInGroup(group.name, it) },
+                            offlineNames = offlineNames,
                         )
                     }
                 }
@@ -303,6 +308,8 @@ private fun NodeGroupCard(
     // 非空 = 这份名单是**只读**兜底（内核未运行，来自订阅缓存）：顶部显示说明文字，
     // 且每行不可点（没有内核可切，点了不会有任何效果，给交互反馈就是假交互）。
     readOnlyHint: String? = null,
+    // 探测确认离线的节点名（来自订阅名单的 NodeItem.offline），按名字匹配到成员行打角标。
+    offlineNames: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
     val c = V5ThemeColors.current
@@ -358,6 +365,7 @@ private fun NodeGroupCard(
                     MemberRow(
                         member = member,
                         selected = member.name == selectedName,
+                        offline = member.name in offlineNames,
                         onClick =
                         if (readOnlyHint == null) {
                             { onSelect(member.name) }

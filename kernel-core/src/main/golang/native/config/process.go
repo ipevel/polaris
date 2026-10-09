@@ -85,6 +85,10 @@ func patchGeneral(cfg *config.RawConfig, _ string) error {
 	cfg.TLS = config.RawTLS{}
 	// 安全:订阅不得启用 iptables 流量劫持(无 tproxy 端口时 executor 会 os.Exit(2) 崩溃)
 	cfg.IPTables = config.RawIPTables{}
+	// 安全:订阅不得指定 NTP 服务器(时间源劫持,可影响证书有效期判断与缓存语义),
+	// 一律回退内置默认值;app 侧清洗同键整块丢弃,此处为最终兜底。
+	// 注意 geox-url 不在此处复位——patchGeoXUrl 用 officialGeoXUrls 单独兜底(比 DefaultRawConfig 更明确)。
+	cfg.NTP = config.DefaultRawConfig().NTP
 
 	return nil
 }

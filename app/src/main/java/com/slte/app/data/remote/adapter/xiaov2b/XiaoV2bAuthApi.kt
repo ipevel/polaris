@@ -9,6 +9,7 @@ import com.slte.app.data.remote.adapter.AdapterExecute
 import com.slte.app.data.remote.adapter.orEmptyLogged
 import com.slte.app.data.remote.adapter.orFalseLogged
 import com.slte.app.data.remote.adapter.orNullLogged
+import com.slte.app.data.remote.adapter.parseEmailWhitelistSuffixes
 import com.slte.app.data.remote.api.AuthApi
 import com.slte.app.data.remote.api.dto.CheckoutResultDto
 import com.slte.app.data.remote.api.dto.CouponCheckResultDto
@@ -21,6 +22,7 @@ import com.slte.app.data.remote.api.dto.SubscribeInfoDto
 import com.slte.app.data.remote.api.dto.UserInfoDto
 import com.slte.app.domain.model.CommissionRecord
 import com.slte.app.domain.model.EmailCodePurpose
+import com.slte.app.domain.model.EmailWhitelist
 import com.slte.app.domain.model.InviteInfo
 import com.slte.app.domain.model.Notice
 import com.slte.app.domain.model.RegisterConfig
@@ -78,6 +80,7 @@ class XiaoV2bAuthApi(
         return RegisterConfig(
             emailVerifyEnabled = data.is_email_verify == 1,
             inviteForceEnabled = data.is_invite_force == 1,
+            emailWhitelist = EmailWhitelist(parseEmailWhitelistSuffixes(data.emailWhitelistSuffix)),
         )
     }
 
