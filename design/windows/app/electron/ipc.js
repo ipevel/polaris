@@ -100,29 +100,51 @@ function wantedPort() {
   return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
 }
 
+/**
+ * 内核操作串行锁。
+ *
+ * 起因（真事故）：开机后自动拉订阅（refresh_subscription）与用户点的那次
+ * connect 会叠在一起跑。订阅刷新内部就是"断开 → 重连"，于是它把用户刚拉起来
+ * 的内核拆掉，用户的 connect 再往已经死掉的控制面发请求 ——
+ * 日志里就是 `ERROR command connect failed: read ECONNRESET` 紧跟
+ * `mihomo exited`，最后内核是死的、延迟全空。
+ *
+ * 这里保证同一时刻只有一段"会改内核状态"的代码在跑：连接、断开、以及订阅刷新里
+ * 的改配置 + 重载。面板网络拉取刻意留在锁外，免得用户点连接要干等十几秒。
+ */
+let kernelChain = Promise.resolve();
+function serialKernel(fn) {
+  const next = kernelChain.then(fn, fn);
+  // 链子本身不能因为某一次失败就断掉（失败照常抛给调用方）
+  kernelChain = next.then(() => {}, () => {});
+  return next;
+}
+
 const commands = {
   /* ================= 内核 ================= */
   get_status: async () => core.status(),
 
-  connect: async () => {
-    needAuth();
-    // 刚登录就点连接时，订阅往往还在拉的路上（登录后 refreshAll 是异步的）。
-    // 旧实现在这里直接抛「尚未拉取订阅，请先登录面板」—— 用户明明刚登录成功，
-    // 看到这句只会以为登录坏了。这里自己先把订阅补齐再连。
-    if (!hasSubscribeFile()) {
-      log.info('connect: 本地还没有订阅，先自动拉一次');
-      await pullSubscription();
-      core.setDirectDomains(remote.directDomains());
-      core.prepareConfig();
-    }
-    const st = await core.connect();
-    return ok({ connected: st.connected, node: st.node });
-  },
+  connect: async () =>
+    serialKernel(async () => {
+      needAuth();
+      // 刚登录就点连接时，订阅往往还在拉的路上（登录后 refreshAll 是异步的）。
+      // 旧实现在这里直接抛「尚未拉取订阅，请先登录面板」—— 用户明明刚登录成功，
+      // 看到这句只会以为登录坏了。这里自己先把订阅补齐再连。
+      if (!hasSubscribeFile()) {
+        log.info('connect: 本地还没有订阅，先自动拉一次');
+        await pullSubscription();
+        core.setDirectDomains(remote.directDomains());
+        core.prepareConfig();
+      }
+      const st = await core.connect();
+      return ok({ connected: st.connected, node: st.node });
+    }),
 
-  disconnect: async () => {
-    await core.disconnect();
-    return ok();
-  },
+  disconnect: async () =>
+    serialKernel(async () => {
+      await core.disconnect();
+      return ok();
+    }),
 
   get_nodes: async () => core.loadNodes(),
 
@@ -141,16 +163,19 @@ const commands = {
 
   refresh_subscription: async () => {
     needAuth();
+    // 面板拉取不占内核锁：用户在这个十几秒里点连接应该立刻能连上
     await pullSubscription();
-    // 订阅域名可能是第一次见到，立刻并入直连域名再生成配置
-    core.setDirectDomains(remote.directDomains());
-    const { count } = core.prepareConfig();
-    if (core.status().connected) {
-      // 已在连接：重载配置而不是让用户手动断开重连
-      await core.disconnect();
-      await core.connect();
-    }
-    return ok({ count });
+    return serialKernel(async () => {
+      // 订阅域名可能是第一次见到，立刻并入直连域名再生成配置
+      core.setDirectDomains(remote.directDomains());
+      const { count } = core.prepareConfig();
+      if (core.status().connected) {
+        // 已在连接：重载配置而不是让用户手动断开重连
+        await core.disconnect();
+        await core.connect();
+      }
+      return ok({ count });
+    });
   },
 
   set_proxy_mode: async ({ mode }) => {

@@ -150,9 +150,26 @@
   const PRIMARY_ROUTES = ["home", "nodes", "traffic", "me", "settings"];
   let navStack = [];
 
+  /**
+   * 记一条路由流水到 window.__navLog（最近 30 条）。
+   * 用途只有一个：界面"自己跳到别的页"时，自检失败信息里能直接看到是谁调的 ——
+   * 只报最终状态（"我在首页"）是查不出调用点的。生产路径零影响（try/catch 吞掉一切）。
+   */
+  function noteNav(from, to, by) {
+    try {
+      if (!window.__navLog) window.__navLog = [];
+      window.__navLog.push({ at: Date.now(), from: from, to: to,
+        by: String(by || "").trim().slice(0, 120) });
+      if (window.__navLog.length > 30) window.__navLog.shift();
+    } catch (_) {}
+  }
+
   function nav(route) {
     if (route === "register" || route === "forgot" || route === "login") state.authError = "";
     const prev = state.route;
+    // 路由流水（自检失败时用）：界面"自己跳到别的页"这种问题，只有把每次跳转的
+    // 调用点记下来才查得动 —— 光看最终状态是"我在首页"，看不出是谁把页面挪走的。
+    noteNav(prev, route, (new Error().stack || "").split("\n")[2] || "");
     if (route !== prev) {
       if (PRIMARY_ROUTES.includes(prev)) navStack = [prev];
       else if (navStack[navStack.length - 1] !== prev) navStack.push(prev);
@@ -170,6 +187,7 @@
   /** 二级页面返回：没有历史就回"我的" */
   function goBack() {
     const target = navStack.length ? navStack.pop() : "me";
+    noteNav(state.route, target, "goBack()");
     state.route = target;
     render();
     if (target === "settings") loadTunStatus();
@@ -546,12 +564,17 @@
           toast("已断开");
         } else {
           if (!state.settings.authed) { state.busy = false; nav("login"); return; }
-          await api.connect();
+          const st = await api.connect();
           state.connected = true;
+          if (st && st.node) state.node = st.node;
+          if (st && st.latency) state.latency = st.latency;
           justConnected = true;
           toast("已连接");
         }
         state.busy = false;
+        // 先把已知的连接状态画出来（状态线 / 当前节点立刻更新），再去拉面板数据 ——
+        // 面板那一轮要几秒，等它回来才重绘的话，用户会看到"已连接但首页还是未连接的样子"。
+        render();
         await refreshAll();
       } catch (e) {
         state.busy = false;
@@ -565,7 +588,9 @@
         await refreshStatus();
       }
       render();
-      // 用户第 7 条：连上就自动测一次延迟，不用再进节点页手动点
+      // 用户第 7 条：连上就自动测一次延迟，不用再进节点页手动点。
+      // 连接期间不拉订阅（会和连接抢内核，见 autoRefreshSubscription 的注释与 DEVNOTES A-41），
+      // 那次检查到这里没做，就交给 autoRefreshSubscription 自己的"忙完再看"补上。
       if (justConnected) runDelayTest(true);
     });
   }
@@ -608,9 +633,12 @@
   async function connectAndRefresh() {
     state.busy = true; render();
     try {
-      await api.connect();
+      const st = await api.connect();
       state.connected = true;
+      if (st && st.node) state.node = st.node;
+      if (st && st.latency) state.latency = st.latency;
       state.busy = false;
+      render();                       // 先按已知状态立起界面，再去拉面板数据
       // 端口可能刚换过，重连后把运行端口也刷新一下（设置页要显示真实值）
       state.settings = await api.getSettings().catch(() => state.settings);
       await refreshAll();
@@ -743,7 +771,25 @@
   async function runDelayTest(auto) {
     if (state.testing) return;
     state.testing = true; render();
-    const r = await guard("延迟测试", () => api.speedTest());
+    // 拉订阅是"断开 → 重连"内核（节点列表要重新载入）。它和自动延迟测试撞在一起时
+    // 内核正好是断的，speed_test 报「尚未连接」，界面上就变成"连上了但节点全是未测"。
+    // 等它忙完再测，失败再等一会儿重试一次。
+    if (subRefreshPromise) {
+      await Promise.race([subRefreshPromise, new Promise((r) => setTimeout(r, 30000))]);
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    let r = null;
+    let lastMsg = "";
+    for (let i = 0; i < 2 && !r; i += 1) {
+      try {
+        r = await api.speedTest();
+      } catch (e) {
+        lastMsg = String((e && e.message) || e);
+        // 只有"内核正好在重连"这一类值得再等一次；别的错误直接报给用户，别重试也别报两遍
+        if (!(i === 0 && /尚未连接|正在/.test(lastMsg))) break;
+        await new Promise((res) => setTimeout(res, 2500));
+      }
+    }
     state.testing = false;
     if (r) {
       state.nodes = await api.getNodes().catch(() => state.nodes);
@@ -752,6 +798,7 @@
     }
     render();
     if (r) toast(auto ? "已自动完成延迟测试" : "延迟测试完成");
+    else if (lastMsg) toast("延迟测试失败：" + lastMsg);
   }
 
   /**
@@ -1255,21 +1302,31 @@
   }
 
   let autoRefreshing = false;
+  let subRefreshPromise = null;   // 正在进行的"拉订阅"，延迟测试要等它（见 runDelayTest）
   async function autoRefreshSubscription() {
     if (autoRefreshing || !state.settings.authed) return;
+    // state.busy = 用户正在点连接/断开。这时候拉订阅会和那次连接抢内核：
+    // 订阅刷新内部是"断开 → 重连"，叠在用户刚拉起来的内核上会把它拆掉，
+    // 主进程报 `read ECONNRESET`，最后内核是死的（见 DEVNOTES A-41）。
+    // 不丢掉这次检查 —— 等它忙完再看一眼，否则过期的订阅要等 12 小时才会再拉。
+    if (state.busy) { setTimeout(autoRefreshSubscription, 15000); return; }
     autoRefreshing = true;
-    try {
-      const stale = !state.settings.subscription_updated_at ||
-        Date.now() - state.settings.subscription_updated_at > 12 * 3600 * 1000;
-      if (stale || state.nodes.length === 0) {
-        const r = await api.refreshSubscription();
-        if (r && r.ok) { state.nodes = await api.getNodes().catch(() => state.nodes); render(); }
+    subRefreshPromise = (async () => {
+      try {
+        const stale = !state.settings.subscription_updated_at ||
+          Date.now() - state.settings.subscription_updated_at > 12 * 3600 * 1000;
+        if (stale || state.nodes.length === 0) {
+          const r = await api.refreshSubscription();
+          if (r && r.ok) { state.nodes = await api.getNodes().catch(() => state.nodes); render(); }
+        }
+      } catch (e) {
+        console.warn("自动拉取订阅失败", e);
+      } finally {
+        autoRefreshing = false;
+        subRefreshPromise = null;
       }
-    } catch (e) {
-      console.warn("自动拉取订阅失败", e);
-    } finally {
-      autoRefreshing = false;
-    }
+    })();
+    return subRefreshPromise;
   }
 
   async function boot() {
@@ -1290,6 +1347,7 @@
     // 面板慢的时候（实测流量查询能到十几秒）用户在启动期间点进「我的」，
     // 会被这一下拽回首页；自检里也因此丢过点击（点退出登录时元素刚被换掉）。
     state.route = "home";
+    noteNav("boot", "home", "boot()");
     render();
     state.booted = true;
     bindLiveStatus();

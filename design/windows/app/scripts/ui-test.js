@@ -403,7 +403,22 @@ async function run(win, opts) {
 
     // 第 4 条：按钮叫「延迟测试」，不是「测速」
     const label = await ev(win, 'document.querySelector("#btn-speedtest")?.textContent.trim()');
-    check('按钮文案是「延迟测试」', label === '延迟测试', `实际「${label}」`);
+    // 找不到按钮时别只报「实际 undefined」——把当时到底停在哪一页、页面上有什么摆出来，
+    // 否则只能靠猜（这个断言曾经莫名其妙红过一次，日志里什么都没留下）。
+    let labelWhy = '';
+    if (label !== '延迟测试') {
+      labelWhy = await ev(win, `(()=>{const st=window.__polarisState||{};
+        return JSON.stringify({route:window.__polarisRoute,
+          title:(document.querySelector('.page-title')||{}).textContent||'',
+          sub:(document.querySelector('.page-sub')||{}).textContent||'',
+          overlay:!!document.querySelector('.overlay'),
+          btns:[...document.querySelectorAll('button')].map(b=>b.id||b.dataset.click||(b.textContent||'').trim().slice(0,6)).slice(0,10),
+          sidebar:(document.querySelector('.sidebar')||{}).offsetWidth||0,
+          connected:st.connected,busy:st.busy,testing:st.testing,
+          nodes:(st.nodes||[]).length,groups:(st.groups||[]).length,
+          nav:(window.__navLog||[]).slice(-6).map(x=>x.from+'→'+x.to+' by '+x.by)});})()`);
+    }
+    check('按钮文案是「延迟测试」', label === '延迟测试', `实际「${label}」${labelWhy ? ' 现场 ' + labelWhy : ''}`);
     await realClick(win, '#btn-speedtest', { label:'延迟测试' });
     await waitFor(win, '/测试中/.test(document.querySelector("#btn-speedtest")?.textContent||"")',
       { timeout: 10000, label:'进入测试中' });
@@ -585,7 +600,8 @@ async function run(win, opts) {
       } catch (e) {
         const after = await ev(win, `(()=>({route:window.__polarisRoute,segs:document.querySelectorAll('[data-range]').length,
           title:document.querySelector('.page-title')?.textContent.trim()||'',bodyLen:document.body.innerHTML.length,
-          tr:window.__polarisState.traffic&&window.__polarisState.traffic.range}))()`);
+          tr:window.__polarisState.traffic&&window.__polarisState.traffic.range,
+          nav:(window.__navLog||[]).slice(-6).map(x=>x.from+'→'+x.to+' by '+x.by)}))()`);
         throw new Error(`${e.message} | 点前 ${JSON.stringify(before)} 点后 ${JSON.stringify(after)}`);
       }
       return ev(win, `(()=>{const st=window.__polarisState;const t=st.traffic||{};const site=t.site||null;
@@ -775,6 +791,24 @@ async function run(win, opts) {
     // 用户第 6 轮第 1 条：TUN 堆栈默认 system
     const tun = await ev(win, 'window.__polarisState.settings.tun');
     check('TUN 堆栈默认是 system（用户第 1 条）', tun === 'system', `当前 ${tun}`);
+    // 用户第 9 轮第 1 条：对话框里顺序与「（默认）」标注都要跟着默认值走
+    await realClick(win, '[data-click="set-tun-stack"]', { label:'设置页·TUN 堆栈' });
+    await waitFor(win, '!!document.querySelector(".overlay [data-pick-value]")', { timeout: 8000, label:'TUN 堆栈对话框' });
+    const opts = await ev(win, `[...document.querySelectorAll(".overlay [data-pick-value]")].map(e => ({
+      v: e.dataset.pickValue,
+      t: e.textContent.replace(/\\s+/g, ' ').trim(),
+      sel: !!e.querySelector('.radio.sel'),
+    }))`);
+    check('TUN 堆栈对话框第一项就是默认的 system（顺序跟着默认值）',
+      opts.length > 0 && opts[0].v === 'system', JSON.stringify(opts.map((o) => o.v)));
+    check('「（默认）」标注在 system 上，不在 gvisor 上',
+      opts.some((o) => o.v === 'system' && o.t.indexOf('默认') >= 0)
+      && !opts.some((o) => o.v === 'gvisor' && o.t.indexOf('默认') >= 0),
+      JSON.stringify(opts.map((o) => o.t)));
+    check('当前生效的 system 是选中态', opts.some((o) => o.v === 'system' && o.sel),
+      JSON.stringify(opts.map((o) => o.v + ':' + o.sel)));
+    await realClick(win, '.overlay [data-overlay-close]', { label:'关闭 TUN 堆栈对话框' }).catch(() => {});
+    await sleep(400);
     // 用户第 4 条：设置里不要「面板」段
     const labels = await ev(win, '[...document.querySelectorAll(".section-label")].map(e=>e.textContent.trim())');
     check('设置页没有「面板」分段', labels.indexOf('面板') < 0, labels.join(' / '));

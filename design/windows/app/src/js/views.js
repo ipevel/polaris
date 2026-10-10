@@ -642,8 +642,8 @@
     ], ({ "zh-CN": "简体中文", "zh-TW": "繁體中文", "en-US": "English" })[s.settings.lang]),
 
     tunStack: (s) => pickDialog("TUN 堆栈", "tun", [
-      ["gvisor", "gvisor", "纯用户态，兼容性最好，性能略低（默认）"],
-      ["system", "system", "走系统协议栈，性能更好，少数环境有兼容问题"],
+      ["system", "system", "走系统协议栈，性能更好，少数环境有兼容问题（默认）"],
+      ["gvisor", "gvisor", "纯用户态，兼容性最好，性能略低"],
       ["mixed", "mixed", "两者混用"],
     ], ({ gvisor: "gvisor", system: "system", mixed: "mixed" })[s.settings.tun]),
 

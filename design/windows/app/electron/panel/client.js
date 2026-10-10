@@ -13,6 +13,7 @@
 
 const https = require('https');
 const http = require('http');
+const dns = require('dns');
 const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
@@ -46,6 +47,127 @@ function normalizePanelUrl(input) {
   return s;
 }
 
+/* ------------------------------------------------------------------ */
+/* 拨号：黑洞地址记忆 + Happy Eyeballs                                  */
+/* ------------------------------------------------------------------ */
+/**
+ * 面板域名往往有多条 A/AAAA 记录，其中可能混着连不上的（实测 app.pinxiaoche.top 的
+ * 191.101.132.249 与 2406:cb42:0:2018::2 都是 SYN 无应答）。谁先连它谁就卡到超时，
+ * 界面上就是「网络错误：面板请求超时」—— 安卓端踩过同一个坑（面板 IPv4 黑洞）。
+ *
+ * 三件事：
+ *   1) 自己解析 DNS，把"连不上的地址"排到后面（只降级，不排除）；
+ *   2) 显式打开 Happy Eyeballs（autoSelectFamily），同一份答案里的地址并行试；
+ *   3) 连接阶段超时就重新解析、换一批地址重试（DNS 答案会轮换）。
+ */
+const BAD_ADDR_TTL = 5 * 60 * 1000;
+const badAddrs = new Map();      // address -> 最近一次连不上的时间
+
+function markBadAddr(address) {
+  if (!address) return;
+  badAddrs.set(address, Date.now());
+}
+
+function isBadAddr(address) {
+  const t = badAddrs.get(address);
+  if (!t) return false;
+  if (Date.now() - t > BAD_ADDR_TTL) { badAddrs.delete(address); return false; }
+  return true;
+}
+
+function badAddresses() { return [...badAddrs.keys()]; }
+
+function clearBadAddresses() { badAddrs.clear(); }
+
+/** 单条解析路径的上限：到点就当它没有答案（见 resolveAll 的注释）。 */
+const DNS_TIMEOUT = 2500;
+function withTimeout(p, ms, fallback) {
+  return Promise.race([p, new Promise((res) => { setTimeout(() => res(fallback), ms); })]);
+}
+
+// 两条解析路径都要用：
+//   - dns.lookup（getaddrinfo）：会读 hosts 文件，但在本机拿到过被污染的答案
+//     （实测 app.pinxiaoche.top → 2406:cb42:0:2018::2 / 191.101.132.249，两个都是黑洞）；
+//   - dns.resolve4/6（c-ares，直接问 DNS 服务器）：多数时候返回真地址
+//     （104.21.9.238 / 172.67.161.180，Cloudflare）。
+// 两条路都收，交给 Happy Eyeballs 挑活的；已知连不上的会被排到后面。
+function resolveAll(host, opts) {
+  const wantPublic = !!(opts && opts.public);
+  const fromLookup = new Promise((res) => {
+    dns.lookup(host, { all: true, family: 0 }, (e, l) => res(e ? [] : (l || [])));
+  });
+  const fromA = new Promise((res) => {
+    dns.resolve4(host, (e, l) => res(e ? [] : (l || []).map((address) => ({ address, family: 4 }))));
+  });
+  const fromAAAA = new Promise((res) => {
+    dns.resolve6(host, (e, l) => res(e ? [] : (l || []).map((address) => ({ address, family: 6 }))));
+  });
+  const jobs = wantPublic
+    ? [resolveViaPublic(host), fromLookup, fromA, fromAAAA]   // 公共 DNS 优先（本机 DNS 已经失败过）
+    : [fromLookup, fromA, fromAAAA];
+  // 每条解析路都要有上限：本机路由器偶尔把 DNS 请求整个挂住（实测一批请求全停在
+  // "地址还没解析出来"，连接计时器先到点，日志只能写"试过 未知地址"）。
+  // 到点就当这条路没答案，让别的路（或下一次尝试的公共 DNS）顶上。
+  return Promise.all(jobs.map((p) => withTimeout(p, DNS_TIMEOUT, []))).then((groups) => {
+    const seen = new Set();
+    const out = [];
+    for (const g of groups) {
+      for (const a of g) {
+        if (!a || !a.address || seen.has(a.address)) continue;
+        seen.add(a.address);
+        out.push({ address: a.address, family: a.family });
+      }
+    }
+    if (!out.length) throw new Error(`DNS 没有解析出地址：${host}`);
+    return out;
+  });
+}
+
+/**
+ * 第三条路：直接问公共 DNS。
+ * 本机路由器（fe80::1 / 192.168.1.1）会间歇性只回黑洞地址（实测整整 20s 都只回
+ * 2406:cb42:0:2018::2 与 191.101.132.249，应用因此报「面板请求超时」），
+ * 而同一时刻 223.5.5.5 / 119.29.29.29 / 180.76.76.76 回的是真地址。
+ * 只在前面几条路都连不上之后才用（见 request 的重试循环）。
+ */
+const PUBLIC_DNS = ['223.5.5.5', '119.29.29.29', '180.76.76.76'];
+
+function resolveViaPublic(host) {
+  const out = [];
+  const jobs = PUBLIC_DNS.map((server) => new Promise((res) => {
+    const r = new dns.Resolver();
+    try { r.setServers([server]); } catch (_) { res(); return; }
+    let pending = 2;
+    const done = () => { if (--pending === 0) res(); };
+    const take = (l) => {
+      for (const a of (l || [])) out.push({ address: a, family: a.indexOf(':') >= 0 ? 6 : 4 });
+    };
+    r.resolve4(host, (e, l) => { if (!e) take(l); done(); });
+    r.resolve6(host, (e, l) => { if (!e) take(l); done(); });
+  }));
+  return Promise.all(jobs).then(() => out);
+}
+
+// 好地址在前、已知连不上的在后；全是坏地址时照样返回（让上层去超时重试）
+function orderAddresses(list) {
+  const good = [];
+  const bad = [];
+  for (const a of (list || [])) (isBadAddr(a.address) ? bad : good).push(a);
+  return good.concat(bad);
+}
+
+function makeLookup(tried, usePublic) {
+  return function lookup(host, opts, cb) {
+    resolveAll(host, { public: !!usePublic }).then((list) => {
+      const ordered = orderAddresses(list);
+      if (tried) for (const a of ordered) tried.add(a.address);
+      if (!ordered.length) { cb(new Error(`DNS 没有解析出地址：${host}`)); return; }
+      if (opts && opts.all) cb(null, ordered);
+      else cb(null, ordered[0].address, ordered[0].family);
+    }).catch((e) => cb(e));
+  };
+}
+
 function request(method, apiPath, { body, raw, timeoutMs = 20000, noAuth = false } = {}) {
   if (!session.panelUrl) return Promise.reject(new PanelError('尚未配置面板地址', 'no-panel'));
   const url = new URL(API_PREFIX + apiPath, session.panelUrl + '/');
@@ -64,59 +186,136 @@ function request(method, apiPath, { body, raw, timeoutMs = 20000, noAuth = false
   }
   if (!noAuth && session.token) headers.Authorization = session.token;
 
-  return new Promise((resolve, reject) => {
-    // 面板请求的分段计时：慢的时候必须能一眼看出慢在 DNS / TCP / TLS / 面板本身，
-    // 否则只能靠猜（实测曾出现单个 360ms 的接口在应用里耗时 15-30s）。
-    const t0 = Date.now();
-    const ph = {};
-    const req = mod.request(url, { method, headers, timeout: timeoutMs }, (res) => {
-      ph.ttfb = Date.now();
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', async () => {
-        const total = Date.now() - t0;
-        if (total > 2000) {
-          log.warn(`panel slow ${method} ${apiPath} ${total}ms `
-            + `dns=${ph.dns ? ph.dns - t0 : '-'} conn=${ph.conn ? ph.conn - t0 : '-'} `
-            + `tls=${ph.tls ? ph.tls - t0 : '-'} ttfb=${ph.ttfb ? ph.ttfb - t0 : '-'}`
-            + `${ph.reused ? ' reused-socket' : ''}`);
-        }
-        const text = Buffer.concat(chunks).toString('utf8');
-        if (res.statusCode === 401 || res.statusCode === 403) {
-          reject(new PanelError('登录已失效，请重新登录', 'auth'));
-          return;
-        }
-        if (raw) { resolve({ status: res.statusCode, text, headers: res.headers }); return; }
-        if (res.statusCode >= 400) {
-          reject(new PanelError(`面板返回 HTTP ${res.statusCode}`, 'http'));
-          return;
-        }
-        let json;
-        try { json = JSON.parse(text); } catch (_) {
-          reject(new PanelError('面板返回的不是 JSON', 'shape'));
-          return;
-        }
-        if (json && json.status === 'fail') {
-          reject(new PanelError(String(json.message || '操作失败'), 'api'));
-          return;
-        }
-        resolve(json && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json);
+  const isIpHost = /^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.indexOf(':') >= 0;
+  const deadline = Date.now() + timeoutMs;
+  // 每次尝试的"连接阶段"上限：20s 的总预算切成 4 次 5s，够换几批地址了
+  const connectTimeout = Math.min(5000, Math.max(2000, Math.round(timeoutMs / 4)));
+  const maxAttempts = 4;
+  let lastErr = null;
+
+  // 一次尝试。连接阶段（还没收到面板任何一个字节）的超时单独计时，好让上层换地址重试。
+  function once(budgetMs, usePublic) {
+    return new Promise((resolve, reject) => {
+      // 面板请求的分段计时：慢的时候必须能一眼看出慢在 DNS / TCP / TLS / 面板本身，
+      // 否则只能靠猜（实测曾出现单个 360ms 的接口在应用里耗时 15-30s）。
+      const t0 = Date.now();
+      const ph = {};
+      const tried = new Set();
+      const reqOpts = {
+        method,
+        headers,
+        timeout: budgetMs,
+        autoSelectFamily: true,
+        autoSelectFamilyAttemptTimeout: 250,
+      };
+      if (!isIpHost) reqOpts.lookup = makeLookup(tried, usePublic);
+
+      let connected = false;
+      let settled = false;
+      // 计时器要连"DNS 那一小段"一起算进去：解析本身最多花 DNS_TIMEOUT（见 resolveAll），
+      // 到点还没连上就是真的连不上，别再让日志只写"试过 未知地址"。
+      const connectTimer = setTimeout(() => {
+        if (connected || settled) return;
+        const list = [...tried];
+        const e = new PanelError(
+          `面板连接超时（${list.length ? `试过 ${list.join(', ')}`
+            : `DNS 在 ${DNS_TIMEOUT / 1000}s 内没有给出地址`}）`, 'timeout');
+        e.connectPhase = true;
+        e.tried = list;
+        req.destroy(e);
+      }, connectTimeout + DNS_TIMEOUT);
+
+      // 面板已经答复（哪怕答的是 4xx）就**不是连接问题**，不能换地址重试 ——
+      // 靠 pe.phase 里的分段计时判断，所以每条 reject 都要盖章。
+      const fail = (err) => { err.phase = ph; err.tried = err.tried || [...tried]; reject(err); };
+
+      const req = mod.request(url, reqOpts, (res) => {
+        connected = true;
+        clearTimeout(connectTimer);
+        ph.ttfb = Date.now();
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', async () => {
+          settled = true;
+          const total = Date.now() - t0;
+          if (total > 2000) {
+            log.warn(`panel slow ${method} ${apiPath} ${total}ms `
+              + `dns=${ph.dns ? ph.dns - t0 : '-'} conn=${ph.conn ? ph.conn - t0 : '-'} `
+              + `tls=${ph.tls ? ph.tls - t0 : '-'} ttfb=${ph.ttfb ? ph.ttfb - t0 : '-'}`
+              + `${ph.reused ? ' reused-socket' : ''}`);
+          }
+          const text = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode === 401 || res.statusCode === 403) {
+            fail(new PanelError('登录已失效，请重新登录', 'auth'));
+            return;
+          }
+          if (raw) { resolve({ status: res.statusCode, text, headers: res.headers }); return; }
+          if (res.statusCode >= 400) {
+            fail(new PanelError(`面板返回 HTTP ${res.statusCode}`, 'http'));
+            return;
+          }
+          let json;
+          try { json = JSON.parse(text); } catch (_) {
+            fail(new PanelError('面板返回的不是 JSON', 'shape'));
+            return;
+          }
+          if (json && json.status === 'fail') {
+            fail(new PanelError(String(json.message || '操作失败'), 'api'));
+            return;
+          }
+          resolve(json && Object.prototype.hasOwnProperty.call(json, 'data') ? json.data : json);
+        });
       });
+      req.on('timeout', () => req.destroy(new PanelError('面板请求超时', 'timeout')));
+      req.on('error', (e) => {
+        clearTimeout(connectTimer);
+        if (settled) return;
+        settled = true;
+        const pe = e instanceof PanelError ? e : new PanelError(e.message || '网络错误', 'net');
+        pe.phase = ph;
+        pe.tried = pe.tried || [...tried];
+        reject(pe);
+      });
+      req.on('socket', (s) => {
+        if (s.connecting) {
+          s.once('lookup', () => { ph.dns = Date.now(); });
+          s.once('connect', () => { connected = true; clearTimeout(connectTimer); ph.conn = Date.now(); });
+          s.once('secureConnect', () => { ph.tls = Date.now(); });
+          // Happy Eyeballs 会并行试多个地址；哪个地址连不上，就地记下来，
+          // 下一次请求直接把它排到最后（Node 20+ 才有这两个事件，没有也不影响）。
+          s.on('connectionAttemptTimeout', (ip) => markBadAddr(ip));
+          s.on('connectionAttemptFailed', (ip) => markBadAddr(ip));
+        } else {
+          connected = true;
+          clearTimeout(connectTimer);
+          ph.reused = Date.now();
+        }
+      });
+      if (payload) req.write(payload);
+      req.end();
     });
-    req.on('timeout', () => req.destroy(new PanelError('面板请求超时', 'timeout')));
-    req.on('error', (e) => reject(new PanelError(e.message || '网络错误', 'net')));
-    req.on('socket', (s) => {
-      if (s.connecting) {
-        s.once('lookup', () => { ph.dns = Date.now(); });
-        s.once('connect', () => { ph.conn = Date.now(); });
-        s.once('secureConnect', () => { ph.tls = Date.now(); });
-      } else {
-        ph.reused = Date.now();
+  }
+
+  // 连接阶段失败就换一批地址再来（DNS 答案会轮换，重新解析常常能拿到好地址）。
+  // 只要已经收到过面板的响应字节就不重试 —— 那种情况请求可能已经在面板生效了。
+  return (async () => {
+    for (let attempt = 1; ; attempt += 1) {
+      const left = deadline - Date.now();
+      if (left <= 1000) break;
+      try {
+        return await once(left, attempt >= 2);
+      } catch (e) {
+        lastErr = e;
+        const ph = e.phase || {};
+        if (ph.ttfb || attempt >= maxAttempts || deadline - Date.now() <= 1000) throw e;
+        if (!ph.conn) for (const a of (e.tried || [])) markBadAddr(a);
+        const viaPublic = attempt >= 2 ? '，这一次改用公共 DNS 解析' : '';
+        log.warn(`panel ${method} ${apiPath} 连接失败（${e.message}），换地址重试 ${attempt + 1}/${maxAttempts}${viaPublic}`
+          + (badAddresses().length ? ` 已知连不上的地址：${badAddresses().join(', ')}` : ''));
       }
-    });
-    if (payload) req.write(payload);
-    req.end();
-  });
+    }
+    throw lastErr || new PanelError('面板请求超时', 'timeout');
+  })();
 }
 
 const get = (p, o) => request('GET', p, o);
@@ -818,4 +1017,7 @@ module.exports = {
   ticketContent,
   clearUserInfoCache,
   detectBackend,
+  // 拨号健壮性（自检要用：黑洞地址记忆与排序）
+  request, badAddresses, clearBadAddresses, markBadAddr, isBadAddr, orderAddresses, resolveAll,
+  resolveViaPublic, PUBLIC_DNS, BAD_ADDR_TTL,
 };

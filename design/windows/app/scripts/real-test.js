@@ -358,6 +358,33 @@ const builder = require('../electron/core/builder');
       console.log(`  经当前选中节点访问外网: status=${r.status}${r.status === 204 ? '' : '（该节点不通，下面挑活节点再验）'}`);
     } catch (e) { console.log(`  经当前选中节点访问外网失败: ${e.message}（下面挑活节点再验）`); }
 
+    /* ---------------- 内核操作串行化（连接与拉订阅不打架） ---------------- */
+    // 真事故：开机后自动拉订阅和用户点的那次连接叠在一起跑。订阅刷新内部是
+    // "断开 → 重连"，于是它把用户刚拉起来的内核拆掉，用户那次 connect 往已经死掉的
+    // 控制面发请求 —— 日志里就是 `ERROR command connect failed: read ECONNRESET`
+    // 紧跟 `mihomo exited`，最后内核是死的、延迟全空。这里故意把两个并发发出去。
+    section('内核操作串行化（连接与拉订阅同时来）');
+    {
+      const logFile = nodePath.join(paths.logs(), 'polaris.log');
+      const logBefore = nodeFs.existsSync(logFile) ? nodeFs.statSync(logFile).size : 0;
+      await commands.disconnect();
+      const pRefresh = commands.refresh_subscription();   // 先发拉订阅
+      const pConnect = commands.connect();                // 紧接着发连接
+      const rs = await Promise.allSettled([pRefresh, pConnect]);
+      const bad = rs.filter((r) => r.status === 'rejected').map((r) => String(r.reason && r.reason.message));
+      check('两个并发请求都不报错（不该出现 read ECONNRESET）',
+        bad.length === 0, bad.join(' | ') || JSON.stringify(rs.map((r) => r.status)));
+      const st2 = await commands.get_status();
+      check('并发之后内核还活着（不是"连上了但其实已经死了"）', st2.connected === true, JSON.stringify(st2));
+      let ver = '';
+      try { ver = String((await core.S.controller.get('/version')).version || ''); } catch (e) { ver = 'ERR ' + e.message; }
+      check('并发之后控制面真的能应答（/version）', !!ver && !/^ERR/.test(ver), ver);
+      await new Promise((r) => setTimeout(r, 300));
+      const tail2 = nodeFs.existsSync(logFile) ? nodeFs.readFileSync(logFile, 'utf8').slice(logBefore) : '';
+      check('日志里没有 read ECONNRESET', !/read ECONNRESET/.test(tail2),
+        (tail2.match(/.*read ECONNRESET.*/g) || []).join(' | '));
+    }
+
     /* ---------------- 延迟测试（用户第 4 条：每个分组都要有延迟） ---------------- */
     section('延迟测试（真节点 + 每个策略组）');
     await commands.speed_test();
@@ -1069,6 +1096,108 @@ const builder = require('../electron/core/builder');
         check('open_external 只放行 http(s)（file:// 被挡下）', !!bad && /http/.test(bad), String(bad));
         console.log('  说明：open_external / open_download / open_telegram 的"真打开"会弹系统浏览器，留给真人体验；export_logs 会弹目录选择框，无头跑会卡住，也留给真人');
       }
+    }
+
+    /* ---------------- 面板拨号健壮性（用户第 9 轮第 3 条） ---------------- */
+    // 现象：面板域名解析出来的地址里有黑洞（实测 app.pinxiaoche.top →
+    // 2406:cb42:0:2018::2 / 191.101.132.249，SYN 无应答），谁先连它谁就卡到 20s，
+    // 界面上是「网络错误：面板请求超时」。这里验证 client.js 的三层兜底。
+    section('面板拨号健壮性（黑洞地址 / 换地址重试）');
+    {
+      const c = require('../electron/panel/client');
+      const dns = require('dns');
+      const BLACKHOLE = '203.0.113.1';   // RFC 5737 保留段，永远连不上（只在自检里用）
+
+      // 1) 纯函数：坏地址记忆 + 排序
+      c.clearBadAddresses();
+      c.markBadAddr(BLACKHOLE);
+      check('连不上的地址会被记住', c.isBadAddr(BLACKHOLE) === true);
+      const ordered = c.orderAddresses([
+        { address: BLACKHOLE, family: 4 },
+        { address: '172.67.161.180', family: 4 },
+      ]).map((a) => a.address);
+      check('已知连不上的地址排在最后（只降级不排除）',
+        ordered[0] === '172.67.161.180' && ordered[1] === BLACKHOLE, JSON.stringify(ordered));
+      c.clearBadAddresses();
+      check('清空后不再认为是坏地址', c.isBadAddr(BLACKHOLE) === false);
+      check('坏地址记忆有有效期（5 分钟）', c.BAD_ADDR_TTL === 5 * 60 * 1000, String(c.BAD_ADDR_TTL));
+
+      // 2) 解析要同时走 getaddrinfo 与 c-ares（本机实测两者答案不同：
+      //    getaddrinfo 给黑洞，c-ares 给真地址）。把 getaddrinfo 换成只回黑洞，
+      //    合并结果里必须还有别的地址，否则这一层兜底就是假的。
+      const origLookup = dns.lookup;
+      try {
+        dns.lookup = function (host, opts, cb) {
+          if (typeof opts === 'function') { cb = opts; opts = {}; }
+          if (opts && opts.all) return cb(null, [{ address: BLACKHOLE, family: 4 }]);
+          return cb(null, BLACKHOLE, 4);
+        };
+        let merged = [];
+        try { merged = await c.resolveAll(new URL(PANEL).hostname); } catch (_) { merged = []; }
+        const addrs = merged.map((a) => a.address);
+        check('getaddrinfo 只回黑洞时，合并结果里还有其它地址（c-ares 那条路）',
+          addrs.length > 0 && addrs.some((a) => a !== BLACKHOLE), JSON.stringify(addrs));
+      } finally {
+        dns.lookup = origLookup;
+      }
+
+      // 3) 第三条路：本机 DNS 会间歇性只回黑洞（实测整整 20s 都只回那两个地址，
+      //    应用就报「面板请求超时」）。这时要能直接问公共 DNS 拿真地址。
+      let pub = [];
+      try { pub = await c.resolveViaPublic(new URL(PANEL).hostname); } catch (_) { pub = []; }
+      check('本机 DNS 不行时，公共 DNS 能解析出地址（最后一道兜底）',
+        pub.length > 0, JSON.stringify(pub.map((a) => a.address).slice(0, 4)) + ` 服务器=${JSON.stringify(c.PUBLIC_DNS)}`);
+      const mergedPub = await c.resolveAll(new URL(PANEL).hostname, { public: true }).catch(() => []);
+      check('公共 DNS 的答案会并进地址表，且排在最前面（本机 DNS 已经失败过）',
+        mergedPub.length > 0 && pub.some((a) => a.address === mergedPub[0].address),
+        JSON.stringify(mergedPub.map((a) => a.address).slice(0, 4)));
+
+      // 4) 解析本身不能挂住：本机路由器偶尔让 DNS 请求永远不回（实测一批面板请求
+      //    全停在"地址还没解析出来"，日志只能写"试过 未知地址"）。三条路都不回话时，
+      //    resolveAll 必须在 DNS_TIMEOUT 量级内给出结论，而不是让整个请求干等。
+      const origLookup2 = dns.lookup;
+      const origResolve4 = dns.resolve4;
+      const origResolve6 = dns.resolve6;
+      const hang = () => { /* 永远不回调 */ };
+      try {
+        dns.lookup = hang; dns.resolve4 = hang; dns.resolve6 = hang;
+        const t1 = Date.now();
+        let msg = '';
+        try { await c.resolveAll(new URL(PANEL).hostname); } catch (e) { msg = String(e && e.message); }
+        const took = Date.now() - t1;
+        check('DNS 挂住时解析会自己收尾（不会无限等）', took < 6000 && /DNS 没有解析出地址/.test(msg),
+          `${took}ms ${msg}`);
+      } finally {
+        dns.lookup = origLookup2; dns.resolve4 = origResolve4; dns.resolve6 = origResolve6;
+      }
+
+      // 面板答复了 4xx 就说明"连得上、只是面板不认这个请求"，绝不能换地址重试
+      // （曾经因为响应路径的 reject 没盖 phase 章，把 HTTP 400 也重试了 3 次）。
+      const logFile = nodePath.join(paths.logs(), 'polaris.log');
+      const logBefore = nodeFs.existsSync(logFile) ? nodeFs.statSync(logFile).size : 0;
+      let httpCode = '';
+      try { await c.request('POST', '/user/changePassword', { body: { old_password: 'wrong-xyz', new_password: 'Abc123456!' } }); }
+      catch (e) { httpCode = e.code || e.message; }
+      await new Promise((r) => setTimeout(r, 300));
+      const logTail = nodeFs.existsSync(logFile) ? nodeFs.readFileSync(logFile, 'utf8').slice(logBefore) : '';
+      check('面板回了 4xx 不当成连接失败去换地址重试（日志里不该出现"换地址重试"）',
+        httpCode !== '' && !/changePassword 连接失败[\s\S]*换地址重试/.test(logTail), `错误码=${httpCode}`);
+
+      // 4) 真实请求：面板域名现在就有黑洞地址，请求必须还能成
+      const url = new URL(PANEL);
+      c.session.panelUrl = url.origin;
+      c.clearBadAddresses();
+      const t0 = Date.now();
+      let okReq = false;
+      let reqErr = '';
+      try {
+        await c.request('GET', '/guest/comm/config', { noAuth: true, timeoutMs: 20000 });
+        okReq = true;
+      } catch (e) { reqErr = `${e.kind}: ${e.message}`; }
+      const ms = Date.now() - t0;
+      check('面板域名带黑洞地址时，请求照样成功（不是死等 20s 超时）', okReq, reqErr || `${ms}ms`);
+      console.log(`  实测耗时 ${ms}ms，连不上名单 = ${JSON.stringify(c.badAddresses())}`);
+      c.clearBadAddresses();
     }
 
     /* ---------------- 收尾 ---------------- */
