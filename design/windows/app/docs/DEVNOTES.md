@@ -156,6 +156,9 @@ design/windows/app/dist/Polaris-portable-1.9.0.zip   185,970,496 B（≈ 177 MiB
 sha256 = cb8a1899e622deec12c2c635e54806155968531f9321a4dd22c7e4773e46d44f
 ```
 
+已发布：<https://github.com/ipevel/polaris/releases/tag/v1.9.0>（与安卓的 `Polaris-1.9.0.apk` 同一个 Release，
+Windows 侧源码在 `windows-portable` 分支）。
+
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。**成品包实测**（把 zip 解到干净目录
 `E:\AI\_pkg190` 直接跑）：`Polaris.exe --uitest` → **162 通过 / 0 失败**，日志首行
 `Polaris 1.9.0 start | packaged=true portable=true`，11 段全 PASS（真面板登录、真内核连接、
