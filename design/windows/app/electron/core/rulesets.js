@@ -1,21 +1,34 @@
 'use strict';
 /**
- * 内置分流规则表（离线 rule-provider）。
+ * 内置分流规则表（本地分流方案的规则数据源）。
  *
  * 与安卓端 kernel-core/src/main/golang/native/config/routing/routing_table.go
  * 同源同表：组名、顺序、默认开关、出站语义对齐 Karing 预设（cn.json），
  * 规则数据谱系为 MetaCubeX/meta-rules-dat@meta（geosite/geoip）与
  * ACL4SSR/ACL4SSR@master（Clash 文本规则）。两边保持逐字一致，改一处要同步另一处。
  *
- * 与安卓端的差异只有一处：安卓端 provider 是 type: http（首次联网下载，assets
- * 里的同名文件只是预播种缓存）；桌面端要求"解压即用、离线可用"，所以直接用
- * type: file 读随包分发的种子文件（resources/rules/<key>.yaml → data/rules/）。
- * 种子文件名统一 .yaml：mihomo 按声明的 format 解析内容，扩展名不参与解析。
+ * rule-provider 与安卓端一样是 type: http：随包分发的种子文件是**预播种缓存**
+ * （补到 mihomo 的缓存路径上，只补缺失、不覆盖内核已下载的更新版），联网后由
+ * 内核按 interval（24h，与 karing-ruleset 每日构建节奏一致）自己刷新；断网冷启动
+ * 直接用种子文件，规则立刻生效（provider 下载失败只记日志、不阻断连接）。
+ * 文件统一 .yaml：mihomo 按声明的 format 解析内容，扩展名不参与解析。
  */
 
-const SEED_DIR = 'rules'; // 相对 mihomo 的 -d 目录（data/），同时也是 resources/ 下的子目录名
+// mihomo 的 rule-provider 缓存子目录：path 相对 -d 目录（data/），
+// 与安卓端 providerSubPath（routing_table.go:19）同名同语义
+const CACHE_DIR = 'polaris-rules';
+// 规则数据刷新间隔：与安卓端 providerInterval 一致（86400s = 24h）
+const PROVIDER_INTERVAL = 86400;
 
-// 上游地址仅用于记录数据来源（离线分发，不联网下载）
+// 结构组：本地分流方案自己生成的四个组（顺序即契约，见 builder.js）。
+// 安卓端 routing_table.go:23-26 同名同义。
+const GROUP_SELECTOR = '🚀 节点选择';   // 主选择组：节点页顶部那张卡，默认选中「自动选择」
+const GROUP_AUTO = '自动选择';          // url-test 测速组
+const GROUP_FALLBACK = '故障转移';      // fallback 组
+const GROUP_FINAL = '🐟 漏网之鱼';      // MATCH 兜底组（刻意不 include-all）
+// 测速 URL 必须与 mihomo 的 constant.DefaultTestURL 逐字一致（安卓端坑 10）
+const TEST_URL = 'https://www.gstatic.com/generate_204';
+
 const BASE_GEO = 'https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/';
 const BASE_ACL = 'https://fastly.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/';
 
@@ -266,8 +279,8 @@ function normalizeCustom(list) {
   for (const raw of list.slice(0, CUSTOM_MAX)) {
     if (!raw || typeof raw !== 'object') continue;
     const name = String(raw.name == null ? '' : raw.name).trim().slice(0, CUSTOM_NAME_MAX);
-    // 与内置组同名的一律丢弃：内置组的语义是产品定义的，不能被顶掉
-    if (!name || seen.has(name) || BY_NAME.has(name)) continue;
+    // 与保留名冲突的一律丢弃：内置组/结构组的语义是产品定义的，不能被顶掉
+    if (!name || seen.has(name) || isReservedName(name)) continue;
     const rules = [];
     const lines = Array.isArray(raw.rules) ? raw.rules : String(raw.rules || '').split(/\r?\n/);
     for (const line of lines.slice(0, CUSTOM_RULES_MAX)) {
@@ -305,7 +318,7 @@ function validateCustom(input) {
   if (!name) throw new Error('分流组名字不能为空');
   if (name.length > CUSTOM_NAME_MAX) throw new Error(`名字太长（最多 ${CUSTOM_NAME_MAX} 个字）`);
   if (/[,:{}[\]"'\\#\r\n\t]/.test(name)) throw new Error('名字里不能有 , : { } [ ] " \' \\ # 这些字符');
-  if (BY_NAME.has(name)) throw new Error(`「${name}」是内置分流组，换个名字`);
+  if (isReservedName(name)) throw new Error(`「${name}」是保留名（内置分流组/结构组），换个名字`);
   const out = OUTS.has(src.out) ? src.out : 'proxy';
   const lines = Array.isArray(src.rules) ? src.rules : String(src.rules || '').split(/\r?\n/);
   if (lines.length > CUSTOM_RULES_MAX * 2) throw new Error('规则行太多了');
@@ -340,25 +353,65 @@ function allProviderKeys() {
 /** 种子文件名（与安卓端 FileExt 一致：统一 .yaml） */
 function seedFile(key) { return `${key}.yaml`; }
 
-/** rule-provider 的 path 字段：相对 mihomo 的 -d 目录，自动落在安全路径内 */
-function seedPath(key) { return `${SEED_DIR}/${seedFile(key)}`; }
+/**
+ * rule-provider 的 path 字段：相对 mihomo 的 -d 目录，自动落在安全路径内
+ * （mihomo 侧 C.Path.Resolve + IsSafePath，出界会被拒）。
+ * type: http 时它同时是**缓存文件路径**——种子预播种的位置就是这里。
+ */
+function seedPath(key) { return `${CACHE_DIR}/${seedFile(key)}`; }
 
-/** 规则集 -> mihomo rule-provider 配置（type: file，离线读取随包种子） */
+/**
+ * 规则集 -> mihomo rule-provider 配置（与安卓端 ProviderRawMap 逐字段一致）。
+ * url/behavior/format/interval 均在表里声明；path 指向随包种子播种的位置，
+ * 内核起不来网时直接读它，联网后按 interval 自己刷新。
+ */
 function providerConfig(key) {
   const p = PROVIDERS[key];
   if (!p) return null;
   return {
-    type: 'file',
+    type: 'http',
     behavior: p.behavior,
     format: p.format,
+    url: p.url,
     path: seedPath(key),
+    interval: PROVIDER_INTERVAL,
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* 保留名（本地分流生成的组名会与面板节点共处一个 mihomo 命名空间）      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * mihomo 预注册的出站 + provider 保留名（安卓端 reserved.go:18-24）。
+ * 面板（或恶意订阅）下发一个叫「自动选择」的节点就能让 mihomo 报重名硬失败，
+ * 整个配置加载不了 —— 所以生成前先扫一遍，命中就整体降级回面板配置。
+ */
+const MIHOMO_RESERVED = [
+  'DIRECT', 'REJECT', 'REJECT-DROP', 'COMPATIBLE', 'PASS', 'PASS-RULE', 'GLOBAL', 'default',
+];
+
+/** 本地分流占用的全部名称（结构组 + 内置分流组 + mihomo 预注册出站） */
+function reservedNames() {
+  return [GROUP_SELECTOR, GROUP_AUTO, GROUP_FALLBACK, GROUP_FINAL, ...TABLE.map((g) => g.name), ...MIHOMO_RESERVED];
+}
+
+function isReservedName(name) {
+  return reservedNames().includes(name);
+}
+
 module.exports = {
-  SEED_DIR,
+  CACHE_DIR,
+  PROVIDER_INTERVAL,
+  GROUP_SELECTOR,
+  GROUP_AUTO,
+  GROUP_FALLBACK,
+  GROUP_FINAL,
+  TEST_URL,
   PROVIDERS,
   TABLE,
+  reservedNames,
+  isReservedName,
   APPLE_PUSH_RULES,
   LAN_DIRECT_RULES,
   RULE_TYPES,

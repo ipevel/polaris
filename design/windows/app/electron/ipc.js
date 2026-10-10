@@ -145,10 +145,11 @@ const commands = {
   reset_routing_groups: async () => core.resetRoutingGroups(),
   get_rulesets: async () => core.rulesetState(),
   set_ruleset: async ({ name, on }) => ok(await core.setRuleset(name, !!on)),
-  move_ruleset: async ({ name, dir }) => ok(await core.moveRuleset(name, Number(dir) < 0 ? -1 : 1)),
+  reorder_ruleset: async ({ name, to }) => ok(await core.reorderRuleset(name, Number(to) || 0)),
   save_custom_ruleset: async (arg) => ok(await core.saveCustomRuleset(arg || {})),
   delete_custom_ruleset: async ({ name }) => ok(await core.deleteCustomRuleset(name)),
   reset_rulesets: async () => ok(await core.resetRulesets()),
+  set_local_routing: async ({ on }) => ok(await core.setLocalRouting(!!on)),
 
   /* ================= 流量 ================= */
   get_traffic: async ({ range }) => {
@@ -267,7 +268,12 @@ const commands = {
     try { return await panel.registerConfig(); } catch (e) { return { email_verify: 0, invite_force: 0 }; }
   },
 
-  get_site_info: async () => panel.siteInfo(),
+  get_site_info: async () => {
+    const info = await panel.siteInfo();
+    // 游客配置里没有 Telegram 字段是常态，登录后再问一次真实字段
+    if (!info.telegramUrl) info.telegramUrl = await panel.telegramLink();
+    return info;
+  },
 
   /* ================= 面板业务 ================= */
   get_plan: async () => {
@@ -394,7 +400,7 @@ const commands = {
       subscription_updated_at: s.subscription_updated_at,
       mixed_port: Number(s.mixed_port) || 0,          // 0 = 随机（界面上显示"自动"）
       running_port: core.S.mixedPort || 0,            // 当前内核实际在听的端口
-      email: s.last_email ? fmt.maskEmail(s.last_email) : '',
+      email: s.last_email || '',          // 用户第 5 条：自己的账号邮箱不打码
       authed: panel.isAuthed(),
     };
   },
@@ -509,6 +515,15 @@ const commands = {
     if (!/^https?:\/\//i.test(u)) throw new Error('只允许打开 http(s) 链接');
     await shell.openExternal(u);
     return ok();
+  },
+
+  // 「我的」页的 Telegram 入口：链接现取现校验，拿不到就明确告诉界面隐藏/提示
+  open_telegram: async () => {
+    const info = await panel.siteInfo();
+    const url = info.telegramUrl || (await panel.telegramLink());
+    if (!url) return fail('面板没有配置 Telegram 群组');
+    await shell.openExternal(url);
+    return ok({ url });
   },
 
   export_logs: async () => {

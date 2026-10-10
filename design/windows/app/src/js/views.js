@@ -54,6 +54,15 @@
     return badge(ms + "ms", ms <= 100 ? "b-green" : ms <= 250 ? "b-orange" : "b-red");
   }
 
+  // 分流组（内置本地方案）里有一批是「直连/拦截」型：它们的当前出口就是 DIRECT/REJECT，
+  // 内核给不出延迟（不是没测出来，是压根不该测）。这类组显示「直连/拦截」比显示「未测」诚实。
+  const EXIT_LABEL = { DIRECT: "直连", COMPATIBLE: "直连", PASS: "直连", REJECT: "拦截", "REJECT-DROP": "拦截" };
+  function groupBadge(g) {
+    const label = EXIT_LABEL[g.now];
+    if (label) return badge(label, "b-blue");
+    return latBadge(typeof g.latency === "number" ? g.latency : -1, false);
+  }
+
   function empty(text, hint) {
     return `<div class="empty"><div class="empty-t">${h(text)}</div>${hint ? `<div class="empty-s">${h(hint)}</div>` : ""}</div>`;
   }
@@ -98,12 +107,14 @@
 
   /* ---------------- 节点 ---------------- */
   // 节点页 = 策略组手风琴：分组在**最上面**、可折叠、分组内直接点节点就切那个分组的出口、
-  // 每个分组显示自己的延迟。旧版顶部还有一张写死标题、不可折叠的"节点选择"扁平卡，
-  // 和下面真正的"节点选择"分组重复（用户实测报的 bug）。
+  // 每个分组显示自己的延迟。主组就是面板自带的「🚀 节点选择」（与安卓端同名，见
+  // electron/core/builder.js 的 SELECTOR_GROUP）—— 旧版自己另建一个叫「节点选择」的组，
+  // 于是顶部多出一张重复的分类卡（用户实测报的 bug）。
   Views.nodes = (s) => {
     const q = (s.nodeFilter || "").toLowerCase();
     const hit = (v) => !q || String(v).toLowerCase().includes(q);
-    const groups = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !g.builtin);
+    // 结构组（兜底组 🐟 漏网之鱼、自动选择、故障转移、GLOBAL）只是配置骨架，不是给用户选的分类
+    const groups = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !g.builtin && !g.structural);
     const open = s.openGroups || {};
     // 没点过就默认展开第一个（内核里排最前的就是"节点选择"）
     const isOpen = (name, i) => (open[name] === undefined ? i === 0 : !!open[name]);
@@ -124,7 +135,7 @@
           <div class="acc-head" data-acc="${h(g.name)}" style="cursor:pointer">
             <div><div class="acc-title" style="font-size:15px">${h(g.name)}</div>
             <div class="acc-sub">${g.count ? g.count + " 个可选出口 · " : ""}当前：${h(g.now || "—")}</div></div>
-            <div style="display:flex;align-items:center;gap:10px">${latBadge(typeof g.latency === "number" ? g.latency : -1, false)}
+            <div style="display:flex;align-items:center;gap:10px">${groupBadge(g)}
             <span class="chev${opened ? " open" : ""}" style="font-size:20px">›</span></div>
           </div>
           ${opened ? `<div class="acc-body">${members.length ? members.map((n) => nodeRow(n, g.name)).join("") : empty("没有匹配的节点", "换个关键词试试")}</div>` : ""}
@@ -215,7 +226,8 @@
   const OUT_LABEL_LONG = { proxy: "节点选择", direct: "直连", block: "拦截" };
 
   /**
-   * 一行分流组。mv=是否显示 ↑↓（顺序 = 匹配优先级，越靠前越先匹配）；
+   * 一行分流组。drag=是否显示拖动手柄（顺序 = 匹配优先级，越靠前越先匹配，
+   * 按住手柄拖到目标位置即可，用户要的就是拖动而不是点上下按钮）；
    * edit=自定义组才有的"编辑"入口。
    */
   function rulesetRow(g, opts) {
@@ -225,15 +237,14 @@
     const sub = g.custom
       ? `${g.inline} 条自定义规则${g.live ? "" : " · 未生效"}`
       : `${g.count} 个规则集${g.inline ? ` · ${g.inline} 条内联` : ""}${g.live ? "" : " · 未生效"}`;
-    const moves = o.mv
-      ? `<span class="ruleset-mv" data-ruleset-move="${h(g.name)}" data-dir="-1" title="上移（更优先）">↑</span>` +
-        `<span class="ruleset-mv" data-ruleset-move="${h(g.name)}" data-dir="1" title="下移">↓</span>`
+    const grip = o.drag
+      ? `<span class="ruleset-grip" data-ruleset-grip="${h(g.name)}" title="按住拖动，调整匹配顺序">⠿</span>`
       : "";
-    return `<div class="row" data-ruleset-pick="${h(g.name)}" style="cursor:pointer">
+    return `<div class="row ruleset-row" data-ruleset-pick="${h(g.name)}" data-ruleset-row="${h(g.name)}">
       <div class="k"><span style="display:flex;flex-direction:column"><span>${h(g.name)}</span>
       <span style="font-size:11px;color:var(--text3);margin-top:2px">${h(sub)}</span></span></div>
       <div class="v" style="display:flex;align-items:center;gap:8px">${badge(cur, g.out === "direct" ? "b-gray" : g.out === "block" ? "b-red" : "b-blue")}
-      ${moves}
+      ${grip}
       ${o.edit ? `<span class="ruleset-mv" data-ruleset-edit="${h(g.name)}" title="编辑规则">✎</span>` : ""}
       <div class="switch${g.enabled ? " on" : ""}" data-ruleset="${h(g.name)}"></div>
       <span class="chev">›</span></div></div>`;
@@ -245,21 +256,31 @@
     const custom = Array.isArray(rs.custom) ? rs.custom : [];
     const onCount = builtin.filter((g) => g.enabled).length;
     const customOn = custom.filter((g) => g.enabled).length;
-    return backHead("分流规则", "自定义规则优先于内置分类",
+    const localOn = rs.on !== false;
+    return backHead("分流规则", "与手机端同一套本地方案，自定义规则优先于内置分类",
       `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-routing-reset">恢复出口</button>`) +
+      `<div class="section-label">分流方案</div>` +
+      `<div class="card">` +
+      `<div class="row"><div class="k"><span class="mini-icon" style="background:#0A84FF">🧭</span>` +
+      `<span style="display:flex;flex-direction:column"><span>使用本地分流方案</span>` +
+      `<span style="font-size:11px;color:var(--text3);margin-top:2px">屏蔽面板下发的分流规则，只用下面这套内置分类</span></span></div>` +
+      `<div class="v"><div class="switch${localOn ? " on" : ""}" data-click="local-routing"></div></div></div>` +
+      (localOn ? "" : `<div class="row"><div class="k"><span style="color:var(--text3);font-size:12px">已关闭：面板自带的分流规则正在生效</span></div></div>`) +
+      `</div>` +
+      (rs.degraded ? err(`本地方案已降级：${rs.degraded}`) : "") +
       `<div class="section-label">自定义分流组 · 已启用 ${customOn}/${custom.length}</div>` +
       `<div class="card">` +
       (custom.length
-        ? custom.map((g) => rulesetRow(g, { mv: true, edit: true })).join("")
+        ? custom.map((g) => rulesetRow(g, { drag: true, edit: true })).join("")
         : `<div class="row"><div class="k"><span style="color:var(--text3);font-size:13px">还没有自定义分流组</span></div>` +
           `<div class="v"><span style="color:var(--text3);font-size:12px">自己写规则，永远最先匹配</span></div></div>`) +
       `<div class="row"><div class="k"><span>新建分流组</span></div>` +
       `<div class="v"><button class="btn btn-outline btn-sm" id="btn-custom-new">新建</button></div></div>` +
       `</div>` +
-      `<div class="section-label">内置分流 · 离线可用 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
+      `<div class="section-label">内置分流 · 规则库每 24 小时自动更新 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
       `<div class="card">` +
       (builtin.length
-        ? builtin.map((g) => rulesetRow(g, { mv: true })).join("") +
+        ? builtin.map((g) => rulesetRow(g, { drag: true })).join("") +
           `<div class="row"><div class="k"><span>恢复默认开关与顺序</span></div>` +
           `<div class="v"><button class="btn btn-outline btn-sm" id="btn-ruleset-reset">恢复默认</button></div></div>`
         : empty("没有内置分流规则", "缺少 resources/rules 规则集，请重新解压完整目录")) +
@@ -292,7 +313,6 @@
       ${rowSwitch("IPv6", "ipv6", s.settings.ipv6)}
     </div>
     <div class="section-label">分流与订阅</div><div class="card">
-      ${row("分流规则", "", { icon: ["⑃", "#5ac8fa"], click: "nav-routing" })}
       ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
       ${row("重新拉取订阅", "现在拉取", { click: "refresh-sub" })}
     </div>
@@ -301,10 +321,6 @@
       ${rowSwitch("流量提醒", "traffic_notify", s.settings.traffic_notify)}
       ${rowSwitch("开机自启动", "autostart", s.settings.autostart)}
       ${rowSwitch("自动检查更新", "auto_update", s.settings.auto_update)}
-    </div>
-    <div class="section-label">面板</div><div class="card">
-      ${row("面板地址", h(s.settings.panel_url || "未设置"), { click: "set-panel", icon: ["⬡", "#1a73e8"] })}
-      ${row("当前账号", h(s.settings.email || "未登录"), { chev: false })}
     </div>
     <div class="section-label">关于</div><div class="card">
       ${row("当前版本", h(s.settings.version), { chev: false })}
@@ -321,9 +337,10 @@
   </div>`;
 
   /* ---------------- 我的 ---------------- */
-  // 与安卓端"我的"对齐：用户卡 + 当前套餐 + 服务（套餐/订单/工单/邀请/礼品卡/公告）
-  // + 退出登录。分流规则与订阅链接**不在这里**（安卓端也没有），它们属于设置里的
-  // 连接/订阅配置 —— 用户报的"这边有入口那边也有入口"就是这两项。
+  // 与安卓端"我的"逐项对齐（名称与顺序都照手机 app 的「我的服务」列表）：
+  // 订阅套餐 / 礼品卡兑换 / 我的订单 / 邀请返利 / 我的工单 / 公告通知 / Telegram。
+  // Telegram 入口只在面板真下发了链接时才出现（安卓端同样取不到就隐藏）。
+  // 分流规则与订阅链接**不在这里**（安卓端也没有），它们在设置页的「分流与订阅」里。
   Views.me = (s) => head("我的") + `<div class="col-narrow">
     <div class="card" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--blue);font-weight:700">${h((s.email || "?").slice(0, 1).toUpperCase())}</div>
@@ -337,12 +354,13 @@
       <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(s.plan.expire || "—")}</div>
     </div>
     <div class="card">
-      ${row("我的套餐", "", { icon: ["◈", "#1a73e8"], click: "nav-plans" })}
-      ${row("我的订单", "", { icon: ["🧾", "#ffb340"], click: "nav-orders" })}
-      ${row("我的工单", "", { icon: ["🎫", "#7aa5f8"], click: "nav-tickets" })}
-      ${row("邀请好友", "", { icon: ["🎁", "#34c759"], click: "nav-invite" })}
+      ${row("订阅套餐", "", { icon: ["◈", "#1a73e8"], click: "nav-plans" })}
       ${row("礼品卡兑换", "", { icon: ["💳", "#af8cf8"], click: "nav-giftcard" })}
-      ${row("公告", s.unreadNotices ? badge(s.unreadNotices + " 条未读", "b-red") : "", { icon: ["📢", "#ff9f43"], click: "nav-notices" })}
+      ${row("我的订单", "", { icon: ["🧾", "#ffb340"], click: "nav-orders" })}
+      ${row("邀请返利", "", { icon: ["🎁", "#34c759"], click: "nav-invite" })}
+      ${row("我的工单", "", { icon: ["🎫", "#7aa5f8"], click: "nav-tickets" })}
+      ${row("公告通知", s.unreadNotices ? badge(s.unreadNotices + " 条未读", "b-red") : "", { icon: ["📢", "#ff9f43"], click: "nav-notices" })}
+      ${s.siteInfo && s.siteInfo.telegramUrl ? row("Telegram", "", { icon: ["✈", "#29b6f6"], click: "open-telegram" }) : ""}
       <div class="row" style="justify-content:center;cursor:pointer" data-click="logout"><span style="color:var(--red);font-weight:600">退出登录</span></div>
     </div></div>`;
 

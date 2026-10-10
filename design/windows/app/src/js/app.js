@@ -71,6 +71,7 @@
 
   /* ---------------- 渲染 ---------------- */
   let renderCount = 0;
+  let lastRenderKey = null;      // 上一次真正写进 DOM 的内容（route + html）
   function render() {
     // 自检用：设置页曾经因为 loadTunStatus→render 互相调用而无限重绘，
     // 只有数渲染次数才测得到（DOM 断言在同一个 JS 帧里看不出问题）。
@@ -80,27 +81,38 @@
     // 只断言 DOM 存在性根本看不出来（首页也有 .row / .section-label）。
     window.__polarisRoute = state.route;
     overlayRoot.innerHTML = "";
+    // 内容没变就不动 DOM。整块 innerHTML 重建会把用户正在点的元素换掉 ——
+    // mousedown 与 click 之间被换掉，这一下点击就被吞了（实测：连上内核后
+    // refreshAll 回来的那次重绘，正好吃掉"展开分组/拖动排序"的点击）。
+    // 也让滚动位置和展开状态不会看起来"自己跳"。
+    const swap = (html, bind) => {
+      const key = state.route + "\u0000" + html;
+      if (key === lastRenderKey) return;
+      lastRenderKey = key;
+      content.innerHTML = html;
+      bind();
+    };
     if (AUTH_ROUTES.includes(state.route)) {
       state.loggedIn = false;
       sidebar.style.display = "none";
-      content.innerHTML = (Views[state.route] || Views.login)(state);
-      bindAuth();
+      swap((Views[state.route] || Views.login)(state), bindAuth);
       return;
     }
     sidebar.style.display = "";
-    content.innerHTML = (Views[state.route] || Views.home)(state);
-    $$(".nav-item").forEach((el) => {
-      const r = el.dataset.route;
-      const on = r === state.route || (state.route === "routing" && r === "nodes");
-      el.classList.toggle("active", on);
+    swap((Views[state.route] || Views.home)(state), () => {
+      $$(".nav-item").forEach((el) => {
+        const r = el.dataset.route;
+        const on = r === state.route || (state.route === "routing" && r === "nodes");
+        el.classList.toggle("active", on);
+      });
+      bindCommon();
+      ({
+        nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
+        orders: bindOrders, tickets: bindTickets, invite: bindInvite,
+        giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting,
+        traffic: bindTraffic, home: bindHome,
+      }[state.route] || (() => {}))();
     });
-    bindCommon();
-    ({
-      nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
-      orders: bindOrders, tickets: bindTickets, invite: bindInvite,
-      giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting,
-      traffic: bindTraffic, home: bindHome,
-    }[state.route] || (() => {}))();
   }
 
   // 返回栈：二级页面（套餐/订单/工单/邀请/礼品卡/公告/分流规则）的返回键回到
@@ -193,7 +205,7 @@
       const name = el.dataset.acc;
       const open = state.openGroups || (state.openGroups = {});
       // 没记录过时第一个分组是展开的，点它第一次应该是"收起"
-      const cur = open[name] === undefined ? state.groups.filter((g) => !g.builtin)[0] : null;
+      const cur = open[name] === undefined ? state.groups.filter((g) => !g.builtin && !g.structural)[0] : null;
       const isOpen = open[name] === undefined ? (cur && cur.name === name) : !!open[name];
       open[name] = !isOpen;
       render();
@@ -228,9 +240,10 @@
       const r = await guard("清理虚拟网卡", () => api.invoke("cleanup_tun"));
       if (r) { toast(r.msg || "已处理"); loadTunStatus(true); }
     }
-    else if (action === "set-panel") {
-      await guard("退出登录", () => api.logout());
-      nav("login");
+    else if (action === "open-telegram") {
+      // 链接由主进程现取现校验（域名白名单），渲染层不传 URL
+      const r = await guard("打开 Telegram", () => api.invoke("open_telegram"));
+      if (r && r.ok === false) toast(r.msg || "面板没有配置 Telegram 群组");
     } else if (action === "refresh-sub") {
       state.refreshing = true;
       const r = await guard("刷新订阅", () => api.refreshSubscription());
@@ -625,16 +638,20 @@
         if (r) { await refreshRoutes(); render(); toast("已恢复内置分流默认"); }
       },
     }));
-    // 顺序：↑↓ 调整匹配优先级（越靠前越先匹配）
-    $$("[data-ruleset-move]").forEach((el) => el.addEventListener("click", async (e) => {
+    // 本地分流总开关：关掉后面板下发的分流方案原样生效（应急用）
+    const lr = $(".switch[data-click='local-routing']");
+    if (lr) lr.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const dir = Number(el.dataset.dir) < 0 ? -1 : 1;
-      const r = await guard("调整顺序", () => api.moveRuleset(el.dataset.rulesetMove, dir));
-      if (!r) return;
-      if (r.moved === false) { toast(dir < 0 ? "已经是最优先了" : "已经是最末位了"); return; }
+      const next = !lr.classList.contains("on");
+      lr.classList.toggle("on", next);
+      const r = await guard("切换分流方案", () => api.setLocalRouting(next));
+      if (!r) { lr.classList.toggle("on", !next); return; }
       await refreshRoutes();
       render();
-    }));
+      toast(next ? "已切回本地分流方案" : "已改用面板自带的分流方案");
+    });
+    // 顺序：按住 ⠿ 拖到目标位置（越靠前越先匹配）
+    bindRulesetDrag();
     // 自定义分流组：新建 / 编辑 / 删除
     const cn = $("#btn-custom-new");
     if (cn) cn.addEventListener("click", () => openDialog("customRuleset", { out: "proxy", rules: [] }));
@@ -657,14 +674,14 @@
     }));
     // 点行：内置分类 → 单独指定出口；自定义组 → 打开编辑器
     $$("[data-ruleset-pick]").forEach((el) => el.addEventListener("click", async (e) => {
-      if (e.target.closest(".switch") || e.target.closest(".ruleset-mv")) return;
+      if (e.target.closest(".switch") || e.target.closest(".ruleset-mv") || e.target.closest(".ruleset-grip")) return;
       const name = el.dataset.rulesetPick;
       const rs = findRuleset(name);
       if (rs && rs.custom) { openDialog("customRuleset", rs); return; }
       if (rs && !rs.enabled) { toast("先开启该分类，才能单独指定出口"); return; }
       if (!state.connected) { toast("连接后才能单独指定出口"); return; }
-      const g = (state.groups || []).find((x) => x.name === name);
-      if (!g) { toast("该分组尚未在内核中生效"); return; }
+      // 本地方案下组名与内核组名一一对应（rs.group 由主进程给出）
+      const g = (state.groups || []).find((x) => x.name === ((rs && rs.group) || name));      if (!g) { toast("该分组尚未在内核中生效"); return; }
       openDialog("groupPick", g);
     }));
   }
@@ -674,6 +691,73 @@
     const rs = state.rulesets || {};
     const all = (rs.groups || []).concat(rs.custom || []);
     return all.find((x) => x.name === name);
+  }
+
+  /**
+   * 分流顺序 = 拖动手柄（不是 ↑↓ 按钮）。
+   * 自己用 pointer 事件实现而不是 HTML5 drag&drop：后者在 Electron 里跟
+   * 滚动容器配合不稳，而且真实鼠标事件（sendInputEvent）不一定能合成 dragstart。
+   * 拖动只在**同一张卡**（自定义组之间、或内置分类之间）生效，跨卡不换位。
+   *
+   * 两个刻意的写法：
+   *  1) move/up 挂在 document 上而不是手柄上 —— 不依赖 setPointerCapture，
+   *     指针移出手柄（甚至移出窗口）也能收到，松手一定能收尾。
+   *  2) 落点每次移动都**重新查 DOM**（不缓存节点数组）—— 拖动期间如果来了一次
+   *     重绘（状态事件、refreshAll 回来），缓存的节点已经脱离文档，
+   *     getBoundingClientRect 全是 0，落点会算错、顺序静默不变。
+   */
+  function bindRulesetDrag() {
+    const grips = $$("[data-ruleset-grip]");
+    if (!grips.length) return;
+    const clear = () => $$(".ruleset-row").forEach((r) => r.classList.remove("dragging", "drop-before", "drop-after"));
+    for (const grip of grips) {
+      grip.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();          // 拖手柄绝不能顺带点开"指定出口"
+        const row = grip.closest(".ruleset-row");
+        if (!row) return;
+        const card = row.parentElement;              // 同一张卡 = 同一段
+        const from = $$(".ruleset-row", card).indexOf(row);
+        if (from < 0) return;
+        const name = row.dataset.rulesetRow;
+        let to = from;
+        let moved = false;
+        row.classList.add("dragging");
+        const onMove = (e) => {
+          const rows = $$(".ruleset-row", card);     // 每次都重查
+          if (rows.length < 2) return;
+          const y = e.clientY;
+          let idx = rows.length - 1;
+          for (let i = 0; i < rows.length; i++) {
+            const r = rows[i].getBoundingClientRect();
+            if (y < r.top + r.height / 2) { idx = Math.max(0, i - 1); break; }
+          }
+          if (y > rows[rows.length - 1].getBoundingClientRect().bottom) idx = rows.length - 1;
+          if (idx !== to) { moved = true; to = idx; }
+          rows.forEach((r, i) => {
+            r.classList.toggle("drop-before", moved && i === to && to < from);
+            r.classList.toggle("drop-after", moved && i === to && to >= from);
+          });
+        };
+        const onUp = async () => {
+          document.removeEventListener("pointermove", onMove, true);
+          document.removeEventListener("pointerup", onUp, true);
+          document.removeEventListener("pointercancel", onUp, true);
+          clear();
+          if (!moved || to === from) return;
+          const r = await guard("调整顺序", () => api.reorderRuleset(name, to));
+          if (!r) return;
+          if (r.moved === false) { toast("位置没变"); return; }
+          await refreshRoutes();
+          render();
+          toast(`「${name}」移到第 ${to + 1} 位`);
+        };
+        document.addEventListener("pointermove", onMove, true);
+        document.addEventListener("pointerup", onUp, true);
+        document.addEventListener("pointercancel", onUp, true);
+      });
+    }
   }
 
   /** 只刷新分流相关数据（比 refreshAll 便宜） */
@@ -998,11 +1082,16 @@
       bindLiveStatus();
       return;
     }
-    await refreshAll();
+    // 先把界面立起来（本地设置已经在手上了），再去拉面板数据。
+    // 旧代码是 await refreshAll() 之后无条件 route="home" + render()：
+    // 面板慢的时候（实测流量查询能到十几秒）用户在启动期间点进「我的」，
+    // 会被这一下拽回首页；自检里也因此丢过点击（点退出登录时元素刚被换掉）。
     state.route = "home";
     render();
     state.booted = true;
     bindLiveStatus();
+    await refreshAll();
+    if (state.route === "home") render();
     autoRefreshSubscription();
     // 虚拟网卡状态要起 PowerShell，放到界面出来之后再查，不占启动路径
     loadTunStatus();

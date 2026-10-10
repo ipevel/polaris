@@ -59,6 +59,21 @@
 }
 .ruleset-mv:hover { color: var(--text); background: rgba(120, 120, 128, .28); }
 
+/* ---------- 分流顺序：拖动手柄（不再用 ↑↓ 按钮） ---------- */
+.ruleset-row { cursor: pointer; }
+.ruleset-grip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px; flex: none;
+  font-size: 15px; line-height: 1; color: var(--text3);
+  background: var(--line); cursor: grab; user-select: none; touch-action: none;
+}
+.ruleset-grip:hover { color: var(--text); background: rgba(120, 120, 128, .28); }
+.ruleset-grip:active { cursor: grabbing; }
+.ruleset-row.dragging { opacity: .45; }
+.ruleset-row.drop-before { box-shadow: inset 0 2px 0 0 var(--blue); }
+.ruleset-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--blue); }
+.ruleset-row.dragging .switch { pointer-events: none; }
+
 /* ---------- 节点页分组手风琴 ---------- */
 .acc-head { cursor: pointer; user-select: none; }
 .acc-head:hover .acc-title { color: var(--blue); }

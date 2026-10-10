@@ -87,8 +87,12 @@ const paths = {
   rules: () => (IS_PACKAGED
     ? path.join(process.resourcesPath, 'rules')
     : path.resolve(__dirname, '..', 'resources', 'rules')),
-  /** 内核实际读取的规则集目录：必须在 data/ 内，否则 mihomo 会以「不安全路径」拒载 */
-  ruleSeeds: () => path.join(root(), 'data', 'rules'),
+  /**
+   * 内核实际读写规则集的目录：必须在 data/ 内，否则 mihomo 会以「不安全路径」拒载。
+   * 目录名与 rule-provider 的 path 前缀（rulesets.CACHE_DIR = 'polaris-rules'）必须一致 ——
+   * mihomo 把 path 解析成 <profileDir>/<path>，profileDir 就是 `-d` 指的 data/。
+   */
+  polarisRules: () => path.join(root(), 'data', 'polaris-rules'),
   /** 自动更新的下载与解压暂存区 */
   updateDir: () => path.join(root(), 'data', 'update'),
   cache: () => path.join(root(), 'data', 'cache'),
@@ -101,7 +105,7 @@ const paths = {
     ? path.join(process.resourcesPath, 'geo')
     : path.resolve(__dirname, '..', 'resources', 'geo')),
   ensureAll() {
-    for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.ruleSeeds(), paths.cache(), paths.updateDir()]) {
+    for (const d of [paths.data(), paths.logs(), paths.profiles(), paths.providers(), paths.polarisRules(), paths.cache(), paths.updateDir()]) {
       fs.mkdirSync(d, { recursive: true });
     }
     return paths;

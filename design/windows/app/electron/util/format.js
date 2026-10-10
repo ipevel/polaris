@@ -33,13 +33,4 @@ function modeKey(label) {
   return found || label;
 }
 
-function maskEmail(email) {
-  const s = String(email || '');
-  const at = s.indexOf('@');
-  if (at <= 1) return s;
-  const name = s.slice(0, at);
-  const head = name.slice(0, 1);
-  return `${head}${'*'.repeat(Math.max(1, name.length - 1))}${s.slice(at)}`;
-}
-
-module.exports = { bytes, speed, duration, modeLabel, modeKey, maskEmail };
+module.exports = { bytes, speed, duration, modeLabel, modeKey };

@@ -224,6 +224,43 @@ function logout() {
 
 const isAuthed = () => !!session.token;
 
+/**
+ * Telegram 链接白名单：必须是 http(s) 且域名是 Telegram 的那几个。
+ * 面板下发的链接我们直接丢给系统浏览器打开，所以不能来者不拒 ——
+ * 与安卓端 ExternalLinks.kt 的口径一致（t.me / telegram.me / telegram.dog）。
+ */
+const TELEGRAM_HOSTS = ['t.me', 'telegram.me', 'telegram.dog'];
+function safeTelegram(url) {
+  const raw = String(url == null ? '' : url).trim();
+  if (!raw) return '';
+  let u;
+  try { u = new URL(raw); } catch (_) { return ''; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+  const host = u.hostname.toLowerCase();
+  return TELEGRAM_HOSTS.some((h) => host === h || host.endsWith('.' + h)) ? u.href : '';
+}
+
+/**
+ * Telegram 讨论组链接（对齐安卓端 fetchTelegramDiscussLink）。
+ * 游客配置 /guest/comm/config 里通常没有这个字段，真实字段在登录后的
+ * /user/comm/config 的 telegram_discuss_link（Xboard / 小 V2B 都是这个名）。
+ * 拿不到就返回空串 —— 界面据此隐藏入口，而不是显示一个点不动的死按钮。
+ */
+async function telegramLink() {
+  if (!isAuthed()) return '';
+  try {
+    const cfg = await get('/user/comm/config');
+    const link = safeTelegram(pick(cfg, [
+      'telegram_discuss_link', 'telegramDiscussLink',
+      'telegram_link', 'telegramLink', 'telegram_url', 'telegram',
+    ], ''));
+    if (link) return link;
+  } catch (e) {
+    log.warn('telegramLink failed:', e.message);
+  }
+  return '';
+}
+
 /* ------------------------------------------------------------------ */
 /* 站点 / 用户                                                         */
 /* ------------------------------------------------------------------ */
@@ -242,7 +279,7 @@ async function siteInfo() {
       appName,
       appDescription: String(pick(cfg, ['app_description', 'appDescription', 'description', 'sub_name'], '')),
       appUrl,
-      telegramUrl: String(pick(cfg, ['telegram_url', 'telegramUrl'], '')),
+      telegramUrl: safeTelegram(pick(cfg, ['telegram_url', 'telegramUrl', 'telegram_discuss_link'], '')),
       icp: String(pick(cfg, ['icp', 'icp_url'], '')),
     };
   } catch (e) {
@@ -706,7 +743,7 @@ async function register(email, password, emailCode, inviteCode) {
 module.exports = {
   session, PanelError,
   restore, login, logout, isAuthed, register,
-  siteInfo, userInfo, subscribeInfo, refreshSubscription,
+  siteInfo, telegramLink, safeTelegram, userInfo, subscribeInfo, refreshSubscription,
   plans, orders, createOrder, orderDetail, paymentMethods, checkoutUrl,
   tickets, createTicket, invite, giftHistory, redeemGift, notices, trafficLog,
   changePassword, sendEmailCode, forgotPassword, registerConfig,

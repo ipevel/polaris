@@ -25,7 +25,11 @@ const region = require('./region');
 const traffic = require('./traffic');
 const fmt = require('../util/format');
 
-const MAIN_GROUP = builder.DIRECT_GROUP;
+const MAIN_GROUP = builder.DIRECT_GROUP;      // 🚀 节点选择（节点页那张主卡）
+const FINAL_GROUP = builder.FINAL_GROUP;      // 🐟 漏网之鱼（兜底组）
+// 结构组：只是配置骨架，不是给用户选的分类 —— 节点页不列它们
+// （与安卓 RoutingReservedNames 一致：主组/自动选择/故障转移/兜底组）
+const STRUCTURAL_GROUPS = new Set([FINAL_GROUP, '自动选择', '故障转移', 'GLOBAL']);
 const TRAFFIC_TICK_MS = 1000;
 
 const S = {
@@ -51,6 +55,7 @@ const S = {
   offlineCache: new Set(),     // 确认不可达的节点（区别于"未测/超时"）
   groupLatency: new Map(),     // 策略组名 -> 延迟（内核 history 之外的兜底）
   needTunGrace: false,         // TUN 模式下停内核要给足收尾时间
+  routingDegraded: '',         // 本地方案降级原因（非空 = 已回退面板方案）
   listeners: new Set(),        // 状态推送订阅者
 };
 
@@ -106,9 +111,16 @@ function prepareConfig(opts = {}) {
     allowLan: store.get('allow_lan'),
     ipv6: store.get('ipv6'),
     directDomains: S.directDomains,
-    routing: { enabled: store.get('routing_rules'), order: store.get('routing_order'), custom: store.get('custom_rulesets') },
+    routing: {
+      // 总开关：默认开 —— 与安卓端一致，屏蔽面板下发的分流方案、只用本地内置方案
+      on: store.get('routing_on') !== false,
+      enabled: store.get('routing_rules'),
+      order: store.get('routing_order'),
+      custom: store.get('custom_rulesets'),
+    },
   });
   for (const w of result.warnings || []) log.warn(`routing: ${w}`);
+  S.routingDegraded = result.degraded || '';
   fs.mkdirSync(paths.data(), { recursive: true });
   fs.writeFileSync(configFile(), yaml.dump(result.config, { lineWidth: -1 }), 'utf8');
   // 混合端口/控制端口每次生成都不同 → 落盘给主进程复用
@@ -117,18 +129,30 @@ function prepareConfig(opts = {}) {
   }), 'utf8');
   const count = Array.isArray(doc.proxies) ? doc.proxies.length : 0;
   const ruleSets = Object.keys(result.config['rule-providers'] || {}).length;
-  log.info(`config prepared: ${count} proxies, renames=${report.renamed}, droppedInfo=${report.droppedInfo}, droppedKeys=${report.droppedKeys.join(',') || '-'}, ruleSets=${ruleSets}`);
+  log.info(`config prepared: ${count} proxies, renames=${report.renamed}, droppedInfo=${report.droppedInfo}, droppedKeys=${report.droppedKeys.join(',') || '-'}, ruleSets=${ruleSets}, localRouting=${result.local ? 'on' : 'off'}${result.degraded ? `, degraded=${result.degraded}` : ''}`);
   return { count, report };
 }
 
 /**
- * 内置分流规则种子随包分发，拷进 data/rules/ 一次即可。
+ * 内置分流规则种子：**只补缺失**，绝不覆盖已存在的文件。
+ *
+ * rule-provider 现在是 type:http + path 指向本目录（rulesets.CACHE_DIR），mihomo 会把
+ * 下载到的新版规则**写回同一个文件**（mihomo 的 HTTPVehicle 用 path 当缓存）。如果这里
+ * 每次启动都按体积差异重拷，用户联网更新过的规则集会被随包种子反复打回旧版
+ * —— 那就等于"在线更新"永远不生效。所以种子只负责"冷启动/断网时也有文件可用"。
+ *
  * 必须落在 data/ 内：mihomo 只允许读取 -d 目录（或 SAFE_PATHS）下的规则集文件，
  * 直接引用安装目录会被 IsSafePath 拒掉（path is not subpath of home directory）。
  */
 function ensureRuleSeeds() {
   const src = paths.rules();
-  const dst = paths.ruleSeeds();
+  const dst = paths.polarisRules();
+  // 旧版本把种子铺在 data/rules/（type:file 时代）。改成 http 之后那个目录没人读了，
+  // 留着只会占 1.5 MB 并让人以为"规则还在这儿"——顺手清掉（只清我们自己建的目录名）。
+  const legacy = path.join(paths.data(), 'rules');
+  if (legacy !== dst && fs.existsSync(legacy)) {
+    try { fs.rmSync(legacy, { recursive: true, force: true }); log.info('已清理旧规则集目录 data/rules'); } catch (_) {}
+  }
   if (!fs.existsSync(src)) {
     log.warn('内置分流规则目录不存在，分流规则将不可用:', src);
     return false;
@@ -141,20 +165,20 @@ function ensureRuleSeeds() {
   for (const f of rulesets.allProviderKeys()) {
     const name = rulesets.seedFile(f);
     const from = path.join(src, name);
+    const to = path.join(dst, name);
+    if (fs.existsSync(to)) continue;          // 已有（可能是内核下载的新版）→ 不动
     if (!fs.existsSync(from)) {
       log.warn(`规则集种子缺失: ${name}`);
       continue;
     }
-    const to = path.join(dst, name);
     try {
-      if (fs.existsSync(to) && fs.statSync(to).size === fs.statSync(from).size) continue;
       fs.copyFileSync(from, to);
       copied += 1;
     } catch (e) {
       log.warn(`拷贝规则集 ${name} 失败:`, e && e.message);
     }
   }
-  if (copied) log.info(`内置分流规则已就位（${copied} 个文件）`);
+  if (copied) log.info(`内置分流规则种子已预播种（${copied} 个文件）`);
   return true;
 }
 
@@ -307,7 +331,10 @@ async function startKernel() {
     if (cfg && cfg.mode) S.mode = cfg.mode;
   } catch (_) {}
   try {
-    if (lastNode) await selectNodeInGroup(controller, lastGroup, lastNode);
+    if (lastNode) {
+      const r = await selectNodeInGroup(controller, lastGroup, lastNode);
+      store.set('last_group', r.group);
+    }
   } catch (e) {
     log.warn('restore last node failed:', e.message);
   }
@@ -388,6 +415,16 @@ function unwrapProxies(raw) {
 }
 
 /**
+ * store 里记的分组名可能是旧版本留下的（旧主组叫「节点选择」，现在与安卓对齐叫「🚀 节点选择」）。
+ * 内核里没有这个名字就落到主组 —— 否则「记住上次选的分组」会变成一条静默失败。
+ */
+function resolveGroup(proxies, name) {
+  if (name && proxies && proxies[name]) return name;
+  if (name && name !== MAIN_GROUP) log.warn(`group ${name} 不在内核里，回落到 ${MAIN_GROUP}`);
+  return MAIN_GROUP;
+}
+
+/**
  * 内核没起来时，从本地 config.yaml 直接读出节点与分组。
  * 不解这个的话，登录后到连接前节点页是空的 —— 用户会以为订阅没生效。
  */
@@ -398,20 +435,33 @@ function previewNodes() {
     const proxies = Array.isArray(cfg && cfg.proxies) ? cfg.proxies : [];
     const groups = Array.isArray(cfg && cfg['proxy-groups']) ? cfg['proxy-groups'] : [];
     const byName = new Map(proxies.map((p) => [p.name, p]));
+    const allNames = proxies.map((p) => p.name);
 
-    S.groups = groups.map((g) => ({
-      name: g.name,
-      type: g.type,
-      now: '',
-      count: Array.isArray(g.proxies) ? g.proxies.length : 0,
-      options: Array.isArray(g.proxies) ? g.proxies.slice() : [],
-      builtin: g.name === 'GLOBAL',
-    }));
+    // 本地方案下各组是 include-all：proxies 字段里只有结构成员（自动选择/故障转移/DIRECT），
+    // 节点是内核按 include-all 并进去的。所以预览不能只数 proxies —— 那样会显示
+    // 「3 个可选出口」甚至 0 个节点（A-29：连接前节点页是空的）。
+    const membersOf = (g) => {
+      const list = Array.isArray(g.proxies) ? g.proxies : [];
+      if (g['include-all'] === true) return allNames.slice();
+      const real = list.filter((n) => byName.has(n));
+      return real.length > 0 ? real : allNames.slice();
+    };
+
+    S.groups = groups.map((g) => {
+      const members = membersOf(g);
+      return {
+        name: g.name,
+        type: g.type,
+        now: '',
+        count: members.length,
+        options: members,
+        builtin: g.name === 'GLOBAL',
+        structural: STRUCTURAL_GROUPS.has(g.name),
+      };
+    });
 
     const main = groups.find((g) => g.name === MAIN_GROUP) || groups[0];
-    const names = main && Array.isArray(main.proxies)
-      ? main.proxies.filter((n) => byName.has(n))
-      : proxies.map((p) => p.name);
+    const names = main ? membersOf(main) : allNames;
     S.nodes = names.map(nodeRecord);
     return S.nodes;
   } catch (e) {
@@ -424,7 +474,8 @@ async function loadNodes(force = false) {
   if (!S.controller) return previewNodes();
   if (!force && S.nodes.length > 0) return S.nodes;
   const proxies = unwrapProxies(await S.controller.get('/proxies'));  if (!proxies || Object.keys(proxies).length === 0) return S.nodes;
-  const groupName = store.get('last_group') || MAIN_GROUP;
+  const groupName = resolveGroup(proxies, store.get('last_group'));
+  if (store.get('last_group') !== groupName) store.set('last_group', groupName);
   const group = proxies[groupName];
   let memberNames;
   if (group && Array.isArray(group.all) && group.all.length > 0) {
@@ -445,34 +496,35 @@ function cachedNodes() { return S.nodes; }
 
 async function selectNodeInGroup(controller, groupName, nodeName) {
   const proxies = unwrapProxies(await controller.get('/proxies'));
-  const group = proxies && proxies[groupName];
+  const resolved = resolveGroup(proxies, groupName);
+  const group = proxies && proxies[resolved];
   const members = group && Array.isArray(group.all) ? group.all : Object.keys(proxies || {});
   if (!members.includes(nodeName)) {
-    throw new Error(`节点「${nodeName}」不在分组「${groupName}」中`);
+    throw new Error(`节点「${nodeName}」不在分组「${resolved}」中`);
   }
-  await controller.put(`/proxies/${encodeURIComponent(groupName)}`, { name: nodeName });
+  await controller.put(`/proxies/${encodeURIComponent(resolved)}`, { name: nodeName });
   // 回读确认，避免内核静默忽略
-  const after = await controller.get(`/proxies/${encodeURIComponent(groupName)}`);
+  const after = await controller.get(`/proxies/${encodeURIComponent(resolved)}`);
   if (!after || after.now !== nodeName) {
     throw new Error(`切换节点未被内核确认（当前 ${after ? after.now : '未知'}）`);
   }
-  return nodeName;
+  return { node: nodeName, group: resolved };
 }
 
 async function selectNode(name, groupName) {
   if (S.phase !== 'connected') throw new Error('尚未连接');
   // 节点页的分组手风琴里点某一项时，要切的是**那个分组**的出口，
   // 不是上次记住的分组（用户点「自动选择」里的节点却改了「节点选择」的出口是 bug）。
-  const group = groupName || store.get('last_group') || MAIN_GROUP;
-  const picked = await selectNodeInGroup(S.controller, group, name);
-  if (group === MAIN_GROUP) {
-    S.node = picked;
-    store.set('last_node', picked);
+  const want = groupName || store.get('last_group') || MAIN_GROUP;
+  const r = await selectNodeInGroup(S.controller, want, name);
+  if (r.group === MAIN_GROUP) {
+    S.node = r.node;
+    store.set('last_node', r.node);
   }
-  store.set('last_group', group);
+  store.set('last_group', r.group);
   await loadNodes(true);
   emit();
-  return picked;
+  return r.node;
 }
 
 async function speedTest() {
@@ -535,7 +587,7 @@ async function testGroupDelays() {
   const url = encodeURIComponent('https://www.gstatic.com/generate_204');
   let groups = [];
   try { groups = await routingGroups(); } catch (_) { groups = []; }
-  const list = groups.filter((g) => !g.builtin).map((g) => g.name);
+  const list = groups.filter((g) => !g.builtin && !g.structural).map((g) => g.name);
   const done = [];
   const worker = async () => {
     for (;;) {
@@ -594,6 +646,7 @@ async function routingGroups() {
       options,
       latency: hist && typeof hist.delay === 'number' && hist.delay > 0 ? hist.delay : (cached || -1),
       builtin: name === 'GLOBAL',
+      structural: STRUCTURAL_GROUPS.has(name),
     });
   }
   // 主选择组排最前，其余按名字稳定排序
@@ -628,7 +681,7 @@ async function resetRoutingGroups() {
   const groups = await routingGroups();
   const done = [];
   for (const g of groups) {
-    if (g.builtin || !g.options.length) continue;
+    if (g.builtin || g.structural || !g.options.length) continue;
     if (g.now === g.options[0]) continue;
     try {
       await controller.put(`/proxies/${encodeURIComponent(g.name)}`, { name: g.options[0] });
@@ -647,8 +700,8 @@ async function resetRoutingGroups() {
 /* ------------------------------------------------------------------ */
 
 /**
- * 分流页需要的全部数据：内置表的每一组 + 当前开关 + 运行中内核里的实际出口。
- * 规则集文件随包分发（见 ensureRuleSeeds），不联网、解压即用。
+ * 分流页需要的全部数据：总开关 + 内置表的每一组 + 当前开关 + 运行中内核里的实际出口。
+ * 规则集由内核按 type:http 在线更新（24h），随包种子只负责离线可用（见 ensureRuleSeeds）。
  */
 async function rulesetState() {
   const enabled = new Set(rulesets.normalizeEnabled(store.get('routing_rules')));
@@ -660,6 +713,7 @@ async function rulesetState() {
     const p = live ? live[g.name] : null;
     return {
       name: g.name,
+      group: g.name,                        // 本地方案下组名就是内核里的组名（不再有 alias）
       out: g.defaultOut,                    // direct | block | proxy
       enabled: enabled.has(g.name),
       count: rulesets.providerKeys(g).length,
@@ -686,11 +740,24 @@ async function rulesetState() {
   });
   return {
     groups,
+    on: store.get('routing_on') !== false,
+    degraded: S.routingDegraded || '',
     enabled: [...enabled],
     total: rulesets.TABLE.length,
     custom,
     custom_total: custom.length,
   };
+}
+
+/**
+ * 本地分流总开关：开 = 屏蔽面板下发的分流方案、只用本地内置方案（默认）；
+ * 关 = 面板配置原样生效（应急开关，面板自带分流出问题时也能救回来）。
+ */
+async function setLocalRouting(on) {
+  store.set('routing_on', !!on);
+  await reloadConfig();
+  emit();
+  return { ok: true, on: !!on };
 }
 
 /** 开关一个分流组（内置或自定义）：写设置 → 重新生成配置 → 在线时热重载 */
@@ -713,32 +780,32 @@ async function setRuleset(name, on) {
 }
 
 /**
- * 把某个分流组在匹配顺序里上移/下移一位（越靠前越先匹配）。
- * 内置组与自定义组各自成一段：自定义规则永远排在所有内置分类之前（见 builder），
- * 所以这里不会让内置组跨过自定义组。
+ * 拖动排序：把某个分流组直接挪到第 to 位（0 起，越靠前越先匹配）。
+ * 界面是拖出来的，位置是一次到位的，不是"按一次动一格"。
+ * 内置组与自定义组各自成一段，不会互相穿越（见 builder）。
  */
-async function moveRuleset(name, dir) {
-  const step = dir < 0 ? -1 : 1;
-  if (rulesets.TABLE.some((g) => g.name === name)) {
-    const cur = rulesets.orderedTable(store.get('routing_order')).map((g) => g.name);
-    const i = cur.indexOf(name);
-    const j = i + step;
-    if (j < 0 || j >= cur.length) return { ok: true, moved: false, order: cur };
-    const next = cur.slice();
-    [next[i], next[j]] = [next[j], next[i]];
-    store.set('routing_order', next);
-    const r = await reloadConfig();
-    return { ok: true, moved: true, order: next, applied: !!r.applied };
-  }
-  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
-  const i = list.findIndex((g) => g.name === name);
+async function reorderRuleset(name, to) {
+  const builtin = rulesets.TABLE.some((g) => g.name === name);
+  const cur = builtin
+    ? rulesets.orderedTable(store.get('routing_order')).map((g) => g.name)
+    : rulesets.normalizeCustom(store.get('custom_rulesets')).map((g) => g.name);
+  const i = cur.indexOf(name);
   if (i < 0) throw new Error(`分流组「${name}」不存在`);
-  const j = i + step;
-  if (j < 0 || j >= list.length) return { ok: true, moved: false, order: list.map((g) => g.name) };
-  [list[i], list[j]] = [list[j], list[i]];
-  store.set('custom_rulesets', rulesets.serializeCustom(list));
+  const j = Math.max(0, Math.min(cur.length - 1, Number(to) || 0));
+  if (i === j) return { ok: true, moved: false, order: cur };
+  const next = cur.slice();
+  next.splice(i, 1);
+  next.splice(j, 0, name);
+  if (builtin) store.set('routing_order', next);
+  else {
+    const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
+    const it = list.find((g) => g.name === name);
+    list.splice(list.indexOf(it), 1);
+    list.splice(j, 0, it);
+    store.set('custom_rulesets', rulesets.serializeCustom(list));
+  }
   const r = await reloadConfig();
-  return { ok: true, moved: true, order: list.map((g) => g.name), applied: !!r.applied };
+  return { ok: true, moved: true, order: next, applied: !!r.applied };
 }
 
 /** 新建/修改一个自定义分流组（保存前严格校验，错误信息直接给用户看） */
@@ -880,8 +947,8 @@ module.exports = {
   status, connect, disconnect, shutdown, onStatus,
   prepareConfig, loadNodes, cachedNodes, selectNode, speedTest, testGroupDelays, setMode,
   routingGroups, setRoutingGroup, resetRoutingGroups,
-  rulesetState, setRuleset, resetRulesets, reloadConfig,
-  moveRuleset, saveCustomRuleset, deleteCustomRuleset,
+  rulesetState, setRuleset, resetRulesets, reloadConfig, setLocalRouting,
+  reorderRuleset, saveCustomRuleset, deleteCustomRuleset,
   requireCore, setDirectDomains, mixedPort: () => S.mixedPort,
   wantedMixedPort, assertPortFree,
   S,

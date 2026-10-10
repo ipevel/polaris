@@ -37,8 +37,9 @@ const DEFAULTS = {
   subscription_updated_at: 0,
   subscribe_hosts: [],        // 见过的订阅域名，永远直连（见 core/remote.js）
   // —— 内置分流规则（离线 rule-provider，见 core/rulesets.js）——
+  routing_on: true,           // 本地分流总开关：true = 屏蔽面板下发的分流方案，只用本地内置方案
   routing_rules: null,        // null = 用内置表的 defaultOn；数组 = 用户显式开关的组名
-  routing_order: null,        // null = 用内置表顺序；数组 = 用户自定义顺序（分流页 ↑↓ 调整）
+  routing_order: null,        // null = 用内置表顺序；数组 = 用户自定义顺序（分流页拖动调整）
   custom_rulesets: [],        // 用户自己写的分流组：[{name,out,enabled,rules:['DOMAIN-SUFFIX,x.com']}]
 };
 

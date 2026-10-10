@@ -44,10 +44,11 @@
     resetRoutingGroups: () => invoke("reset_routing_groups"),
     getRulesets: () => invoke("get_rulesets"),
     setRuleset: (name, on) => invoke("set_ruleset", { name, on }),
-    moveRuleset: (name, dir) => invoke("move_ruleset", { name, dir }),
+    reorderRuleset: (name, to) => invoke("reorder_ruleset", { name, to }),
     saveCustomRuleset: (arg) => invoke("save_custom_ruleset", arg || {}),
     deleteCustomRuleset: (name) => invoke("delete_custom_ruleset", { name }),
     resetRulesets: () => invoke("reset_rulesets"),
+    setLocalRouting: (on) => invoke("set_local_routing", { on }),
 
     /* 套餐 / 订单 */
     getPlan: () => invoke("get_plan"),

@@ -104,6 +104,7 @@ app.whenReady().then(async () => {
   const paths = require('../electron/paths');
   const store = require('../electron/store');
   const core = require('../electron/core/manager');
+const builder = require('../electron/core/builder');
 
   paths.ensureAll();
   console.log(`data = ${paths.data()}`);
@@ -144,8 +145,10 @@ app.whenReady().then(async () => {
     }
 
     const st = await commands.get_settings();
-    // get_settings 会把邮箱打码（c*@mbe.cc），这是有意的隐私处理，不是 bug
-    check('登录态认出来了（邮箱打码）', st.authed === true && /@/.test(String(st.email)), JSON.stringify({ authed: st.authed, email: st.email }));
+    // 用户第 5 条：自己的邮箱不打码（原来是 c*@mbe.cc）
+    check('登录态认出来了且邮箱不打码', st.authed === true && /@/.test(String(st.email)) && String(st.email).indexOf('*') < 0,
+      JSON.stringify({ authed: st.authed, email: st.email }));
+    if (EMAIL) check('邮箱就是登录用的那个', String(st.email) === String(EMAIL), `「${st.email}」vs「${EMAIL}」`);
 
     const reg = await commands.get_register_config();
     console.log(`  注册配置: ${JSON.stringify(reg)}`);
@@ -182,6 +185,13 @@ app.whenReady().then(async () => {
 
     const notices = await commands.get_notices();
     console.log(`  公告 ${Array.isArray(notices) ? notices.length : '?'} 条${notices && notices[0] ? `，最新《${notices[0].title}》` : ''}`);
+
+    // 用户第 2 条：我的页要有 Telegram 入口（面板下发了链接才显示）
+    const site = await commands.get_site_info();
+    const tg = String((site && site.telegramUrl) || '');
+    console.log(`  Telegram 入口: ${tg || '(面板没配，界面隐藏该入口)'}`);
+    check('Telegram 链接要么为空要么是 t.me 的合法地址',
+      !tg || (/^https:\/\/(t\.me|telegram\.me|telegram\.dog)\//.test(tg) || /^https:\/\/[a-z.]*telegram[a-z.]*\//.test(tg)), tg);
 
     /* ---------------- 流量页面（必须来自面板） ---------------- */
     section('流量页面（今天 / 本周 / 本月 取面板明细）');
@@ -259,10 +269,21 @@ app.whenReady().then(async () => {
 
     const groups = await commands.get_routing_groups();
     const gArr = Array.isArray(groups) ? groups : [];
-    const main = gArr.find((g) => g.name === '节点选择') || gArr[0];
-    console.log(`  策略组 ${gArr.length} 个: ${gArr.slice(0, 6).map((g) => `${g.name}(${g.count}节点/${g.latency}ms)`).join(' | ')}`);
-    check('分组里有"节点选择"', gArr.some((g) => g.name === '节点选择'), gArr.map((g) => g.name).join(','));
+    const vis = gArr.filter((g) => !g.builtin && !g.structural);
+    const main = gArr.find((g) => g.name === builder.SELECTOR_GROUP) || vis[0];
+    console.log(`  策略组 ${gArr.length} 个（可见 ${vis.length}）: ${vis.slice(0, 6).map((g) => `${g.name}(${g.count}节点/${g.latency}ms)`).join(' | ')}`);
+    // 用户第二轮反馈：主组只能有一张卡，且必须是「🚀 节点选择」（与安卓端同名）
+    check(`分组里有主组「${builder.SELECTOR_GROUP}」`, gArr.some((g) => g.name === builder.SELECTOR_GROUP), gArr.map((g) => g.name).join(','));
+    check('没有第二个叫「节点选择」的主组（重复卡根因）', !gArr.some((g) => g.name === '节点选择'), gArr.map((g) => g.name).join(','));
+    check('主组排在可见分组的第一位', !!vis[0] && vis[0].name === builder.SELECTOR_GROUP, vis.map((g) => g.name).join(','));
+    check('兜底组不在可见分类里', !vis.some((g) => g.name === builder.FINAL_GROUP), vis.map((g) => g.name).join(','));
     check('分组带延迟字段（第 4 条）', !!main && typeof main.latency === 'number', JSON.stringify(main));
+    // 用户第三轮反馈：两张「直连」分类卡重复了。内置的 🎯 国内直连 与面板的 🎯 全球直连
+    // 语义相同，配置层必须只留一个（面板给了就复用面板的，见 rulesets.js 的 alias）。
+    const names = gArr.map((g) => g.name);
+    check('两张「直连」分类卡不再并存', !(names.indexOf('🎯 国内直连') >= 0 && names.indexOf('🎯 全球直连') >= 0),
+      names.filter((x) => /直连$/.test(x)).join(',') || '(无直连组)');
+    check('直连类分组至少有一个（别把功能删没了）', names.some((x) => /直连$/.test(x)), names.join(','));
 
     // 这条只做记录，不算断言：订阅里默认选中的节点可能是死的（实测过美国节点 TCP 连不上），
     // 那既不是产品缺陷也不该让整轮红。真正的断言在延迟测试挑出活节点之后。
@@ -321,6 +342,133 @@ app.whenReady().then(async () => {
       check('跑完真流量后面板明细出现了（站点统计闭环）', true);
     } else {
       console.log('  WARN  60 秒内面板还没统计出今天的明细（面板侧统计有延迟，不算失败）');
+    }
+
+    /* ---------------- 分流顺序（拖动排序，数据层） ---------------- */
+    section('分流顺序（拖动排序）');
+    {
+      const rs0 = await commands.get_rulesets();
+      const g0 = (rs0 && Array.isArray(rs0.groups)) ? rs0.groups.map((g) => g.name) : [];
+      console.log(`  内置分流顺序（前 5）: ${g0.slice(0, 5).join(' | ')}`);
+      check('内置分流有可排序的多组', g0.length >= 3, `${g0.length} 组`);
+      check('内置组都带内核里的真实组名（alias 用）', (rs0.groups || []).every((g) => typeof g.group === 'string' && g.group), JSON.stringify((rs0.groups || []).slice(0, 2)));
+      const moving = g0[2];
+      const r1 = await commands.reorder_ruleset({ name: moving, to: 0 });
+      check('拖动排序接口生效', r1 && r1.moved === true, JSON.stringify(r1).slice(0, 200));
+      const rs1 = await commands.get_rulesets();
+      const g1 = (rs1 && Array.isArray(rs1.groups)) ? rs1.groups.map((g) => g.name) : [];
+      check('被拖的组真的排到了第一位', g1[0] === moving, `${g1.slice(0, 4).join(' | ')}`);
+      check('排序没有丢组', g1.length === g0.length, `${g0.length} → ${g1.length}`);
+      // 顺序 = 匹配优先级，会在配置里体现成 RULE-SET 行的先后
+      const r2 = await commands.reorder_ruleset({ name: moving, to: 2 });
+      check('拖回原位也生效（不把测试顺序留给你）', r2 && r2.moved === true, JSON.stringify(r2).slice(0, 120));
+      const rs2 = await commands.get_rulesets();
+      const g2 = (rs2 && Array.isArray(rs2.groups)) ? rs2.groups.map((g) => g.name) : [];
+      check('顺序已还原', g2.join(',') === g0.join(','), g2.slice(0, 4).join(' | '));
+    }
+
+    /* ---------------- 本地分流方案（与安卓端同一模型） ---------------- */
+    section('本地分流方案（屏蔽面板下发，只用本地内置方案）');
+    {
+      const rulesets = require('../electron/core/rulesets');
+      const yaml = require('js-yaml');
+      const cfgPath = paths.file('config.yaml');
+      const cfg = yaml.load(nodeFs.readFileSync(cfgPath, 'utf8')) || {};
+
+      const rsState = await commands.get_rulesets();
+      check('分流方案总开关默认是「用本地」（与安卓端一致）', rsState.on === true, JSON.stringify(rsState.on));
+      check('没有降级', !rsState.degraded, String(rsState.degraded || ''));
+
+      // ① 面板下发的策略组必须整体消失，只剩 结构组 + 本地启用组 + 自定义组
+      const localNames = new Set([
+        rulesets.GROUP_SELECTOR, rulesets.GROUP_AUTO, rulesets.GROUP_FALLBACK, rulesets.GROUP_FINAL,
+        ...rulesets.TABLE.map((g) => g.name),
+        ...(rsState.custom || []).map((g) => g.name),
+      ]);
+      const cfgGroups = (cfg['proxy-groups'] || []).map((g) => g.name);
+      const strangers = cfgGroups.filter((n) => !localNames.has(n));
+      console.log(`  配置里的策略组 ${cfgGroups.length} 个: ${cfgGroups.slice(0, 6).join(' | ')}`);
+      check('面板下发的策略组一个不剩（只剩本地方案）', strangers.length === 0, strangers.join(','));
+      check('主选择组在第一位（安卓端 selectorGroup 契约）', cfgGroups[0] === rulesets.GROUP_SELECTOR, cfgGroups.slice(0, 3).join(','));
+      check('四个结构组都在', [rulesets.GROUP_SELECTOR, rulesets.GROUP_AUTO, rulesets.GROUP_FALLBACK, rulesets.GROUP_FINAL]
+        .every((n) => cfgGroups.includes(n)), cfgGroups.join(','));
+      check('主组首位成员是「自动选择」（默认出口）',
+        JSON.stringify((cfg['proxy-groups'][0] || {}).proxies || []) === JSON.stringify([rulesets.GROUP_AUTO, rulesets.GROUP_FALLBACK, 'DIRECT']),
+        JSON.stringify((cfg['proxy-groups'][0] || {}).proxies));
+      check('各组都是 include-all（节点不写死在配置里，订阅更新不用重拼）',
+        (cfg['proxy-groups'] || []).filter((g) => g.name !== rulesets.GROUP_FINAL).every((g) => g['include-all'] === true),
+        JSON.stringify((cfg['proxy-groups'] || []).map((g) => [g.name, !!g['include-all']])));
+      check('兜底组刻意不 include-all（成员只有 主组+DIRECT）',
+        (cfg['proxy-groups'].find((g) => g.name === rulesets.GROUP_FINAL) || {})['include-all'] !== true);
+
+      // ② rule-provider 全部改成 http + 24h 在线更新，路径落在 data/polaris-rules/
+      const rp = cfg['rule-providers'] || {};
+      const rpKeys = Object.keys(rp);
+      console.log(`  rule-provider ${rpKeys.length} 个，全部 type:http？${rpKeys.every((k) => rp[k].type === 'http')}`);
+      check('rule-provider 全部是 type:http（在线更新，不再是随包 file）', rpKeys.length > 0 && rpKeys.every((k) => rp[k].type === 'http'),
+        JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].type])));
+      check('rule-provider 的 interval 都是 86400（24 小时，与安卓端同值）', rpKeys.every((k) => Number(rp[k].interval) === rulesets.PROVIDER_INTERVAL),
+        JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].interval])));
+      check('rule-provider 的 path 落在 polaris-rules/ 下（内核按 -d 解析）',
+        rpKeys.every((k) => String(rp[k].path || '').startsWith(`${rulesets.CACHE_DIR}/`)),
+        JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].path])));
+      check('rule-provider 的 url 是 jsDelivr 上的 https 规则库',
+        rpKeys.every((k) => /^https:\/\//.test(String(rp[k].url || '')) && String(rp[k].url).includes('jsdelivr')),
+        JSON.stringify(rpKeys.slice(0, 2).map((k) => rp[k].url)));
+      check('rule-provider 的键与启用组的规则集一一对应',
+        rpKeys.length === (rsState.groups || []).filter((g) => g.enabled).reduce((n, g) => n + g.count, 0),
+        `${rpKeys.length} vs ${(rsState.groups || []).filter((g) => g.enabled).reduce((n, g) => n + g.count, 0)}`);
+
+      // ③ 面板下发的 rules / sub-rules 必须整体丢掉
+      const rules = cfg.rules || [];
+      check('面板下发的规则已丢弃（没有 GEOIP,CN 这类面板自带规则）',
+        !rules.some((r) => /^GEOIP,CN$/i.test(String(r)) || /^RULE-SET,chinadomain/i.test(String(r))),
+        rules.filter((r) => /GEOIP|chinadomain/i.test(String(r))).slice(0, 3).join(' | '));
+      check('最后一条是 MATCH,🐟 漏网之鱼', String(rules[rules.length - 1] || '') === `MATCH,${rulesets.GROUP_FINAL}`, String(rules[rules.length - 1]));
+      check('sub-rules 已删除（面板 sub-rules 只被面板 rules 引用）', cfg['sub-rules'] === undefined || cfg['sub-rules'] === null);
+      check('内网/私有地址永远直连（与安卓端 lanDirectRules 同款）',
+        rules.some((r) => String(r).startsWith('IP-CIDR,192.168.0.0/16')) && rules.some((r) => String(r).startsWith('IP-CIDR,127.0.0.0/8')));
+      const dd = core.S.directDomains || [];
+      check('自有域名直连排在规则最前面', !dd.length || rules.slice(0, dd.length).every((r) => String(r).startsWith('DOMAIN-SUFFIX,')),
+        rules.slice(0, 3).join(' | '));
+
+      // ④ 种子只补缺失：改过的缓存文件绝不能被随包种子覆盖回去
+      const seedDir = paths.polarisRules();
+      const seedFiles = rulesets.allProviderKeys().map((k) => rulesets.seedFile(k));
+      const missing = seedFiles.filter((f) => !nodeFs.existsSync(nodePath.join(seedDir, f)));
+      check(`规则集缓存目录已预播种（${seedFiles.length} 个文件）`, missing.length === 0, missing.slice(0, 5).join(','));
+      const probeKey = 'gs_google_play';
+      const probeFile = nodePath.join(seedDir, rulesets.seedFile(probeKey));
+      const original = nodeFs.readFileSync(probeFile);
+      try {
+        nodeFs.writeFileSync(probeFile, Buffer.concat([original, Buffer.from('\n# polaris-online-update-marker\n')]));
+        core.prepareConfig({ reuse: true });          // 等价于下次启动/重拉订阅时的播种
+        const after = nodeFs.readFileSync(probeFile, 'utf8');
+        check('内核下载到的新版规则不会被随包种子打回旧版（种子只补缺失）', after.includes('polaris-online-update-marker'),
+          `size=${after.length} vs seed=${original.length}`);
+      } finally {
+        nodeFs.writeFileSync(probeFile, original);    // 原样还回去
+      }
+      check('探测用的规则集文件已还原', nodeFs.readFileSync(probeFile).length === original.length);
+
+      // ⑤ 内核真的把每个 rule-provider 加载进来了（异步初始化，必须轮询）
+      // 注意响应形状：mihomo v1.19 返回 {"providers": {<key>: {ruleCount, ...}}}，
+      // 老版本是直接把 provider 铺在顶层 —— 两种都吃。
+      const unwrapProv = (raw) => (raw && raw.providers && typeof raw.providers === 'object' ? raw.providers : raw);
+      let prov = null;
+      for (let i = 0; i < 30; i += 1) {
+        try { prov = unwrapProv(await core.S.controller.get('/providers/rules')); } catch (_) { prov = null; }
+        if (prov && rpKeys.every((k) => prov[k] && Number(prov[k].ruleCount) > 0)) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      const zero = rpKeys.filter((k) => !prov || !prov[k] || !(Number(prov[k].ruleCount) > 0));
+      const total = prov ? rpKeys.reduce((n, k) => n + Number((prov[k] || {}).ruleCount || 0), 0) : 0;
+      console.log(`  内核已加载规则数合计 ${total}${zero.length ? `（未就绪: ${zero.slice(0, 4).join(',')}）` : ''}`);
+      check('内核把每个 rule-provider 都加载了（ruleCount 全 > 0）', zero.length === 0, zero.slice(0, 6).join(','));
+      check('规则总数超过 1 万条（真的是一整套分流表，不是空壳）', total > 10000, String(total));
+      check('rule-provider 是内核在线拉取的（vehicleType=HTTP）',
+        !prov || rpKeys.every((k) => !prov[k] || prov[k].vehicleType === 'HTTP'),
+        JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
     }
 
     /* ---------------- 收尾 ---------------- */
