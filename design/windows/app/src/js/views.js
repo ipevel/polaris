@@ -10,6 +10,27 @@
       `</div><div class="head-actions">${actions || ""}</div></div>`;
   }
 
+  /**
+   * 二级页面的页头：带返回键。用户报「基本上所有二级页面都没有返回按钮」，
+   * 所以凡是从"我的/设置/节点"点进去的页面（套餐、订单、工单、邀请、礼品卡、
+   * 公告、分流规则）一律用这个。返回目标由 app.js 的返回栈决定。
+   */
+  function backHead(title, sub, actions) {
+    return head(title, sub,
+      `<button class="btn btn-ghost btn-sm" style="height:40px" data-nav-back="1">‹ 返回</button>` + (actions || ""));
+  }
+
+  /* 套餐用量：优先用字节换算（面板按 GB 两位小数取整，946 KB 会变成 0.00 GB），
+     没有 _text 时退回 GB 数字（老数据里只有 used/total）。 */
+  function planUsed(s) {
+    const p = (s && s.plan) || {};
+    return p.used_text || `${p.used == null ? "—" : p.used} GB`;
+  }
+  function planTotal(s) {
+    const p = (s && s.plan) || {};
+    return p.total_text || `${p.total == null ? "—" : p.total} GB`;
+  }
+
   function row(k, v, opts) {
     opts = opts || {};
     const ic = opts.icon ? `<span class="mini-icon" style="background:${opts.icon[1]}">${opts.icon[0]}</span>` : "";
@@ -67,7 +88,7 @@
     <div class="section-label">当前套餐</div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:14px">已使用 <b>${h(s.plan.used)} GB</b> / ${h(s.plan.total)} GB</div>
+        <div style="font-size:14px">已使用 <b>${h(planUsed(s))}</b> / ${h(planTotal(s))}</div>
         <button class="btn btn-primary btn-sm" data-nav="plans">续费</button>
       </div>
       <div class="progress"><div style="width:${fmt.percent(s.plan.used, s.plan.total)}%"></div></div>
@@ -76,28 +97,50 @@
   </div>`;
 
   /* ---------------- 节点 ---------------- */
+  // 节点页 = 策略组手风琴：分组在**最上面**、可折叠、分组内直接点节点就切那个分组的出口、
+  // 每个分组显示自己的延迟。旧版顶部还有一张写死标题、不可折叠的"节点选择"扁平卡，
+  // 和下面真正的"节点选择"分组重复（用户实测报的 bug）。
   Views.nodes = (s) => {
     const q = (s.nodeFilter || "").toLowerCase();
-    const list = s.nodes.filter((n) => !q || n.name.toLowerCase().includes(q) || String(n.region).toLowerCase().includes(q));
-    const rows = list.map((n) => `
-      <div class="node-row" data-node="${h(n.name)}" style="cursor:pointer">
+    const hit = (v) => !q || String(v).toLowerCase().includes(q);
+    const groups = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !g.builtin);
+    const open = s.openGroups || {};
+    // 没点过就默认展开第一个（内核里排最前的就是"节点选择"）
+    const isOpen = (name, i) => (open[name] === undefined ? i === 0 : !!open[name]);
+
+    const nodeRow = (n, groupName) => `
+      <div class="node-row" data-node="${h(n.name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer">
         <span class="nm">${h(n.name)}</span>${badge(n.region, "b-blue")}${latBadge(n.latency, n.offline)}
         <span class="radio${n.name === s.node ? " sel" : ""}"></span>
-      </div>`).join("");
-    return head("节点", `${s.nodes.length} 个节点${s.groups.length > 1 ? " · " + s.groups.length + " 个分组" : ""}`,
+      </div>`;
+
+    const flat = s.nodes.filter((n) => hit(n.name) || hit(n.region));
+    const cards = groups.length
+      ? groups.map((g, i) => {
+        const opened = isOpen(g.name, i);
+        const members = (g.options || []).map((name) => s.nodes.find((n) => n.name === name)
+          || { name, region: "", latency: -1, offline: false }).filter((n) => hit(n.name) || hit(n.region));
+        return `<div class="card" style="margin-bottom:14px">
+          <div class="acc-head" data-acc="${h(g.name)}" style="cursor:pointer">
+            <div><div class="acc-title" style="font-size:15px">${h(g.name)}</div>
+            <div class="acc-sub">${g.count ? g.count + " 个可选出口 · " : ""}当前：${h(g.now || "—")}</div></div>
+            <div style="display:flex;align-items:center;gap:10px">${latBadge(typeof g.latency === "number" ? g.latency : -1, false)}
+            <span class="chev${opened ? " open" : ""}" style="font-size:20px">›</span></div>
+          </div>
+          ${opened ? `<div class="acc-body">${members.length ? members.map((n) => nodeRow(n, g.name)).join("") : empty("没有匹配的节点", "换个关键词试试")}</div>` : ""}
+        </div>`;
+      }).join("")
+      // 未连接时内核还没起，拿不到策略组 —— 退回本地配置预览的扁平列表
+      : `<div class="card" style="margin-bottom:14px">
+          <div class="acc-head"><div><div class="acc-title">节点选择</div><div class="acc-sub">当前：${h(s.node || "未选择")}</div></div></div>
+          ${flat.length ? flat.map((n) => nodeRow(n, "")).join("") : empty("没有匹配的节点", s.nodes.length ? "换个关键词试试" : "点右上角刷新订阅")}
+        </div>`;
+
+    return head("节点", `${s.nodes.length} 个节点${groups.length ? " · " + groups.length + " 个分组" : ""}`,
       `<span class="search-wrap"><input class="search" id="node-search" placeholder="搜索节点" value="${h(s.nodeFilter)}"></span>` +
       `<button class="btn btn-outline btn-sm" style="height:40px" data-click="nav-routing">分流规则</button>` +
-      `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-speedtest"${s.testing ? " disabled" : ""}>${s.testing ? "测速中…" : "测速"}</button>` +
-      `<button class="btn btn-primary btn-sm" style="height:40px" id="btn-refresh-sub"${s.refreshing ? " disabled" : ""}>${s.refreshing ? "刷新中…" : "刷新订阅"}</button>`) + `
-    <div class="card" style="margin-bottom:14px">
-      <div class="acc-head"><div><div class="acc-title">节点选择</div><div class="acc-sub">当前：${h(s.node || "未选择")}</div></div></div>
-      ${rows || empty("没有匹配的节点", s.nodes.length ? "换个关键词试试" : "点右上角刷新订阅")}
-    </div>
-    ${s.groups.filter((g) => !g.builtin).map((g) => `
-    <div class="card" style="margin-bottom:14px;cursor:pointer" data-group="${h(g.name)}">
-      <div class="acc-head" style="padding:0"><div><div class="acc-title" style="font-size:15px">${h(g.name)}</div>
-      <div class="acc-sub">${g.count ? g.count + " 个可选出口 · " : ""}当前：${h(g.now || "—")}</div></div><span class="chev" style="font-size:20px">›</span></div>
-    </div>`).join("")}`;
+      `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-speedtest"${s.testing ? " disabled" : ""}>${s.testing ? "测试中…" : "延迟测试"}</button>` +
+      `<button class="btn btn-primary btn-sm" style="height:40px" id="btn-refresh-sub"${s.refreshing ? " disabled" : ""}>${s.refreshing ? "刷新中…" : "刷新订阅"}</button>`) + cards;
   };
 
   /* ---------------- 流量 ---------------- */
@@ -117,9 +160,23 @@
     const area = pts.length ? `${line("down")} L${x(pts.length - 1).toFixed(1)},${H - 20} L${x(0).toFixed(1)},${H - 20} Z` : "";
     const ticks = pts.filter((_, i) => pts.length <= 8 || i % Math.ceil(pts.length / 6) === 0);
 
+    const site = t.site || null;
+    const acct = t.account || null;
+    const sess = t.session || {};
+    const rangeLabel = r === "today" ? "今日" : r === "week" ? "本周" : "本月";
     return head("流量", "", seg("today", "今日") + seg("week", "本周") + seg("month", "本月")) + `
+    <div class="section-label">站点用量 · ${rangeLabel}${site && site.days ? ` · ${site.days} 天有记录` : ""}</div>
     <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">网络速度 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>
+      ${site ? `<div class="speed-row" style="margin:0 0 4px">
+        <div class="speed-tile dn"><span><div class="lb">下载</div><div class="vl">${h(site.down_text)}</div></span></div>
+        <div class="speed-tile up"><span><div class="lb">上传</div><div class="vl">${h(site.up_text)}</div></span></div>
+      </div>
+      ${row("区间合计", h(site.total_text), { chev: false, vcls: "strong" })}
+      ${site.from ? row("区间", `${h(site.from)} ~ ${h(site.to)}`, { chev: false }) : ""}` 
+      : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细")}
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时速度 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>
       <span style="font-size:13px;color:var(--text2)"><span style="color:var(--blue)">●</span> 下载　<span style="color:var(--orange)">●</span> 上传</span></div>
       ${pts.length ? `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
         <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a73e8" stop-opacity=".32"/><stop offset="1" stop-color="#1a73e8" stop-opacity=".03"/></linearGradient></defs>
@@ -136,18 +193,21 @@
       <div style="font-size:13px;color:var(--text2);margin-top:4px">当前下载 <span id="down-speed">${fmt.speed(s.down_speed)}</span> · 当前上传 <span id="up-speed">${fmt.speed(s.up_speed)}</span></div>
     </div>
     <div class="speed-row" style="margin:0 0 4px">
-      <div class="speed-tile up"><span><div class="lb">本次下载</div><div class="vl">${h(t.down_today || "0 B")}</div></span></div>
-      <div class="speed-tile dn"><span><div class="lb">本次上传</div><div class="vl">${h(t.up_today || "0 B")}</div></span></div>
+      <div class="speed-tile dn"><span><div class="lb">本次下载</div><div class="vl">${h(sess.down_text || "0 B")}</div></span></div>
+      <div class="speed-tile up"><span><div class="lb">本次上传</div><div class="vl">${h(sess.up_text || "0 B")}</div></span></div>
     </div>
     <div class="section-label">面板累计</div>
     <div class="card">
-      ${row("总下载", h(t.total_down || "—"), { chev: false, vcls: "strong" })}
-      ${row("总上传", h(t.total_up || "—"), { chev: false, vcls: "strong" })}
+      ${acct ? row("已用流量", `${h(acct.used_text)} / ${h(acct.quota_text)}`, { chev: false, vcls: "strong" })
+        : row("总下载", h(t.total_down || "—"), { chev: false, vcls: "strong" })}
+      ${acct ? row("套餐", h(acct.plan_name || "—"), { chev: false }) : row("总上传", h(t.total_up || "—"), { chev: false, vcls: "strong" })}
+      ${acct && acct.expire ? row("到期", h(acct.expire), { chev: false }) : ""}
       ${row("本次峰值", h(t.peak || "—"), { chev: false, vcls: "strong" })}
       ${row("在线节点", String(t.online_nodes || 0), { chev: false, vcls: "strong" })}
     </div>
-    ${s.trafficLog && s.trafficLog.length ? `<div class="section-label">面板流量明细</div><div class="card">` +
-      s.trafficLog.map((r2) => row(h(r2.date), fmt.bytes((r2.upload || 0) + (r2.download || 0)), { chev: false })).join("") + `</div>` : ""}`;
+    ${s.trafficLog && s.trafficLog.length ? `<div class="section-label">站点流量明细</div><div class="card">` +
+      s.trafficLog.map((r2) => row(h(r2.date),
+        `${fmt.bytes(r2.download || 0)} ↓ / ${fmt.bytes(r2.upload || 0)} ↑`, { chev: false })).join("") + `</div>` : ""}`;
   };
 
   /* ---------------- 分流规则 ---------------- */
@@ -183,11 +243,9 @@
     const rs = s.rulesets || {};
     const builtin = Array.isArray(rs.groups) ? rs.groups : [];
     const custom = Array.isArray(rs.custom) ? rs.custom : [];
-    const names = new Set(builtin.map((g) => g.name));
-    const subs = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !names.has(g.name) && !custom.some((c) => c.name === g.name));
     const onCount = builtin.filter((g) => g.enabled).length;
     const customOn = custom.filter((g) => g.enabled).length;
-    return head("分流规则", "自定义规则优先于内置分类",
+    return backHead("分流规则", "自定义规则优先于内置分类",
       `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-routing-reset">恢复出口</button>`) +
       `<div class="section-label">自定义分流组 · 已启用 ${customOn}/${custom.length}</div>` +
       `<div class="card">` +
@@ -205,18 +263,7 @@
           `<div class="row"><div class="k"><span>恢复默认开关与顺序</span></div>` +
           `<div class="v"><button class="btn btn-outline btn-sm" id="btn-ruleset-reset">恢复默认</button></div></div>`
         : empty("没有内置分流规则", "缺少 resources/rules 规则集，请重新解压完整目录")) +
-      `</div>` +
-      `<div class="section-label">策略组出口</div>` +
-      (subs.length
-        ? subs.map((g) => `
-      <div class="card" style="margin-bottom:14px;${g.builtin ? "" : "cursor:pointer"}"${g.builtin ? "" : ` data-group="${h(g.name)}"`}>
-        <div class="acc-head" style="padding:0">
-          <div><div class="acc-title" style="font-size:15px">${h(g.name)}</div>
-          <div class="acc-sub">${g.count ? g.count + " 个可选出口 · " : ""}${h(g.type)}</div></div>
-          <div style="display:flex;align-items:center;gap:8px">${badge(g.now || "—", g.now === "DIRECT" || g.now === "REJECT" ? "b-gray" : "b-blue")}${g.builtin ? "" : '<span class="chev" style="font-size:20px">›</span>'}</div>
-        </div>
-      </div>`).join("")
-        : empty("暂无其他策略组", "订阅里没有代理组，或尚未连接"));
+      `</div>`;
   };
 
   /* ---------------- 设置 ---------------- */
@@ -232,6 +279,10 @@
     </div>
     <div class="section-label">连接</div><div class="card">
       ${rowSwitch("系统代理", "sys_proxy", s.settings.sys_proxy, ["⇄", "#7aa5f8"])}
+      ${row("本机代理端口", s.settings.mixed_port
+        ? `127.0.0.1:${h(s.settings.mixed_port)}`
+        : `自动（当前 ${s.settings.running_port ? h(s.settings.running_port) : "未运行"}）`,
+      { click: "set-port", icon: ["⇲", "#5ac8fa"] })}
       ${rowSwitch("TUN 模式", "tun_mode", s.settings.tun_mode, ["≋", "#af8cf8"])}
       ${row("TUN 堆栈", h((TUN_STACKS[s.settings.tun] || s.settings.tun).split("（")[0]), { click: "set-tun-stack" })}
       ${s.tunStatus && s.tunStatus.supported ? row("虚拟网卡",
@@ -239,6 +290,11 @@
         { chev: s.tunStatus.exists && s.tunStatus.state !== "Up", click: s.tunStatus.exists && s.tunStatus.state !== "Up" ? "cleanup-tun" : undefined, vcls: "" }) : ""}
       ${rowSwitch("允许局域网连接", "allow_lan", s.settings.allow_lan)}
       ${rowSwitch("IPv6", "ipv6", s.settings.ipv6)}
+    </div>
+    <div class="section-label">分流与订阅</div><div class="card">
+      ${row("分流规则", "", { icon: ["⑃", "#5ac8fa"], click: "nav-routing" })}
+      ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
+      ${row("重新拉取订阅", "现在拉取", { click: "refresh-sub" })}
     </div>
     <div class="section-label">提醒</div><div class="card">
       ${rowSwitch("到期提醒", "expire_notify", s.settings.expire_notify)}
@@ -249,7 +305,6 @@
     <div class="section-label">面板</div><div class="card">
       ${row("面板地址", h(s.settings.panel_url || "未设置"), { click: "set-panel", icon: ["⬡", "#1a73e8"] })}
       ${row("当前账号", h(s.settings.email || "未登录"), { chev: false })}
-      ${row("重新拉取订阅", "现在拉取", { click: "refresh-sub" })}
     </div>
     <div class="section-label">关于</div><div class="card">
       ${row("当前版本", h(s.settings.version), { chev: false })}
@@ -266,6 +321,9 @@
   </div>`;
 
   /* ---------------- 我的 ---------------- */
+  // 与安卓端"我的"对齐：用户卡 + 当前套餐 + 服务（套餐/订单/工单/邀请/礼品卡/公告）
+  // + 退出登录。分流规则与订阅链接**不在这里**（安卓端也没有），它们属于设置里的
+  // 连接/订阅配置 —— 用户报的"这边有入口那边也有入口"就是这两项。
   Views.me = (s) => head("我的") + `<div class="col-narrow">
     <div class="card" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--blue);font-weight:700">${h((s.email || "?").slice(0, 1).toUpperCase())}</div>
@@ -274,19 +332,17 @@
     </div></div>
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:14px;font-weight:700">当前套餐</div><button class="btn btn-primary btn-sm" data-nav="plans">续费</button></div>
-      <div style="font-size:14px;margin-bottom:10px">已使用 <b>${h(s.plan.used)} GB</b> / ${h(s.plan.total)} GB</div>
+      <div style="font-size:14px;margin-bottom:10px">已使用 <b>${h(planUsed(s))}</b> / ${h(planTotal(s))}</div>
       <div class="progress"><div style="width:${fmt.percent(s.plan.used, s.plan.total)}%"></div></div>
       <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(s.plan.expire || "—")}</div>
     </div>
     <div class="card">
+      ${row("我的套餐", "", { icon: ["◈", "#1a73e8"], click: "nav-plans" })}
       ${row("我的订单", "", { icon: ["🧾", "#ffb340"], click: "nav-orders" })}
       ${row("我的工单", "", { icon: ["🎫", "#7aa5f8"], click: "nav-tickets" })}
       ${row("邀请好友", "", { icon: ["🎁", "#34c759"], click: "nav-invite" })}
       ${row("礼品卡兑换", "", { icon: ["💳", "#af8cf8"], click: "nav-giftcard" })}
       ${row("公告", s.unreadNotices ? badge(s.unreadNotices + " 条未读", "b-red") : "", { icon: ["📢", "#ff9f43"], click: "nav-notices" })}
-      ${row("分流规则", "", { icon: ["⑃", "#5ac8fa"], click: "nav-routing" })}
-      ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
-      ${row("关于", "", { icon: ["ℹ️", "#8e8e93"], click: "nav-settings" })}
       <div class="row" style="justify-content:center;cursor:pointer" data-click="logout"><span style="color:var(--red);font-weight:600">退出登录</span></div>
     </div></div>`;
 
@@ -330,7 +386,7 @@
     <div class="auth-links"><span data-nav="login">返回登录</span></div>`);
 
   /* ---------------- 购买套餐 ---------------- */
-  Views.plans = (s) => head("购买套餐", "",
+  Views.plans = (s) => backHead("购买套餐", "",
     `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="giftcard">🎁 礼品卡</button>`) +
     (s.plans.length ? `<div class="plan-grid">` + s.plans.map((p) => `
     <div class="plan-card${p.hot ? " hot" : ""}">
@@ -344,7 +400,7 @@
 
   /* ---------------- 订单 ---------------- */
   const ORDER_STATUS = { done: ["已完成", "b-green"], pending: ["待支付", "b-orange"], processing: ["处理中", "b-blue"], refunded: ["已退款", "b-gray"] };
-  Views.orders = (s) => head("我的订单", "", `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="plans">购买套餐</button>`) +
+  Views.orders = (s) => backHead("我的订单", "", `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="plans">购买套餐</button>`) +
     (s.orders.length ? `<div class="card">` + s.orders.map((o) => {
       const st = ORDER_STATUS[o.status] || ["未知", "b-gray"];
       return `<div class="row"><div class="k"><div><div style="font-weight:700;font-size:15px">${h(o.name)}</div>
@@ -355,7 +411,7 @@
 
   /* ---------------- 工单 ---------------- */
   const TICKET_STATUS = { replied: ["已回复", "b-green"], pending: ["处理中", "b-blue"], closed: ["已关闭", "b-gray"] };
-  Views.tickets = (s) => head("我的工单", "", `<button class="btn btn-primary" id="btn-new-ticket">+ 新建工单</button>`) +
+  Views.tickets = (s) => backHead("我的工单", "", `<button class="btn btn-primary" id="btn-new-ticket">+ 新建工单</button>`) +
     (s.tickets.length ? `<div class="card">` + s.tickets.map((t) => {
       const st = TICKET_STATUS[t.status] || ["未知", "b-gray"];
       return `<div class="row" data-ticket="${h(t.no)}" style="cursor:pointer"><div class="k"><div><div style="font-weight:700;font-size:15px">${h(t.subject)}</div>
@@ -364,7 +420,7 @@
     }).join("") + `</div>` : empty("还没有工单", "遇到问题可以提交工单联系客服"));
 
   /* ---------------- 邀请 ---------------- */
-  Views.invite = (s) => head("邀请好友") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
+  Views.invite = (s) => backHead("邀请好友") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
     <div style="font-size:40px;margin-bottom:10px">🎁</div>
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">邀请好友得奖励</div>
     <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px">${s.invite.rate ? "好友消费返佣 " + h(s.invite.rate) + "%" : "把链接分享给好友，双方都有奖励"}</div>
@@ -372,12 +428,19 @@
       : `<div style="color:var(--text3);font-size:13.5px">面板未开启邀请功能</div>`}
   </div>
   <div class="speed-row" style="margin-top:14px">
-    <div class="speed-tile"><span><div class="lb">已邀请</div><div class="vl">${h(s.invite.invited)} 人</div></span></div>
-    <div class="speed-tile"><span><div class="lb">累计获得</div><div class="vl">${h(s.invite.earned)}</div></span></div>
-  </div></div>`;
+    <div class="speed-tile"><span><div class="lb">已注册</div><div class="vl">${h(s.invite.registered)} 人</div></span></div>
+    <div class="speed-tile"><span><div class="lb">累计佣金</div><div class="vl">￥${h((s.invite.commission || 0).toFixed(2))}</div></span></div>
+  </div>
+  <div class="speed-row" style="margin-top:10px">
+    <div class="speed-tile"><span><div class="lb">可提现余额</div><div class="vl">￥${h((s.invite.balance || 0).toFixed(2))}</div></span></div>
+    <div class="speed-tile"><span><div class="lb">待确认</div><div class="vl">￥${h((s.invite.pending || 0).toFixed(2))}</div></span></div>
+  </div>
+  ${(s.invite.codes || []).length ? `<div class="card" style="margin-top:14px"><div class="section-label">我的邀请码</div>
+    ${s.invite.codes.map((c) => row(c.code, `${c.pv} 次访问`, { id: `inv-code-${c.code}` })).join("")}</div>` : ""}
+  </div>`;
 
   /* ---------------- 礼品卡 ---------------- */
-  Views.giftcard = (s) => head("礼品卡兑换") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
+  Views.giftcard = (s) => backHead("礼品卡兑换") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
     <div style="font-size:40px;margin-bottom:10px">💳</div>
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">兑换礼品卡</div>
     <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px">输入卡密，流量或时长即时到账</div>
@@ -390,7 +453,7 @@
     <div class="v"><div style="text-align:right">${badge(g.reward, "b-green")}<div style="font-size:12px;color:var(--text3);margin-top:4px">${h(g.date)}</div></div></div></div>`).join("") + `</div>` : ""}</div>`;
 
   /* ---------------- 公告 ---------------- */
-  Views.notices = (s) => head("公告") + (s.notices.length ? `<div class="card">` +
+  Views.notices = (s) => backHead("公告") + (s.notices.length ? `<div class="card">` +
     s.notices.map((n, i) => `
     <div class="row" data-notice="${i}" style="cursor:pointer;${n.unread ? "background:var(--blue-soft);margin:0 -24px;padding-left:24px;padding-right:24px" : ""}">
       <div class="k">${n.unread ? '<span style="color:var(--blue);font-size:10px">●</span>' : ""}<div><div style="font-weight:700;font-size:15px">${h(n.title)}</div>
@@ -445,6 +508,14 @@
       <h2>新建工单</h2><div class="dsub">描述您遇到的问题，客服将尽快回复</div>
       <input class="field" id="ticket-subject" placeholder="标题（例如：节点连接超时）">
       <textarea class="field" id="ticket-content" placeholder="问题描述…" style="height:110px;padding-top:14px;resize:none"></textarea>
+      <div style="font-size:12.5px;color:var(--text3);margin:14px 0 8px">优先级</div>
+      <div id="tk-level" style="display:flex;gap:8px">
+        ${[['0', '低'], ['1', '中'], ['2', '高']].map(([v, label], i) =>
+          `<div class="opt${i === 1 ? " sel" : ""}" data-tk-level="${v}" style="flex:1;padding:10px 12px">
+            <span class="radio${i === 1 ? " sel" : ""}"></span>
+            <div style="font-weight:600;font-size:13.5px">${label}</div>
+          </div>`).join("")}
+      </div>
       ${err("", "dialog-err")}
       <button class="btn btn-primary" id="btn-submit-ticket" style="width:100%;height:46px">提交</button>
     </div></div>`,
@@ -541,6 +612,16 @@
       <div class="code-box">${h(u.url || "未获取到订阅链接")}</div>
       <button class="btn btn-primary" id="btn-copy-sub" style="width:100%;height:44px;margin-top:14px">复制</button>
       <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent;margin-top:8px" data-overlay-close>关闭</button>
+    </div></div>`,
+
+    port: (s) => `<div class="overlay" data-overlay><div class="dialog">
+      <h2>本机代理端口</h2>
+      <div class="dsub">其它软件要用本机的 127.0.0.1 代理时，在这里指定端口。留空 = 自动挑一个空闲端口。</div>
+      <input class="input" id="port-value" inputmode="numeric" placeholder="例如 7890，留空自动" value="${s && s.mixed_port ? h(s.mixed_port) : ""}">
+      <div class="err" id="dialog-err"></div>
+      <div class="dsub" style="margin-top:6px">当前运行端口：${s && s.running_port ? h(s.running_port) : "未启动"}${s && s.mixed_port ? "" : "（自动）"}</div>
+      <button class="btn btn-primary" id="btn-save-port" style="width:100%;height:44px;margin-top:14px">保存</button>
+      <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent;margin-top:8px" data-overlay-close>取消</button>
     </div></div>`,
 
     confirm: (c) => `<div class="overlay" data-overlay><div class="dialog">

@@ -29,7 +29,25 @@ function load() {
   if (cache) return cache;
   try {
     const raw = fs.readFileSync(file());
-    const text = available() ? safeStorage.decryptString(raw) : raw.toString('utf8');
+    let text = null;
+    if (available()) {
+      try {
+        text = safeStorage.decryptString(raw);
+      } catch (e) {
+        // 解不开（换机/换用户/换 userData 目录/文件是明文）→ 默认当作没有凭据。
+        // 只有显式打开自检开关时才退回明文，与 save() 的明文口子对称。
+        // 这里必须留一条日志：safeStorage 的密钥存在 userData 的 Local State 里，
+        // 只搬 credentials.dat 而不搬 data/electron/ 就会落到这条分支，静默失败
+        // 会让"登录态又没了"变成无法排查的玄学（真机踩过）。
+        text = process.env.POLARIS_ALLOW_PLAINTEXT_CREDENTIALS === '1' ? raw.toString('utf8') : null;
+        if (text === null) {
+          log.warn('credentials.dat 无法解密（换机或 data/electron 缓存丢失），需要重新登录：' + (e && e.message));
+        }
+      }
+    } else {
+      text = raw.toString('utf8');   // 纯 Node（没有 DPAPI）下本来就只有明文可读
+    }
+    if (text === null) { cache = null; return cache; }
     cache = JSON.parse(text);
   } catch (_) {
     cache = null;

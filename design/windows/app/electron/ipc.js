@@ -35,8 +35,49 @@ function needAuth() {
   if (!panel.isAuthed()) throw new Error('尚未登录面板');
 }
 
+/**
+ * 拉订阅。同一时刻只允许一个在飞：刚登录那几秒里 `refreshAll` 的拉取还没回来，
+ * 用户这时点「连接」会走进 connect 的补拉分支 —— 没有这个去重就会同时拉两遍。
+ */
+let subscribing = null;
+function pullSubscription() {
+  if (!subscribing) {
+    subscribing = Promise.resolve(panel.refreshSubscription()).finally(() => { subscribing = null; });
+  }
+  return subscribing;
+}
+function hasSubscribeFile() {
+  return fs.existsSync(path.join(paths.profiles(), 'subscribe.yaml'));
+}
+
 function ok(extra) { return Object.assign({ ok: true }, extra || {}); }
 function fail(msg) { return { ok: false, msg: msg || '操作失败' }; }
+
+/**
+ * 站点流量明细的区间口径：今日 / 本周（周一起）/ 本月。
+ * 明细里 `ts` 是**当地零点**的秒级时间戳（面板就是这么给的），所以直接和
+ * `new Date(y,m,d).getTime()` 比即可；千万不要用 UTC 或 toISOString 去切，
+ * 会整段错一天。
+ */
+function pickTrafficDays(range, days) {
+  const list = Array.isArray(days) ? days : [];
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = now.getDate();
+  let from = null;
+  if (range === 'today') from = new Date(y, m, d).getTime();
+  else if (range === 'week') from = new Date(y, m, d - ((now.getDay() + 6) % 7)).getTime();  // 周一=0
+  else if (range === 'month') from = new Date(y, m, 1).getTime();
+  if (from === null) return list;
+  return list.filter((x) => Number(x.ts) * 1000 >= from);
+}
+
+/** 本机代理端口：0 或空 = 随机端口；返回 null 表示"用随机" */
+function wantedPort() {
+  const n = Number(store.get('mixed_port'));
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
+}
 
 const commands = {
   /* ================= 内核 ================= */
@@ -45,6 +86,15 @@ const commands = {
   connect: async () => {
     needAuth();
     resetPeak();                     // 新会话从 0 起算
+    // 刚登录就点连接时，订阅往往还在拉的路上（登录后 refreshAll 是异步的）。
+    // 旧实现在这里直接抛「尚未拉取订阅，请先登录面板」—— 用户明明刚登录成功，
+    // 看到这句只会以为登录坏了。这里自己先把订阅补齐再连。
+    if (!hasSubscribeFile()) {
+      log.info('connect: 本地还没有订阅，先自动拉一次');
+      await pullSubscription();
+      core.setDirectDomains(remote.directDomains());
+      core.prepareConfig();
+    }
     const st = await core.connect();
     return ok({ connected: st.connected, node: st.node });
   },
@@ -56,19 +106,22 @@ const commands = {
 
   get_nodes: async () => core.loadNodes(),
 
-  select_node: async ({ name }) => {
+  select_node: async ({ name, group }) => {
     if (!name) throw new Error('缺少节点名');
-    return ok({ node: await core.selectNode(name) });
+    return ok({ node: await core.selectNode(name, group) });
   },
 
+  // 「延迟测试」：节点 + 每个策略组都测一遍（用户要求分组那行也显示延迟）
   speed_test: async () => {
     await core.speedTest();
     return ok();
   },
 
+  test_group_delays: async () => ok({ groups: await core.testGroupDelays() }),
+
   refresh_subscription: async () => {
     needAuth();
-    await panel.refreshSubscription();
+    await pullSubscription();
     // 订阅域名可能是第一次见到，立刻并入直连域名再生成配置
     core.setDirectDomains(remote.directDomains());
     const { count } = core.prepareConfig();
@@ -104,33 +157,67 @@ const commands = {
     let online = 0;
     for (const n of core.cachedNodes()) if (!n.offline) online += 1;
 
-    let totalDown = session.down;
-    let totalUp = session.up;
+    // 站点流量：面板明细按天聚合，今日/本周/本月都用**站点数据**算。
+    // 旧版拿本机内核的采样曲线求和当成"今日流量"，那是本机转发量，不是账号用量
+    // （用户实测报的 bug：流量页数字和面板对不上）。
+    let site = null;
+    let days = [];
+    let picked = [];
+    let account = null;
     if (panel.isAuthed()) {
       try {
+        days = await panel.trafficLog();
+        picked = pickTrafficDays(range || 'today', days);
+        const up = picked.reduce((a, x) => a + x.upload, 0);
+        const down = picked.reduce((a, x) => a + x.download, 0);
+        site = {
+          days: picked.length,
+          up, down, total: up + down,
+          up_text: fmt.bytes(up), down_text: fmt.bytes(down), total_text: fmt.bytes(up + down),
+          latest: days.length ? days[0].date : '',
+          from: picked.length ? picked[picked.length - 1].date : '',
+          to: picked.length ? picked[0].date : '',
+        };
+      } catch (e) {
+        log.warn('trafficLog for traffic failed:', e && e.message);
+      }
+      try {
         const u = await panel.userInfo();
-        totalDown = u.d || totalDown;
-        totalUp = u.u || totalUp;
+        account = {
+          up: u.u, down: u.d, total: (u.u || 0) + (u.d || 0),
+          used_text: fmt.bytes((u.u || 0) + (u.d || 0)),
+          quota_text: fmt.bytes(u.transfer_enable || 0),
+          plan_name: u.plan_name,
+          expire: u.expire,
+        };
       } catch (e) {
         log.warn('userInfo for traffic failed:', e && e.message);
       }
     }
     return {
       range: range || 'today',
-      down_today: fmt.bytes(st.connected ? traffic.series('today').points.reduce((a, p) => a + p.down, 0) * 1048576 : 0),
-      up_today: fmt.bytes(st.connected ? traffic.series('today').points.reduce((a, p) => a + p.up, 0) * 1048576 : 0),
-      total_down: fmt.bytes(totalDown),
-      total_up: fmt.bytes(totalUp),
+      site,
+      account,
+      session: { up: session.up, down: session.down, up_text: fmt.bytes(session.up), down_text: fmt.bytes(session.down) },
+      total_down: fmt.bytes(account ? account.down : session.down),
+      total_up: fmt.bytes(account ? account.up : session.up),
       peak: `${fmt.speed(peak.down)} / ${fmt.speed(peak.up)} MB/s`,
       online_nodes: online,
+      days,
+      // 区间过滤后的明细：渲染层直接用它，省掉一次重复的面板查询
+      // （面板明细是整页最慢的一项，之前 get_traffic 与 get_traffic_log 各拉一次）。
+      picked,
     };
   },
 
   get_traffic_series: async ({ range }) => traffic.series(range || 'today'),
 
-  get_traffic_log: async () => {
+  get_traffic_log: async ({ range } = {}) => {
     if (!panel.isAuthed()) return [];
-    try { return await panel.trafficLog(); } catch (e) { log.warn('trafficLog failed:', e.message); return []; }
+    try {
+      const days = await panel.trafficLog();
+      return range ? pickTrafficDays(range, days) : days;
+    } catch (e) { log.warn('trafficLog failed:', e.message); return []; }
   },
 
   /* ================= 账号 ================= */
@@ -186,7 +273,11 @@ const commands = {
   get_plan: async () => {
     needAuth();
     const u = await panel.userInfo();
-    return { name: u.plan_name, used: u.used, total: u.total, expire: u.expire };
+    // used/total 是 GB（面板口径，两位小数）；_text 走字节换算，小用量不会显示成 0 GB
+    return {
+      name: u.plan_name, used: u.used, total: u.total, expire: u.expire,
+      used_text: fmt.bytes(u.used_bytes), total_text: fmt.bytes(u.total_bytes),
+    };
   },
 
   get_plans: async () => {
@@ -197,8 +288,14 @@ const commands = {
       name: p.name,
       price: String(p.price),
       unit: p.unit || '月',
-      feats: p.feats.length ? p.feats : [`${Math.round((p.transfer_enable || 0) / (1024 ** 3))} GB 流量`],
+      period: p.period || '',
+      periods: p.periods || [],
+      // panel.plans() 已经把 transfer_enable 换算成 GB（面板原始值是 GB，不用再除）
+      transfer_enable: p.transfer_enable,
+      feats: p.feats.length ? p.feats : [`${p.transfer_enable || 0} GB 流量`],
       hot: p.hot,
+      sell: p.sell,
+      renew: p.renew,
     }));
   },
 
@@ -229,10 +326,11 @@ const commands = {
 
   get_tickets: async () => { needAuth(); return panel.tickets(); },
 
-  create_ticket: async ({ subject, content }) => {
+  create_ticket: async ({ subject, content, level }) => {
     needAuth();
     if (!subject) throw new Error('请填写工单标题');
-    const r = await panel.createTicket(subject, content);
+    if (!content) throw new Error('请填写问题描述');
+    const r = await panel.createTicket(subject, content, level);
     return ok({ no: r.no });
   },
 
@@ -243,8 +341,14 @@ const commands = {
       code: i.code,
       link: i.link || (i.code ? `${panel.session.panelUrl}/#/register?code=${i.code}` : ''),
       invited: i.invited,
-      earned: i.balance ? `￥${i.balance}` : '0',
+      registered: i.registered,
+      commission: i.commission,
+      pending: i.pending,
+      balance: i.balance,
       rate: i.rate,
+      codes: i.codes,
+      // 面板没给邀请码时（真机 stat 全 0）不显示"￥0"这种假数字
+      earned: i.commission ? `￥${i.commission.toFixed(2)}` : '0',
     };
   },
 
@@ -288,6 +392,8 @@ const commands = {
       allow_lan: s.allow_lan,
       ipv6: s.ipv6,
       subscription_updated_at: s.subscription_updated_at,
+      mixed_port: Number(s.mixed_port) || 0,          // 0 = 随机（界面上显示"自动"）
+      running_port: core.S.mixedPort || 0,            // 当前内核实际在听的端口
       email: s.last_email ? fmt.maskEmail(s.last_email) : '',
       authed: panel.isAuthed(),
     };
@@ -296,7 +402,23 @@ const commands = {
   set_setting: async ({ key, value }) => {
     const BOOL_KEYS = ['autostart', 'expire_notify', 'traffic_notify', 'sys_proxy', 'auto_update', 'tun_mode', 'allow_lan', 'ipv6'];
     const STR_KEYS = ['theme', 'lang', 'tun', 'panel_url', 'last_email'];
-    if (!BOOL_KEYS.includes(key) && !STR_KEYS.includes(key)) throw new Error('未知设置项：' + key);
+    const NUM_KEYS = ['mixed_port'];
+    if (!BOOL_KEYS.includes(key) && !STR_KEYS.includes(key) && !NUM_KEYS.includes(key)) throw new Error('未知设置项：' + key);
+
+    if (key === 'mixed_port') {
+      // 用户第 9 条：让客户端能固定监听 127.0.0.1:7890。0/空 = 随机。
+      const raw = value === '' || value === null || value === undefined ? 0 : Number(value);
+      if (!Number.isInteger(raw) || raw < 0 || raw > 65535) throw new Error('端口必须是 0-65535 之间的整数（0 = 自动）');
+      if (raw > 0 && raw < 1024) throw new Error('1024 以下的端口需要管理员权限，请换一个');
+      if (raw > 0 && raw === Number(store.get('controller_port'))) throw new Error('该端口已被控制面占用，请换一个');
+      const was = Number(store.get('mixed_port')) || 0;
+      store.set('mixed_port', raw);
+      if (core.status().connected) {
+        // 端口变了就得重建内核；这里只提示，不偷偷重连（会断掉用户正在跑的流量）
+        if (raw !== was) ui.toast('端口已保存，断开重连后生效');
+      }
+      return ok({ mixed_port: raw });
+    }
 
     if (key === 'autostart') {
       const okk = autostart.apply(!!value);
@@ -415,7 +537,7 @@ function friendly(e) {
   return m;
 }
 
-function register({ mock = false } = {}) {
+function register() {
   ipcMain.handle(CH, async (_evt, cmd, args) => {
     const fn = commands[cmd];
     if (!fn) throw new Error(`未知命令：${cmd}`);
@@ -427,6 +549,14 @@ function register({ mock = false } = {}) {
       return out;
     } catch (e) {
       log.error(`command ${cmd} failed:`, e && e.message);
+      // 凭据过期（面板 401/403）：清掉登录态并把界面送回登录页。
+      // 不做的话用户会停在"已登录"的界面上，之后每个请求各报一次错。
+      // login 命令本身除外 —— 密码错也可能返回 401，那时说"登录已失效"没人看得懂。
+      if (e && e.kind === 'auth' && cmd !== 'login') {
+        try { panel.logout(); } catch (_) {}
+        ui.toast('登录已失效，请重新登录');
+        ui.navigate('login');
+      }
       throw new Error(friendly(e));
     }
   });
@@ -457,8 +587,6 @@ function register({ mock = false } = {}) {
   // 更新进度推送（下载/解压/就绪），渲染层不用轮询
   updater.onChange((st) => ui.emit('update', st));
   updater.restoreStaged();
-
-  if (mock) log.warn('mock 模式：前端将使用内置演示数据');
 }
 
 module.exports = { register, commands, isAdmin: elevate.isAdmin };

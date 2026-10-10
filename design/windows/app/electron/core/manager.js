@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const net = require('net');
 const yaml = require('js-yaml');
 
 const paths = require('../paths');
@@ -48,6 +49,7 @@ const S = {
   directDomains: [],
   speedCache: new Map(),       // name -> {latency, alive, at}
   offlineCache: new Set(),     // 确认不可达的节点（区别于"未测/超时"）
+  groupLatency: new Map(),     // 策略组名 -> 延迟（内核 history 之外的兜底）
   needTunGrace: false,         // TUN 模式下停内核要给足收尾时间
   listeners: new Set(),        // 状态推送订阅者
 };
@@ -69,6 +71,16 @@ function readSubscribe() {
 }
 
 /**
+ * 用户指定的本机代理端口（0/空 = 交给 builder 随机）。
+ * 端口被别的程序占用时 mihomo 会直接退出，这里不做探测（同步上下文里没法试听），
+ * 由 startKernel 捕获内核的 bind 报错并给出人话提示。
+ */
+function wantedMixedPort() {
+  const n = Number(store.get('mixed_port'));
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : undefined;
+}
+
+/**
  * 订阅 → 清洗 → 组装 → 写盘。返回 {count, report}。
  * 不改动线上内核；需要 reload 由调用方决定。
  */
@@ -83,7 +95,9 @@ function prepareConfig(opts = {}) {
     try { fixed = JSON.parse(fs.readFileSync(paths.file('runtime.json'), 'utf8')); } catch (_) { fixed = {}; }
   }
   const result = builder.build(doc, {
-    mixedPort: fixed.mixedPort,
+    // 用户指定的本机代理端口（设置 → 本机代理端口，0/空 = 随机）。
+    // 热重载时必须沿用 runtime.json 里的旧端口，否则控制面和系统代理都会指向旧端口。
+    mixedPort: fixed.mixedPort || wantedMixedPort(),
     controllerPort: fixed.controllerPort,
     secret: fixed.secret,
     mode: store.get('proxy_mode'),
@@ -176,6 +190,30 @@ function ensureGeodata() {
 /* 内核生命周期                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * 起内核之前自己先占一下这个端口。
+ * 真机上踩过（用户把本机代理端口设成 7890，7890 被别的代理软件占着）：
+ * 内核的 mixed 监听 bind 失败，但控制面端口是随机的好好的，
+ * waitReady 于是"成功"，界面显示已连接、实际上根本没有代理可用。
+ * 自己 bind 一次，能把这件事在启动前就变成一句人话。
+ */
+function assertPortFree(port) {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    const fail = (e) => {
+      try { srv.close(); } catch (_) {}
+      if (e && e.code === 'EADDRINUSE') {
+        reject(new Error(`本机代理端口 ${port} 已被其它程序占用，请在「设置 → 本机代理端口」换一个（或改成自动）`));
+        return;
+      }
+      reject(e);
+    };
+    srv.once('error', fail);
+    srv.once('listening', () => srv.close(() => resolve()));
+    try { srv.listen(port, '127.0.0.1'); } catch (e) { fail(e); }
+  });
+}
+
 async function startKernel() {
   if (S.phase !== 'idle') return;
   const exe = coreExe();
@@ -187,6 +225,14 @@ async function startKernel() {
 
   const runtime = JSON.parse(fs.readFileSync(paths.file('runtime.json'), 'utf8'));
   S.mixedPort = runtime.mixedPort;
+
+  // 起之前先自己占一下这个端口。真机上踩过：用户把本机代理端口设成 7890，
+  // 而 7890 已经被另一个代理软件占着 —— 内核的 mixed 监听 bind 失败，
+  // 但控制面端口是随机的好好的，waitReady 于是"成功"，界面显示已连接，
+  // 实际上根本没有代理可用。自己先 bind 一次，报错给的是人话。
+  if (runtime.mixedPort > 0) {
+    await assertPortFree(runtime.mixedPort);
+  }
 
   const args = ['-d', paths.data(), '-f', configFile()];
   const proc = spawn(exe, args, {
@@ -222,12 +268,35 @@ async function startKernel() {
   proc.on('error', (e) => log.error('mihomo spawn error:', e.message));
 
   const controller = new Controller(runtime.controllerPort, runtime.secret);
-  await controller.waitReady(20000);
+  try {
+    await controller.waitReady(20000);
+  } catch (e) {
+    // 内核起不来最常见的原因就是端口被占（用户把本机代理端口设成 7890 之后
+    // 很可能撞上别的代理软件）。把内核自己那句话翻成人话再抛出去。
+    const tail = ring.join('');
+    const taken = /address already in use|bind:\s|listen tcp .*bind/i.test(tail);
+    if (taken) {
+      throw new Error(`本机代理端口 ${runtime.mixedPort} 已被其它程序占用，请在「设置 → 本机代理端口」换一个（或改成自动）`);
+    }
+    throw e;
+  }
+  // 控制面起来了 ≠ mixed 端口起来了（控制面端口是随机的，mixed 可能是用户指定的）。
+  // 扫一遍启动日志：mixed 监听 bind 失败就当启动失败，别让用户对着"已连接"空等。
+  if (/Start Mixed\(http\+socks\) server error/i.test(ring.join(''))) {
+    try { proc.kill(); } catch (_) {}
+    try { sysproxy.disable(S.proxySnapshot); } catch (_) {}
+    S.proxySnapshot = null;
+    S.proc = null;
+    S.controller = null;
+    S.phase = 'idle';
+    throw new Error(`本机代理端口 ${runtime.mixedPort} 已被其它程序占用，请在「设置 → 本机代理端口」换一个（或改成自动）`);
+  }
   S.controller = controller;
   S.phase = 'connected';
   S.startedAt = Date.now();
   S.upTotal = 0;
   S.downTotal = 0;
+  S.groupLatency.clear();      // 新内核的延迟要重新测，别显示上一轮的
   S.lastTick = Date.now();
 
   // 应用上次选择
@@ -390,12 +459,17 @@ async function selectNodeInGroup(controller, groupName, nodeName) {
   return nodeName;
 }
 
-async function selectNode(name) {
+async function selectNode(name, groupName) {
   if (S.phase !== 'connected') throw new Error('尚未连接');
-  const group = store.get('last_group') || MAIN_GROUP;
+  // 节点页的分组手风琴里点某一项时，要切的是**那个分组**的出口，
+  // 不是上次记住的分组（用户点「自动选择」里的节点却改了「节点选择」的出口是 bug）。
+  const group = groupName || store.get('last_group') || MAIN_GROUP;
   const picked = await selectNodeInGroup(S.controller, group, name);
-  S.node = picked;
-  store.set('last_node', picked);
+  if (group === MAIN_GROUP) {
+    S.node = picked;
+    store.set('last_node', picked);
+  }
+  store.set('last_group', group);
   await loadNodes(true);
   emit();
   return picked;
@@ -445,9 +519,41 @@ async function speedTest() {
     else if (cur.latency > 0) S.offlineCache.delete(n.name);
   }
 
+  // 每个策略组也测一遍：用户要的是"延迟测试每个分组都显示"。
+  // 内核的 /proxies/<组名>/delay 对 URLTest/Fallback 会真的触发一次组内测试，
+  // 对 Selector 返回当前出口的延迟 —— 两种都是分组那一行该显示的数字。
+  await testGroupDelays();
+
   await loadNodes(true);
   emit();
   return S.nodes;
+}
+
+/** 逐组测延迟（并发 4），结果进 S.groupLatency 供 routingGroups() 带出 */
+async function testGroupDelays() {
+  if (S.phase !== 'connected' || !S.controller) return [];
+  const url = encodeURIComponent('https://www.gstatic.com/generate_204');
+  let groups = [];
+  try { groups = await routingGroups(); } catch (_) { groups = []; }
+  const list = groups.filter((g) => !g.builtin).map((g) => g.name);
+  const done = [];
+  const worker = async () => {
+    for (;;) {
+      const name = list.shift();
+      if (!name) return;
+      try {
+        const r = await S.controller.get(`/proxies/${encodeURIComponent(name)}/delay?timeout=5000&url=${url}`, undefined, 8000);
+        const d = r && typeof r.delay === 'number' && r.delay > 0 ? r.delay : -1;
+        S.groupLatency.set(name, d);
+        done.push({ name, latency: d });
+      } catch (_) {
+        S.groupLatency.set(name, -1);
+        done.push({ name, latency: -1 });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+  return done;
 }
 
 async function setMode(mode) {
@@ -475,6 +581,10 @@ async function routingGroups() {
   for (const [name, p] of Object.entries(proxies)) {
     if (!p || !GROUP_TYPES.has(p.type)) continue;
     const options = Array.isArray(p.all) ? p.all.slice() : [];
+    // 分组的延迟：内核会在 history 里记它自己最近一次探测的结果
+    // （URLTest/Fallback 每次请求都可能刷新；Selector 就是当前出口的延迟）。
+    const hist = Array.isArray(p.history) && p.history.length ? p.history[p.history.length - 1] : null;
+    const cached = S.groupLatency.get(name);
     out.push({
       name,
       type: p.type,
@@ -482,6 +592,7 @@ async function routingGroups() {
       count: options.length,
       // 只把真实节点作为候选项；嵌套分组也允许选，恢复默认时会有用
       options,
+      latency: hist && typeof hist.delay === 'number' && hist.delay > 0 ? hist.delay : (cached || -1),
       builtin: name === 'GLOBAL',
     });
   }
@@ -767,10 +878,11 @@ function requireCore() {
 
 module.exports = {
   status, connect, disconnect, shutdown, onStatus,
-  prepareConfig, loadNodes, cachedNodes, selectNode, speedTest, setMode,
+  prepareConfig, loadNodes, cachedNodes, selectNode, speedTest, testGroupDelays, setMode,
   routingGroups, setRoutingGroup, resetRoutingGroups,
   rulesetState, setRuleset, resetRulesets, reloadConfig,
   moveRuleset, saveCustomRuleset, deleteCustomRuleset,
   requireCore, setDirectDomains, mixedPort: () => S.mixedPort,
+  wantedMixedPort, assertPortFree,
   S,
 };

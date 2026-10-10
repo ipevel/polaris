@@ -21,7 +21,7 @@ app/
 │   ├── js/views.js         # 16 个页面视图（纯函数）
 │   └── js/app.js           # 路由、状态、事件、自绘标题栏、实时状态订阅
 ├── electron/               # 主进程（后端）
-│   ├── main.js             # 窗口、托盘、单实例、生命周期、--smoke 自检
+│   ├── main.js             # 窗口、托盘、单实例、生命周期
 │   ├── preload.js          # contextBridge：window.polaris
 │   ├── ipc.js              # 命令注册表（与 api.js 逐条对应）
 │   ├── paths.js            # 便携数据目录解析
@@ -34,6 +34,9 @@ app/
 │   │   ├── sanitizer.js    # 订阅清洗（安全边界，见下）
 │   │   ├── builder.js      # 最终 config.yaml 组装
 │   │   ├── region.js       # 节点名 → 地区
+│   │   ├── traffic.js      # 流量 WebSocket 与速率聚合
+│   │   ├── rulesets.js     # 内置分流规则集（27 组 / 48 个规则集）
+│   │   ├── updater.js      # 更新下载、解压、替换脚本（自替换）
 │   │   └── remote.js       # 远程配置（多源择优、Base64 混用）
 │   ├── panel/
 │   │   ├── client.js       # Xboard / XiaoV2b（V2Board 家族，路径同构）
@@ -42,7 +45,7 @@ app/
 │       ├── sysproxy.js     # HKCU 系统代理 + InternetSetOption 广播
 │       └── autostart.js    # HKCU\...\Run 开机自启
 ├── scripts/
-│   ├── selftest-core.js    # 核心层自检（纯 Node，含真实拉起 mihomo）
+│   ├── real-test.js        # 真面板联调（要真账号；真订阅/真节点/真流量）
 │   └── clean.js
 ├── core/                   # 内核二进制（不入库，见 core.lock.json）
 │   ├── mihomo.exe
@@ -68,41 +71,37 @@ npm install
 npm run core     # 拉 mihomo.exe + wintun.dll 到 core/
 npm run geo      # 规则库到 resources/geo/（优先用同仓库 Android assets）
 
-# 开发（内置演示数据，不连内核）
-npm run mock
-
-# 开发（真实模式，需要已登录面板）
+# 运行（唯一方式：真实模式，需要已登录面板）
 npm start
 
-# 自检
-npm test          # 核心层 58 项，纯 Node，不需要 Electron
-npm run test:e2e  # 端到端 60 项：假面板 + 真实内核 + 真实系统代理
-                  #   加 -- --sysproxy 会连系统代理一起验（写 HKCU 并精确还原）
+# 真面板联调（要真账号；密码只在命令行给一次，不写进任何文件）
+node_modules\electron\dist\electron.exe scripts\real-test.js `
+    --panel=<面板地址> --email=<测试账号> --password=<口令>
 
-# 打包便携版
+# 打包便携版（动手前先问用户）
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 # 或： npm run dist   → dist/Polaris-portable-<version>.zip
 ```
 
-### 在别人机器上排查问题
+### 出问题怎么查
 
-打包产物自带诊断模式，不需要源码也不需要 Node：
+出问题的第一现场是 `data/logs/polaris.log`（启动、内核起停、面板请求、系统代理改写都记在里面），
+其次是 `data/config.yaml`（内核真正吃进去的配置）与 `data/profiles/`（面板下发的订阅原文）。
 
-```
-Polaris.exe --doctor            # 跑端到端自检，报告写到 data/doctor-report.txt
-Polaris.exe --doctor --sysproxy # 连系统代理读写一起验（会还原）
-Polaris.exe --mock              # 用演示数据启动，看 UI 是否有问题
-```
+### 测试覆盖什么
 
-### 自检覆盖什么
+| 方式 | 覆盖 | 不覆盖 |
+| --- | --- | --- |
+| `scripts/real-test.js`（真账号真面板） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
+| 人工手测 | 界面交互、手感、观感、布局与主题 | — |
 
-| 脚本 | 覆盖 |
-| --- | --- |
-| `selftest-core.js` | 订阅清洗 21 项、配置组装 16 项、地区识别 12 项、**真实拉起 mihomo** 9 项 |
-| `selftest-e2e.js` | 登录与鉴权失败、订阅拉取与清洗、面板字段映射、真实内核、切分组/切节点（带回读确认）、真实测速、**经代理访问外网**、系统代理写入-验证-精确还原、退出登录清凭据 |
-| `--smoke` | 窗口能起、渲染层无 console 错误、DOM 真的渲染出内容（导航项数/视图数/文本长度断言）、四个后端命令返回结构正确 |
+> 2026-10-10 起**不再有任何离线自检线与假数据**：原 `scripts/mock-panel.js`（假面板）、
+> `--uitest` / `--doctor` / `--rttest` 三条离线自检线、`npm test`（核心层）、`--mock`（演示数据）
+> 全部删除，浏览器直接打开 `src/index.html` 也不再伪造数据。理由：假面板的响应形状是照我们自己的
+> 理解写的，只能证明自洽 —— 建工单我们发 `content`、假面板收得下（绿），真面板只认 `message`（红），
+> 一个会给错安全感的绿灯比没有绿灯更贵。详见 `docs/DEVNOTES.md` §三 E-10。
 
-`scripts/mock-panel.js` 是本地假 V2Board 面板，订阅里**故意混入脏数据**（重名节点、信息伪节点、被订阅劫持的 control-plane），用来验证清洗链路在真实网络路径下也生效。
+
 
 ### 性能注意
 
@@ -137,5 +136,5 @@ Polaris/
 - **系统代理只写 HKCU**（WinINET），不碰 WinHTTP 全局设置——那会影响整机，不适合便携应用
 - 关闭主窗口 = 收进托盘（`退出` 才真正退出）。退出时必定还原系统代理
 - 凭据用 DPAPI 加密，换机器即失效需重新登录（符合"无自建服务器、不采集"的隐私承诺）
-- **未接入的能力**：自定义 rule-provider 分流（订阅自带的分组可用，但本地规则集管理、
-  分组排序、自定义规则组未做）；面板登录态的活跃会话管理（踢设备）
+- **未接入的能力**：面板的活跃会话管理（踢设备）—— 面板接口本身没有，需要面板侧先加
+- **TUN 模式尚未实机验证**（会接管网络栈，需用户在场确认）

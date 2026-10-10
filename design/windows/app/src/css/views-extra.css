@@ -59,6 +59,18 @@
 }
 .ruleset-mv:hover { color: var(--text); background: rgba(120, 120, 128, .28); }
 
+/* ---------- 节点页分组手风琴 ---------- */
+.acc-head { cursor: pointer; user-select: none; }
+.acc-head:hover .acc-title { color: var(--blue); }
+.acc-title { font-weight: 600; }
+.acc-sub { font-size: 12.5px; color: var(--text3); margin-top: 3px; }
+.acc-body { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+.chev { transition: transform .16s ease; display: inline-block; }
+.chev.open { transform: rotate(90deg); }
+
+/* ---------- 二级页面返回键 ---------- */
+.btn[data-nav-back] { margin-right: 10px; }
+
 /* ---------- 深色主题 ---------- */
 :root[data-theme="dark"] {
   --blue: #4c8dff;

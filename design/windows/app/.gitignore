@@ -1,6 +1,9 @@
 node_modules/
 dist/
 .devdata/
+# real-test.js --data= 用的临时数据根目录（里面有真账号凭据，绝不能进 git）
+.realdata/
+.realrun/
 /core/
 core.lock.json
 build/icon.ico

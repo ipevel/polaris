@@ -34,6 +34,7 @@
     groups: [],
     rulesets: { groups: [], total: 0 },
     nodeFilter: "",
+    openGroups: {},        // 节点页分组手风琴的展开状态（未记录时第一个分组默认展开）
     testing: false,
     refreshing: false,
     redeeming: false,
@@ -60,6 +61,10 @@
     checkingUpdate: false,
   };
 
+  // 自检用：把渲染层的 state 整个暴露出去。只断言 DOM 存在性证明不了
+  // "这页显示的是不是真数据"（套餐徽标、分组延迟、流量区间都在 state 里）。
+  window.__polarisState = state;
+
   const content = $("#content");
   const overlayRoot = $("#overlay-root");
   const sidebar = $("#sidebar");
@@ -71,6 +76,9 @@
     // 只有数渲染次数才测得到（DOM 断言在同一个 JS 帧里看不出问题）。
     renderCount += 1;
     window.__polarisRenderCount = renderCount;
+    // 自检/排查用：界面到底停在哪一页。历史上出现过"点了设置页其实还在首页"，
+    // 只断言 DOM 存在性根本看不出来（首页也有 .row / .section-label）。
+    window.__polarisRoute = state.route;
     overlayRoot.innerHTML = "";
     if (AUTH_ROUTES.includes(state.route)) {
       state.loggedIn = false;
@@ -95,8 +103,20 @@
     }[state.route] || (() => {}))();
   }
 
+  // 返回栈：二级页面（套餐/订单/工单/邀请/礼品卡/公告/分流规则）的返回键回到
+  // 进来的那一页。只记"主页面"，避免 我的→订单→购买套餐→礼品卡 之后要按四次。
+  const PRIMARY_ROUTES = ["home", "nodes", "traffic", "me", "settings"];
+  let navStack = [];
+
   function nav(route) {
     if (route === "register" || route === "forgot" || route === "login") state.authError = "";
+    const prev = state.route;
+    if (route !== prev) {
+      if (PRIMARY_ROUTES.includes(prev)) navStack = [prev];
+      else if (navStack[navStack.length - 1] !== prev) navStack.push(prev);
+      // 回主页面时栈清掉，免得下次进二级页还带着上上上页
+      if (PRIMARY_ROUTES.includes(route)) navStack = [];
+    }
     state.route = route;
     render();
     // 虚拟网卡状态要起 PowerShell（冷启动实测 ~2.7s），只在进设置页时查一次。
@@ -104,6 +124,14 @@
     if (route === "settings") loadTunStatus();
   }
   window.PolarisNav = nav;
+
+  /** 二级页面返回：没有历史就回"我的" */
+  function goBack() {
+    const target = navStack.length ? navStack.pop() : "me";
+    state.route = target;
+    render();
+    if (target === "settings") loadTunStatus();
+  }
 
   function openDialog(name, arg) {
     const tpl = Dialogs[name];
@@ -148,12 +176,27 @@
     $$("[data-click]").forEach((el) => el.addEventListener("click", () => handleClick(el.dataset.click, el)));
     $$("[data-range]").forEach((el) => el.addEventListener("click", async () => {
       state.trafficRange = el.dataset.range;
+      // 先立刻重绘：按钮高亮要马上跟着手指走，不能等面板那十几秒的明细回来
+      // （用户点了"本周"没反应，看起来像按钮坏了）。
+      render();
       await loadTraffic();
       render();
     }));
     $$("[data-group]").forEach((el) => el.addEventListener("click", () => {
       const g = state.groups.find((x) => x.name === el.dataset.group);
       if (g) openDialog("groupPick", g);
+    }));
+    // 二级页面的返回键（用户报「基本上所有二级页面都没有返回按钮」）
+    $$("[data-nav-back]").forEach((el) => el.addEventListener("click", (e) => { e.stopPropagation(); goBack(); }));
+    // 节点页的分组手风琴：点标题栏展开/收起
+    $$("[data-acc]").forEach((el) => el.addEventListener("click", () => {
+      const name = el.dataset.acc;
+      const open = state.openGroups || (state.openGroups = {});
+      // 没记录过时第一个分组是展开的，点它第一次应该是"收起"
+      const cur = open[name] === undefined ? state.groups.filter((g) => !g.builtin)[0] : null;
+      const isOpen = open[name] === undefined ? (cur && cur.name === name) : !!open[name];
+      open[name] = !isOpen;
+      render();
     }));
   }
 
@@ -176,6 +219,7 @@
     else if (action === "set-theme") openDialog("appearance", state);
     else if (action === "set-lang") openDialog("language", state);
     else if (action === "set-tun-stack") openDialog("tunStack", state);
+    else if (action === "set-port") openDialog("port", state.settings);
     else if (action === "export-logs") {
       const r = await guard("导出日志", () => api.exportLogs());
       if (r) toast(r.ok ? "日志已导出到 " + r.path : "已取消");
@@ -197,9 +241,10 @@
       const info = await guard("获取订阅链接", () => api.invoke("get_subscribe_url"));
       if (info) openDialog("subscribeUrl", info);
     }
-    else if (["nav-orders", "nav-tickets", "nav-invite", "nav-giftcard", "nav-notices", "nav-settings", "nav-routing"].includes(action)) {
-      nav(action.replace("nav-", ""));
-    }
+    // 所有 data-click="nav-xxx" 都是"去某一页"。旧代码在这里写死了一份白名单，
+    // 加了「我的套餐」入口却忘了把 nav-plans 补进去 —— 于是那一行点了完全没反应，
+    // 而且不报错、不弹窗，看起来像"面板没数据"。改成前缀判断，不再漏。
+    else if (action.startsWith("nav-")) nav(action.slice(4));
   }
 
   function errBox(sel) {
@@ -247,6 +292,20 @@
         if (!r) return;
         paintUpdate({ phase: "applying", percent: 100, received: 0, total: 0 });
         toast("正在退出并安装，稍后会自动重启");
+      });
+    }
+    if (name === "port") {
+      const box = errBox("#dialog-err");
+      $("#btn-save-port").addEventListener("click", async () => {
+        if (box) box.textContent = "";
+        const el = $("#port-value");
+        const raw = (el && el.value || "").trim();
+        const r = await guard("保存端口", () => api.setSetting("mixed_port", raw === "" ? 0 : Number(raw)));
+        if (!r) return;
+        state.settings.mixed_port = r.mixed_port || 0;
+        closeDialog();
+        render();
+        toast(r.mixed_port ? `本机代理端口已设为 ${r.mixed_port}` : "本机代理端口已改为自动");
       });
     }
     if (name === "customRuleset") {
@@ -304,11 +363,23 @@
       });
     }
     if (name === "newTicket") {
+      const box = $("#tk-level");
+      if (box) box.addEventListener("click", (e) => {
+        const opt = e.target.closest("[data-tk-level]");
+        if (!opt) return;
+        box.querySelectorAll("[data-tk-level]").forEach((el) => {
+          el.classList.toggle("sel", el === opt);
+          const radio = el.querySelector(".radio");
+          if (radio) radio.classList.toggle("sel", el === opt);
+        });
+      });
       $("#btn-submit-ticket").addEventListener("click", async () => {
         const subject = $("#ticket-subject").value.trim();
         const body = $("#ticket-content").value.trim();
         if (!subject) { toast("请填写标题"); return; }
-        const r = await guard("提交工单", () => api.createTicket(subject, body));
+        const sel = $('[data-tk-level].sel');
+        const level = sel ? Number(sel.dataset.tkLevel) : 1;
+        const r = await guard("提交工单", () => api.createTicket(subject, body, level));
         if (r) {
           state.tickets = await api.getTickets().catch(() => state.tickets);
           closeDialog(); render(); toast("工单已提交");
@@ -499,23 +570,31 @@
         if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
       });
     }
+    // 分组手风琴里的节点行带 data-node-group：切的是**那个分组**的出口
     $$(".node-row").forEach((el) => el.addEventListener("click", async () => {
-      const r = await guard("切换节点", () => api.selectNode(el.dataset.node));
+      const group = el.dataset.nodeGroup || undefined;
+      const r = await guard("切换节点", () => api.selectNode(el.dataset.node, group));
       if (r && r.ok) {
         state.node = r.node;
         const n = state.nodes.find((x) => x.name === r.node);
         if (n && n.latency > 0) state.latency = n.latency;
+        // 分组的"当前出口"也要跟着变
+        state.groups = await api.getRoutingGroups().catch(() => state.groups);
         render(); toast("已切换到 " + r.node);
       }
     }));
     const st = $("#btn-speedtest");
     if (st) st.addEventListener("click", async () => {
       state.testing = true; render();
-      const r = await guard("测速", () => api.speedTest());
+      const r = await guard("延迟测试", () => api.speedTest());
       state.testing = false;
-      if (r) state.nodes = await api.getNodes().catch(() => state.nodes);
+      if (r) {
+        state.nodes = await api.getNodes().catch(() => state.nodes);
+        // 每个分组的延迟也一起回来了，刷新分组列表才能看到
+        state.groups = await api.getRoutingGroups().catch(() => state.groups);
+      }
       render();
-      if (r) toast("测速完成");
+      if (r) toast("延迟测试完成");
     });
     const rf = $("#btn-refresh-sub");
     if (rf) rf.addEventListener("click", async () => {
@@ -830,14 +909,15 @@
   }
 
   async function loadTraffic() {
-    const [t, series, log] = await Promise.all([
+    // 明细直接用 get_traffic 一起回来的 picked，不再单独发一次 get_traffic_log
+    // —— 那是同一个面板查询（实测整页最慢的一项），发两次等于白等一倍。
+    const [t, series] = await Promise.all([
       api.getTraffic(state.trafficRange).catch(() => ({})) ,
       api.getTrafficSeries(state.trafficRange).catch(() => ({ points: [], unit: "MB" })),
-      api.getTrafficLog().catch(() => []),
     ]);
     state.traffic = t || {};
     state.trafficSeries = series || { points: [], unit: "MB" };
-    state.trafficLog = Array.isArray(log) ? log : [];
+    state.trafficLog = Array.isArray(state.traffic.picked) ? state.traffic.picked : [];
   }
 
   /** 登录后 / 连接后统一刷新 */
@@ -873,10 +953,18 @@
     state.giftHistory = gh || [];
     state.notices = notices || [];
     state.unreadNotices = state.notices.filter((n) => n.unread).length;
-    if (site && site.appName) state.siteInfo = site;
+    // 面板可能没有站点名字段（实测 app.pinxiaoche.top 就没有）——旧代码在这里
+    // 要求 site.appName 非空才收，导致整份 siteInfo 被丢掉，登录页副标题永远是空的。
+    if (site && (site.appName || site.appDescription || site.appUrl)) state.siteInfo = site;
     if (rcfg) state.registerConfig = Object.assign({ email_verify: 0, invite_force: 0 }, rcfg);
     state.email = state.settings.email || state.settings.last_email || "";
-    await loadTraffic();
+    // 流量明细是整条链路最慢的一项（面板侧聚合查询，实测单个请求能到 10-30 秒）。
+    // 以前这里是 await loadTraffic()，于是"连上之后节点页出内容"被它拖住 ——
+    // 用户看到的是：点了连接，节点页/首页几十秒都是空的。改成后台补齐，
+    // 谁在看流量页就等它回来后自己重绘一次。
+    loadTraffic()
+      .then(() => { if (state.route === "traffic" || state.route === "home") render(); })
+      .catch(() => {});
   }
 
   let autoRefreshing = false;

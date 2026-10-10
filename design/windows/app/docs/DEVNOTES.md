@@ -1,8 +1,19 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-10（新增第四条自检线「运行时功能测试」：真界面驱动 + 从内核回读 + 长后台浸泡，
-> 见 §四；顺带修掉系统代理快照丢失、连接态打开系统代理开关不生效、首页会话数字不刷新、EPIPE 死循环，
-> 见 §三 A-14 A-15 A-16 A-17 A-18；并修掉一条**会毁掉成品包的自检写法**，见 E-8）
+> 最后更新：2026-10-10（**补上界面层的真线**：新写 `scripts/ui-test.js`（`--uitest`）——
+> 开真窗口、用真鼠标事件、走真面板真账号，从登录页自己登进去再逐页真点，
+> **73 项全绿**；这一轮它抓出并修掉 3 个只有"真点"才暴露的问题（A-23 登录后立刻连接必失败、
+> A-24 我的页「我的套餐」点了没反应、A-25 首页/节点页被重复的慢查询拖住 30 秒）。
+> 见 §一「测试方式」与 §三 A-23~A-25、E-11~E-13）
+>
+> 同日早些时候：**把测试收成一条真线** —— 删掉假面板、三条离线自检线、核心层 `npm test`、
+> `--mock` 演示数据与 `--smoke` / `--restore-probe` 自检开关（见 §一「测试方式」与 §三 E-10）。
+>
+> 再往前：**用真实账号打通了真实面板联调** —— 套餐/订单/流量明细/每个分组延迟全部
+> 对着真面板验过，并按用户报的 10 条界面/功能问题逐条修掉：
+> 节点页重复选择器、二级页返回键、分流页混入策略组、延迟测试、流量页改读面板明细、我的页与安卓端对齐、
+> 单实例防多开、本机代理端口设置与端口占用检测，见 §三 A-21 A-22
+>
 > 分支：`feat/windows-portable`（基线 `origin/ui/windows-design` @ `5328b55`）
 > 应用根目录：`design/windows/app/`
 
@@ -10,16 +21,48 @@
 
 ## 一、现状速览
 
+### 测试方式（2026-10-10 起）
+
+**三条路，都在这台机器上、都用真东西（真账号、真面板、真节点）：**
+
+| 方式 | 命令 | 说明 |
+| --- | --- | --- |
+| 真面板联调（数据层） | `electron.exe scripts\real-test.js --panel=<面板> --email=<测试账号> --password=<口令>` | 真账号 → 真面板 → 真订阅 → 真节点 → 真流量。不开窗口，验的是主进程/数据链路。密码只在命令行给一次，不落任何文件 |
+| 真面板界面自检（界面层） | `electron.exe . --uitest --panel=<面板> --email=<测试账号> --password=<口令> --uitest-data=<临时目录>` | **开真窗口、真点**：用 `sendInputEvent` 发真鼠标事件（不是 `element.click()`），从登录页真登进去，逐页断言"点下去之后界面变成了什么样"。报告写 `data/uitest-report.txt` |
+| 人工手测 | `npm start`（或成品包里的 `Polaris.exe`） | 由人点。自检能覆盖的只是"点得到、读得回"，手感/观感/取舍必须人看 |
+
+> `--uitest-data=<临时目录>` 会把 `POLARIS_DATA_DIR` 指过去，用一份独立的 data
+> （不动你日常登录的那份）。不给就用默认数据目录。
+
+**已经删掉的东西（不再存在，别再去找）：**
+`scripts/mock-panel.js`（本地假面板 + 假出口代理）、`scripts/selftest-ui.js`（旧的 `--uitest`）、
+`scripts/selftest-e2e.js`（`--doctor` / `npm run test:e2e`）、`scripts/rt-test.js`（`--rttest` / `--soak`）、
+`scripts/selftest-core.js`（`npm test`），以及 `main.js` / `package.json` 里对应的入口：
+`--mock`（演示数据）、`--smoke`（DOM 断言）、`--restore-probe`（登录态探针）、
+`src/js/api.js` 里的内置演示数据（浏览器直接打开 `src/index.html` 现在会明确报"没有连接到客户端主进程"，
+**不再伪造数据**）。
+
+> 注意区分：现在还有一个 `--uitest`，但它是**新写的** `scripts/ui-test.js`（2026-10-10），
+> 走真面板真账号，跟被删掉的旧 `selftest-ui.js`（配假面板 + `--mock`）没有关系。
+
+**为什么删**：这些线要离线跑就必须自带一个假面板和假账号（`ui-tester@example.com` / `rt-tester@example.com`），
+于是"测过了"这件事本身变得不可信 —— 假面板的形状是照我们的理解写的，只能证明自洽：
+A-22（建工单发 `content` 而面板只认 `message`）在假面板上永远绿，真面板一建单就建出空工单。
+**宁可少一条自动线，也不要一条会给出错误安全感的线。**
+
+连 `npm test`（核心层 253 项，纯 Node、不连面板、无账号）也一并删了：它本身不造假，
+但它同样是"自动绿灯"，留着就会被当成"测过了"。核心层怎么验？**在真面板联调里验** ——
+`real-test.js` 走的每一条路径都会经过配置组装与清洗，组装错了在那里必然红。
+
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.8.0.zip     185,943,312 B（~186 MB）
+（2026-10-10：dist/ 已按用户要求整个删除，等测试全部通过、用户明确同意后再重新打包）
 ```
 
-解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。已验证。
+解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。已验证（历史产物：185,943,312 B ≈ 186 MB）。
 
-> 验证方式：把 zip 解压到一个干净目录直接跑，`--uitest` 91/0、`--doctor` 110/0、`--smoke` `ok:true`，
-> `data/rules` 自动铺出 48 个种子；`--updtest` 指向必拒端口时 1 秒内以退出码 2 退出（不弹框、不挂住）。
+> 上一版产物的验证方式（`--uitest` / `--doctor` / `--smoke`）已随自检线一起删除，此处仅作历史记录。
 
 ### 规模
 
@@ -27,26 +70,29 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,943,312 B（~186 MB�
 | --- | --- |
 | 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` `00846cc` `265e057` `8648c8d` `6c72762` `6c0896a` |
 | 相对基线 | +119,127 / −906 行，105 文件 |
-| 应用代码 | 主进程 ~4,190 行 JS（含 core/ 3,110 行），渲染层 ~1,660 行 JS，样式 ~385 行，自检脚本 ~2,700 行 |
+| 应用代码 | 主进程 ~4,190 行 JS（含 core/ 3,110 行），渲染层 ~1,660 行 JS，样式 ~385 行 |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
 | 内置分流 | 48 个本地规则集 + 27 个分流组，1.42 MB（`resources/rules/`） |
 | 自定义分流 | 用户自己写规则的分流组（最多 20 组 / 每组 200 条），↑↓ 排序，存 `settings.json` 的 `custom_rulesets` |
 
-### 四条自检线（成品包自带，目标机器无需源码）
+### 测试入口（2026-10-10 起）
 
-| 命令 | 规模 | 覆盖 |
+| 方式 | 规模 | 覆盖 |
 | --- | --- | --- |
-| `npm test` | 213 项 | 订阅清洗、配置组装、内置分流规则、**自定义分流组（解析/校验/组装顺序）**、直连域名与更新地址、自动更新（下载/解压/替换脚本）、**启动模式（早退分支不许 TDZ 崩）**、系统代理护栏、地区识别、真实拉起 mihomo |
-| `npm run test:e2e` | 110 项 | 假面板登录、订阅清洗、面板字段映射、真实流量、内置分流热重载、**自定义分流组（IPC + 内核真的多出策略组）**、自动更新（IPC + 进度事件）、系统代理还原 |
-| `Polaris.exe --uitest` | 91 项 | **界面驱动**：拖拽区、最大化、窄窗口（1100px）、滚动、填表点登录、逐页切换、分流页开关、**分流组排序与自定义组增删改**、流量曲线、弹窗、更新弹窗三种形态、设置页不自我重绘、两套主题的文字对比度 |
-| `Polaris.exe --doctor` | 110 项 | 端到端（同 e2e），结果写 `data/doctor-report.txt` |
-| `Polaris.exe --rttest` | 63 项 | **运行时功能测试**：真界面点连接/切模式/开关分流组 → 每次都从内核回读；异常路径（内核强杀自愈、面板挂掉）；`--soak=N` 追加 N 分钟浸泡（20 分钟 = 71 项） |
-| `Polaris.exe --smoke` | — | 窗口能起 + DOM 渲染断言 |
+| `scripts/real-test.js` | 39-40 项 | **真面板联调（数据层）**：真登录/复用已有会话 → 套餐/订单/工单/邀请 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点 204 → 跑真流量看面板明细闭环 |
+| `scripts/ui-test.js`（`--uitest`） | 73 项 | **真面板界面自检（界面层）**：外壳/标题栏/无横向溢出 → 界面上退出旧会话再用真账号从登录页登入 → 首页套餐与进度条 → 点 `#power` 真连内核 → 节点页分组手风琴 + 「延迟测试」逐组延迟 → 分流页返回键与无杂质 → 流量页三区间都来自面板 → 我的页徽标与 6 个入口 → 6 个二级页标题/返回键/数据 → 设置页「分流与订阅」 → 渲染层 0 error → 断开 |
+| 人工手测 | — | `npm start` / 成品包 `Polaris.exe`，由人点 |
 | `Polaris.exe --updtest <zip>` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份** |
 
-当前全绿：**213 / 110 / 91 / 63**（开发态与成品包各跑一遍）；
-加上 20 分钟浸泡是 **71 项**（`--rttest --soak=20`）。
+> 已删除（2026-10-10，见上「测试方式」）：`npm test` 253 项、旧的 `--uitest` 110 项（配假面板）、
+> `--doctor` / `npm run test:e2e` 128 项、`--rttest` 63 项（含 `--soak=20` 71 项）、
+> `--smoke` 的 DOM 断言入口、`--mock` 演示数据、`--restore-probe` 登录态探针。
+> 它们的实现与踩坑记录仍留在 §三（E-1~E-10、A-6~A-19），因为**教训是有效的**，
+> 只是这些"自动化绿灯"不再被当作验收依据。
+
+当前状态：真面板数据层 **39-40 / 0**（项数随账号里有没有流量数据浮动）、
+真面板界面层 **73 / 0**（2026-10-10 11:45，账号 `cm@mbe.cc`）。
 
 ### 已实测通过
 
@@ -59,13 +105,26 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,943,312 B（~186 MB�
   运行中开关分流组能热重载并让内核加载新规则集
 - 自动更新：下载（含 302）→ 校验 zip → 解压 → 写替换脚本 → 覆盖安装目录 → 重启，全程在成品包的**拷贝**上真跑过一遍；
   点「丢弃更新包」后下载的 zip、解压目录、`staged.json` 一起清掉（不留 186 MB 在磁盘上）
-- 运行时功能测试（`--rttest`，真界面驱动 + 内核回读）：点界面连接 → `/configs` 的 `mixed-port` 与
+- （历史，该自检线已删）运行时功能测试（`--rttest`，真界面驱动 + 内核回读）：点界面连接 → `/configs` 的 `mixed-port` 与
   `core.mixedPort()` 一致、控制面只绑 `127.0.0.1`、`/traffic` WebSocket 真推数据、经代理 204；
   国外域名命中 `RuleSet(gs_geolocation_ncn)`（链 `香港 01 → 节点选择 → 🌏 国外穿墙`）、国内域名走 DIRECT；
   三种代理模式切换后 `/configs.mode` 跟着变；界面开关分流组后内核 `/providers/rules` 数量随之增减
   （合计 56,283 条规则）；内核被 `taskkill /F` 后应用 20s 内不再谎报已连接、再点一次能自愈成新 pid；
   面板进程被杀后界面不崩、代理仍 204；断开后系统代理 4 个值逐项回到进入测试前的状态
-- 长后台浸泡（`--rttest --soak=20`，20 分钟真连接 + 周期性收进托盘）：**71 通过 / 0 失败**。
+- 真实面板（测试账号 `cm@mbe.cc`，`scripts/real-test.js`）：**39 通过 / 0 失败**。
+  套餐「TEST 已用 946 KB / 500 GB，到期 2029-04-20」、订单「美国-年-不重置 ￥23 done」、公告 1 条、
+  32 个真节点、24 个策略组、25/32 个节点有延迟、**23/23 个分组都有延迟**；
+  流量页三个区间与账号合计对得上（面板明细 ↑60.3 KB ↓886 KB → 账号 946 KB）；
+  经活节点访问 `gstatic.com/generate_204` 返回 204；跑完 3 MB 真流量后面板明细从
+  886 KB 涨到 921 KB（**站点统计闭环**）。
+- 真实面板界面层（`scripts/ui-test.js --uitest`，真窗口真鼠标事件）：**73 通过 / 0 失败**。
+  界面自检自己先从登录页用真账号登进去，再逐页真点：节点页 23 个分组手风琴（第一个默认展开、
+  点一下能收起、32 个节点）、「延迟测试」点下去 **23/23 个分组都测出真延迟**、
+  流量页 today/week/month 三个区间都来自面板明细（不再是本机算的）、
+  我的页徽标显示真套餐名（不是「未订阅」）且 6 个入口齐全、6 个二级页都有返回键且返回有效、
+  设置页有「分流与订阅」段、**全程渲染层 0 个 error**。
+  这一轮界面自检抓出并修掉 3 个只有"真点"才会暴露的问题（见 A-23、A-24、A-25）。
+- （历史，该自检线已删）长后台浸泡（`--rttest --soak=20`，20 分钟真连接 + 周期性收进托盘）：**71 通过 / 0 失败**。
   主进程内存漂移 **−3.1 MB**、内核 **+2.1 MB**、内核句柄 **+39.8 个**、线程 **+1.2 个**（无泄漏）；
   节点延迟首段 169ms → 末段 181ms（未劣化）；每 5 分钟一次 10MB 吞吐采样
   **6.59 → 20.04 → 25.19 → 25.25 → 26.85 Mbps**（首采样是冷启动，之后稳定）；内核 pid 全程未变。
@@ -75,7 +134,7 @@ design/windows/app/dist/Polaris-portable-1.8.0.zip     185,943,312 B（~186 MB�
 
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
-| 真实面板联调 | ❌ | 后端按 Android 端 Kotlin 契约写完，假面板验过；但各面板分支字段名不统一，需要真实账号 |
+| 真实面板联调 | ✅ | `scripts/real-test.js` 拿真账号真面板真节点跑通 **39-40 项全绿**：登录/复用会话 → 套餐 → 订单 → 工单 → 邀请 → 公告 → 今天/本周/本月流量明细（与账号合计交叉验算）→ 拉真订阅（32 节点 / 24-26 策略组）→ 连真节点 → 逐组延迟（23/23 组有延迟）→ 经活节点 204 → 跑 3 MB 真流量后面板明细真的涨了。**过程中修掉 3 个只有真面板才暴露的问题**（见 A-22、D-6、E-9） |
 | TUN 模式实机 | ❌ | 代码路径完整（含 UAC 提权、网卡收尾、残留清理），但会临时接管网络栈，未在真机跑 |
 | 面板活跃会话管理（踢设备） | ❌ | 需要新功能：**两端都没有这个接口**（面板侧也没有），不是「UI 未做」 |
 | 自动更新（下载并替换自身） | ✅ | 便携版可自装：`update_windows_url` 指向 zip → 下载 → 解压到 `data/update/staging` → 退出前写 `apply-update.cmd` 覆盖安装目录并重启。装在 `Program Files`/只读盘时自动退回「前往下载」；不做增量、不校验签名、失败无回滚（只覆盖不删除，用户数据与旧文件都还在，可手动重下） |
@@ -469,6 +528,89 @@ core 自检补两条回归：`validateCustom → serializeCustom` 往返不丢�
 
 ---
 
+**A-20 主进程启动时根本没调 `restore()`，登录态"跨重启失效"**
+
+（`main.js` 里的 `session.panelUrl` 一直是空的，启动时 `siteInfo` 必然报"尚未配置面板地址"。）
+修法：`whenReady` 里显式 `panel.restore()`，凭据解不开就安静退回登录页。
+core 自检补了两段：函数级（凭据落盘 → restore 读回）+ **链路级**（真启动一次应用，
+看它到底有没有把凭据读回来）——后者才是"那行代码还在不在"的证据。
+
+**A-21 端口被占着，界面却显示"已连接"**
+
+用户把「本机代理端口」固定成 7890（他另一款代理软件 BettboxCore 正占着这个端口）。
+mihomo 的 mixed 端口 bind 失败只在**内核日志**里留一行
+`Start Mixed(http+socks) server error: listen tcp 127.0.0.1:7890: bind: address already in use`，
+而我们的 `waitReady()` 只看**控制面**端口（另一个随机端口，bind 成功）——
+于是控制面起来了、`phase=connected`、界面绿了，**但所有流量都没经过代理**。
+这是"看起来连上了其实没连"里最坏的一种：用户会以为节点全挂了。
+
+修法两层：
+1. `manager.assertPortFree(port)` —— 起内核前自己先 `net.bind('127.0.0.1', port)` 试一下，
+   `EADDRINUSE` 直接抛出人话：`本机代理端口 7890 已被其它程序占用，请在「设置 → 本机代理端口」换一个（或改成自动）`；
+2. `waitReady()` 成功后**扫一遍内核启动日志**，命中同一条错误就 kill 内核 + 还原系统代理 + 抛错。
+
+教训：**"控制面就绪"不等于"数据面就绪"**。判活要看数据面（或至少看内核有没有报 bind 失败），
+只看自己那个端口的健康检查会把"完全没生效"读成"一切正常"。
+
+**A-22 新建工单发的是 `content`，真面板只认 `message`（假面板验不出来）**
+
+按 Android 端契约，XBoard 的建单请求是 `{subject, message, level: Int}`，
+而我们发的是 `{subject, content, level: 'low'}`。假面板按我们的形状写，所以 e2e 全绿；
+真面板收到 `content` 会**建出一张空工单**（标题在、正文没了），且 `level` 字符串被丢掉。
+修法：`client.ticketContent(t)` 从 `message` 数组（新形状）或 `content`（旧形状）取正文，
+`createTicket(subject, content, level = 1)` 统一发 `{subject, message, level}`，
+UI 加三级优先级（低/中/高，默认中）。e2e 的假面板也改成真形状（`level` 数字 + `message` 数组）。
+
+教训：**假面板的形状是照我们的理解写的，它只能证明"自洽"。**凡是"字段名/类型"这类契约，
+只要能从 Android 端源码抄，就不要靠猜（`XboardCreateTicketRequest.kt` 一眼就能看到）。
+
+**A-23 登录后立刻点「连接」必然失败：订阅还没落盘**
+
+真面板上刚登录，界面已经进首页、连接按钮已经能点，但 `refreshAll()` 拉订阅是异步的：
+用户手快一点，`manager.js` 的 `readSubscribe()` 读不到 `data/profiles/subscribe.yaml`，
+直接抛「尚未拉取订阅，请先登录面板」——**明明刚登录完**。假面板时代测不出来（本地 mock 秒回）。
+
+修法（`electron/ipc.js`）：把拉订阅收成 `pullSubscription()`（模块级 `subscribing` 变量保证同一时刻
+只有一个在飞），`connect` 命令在连之前 `if (!hasSubscribeFile())` 就先自动补拉一次
+（再 `setDirectDomains` + `prepareConfig`）。用户不用知道"先刷新订阅再连接"这个顺序。
+
+教训：**"界面已经允许点"和"底层数据已就绪"是两件事。**凡是按钮的可用状态由异步数据决定，
+要么禁用按钮，要么让点击路径自己补数据 —— 不能假设用户会等。
+
+**A-24 我的页「我的套餐」点了完全没反应（导航白名单漏了一项）**
+
+`app.js` 的 `handleClick` 末尾原来写死了一份白名单：
+`["nav-orders","nav-tickets","nav-invite","nav-giftcard","nav-notices","nav-settings","nav-routing"].includes(action)`。
+加「我的套餐」入口时忘了补 `nav-plans` —— 于是那一行**点了完全没反应：不报错、不弹窗、不跳转**，
+看起来像"面板没数据"。改成前缀判断 `action.startsWith("nav-")` → `nav(action.slice(4))`，不再可能漏。
+
+教训：**枚举式的分支表是漏项制造机**，能用前缀/规则判断就别列清单；界面自检必须"点一下看落点"，
+只断言元素存在的话，这种"点了没反应"永远绿。
+
+**A-25 首页/节点页被一条慢查询拖住 30 秒，而慢是我们自己造成的**
+
+现象：真面板上点了连接，节点页/首页几十秒没内容；日志里 `slow command get_traffic 32469ms`。
+查下去是两件事叠在一起：
+
+1. `refreshAll()` 的结尾是 `await loadTraffic()`，而 `get_traffic` 走的是面板的流量明细聚合查询。
+   于是"连上之后重绘"被它拖住 —— 用户在节点页等 20 秒也等不到分组卡。
+2. 同一个面板查询被发了 **2~3 遍**：`loadTraffic()` 同时发 `get_traffic` + `get_traffic_log`
+   （两者在 ipc 层各自去面板查一次明细），而 `loadTraffic()` 又被 `refreshAll()`、
+   `nav('traffic')`、区间按钮各调一次 → 日志里能看到 **6 条并发 `get_traffic` 各 19 秒**。
+   面板侧是聚合查询，重复并发把它自己压慢了（同一批查询串行跑只要 ~360ms/次，见 E-12）。
+
+修法：`get_traffic` 顺手把过滤后的明细 `picked` 一起返回（明细不再单独发一次请求）；
+`refreshAll()` 结尾改成后台补齐（`.then(() => 只在流量页/首页 render())`，不再 await）；
+区间按钮改成"先 `render()`（高亮立刻跟手）→ 拉数据 → 再 `render()`"。
+
+修完实测：同一套界面自检，`get_traffic` 再无一条超过 2 秒（`panel slow` 一条都没有）。
+
+教训：**"慢"要先量再猜**，而且要先怀疑自己发了几遍 —— 重复的聚合查询能把对方压到超时，
+然后看起来像"面板烂"。另外：**让界面等数据的地方，默认都该是"先画出来、数据回来再补一次"**，
+除非那一步没数据就没法画。
+
+---
+
 ### B. 打包
 
 **B-1 打包后启动即崩 `Cannot find module 'js-yaml'`**
@@ -637,6 +779,22 @@ mihomo 的 `type: file` provider 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Pa
 
 所有字段映射都写成多候选兜底（`pick(obj, ['plan_name', 'name', 'description'], '')`）。这层兜底是从 Android 端 `adapter/xboard/*` 与 `adapter/xiaov2b/*` 抄的契约，**但没有真实面板就可能兜不到**。
 
+**D-6 流量页的"今天/本周/本月"原来是自己在本机算的（用户第 5 条）**
+
+原实现是读本地 `traffic.json`（内核每 5 秒推的速率累加）自己分桶 —— 换机器、重装、清数据之后
+数字就归零，和面板上的账号用量完全对不上。用户的原话是"应该使用站点流量明细的数据"。
+
+改成：`get_traffic` 走面板 `user/stat/getTrafficLog`（`range=today|week|month|all`），
+把逐日明细按区间求和，和 `user/getSubscribe` 的账号总量一起返回；本机 `traffic.json` 只留
+"本次会话"的实时速率与上下行总量。
+
+两个坑：
+1. **不要拿账号的 `u+d` 去判断"明细有没有数据"**。面板按 GB 两位小数取整，
+   跑了 29 KB 会显示成 `0.00`；于是"用 0 判断空"会把有明细的账号判成空态。
+   断言要写成不变式：*站点合计 === 明细逐行求和*，明细为空时合计必须是 0。
+2. **不要乘 `server_rate`**（倍率）。面板明细里给的是**已计费**字节数，再乘一遍会翻倍。
+   验算方式：把 `month` 区间求和，和账号的"已用"比 —— 真面板上 128.0 GB vs 128.5 GB，对得上。
+
 ---
 
 ### E. 自检方法论（最该记住的一节）
@@ -720,13 +878,99 @@ e2e 里那两条更新断言原来是按**开发态**写的：`can_apply === fal
 教训：**自检脚本里任何"会改安装目录/写注册表/杀进程"的调用，都要先问一句
 "在成品包里跑会怎样"** —— 开发态被拦住不等于成品包也被拦住。
 
+**E-9 真面板联调脚本自己的三个坑（都长得像"产品坏了"）**
+
+`scripts/real-test.js` 第一次跑，4 条红里有 3 条是脚本自己的问题：
+
+1. **没带 `--panel` 去登录** → 捡起 `settings.json` 里上一轮留下的地址，
+   连到了早就关掉的 mock 面板（`http://127.0.0.1:8436`），报"登录失败"。
+   修：`commands.login({email, password, panel})` 显式带上地址。
+2. **`--restore` 之前先问站点信息** → `session.panelUrl` 还是空的，
+   `siteInfo()` 必然抛"尚未配置面板地址"。**顺序错了**，不是接口坏了。
+3. **`--data=<目录>` 时没把 Electron 的 userData 一起指过去** → `safeStorage`（DPAPI）
+   的密钥在 userData 的 `Local State` 里，指错了就解不开 `credentials.dat`，
+   日志报"凭据无法解密（换机或 data/electron 缓存丢失）"—— 看起来像**登录态跨重启失效**
+   （A-20 那个 bug 复发了），其实只是自检没站在同一个 userData 上。
+   修：`real-test.js` 和 `main.js` 一样 `app.setPath('userData'/'sessionData', <root>/data/electron)`。
+
+教训：**"复现了老 bug"和"新 bug"要用同一把尺子区分** —— 先在怀疑产品之前，
+确认测试自己站在正确的目录/会话/顺序上。
+
+顺带：`--restore` 让自检可以**直接用用户已经登录好的会话**跑（凭据是 DPAPI 加密的，
+拷一份 data 到临时目录就能用），这样验证"真实使用现场"不需要再要一次密码。
+`POLARIS_DATA_DIR` 就是为这个加的逃生口（不设它时行为与以前完全一致）。
+
+**E-10 把假面板、四条自检线和演示数据全删了（2026-10-10）**
+
+删掉：`scripts/mock-panel.js`、`selftest-ui.js`（`--uitest`）、`selftest-e2e.js`（`--doctor`）、
+`rt-test.js`（`--rttest`/`--soak`）、`selftest-core.js`（`npm test`），以及 `main.js` / `package.json` /
+`src/js/api.js` 里对应的入口：`--mock`（演示数据）、`--smoke`（DOM 断言）、`--restore-probe`（登录态探针）、
+内置演示数据（浏览器直接打开 `src/index.html` 现在明确报错，不再伪造数据）。
+连核心层 253 项 `npm test` 也删了 —— 它本身不造假，但同样是"自动绿灯"，留着就会被当成"测过了"。
+
+**为什么删**：这几条线要离线跑就必须自带一个**假面板**和**假账号**（`ui-tester@example.com` /
+`rt-tester@example.com`）。假面板的响应形状是照我们自己的理解写的，于是它只能证明"自洽"，
+给不出"能用"的结论 —— 真实代价是 A-22：建工单我们发 `content`，假面板收得下（绿），
+真面板按 Android 契约只认 `message`，一建单就是空工单（红）。
+**一个会给错安全感的绿灯，比没有绿灯更贵。**
+
+**教训（比"删测试"这件事本身重要）**：
+- 判断一条自动线值不值钱，看它**是否会因为"我方理解错了"而天然绿**。纯函数、配置组装、
+  "把真内核拉起来读回一次"这类不依赖外部约定的断言才是安全的；凡是"我们自己造一个假对面来对话"的，
+  都要在断言旁边标注它是自洽检查，不能进验收。
+- 删测试线时**要连入口一起删干净**（`main.js` 的早退分支、`package.json` 的 scripts 与 `build.files`、
+  `build-portable.ps1` 里的自检步骤、`DEVNOTES` / `README` 的命令表），
+  否则会留下"文档说能跑、其实文件没了"的坑。
+- **删完必须立刻验证应用还能起来**：这次删掉 `main.js` 三个分支与 `api.js` 的数据层兜底之后，
+  真启动一次（`npm start`）确认日志只有一条 `WARN siteInfo failed: 尚未配置面板地址`（干净数据目录的正常提示）、
+  `ERROR` 计数为 0 —— 删测试代码也是改产品代码，同样要验。
+
+**E-11 自检自己"点空了"：坐标和命中判定分两次跨进程取，中间被 `render()` 换掉**
+
+现象：界面自检里点「我的页 → 退出登录」，诊断显示"坐标命中就是它 = true"，
+但点完 `route` 变成了 `home`、确认框没出来 —— 看着像产品的点击绑定坏了。
+
+真因在自检自己身上：`realClick()` 先一次 `executeJavaScript` 取中心坐标，再另一次取
+`elementFromPoint` 做命中判定，然后才 `sendInputEvent`。**这中间隔着跨进程往返**，
+只要页面在这期间 `render()` 过一次（本应用很多地方异步重绘），坐标就已经过期，
+点下去落在别的元素上。诊断信息之所以"看起来正常"，是因为它也是**在点击之前**量的。
+
+修法：把「`scrollIntoView` + 取坐标 + `elementFromPoint` 命中判定」放进**同一次** `executeJavaScript`，
+最多重试 3 次；并且装一个捕获阶段的 `mousedown`/`click` 记录器（`window.__clickLog`），
+失败时把"到底是谁收到了这次点击"打出来。修完同一处一次通过（`down SPAN | 退出登录`）。
+
+教训：**自检里任何"测量 → 动作"的两步操作，都要问一句"中间页面会不会变"。**
+能合成一次执行的，就不要分两次。
+
+**E-12 定位"面板慢"：先给请求分段计时，别猜**
+
+真面板上出现 `get_traffic 15~32 秒`。要判断"是面板慢、是 DNS/TLS 慢、还是主进程被同步调用堵住"，
+靠猜没用。给 `panel/client.js` 的 `request()` 挂上 `req.on('socket')` 的分段计时
+（`lookup`/`connect`/`secureConnect`/`reused` + 响应到达的 `ttfb`），超过 2000ms 打一行
+`panel slow GET /user/xxx 19051ms dns=.. conn=.. tls=.. ttfb=..`。
+
+结果：面板本身**一点都不慢**（`/user/stat/getTrafficLog` 串行 3 次 344/358/369ms，
+10 个接口串行合计 3.6 秒、并发 10 路 1.1 秒），而 `panel slow` 一条都没有 ——
+说明那 15~32 秒是我们**自己并发重复查询**把面板压出来的（见 A-25）。
+
+教训：**"慢"这类问题，第一件事是把时间拆开。**拆不开就只能靠猜，猜出来的结论往往是错的
+（我一度怀疑是 mihomo 吃满 CPU 饿死 Node，实测本机 16 逻辑核，直接排除）。
+
+**E-13 界面自检必须自己登录、自己跑，不能让用户代劳**
+
+`scripts/ui-test.js` 的第 1 段是"先用界面把旧会话退掉，再用真账号从登录页登进去"。
+这样每次跑都从"干净未登录"开始，测的是用户真会走的那条路（登录 → 拉订阅 → 连接），
+而不是"我本地已经登录好了，点两下看看"。
+用户为此明确纠正过一次：**测试账号是给我测试用的，不是让用户自己登录的**；
+界面层的 bug 必须我自己测完修完，再交给他做体验调整。
+
 ---
 
 ### F. 本机环境 / 工具链
 
 | 坑 | 处理 |
 | --- | --- |
-| `execute` 里用 `start` 拉起 GUI 程序会一直等进程退出，被下一条消息打断判定为"未完成" | 用 `powershell Start-Process -Wait`，或让程序自己退出（`--smoke` / `--doctor`） |
+| `execute` 里用 `start` 拉起 GUI 程序会一直等进程退出，被下一条消息打断判定为"未完成" | 用 `powershell Start-Process -Wait`，或让程序自己退出 |
 | GUI 子系统的 exe 不挂控制台，直接跑拿不到输出 | 输出重定向到文件再读 |
 | 控制台是 GBK，Node/Python 打印中文会 `UnicodeEncodeError` | 结果写 UTF-8 文件，再用 `read_file` 读 |
 | `cmd` 用 `&&` 串多条命令有时整条返回空 | 关键命令分开执行 |
@@ -747,36 +991,36 @@ npm run core                  # 拉 mihomo + wintun 到 core/
 npm run geo                   # 规则库到 resources/geo/（优先用同仓库 Android assets）
 
 # 开发
-npm run mock                  # 演示数据，不连内核
-npm start                     # 真实模式
+npm start                     # 真实模式（唯一的运行方式）
 
-# 自检
-npm test                      # 核心层 158 项（纯 Node）
-npm run test:e2e              # 端到端 83 项（起真 mihomo + 假面板 + 真流量）
-npm run test:e2e -- --sysproxy  # 连系统代理一起验（写 HKCU 并精确还原）
-node_modules\electron\dist\electron.exe . --uitest        # 界面 76 项
-node_modules\electron\dist\electron.exe . --rttest        # 运行时功能测试 63 项（真界面点 + 内核回读）
-node_modules\electron\dist\electron.exe . --rttest --soak=20   # 上面这套 + 20 分钟浸泡（长后台）
+# 真面板联调（要真账号；密码只在命令行给一次，不写进任何文件）
+node_modules\electron\dist\electron.exe scripts\real-test.js `
+    --panel=https://app.pinxiaoche.top --email=<测试账号> --password=<口令>
+# 或者直接用已经登录好的那份 data（凭据是 DPAPI 加密的，拷一份到临时目录就能用）
+copy <成品包目录>\data <临时目录>\data
+node_modules\electron\dist\electron.exe scripts\real-test.js --restore --data=<临时目录>
 
-# 打包
+# 真面板界面自检（开真窗口真点；用独立 data，不动你日常登录的那份）
+Remove-Item Env:ELECTRON_RUN_AS_NODE
+Start-Process -FilePath .\node_modules\electron\dist\electron.exe -ArgumentList `
+  '.','--uitest','--panel=https://app.pinxiaoche.top','--email=<测试账号>','--password=<口令>','--uitest-data=E:\AI\_uitest_data'
+# 报告：E:\AI\_uitest_data\data\uitest-report.txt（读时加 -Encoding UTF8）
+
+# 打包（**必须先得到用户明确同意**）
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 ```
 
-成品包在别人机器上排查：
+> 本机注意：`npx` / `npm.ps1` 被执行策略禁止，打包要直接调
+> `node node_modules\electron-builder\cli.js --win --x64`，并设
+> `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror；
+> 跑 Electron 前记得 `Remove-Item Env:ELECTRON_RUN_AS_NODE`（本 harness 会带这个变量）。
 
-```
-Polaris.exe --doctor            端到端自检，报告 → data/doctor-report.txt
-Polaris.exe --doctor --sysproxy 连系统代理一起验
-Polaris.exe --uitest            界面驱动自检，报告 → data/uitest-report.txt
-Polaris.exe --rttest            运行时功能测试，报告 → data/rt-report.txt
-Polaris.exe --rttest --soak=20  再加 20 分钟浸泡，逐分钟采样 → data/rt-samples.jsonl
-Polaris.exe --mock              演示数据启动，看界面
-Polaris.exe --smoke             起窗口 + DOM 断言，结果 → data/smoke-result.json
-```
+别人机器上出了问题怎么查（**自检开关都已删除，只剩日志**）：
 
-> `--rttest` 会真的连接内核、挂系统代理、切分流组、杀内核进程做自愈演练，
-> 并在收尾时把系统代理还原成"进入测试前的值"；`--keep` 可以留连接不还原（调试用）。
-> 它跑的是**真界面 + 真内核 + 假面板**（面板是本地 mock，所以不需要账号）。
+> 排查顺序：先看 `data/logs/polaris.log`（每次启动、内核起停、面板请求、
+> 系统代理改写都记在这里），再看 `data/config.yaml`（内核真正吃进去的配置），
+> 最后看 `data/profiles/`（面板下发的订阅原文）。
+
 
 演练自我替换（**会覆盖当前目录，务必先整个拷一份再跑**）：
 
@@ -805,8 +1049,14 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
 
 按优先级：
 
-1. **真实面板联调**（需要面板地址 + 测试账号）
-   拿一份真实面板，跑 `npm run test:e2e` 的等价流程，重点核对 `panel/client.js` 里的字段兜底有没有兜到。有偏差就直接改映射表。
+1. ~~真实面板联调~~ ✅ 已打通（数据层 `scripts/real-test.js` 39-40 项、界面层 `scripts/ui-test.js` 73 项，都全绿）。
+   还没覆盖到的真面板路径：**注册/找回密码/改密码**（会真改账号，没敢跑）、**下单与支付**
+   （`/user/order/getPaymentMethod` 在真面板返回空数组 → 购买套餐页会没有支付方式可选，
+   这是面板侧配置问题，不是客户端 bug；真面板还提示走 Telegram 下单）、
+   **工单回复**（建单验过了，回复没验）、**礼品卡兑换**（要真卡密）。
+   界面层还没覆盖的：**设置页的每一项都点一遍**（现在只验了「分流与订阅」段存在）、
+   **弹窗的键盘操作**（Esc 关闭、Tab 顺序）、**托盘菜单**（收进托盘后右键各条目）、
+   **长列表性能**（要一份几百节点的订阅）、**多屏 DPI 缩放**、**TUN 下的同一套走查**。
 
 2. **TUN 模式实机验证**（需要用户同意，会临时接管网络栈）
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。
@@ -825,11 +1075,11 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
      注意 `gs_*` 是 domain/`gp_*` 是 ipcidr/`acl_*` 是 classical，behavior 不能写错。
    - 自定义组只能选**节点选择 / 直连 / 拦截**三个出口，不能指向另一个策略组（避免用户写出环）。
 
-5. **补 UI 层面的更多断言**
-   目前 91 项（含窄窗口 1100px 与两套主题的对比度）。还可以补：长列表性能（要一份几百节点的订阅）、
-   键盘可达性（Tab 顺序、Esc 关弹窗）、多屏 DPI 缩放。
-   运行时测试（`--rttest`，63 项）已经把"点下去之后内核真的变了"这一层补齐了；
-   下一层可以补"真实面板 + 真机 TUN"下的同一套断言。
+5. **订阅里带的 `global-client-fingerprint` 会打一行 error 日志**（已发现，等用户定）
+   mihomo v1.19 已移除这个顶层键，面板下发的订阅里还带着它，于是每次启动内核都打
+   `level=error msg="The \`global-client-fingerprint\` configuration is removed, please set \`client-fingerprint\` directly on the proxy instead"`。
+   **功能不受影响**（只是噪音）。修法是一行：在 `electron/core/sanitizer.js` 的 `dropKeys` 里加上这个键
+   （和已经丢掉的 `geox-url`/`external-controller`/`secret` 一样）。**已问用户，等答复再动**。
 
 6. **浅色主题的三级文字对比度（设计决策，非代码问题）**
    `design.css` 的 `--text3: #8e8e93` 在 `--bg: #f5f5f7` 上实测 **2.99:1**，低于 WCAG AA 的 4.5:1。

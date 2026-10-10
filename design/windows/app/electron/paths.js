@@ -41,6 +41,19 @@ let portable = false;
 function root() {
   if (cachedRoot) return cachedRoot;
 
+  // 逃生口：POLARIS_DATA_DIR 可以把数据目录指到别处。
+  // 自检要拿真实用户的会话跑、但又不能动他那份 data 时靠它；
+  // 正常用户不设这个变量，行为与以前完全一样。
+  const forced = (process.env.POLARIS_DATA_DIR || '').trim();
+  if (forced) {
+    if (canWrite(path.join(forced, '.polaris-write-probe'))) {
+      try { fs.rmSync(path.join(forced, '.polaris-write-probe'), { recursive: true, force: true }); } catch (_) {}
+      cachedRoot = forced;
+      portable = IS_PACKAGED;
+      return cachedRoot;
+    }
+  }
+
   if (IS_PACKAGED) {
     const exeDir = path.dirname(electronApp.getPath('exe'));
     const probe = path.join(exeDir, '.polaris-write-probe');

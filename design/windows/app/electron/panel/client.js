@@ -65,10 +65,22 @@ function request(method, apiPath, { body, raw, timeoutMs = 20000, noAuth = false
   if (!noAuth && session.token) headers.Authorization = session.token;
 
   return new Promise((resolve, reject) => {
+    // 面板请求的分段计时：慢的时候必须能一眼看出慢在 DNS / TCP / TLS / 面板本身，
+    // 否则只能靠猜（实测曾出现单个 360ms 的接口在应用里耗时 15-30s）。
+    const t0 = Date.now();
+    const ph = {};
     const req = mod.request(url, { method, headers, timeout: timeoutMs }, (res) => {
+      ph.ttfb = Date.now();
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', async () => {
+        const total = Date.now() - t0;
+        if (total > 2000) {
+          log.warn(`panel slow ${method} ${apiPath} ${total}ms `
+            + `dns=${ph.dns ? ph.dns - t0 : '-'} conn=${ph.conn ? ph.conn - t0 : '-'} `
+            + `tls=${ph.tls ? ph.tls - t0 : '-'} ttfb=${ph.ttfb ? ph.ttfb - t0 : '-'}`
+            + `${ph.reused ? ' reused-socket' : ''}`);
+        }
         const text = Buffer.concat(chunks).toString('utf8');
         if (res.statusCode === 401 || res.statusCode === 403) {
           reject(new PanelError('登录已失效，请重新登录', 'auth'));
@@ -93,6 +105,15 @@ function request(method, apiPath, { body, raw, timeoutMs = 20000, noAuth = false
     });
     req.on('timeout', () => req.destroy(new PanelError('面板请求超时', 'timeout')));
     req.on('error', (e) => reject(new PanelError(e.message || '网络错误', 'net')));
+    req.on('socket', (s) => {
+      if (s.connecting) {
+        s.once('lookup', () => { ph.dns = Date.now(); });
+        s.once('connect', () => { ph.conn = Date.now(); });
+        s.once('secureConnect', () => { ph.tls = Date.now(); });
+      } else {
+        ph.reused = Date.now();
+      }
+    });
     if (payload) req.write(payload);
     req.end();
   });
@@ -210,37 +231,67 @@ const isAuthed = () => !!session.token;
 async function siteInfo() {
   try {
     const cfg = await get('/guest/comm/config', { noAuth: true });
+    const appUrl = String(pick(cfg, ['app_url', 'appUrl', 'home_url', 'url'], session.panelUrl));
+    // 面板通常**没有**站点名字段（真机实测 app.pinxiaoche.top 的 /guest/comm/config 里
+    // 只有 app_description/app_url/logo）。空着会让调用方把整份 siteInfo 丢掉，所以退回域名。
+    let appName = String(pick(cfg, ['app_name', 'appName', 'site_name', 'title', 'name'], ''));
+    if (!appName) {
+      try { appName = new URL(appUrl).hostname; } catch (_) { appName = session.panelUrl || ''; }
+    }
     return {
-      appName: String(pick(cfg, ['app_name', 'appName', 'site_name', 'name'], '')),
+      appName,
       appDescription: String(pick(cfg, ['app_description', 'appDescription', 'description', 'sub_name'], '')),
-      appUrl: String(pick(cfg, ['app_url', 'appUrl', 'home_url', 'url'], session.panelUrl)),
+      appUrl,
       telegramUrl: String(pick(cfg, ['telegram_url', 'telegramUrl'], '')),
       icp: String(pick(cfg, ['icp', 'icp_url'], '')),
     };
   } catch (e) {
     log.warn('siteInfo failed:', e.message);
-    return { appName: '', appDescription: '', appUrl: session.panelUrl, telegramUrl: '', icp: '' };
+    let host = '';
+    try { host = new URL(session.panelUrl || '').hostname; } catch (_) { host = ''; }
+    return { appName: host, appDescription: '', appUrl: session.panelUrl, telegramUrl: '', icp: '' };
   }
 }
 
 async function userInfo() {
-  const u = await get('/user/info');
-  const transferEnable = Number(pick(u, ['transfer_enable', 'transferEnable'], 0)) || 0;
-  const uUsed = Number(pick(u, ['u', 'used', 'used_traffic'], 0)) || 0;
-  const planName = pick(u, ['plan', 'plan_name', 'planName'], '未订阅');
-  const expiredAt = toTs(pick(u, ['expired_at', 'expire_at', 'expiredAt'], 0));
-  const plan = (u && typeof u.plan === 'object' && u.plan) ? u.plan : null;
+  // 累计流量、套餐对象、到期时间都在 /user/getSubscribe 里：/user/info **没有 u/d、
+  // 也没有 plan 对象**（只有 plan_id / transfer_enable / expired_at）。
+  // 旧代码只读 /user/info，于是「我的」页永远是"未订阅 / 已使用 0 GB"——真实面板实测。
+  const [u, sub] = await Promise.all([
+    get('/user/info').catch(() => ({})),
+    get('/user/getSubscribe').catch(() => ({})),
+  ]);
+  const plan = (sub && typeof sub.plan === 'object' && sub.plan)
+    || (u && typeof u.plan === 'object' && u.plan) || null;
+  const transferEnable = Number(pick(sub, ['transfer_enable'], 0))
+    || Number(pick(u, ['transfer_enable', 'transferEnable'], 0)) || 0;
+  const upUsed = Number(pick(sub, ['u'], pick(u, ['u', 'used', 'used_traffic'], 0))) || 0;
+  const downUsed = Number(pick(sub, ['d'], pick(u, ['d', 'download'], 0))) || 0;
+  const expiredAt = toTs(pick(sub, ['expired_at'], pick(u, ['expired_at', 'expire_at', 'expiredAt'], 0)));
+  const planName = (plan && plan.name)
+    || String(pick(u, ['plan_name', 'planName'], '')) || String(pick(sub, ['plan_name'], ''));
+  // 总量优先用字节数换算（getSubscribe.transfer_enable 是字节），退回套餐的 GB 值
+  const totalGb = transferEnable > 0
+    ? transferEnable / (1024 ** 3)
+    : Number(pick(plan || {}, ['transfer_enable'], 0)) || 0;
+  const round2 = (n) => Math.round(n * 100) / 100;
   return {
-    email: String(pick(u, ['email'], session.email)),
+    email: String(pick(u, ['email'], pick(sub, ['email'], session.email))),
     balance: Number(pick(u, ['balance'], 0)) || 0,
-    plan_name: String(planName),
-    total: Math.round(transferEnable / (1024 ** 3) * 100) / 100,
-    used: Math.round(uUsed / (1024 ** 3) * 100) / 100,
+    plan_name: String(planName || '未订阅'),
+    total: round2(totalGb),
+    // 面板按双向计费（u + d），只算上传会少一半
+    used: round2((upUsed + downUsed) / (1024 ** 3)),
+    // 字节原值也带上：面板按 GB 两位小数取整，946 KB 会显示成 0.00 GB，
+    // 于是「我的」页会写成"已使用 0 GB"（用户报过），界面改用 fmt.bytes 渲染。
+    used_bytes: upUsed + downUsed,
+    total_bytes: transferEnable,
     expire: dateOnly(expiredAt),
     expired_at: expiredAt,
     transfer_enable: transferEnable,
-    u: uUsed,
-    d: Number(pick(u, ['d', 'download'], 0)) || 0,
+    next_reset_at: toTs(pick(sub, ['next_reset_at'], 0)),
+    u: upUsed,
+    d: downUsed,
     ...(plan ? { plan } : {}),
   };
 }
@@ -306,31 +357,75 @@ function requestAbsolute(url) {
 /* 业务数据                                                            */
 /* ------------------------------------------------------------------ */
 
+/** 面板的周期价字段（单位：分）。没有通用 price 字段，价格必须按周期取。 */
+const PERIODS = [
+  ['month_price', '月'], ['quarter_price', '季'], ['half_year_price', '半年'],
+  ['year_price', '年'], ['two_year_price', '两年'], ['three_year_price', '三年'],
+  ['onetime_price', '一次性'],
+];
+
+function yuan(cents) {
+  const n = Number(cents);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n) / 100;
+}
+
+function planFeats(p) {
+  const out = [];
+  const gb = Number(pick(p, ['transfer_enable'], 0)) || 0;
+  if (gb > 0) out.push(gb >= 1024 ? Math.round(gb / 1024 * 10) / 10 + ' TB 流量' : gb + ' GB 流量');
+  const dev = Number(pick(p, ['device_limit'], 0)) || 0;
+  if (dev > 0) out.push(dev + ' 台设备同时在线');
+  const raw = String(pick(p, ['content'], '') || '').replace(/<[^>]+>/g, '');
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.replace(/[#*`>~\-[\]()]/g, '').trim();
+    if (t && !/^https?:/i.test(t) && out.length < 4) out.push(t.slice(0, 42));
+  }
+  return out.slice(0, 4);
+}
+
 async function plans() {
   const list = await get('/user/plan/fetch');
-  return (Array.isArray(list) ? list : []).map((p) => ({
-    id: String(pick(p, ['id'], '')),
-    name: String(pick(p, ['name', 'title'], '')),
-    price: Number(pick(p, ['price'], 0)) || 0,
-    currency: String(pick(p, ['currency'], 'CNY')),
-    transfer_enable: Number(pick(p, ['transfer_enable'], 0)) || 0,
-    month_price: Number(pick(p, ['month_price'], 0)) || 0,
-    unit: String(pick(p, ['period'], '')),
-    sold: Number(pick(p, ['sold'], 0)) || 0,
-    stock: Number(pick(p, ['stock'], -1)),
-    hot: !!p.hot || Number(pick(p, ['sort'], 0)) >= 999,
-    feats: [].concat(pick(p, ['content'], []) || []).map((x) => String(x).replace(/<[^>]+>/g, '').trim()).filter(Boolean).slice(0, 3),
-  }));
+  return (Array.isArray(list) ? list : []).map((p) => {
+    const periods = PERIODS
+      .filter(([k]) => Number(p[k]) > 0)
+      .map(([k, label]) => ({ key: k, label, price: yuan(p[k]) }));
+    const first = periods[0] || { key: 'month_price', label: '月', price: 0 };
+    return {
+      id: String(pick(p, ['id'], '')),
+      name: String(pick(p, ['name', 'title'], '')),
+      price: first.price,
+      period: first.key,
+      unit: first.label,
+      periods,
+      currency: String(pick(p, ['currency'], 'CNY')),
+      transfer_enable: Number(pick(p, ['transfer_enable'], 0)) || 0,
+      device_limit: Number(pick(p, ['device_limit'], 0)) || 0,
+      sold: Number(pick(p, ['sold'], 0)) || 0,
+      stock: Number(pick(p, ['stock'], -1)),
+      hot: !!p.hot || Number(pick(p, ['sort'], 0)) >= 999,
+      sell: p.sell === undefined ? true : !!p.sell,
+      renew: !!p.renew,
+      feats: planFeats(p),
+    };
+  });
 }
 
 async function orders() {
   const list = await get('/user/order/fetch');
   return (Array.isArray(list) ? list : []).map((o) => {
     const status = String(pick(o, ['status'], ''));
+    const plan = (o && typeof o.plan === 'object' && o.plan) ? o.plan : null;
+    // 套餐名在**嵌套的** o.plan.name 里，金额字段是 total_amount（分）——
+    // 旧代码读平铺的 name/amount，订单列表因此全是空白 + ¥0。
+    const amount = yuan(pick(o, ['total_amount', 'amount', 'price'], 0));
+    const periodLabel = (PERIODS.find(([k]) => k === pick(o, ['period'], '')) || [, ''])[1];
     return {
       no: String(pick(o, ['trade_no', 'order_no', 'id'], '')),
-      name: String(pick(o, ['plan_name', 'name', 'description'], '')),
-      amount: String(pick(o, ['amount', 'price'], '0')),
+      name: String((plan && plan.name) || pick(o, ['plan_name', 'name', 'description'], '')),
+      amount: amount ? String(amount) : '0',
+      period: String(pick(o, ['period'], '')),
+      period_label: periodLabel,
       date: dateTime(toTs(pick(o, ['create_at', 'created_at'], 0))),
       status: orderStatus(status),
       raw_status: status,
@@ -387,6 +482,19 @@ async function checkoutUrl(tradeNo, method) {
   return `${session.panelUrl}${API_PREFIX}/user/order/checkout?trade_no=${encodeURIComponent(tradeNo)}&payment_id=${encodeURIComponent(method)}`;
 }
 
+/** 工单正文：Xboard 的 XboardTicketData.message 是"消息数组"（安卓端口径），不是 content 字符串 */
+function ticketContent(t) {
+  const raw = t && Object.prototype.hasOwnProperty.call(t, 'message') ? t.message : null;
+  if (typeof raw === 'string' && raw) return raw;
+  if (Array.isArray(raw)) {
+    const texts = raw
+      .map((m) => (typeof m === 'string' ? m : String(pick(m || {}, ['message', 'content'], ''))))
+      .filter(Boolean);
+    if (texts.length) return texts.join('\n\n');
+  }
+  return String(pick(t || {}, ['content'], ''));
+}
+
 async function tickets() {
   const list = await get('/user/ticket/fetch');
   return (Array.isArray(list) ? list : []).map((t) => ({
@@ -395,8 +503,8 @@ async function tickets() {
     date: dateTime(toTs(pick(t, ['created_at', 'create_at'], 0))),
     updated: dateTime(toTs(pick(t, ['updated_at', 'update_at'], 0))),
     status: ticketStatus(t),
-    level: String(pick(t, ['level'], 'low')),
-    content: String(pick(t, ['content'], '')),
+    level: String(pick(t, ['level'], 0)),
+    content: ticketContent(t),
   }));
 }
 
@@ -408,19 +516,46 @@ function ticketStatus(t) {
   return 'pending';
 }
 
-async function createTicket(subject, content, level = 'low') {
-  const r = await post('/user/ticket/save', { subject, content, level });
+/**
+ * 新建工单。请求体字段名照安卓端 XboardCreateTicketRequest(subject, level: Int, message) ——
+ * 发 content 会建出一条空工单。level：0 低 / 1 中（安卓默认）/ 2 高。
+ */
+async function createTicket(subject, content, level = 1) {
+  const n = Number(level);
+  const r = await post('/user/ticket/save', {
+    subject,
+    message: String(content || ''),
+    level: Number.isFinite(n) && n >= 0 && n <= 2 ? Math.round(n) : 1,
+  });
   return { no: String(pick(r, ['id'], '')), ok: true };
 }
 
 async function invite() {
   const i = await get('/user/invite/fetch');
+  // 真机实测形状：{codes:[{id,user_id,code,status,pv,created_at}], stat:[...]} ——
+  // 没有平铺的 invite_code / invite_url / invite_num，旧映射因此全是空。
+  // stat 的下标含义照安卓端 XboardInviteData.toDomain()（XboardDto.kt:218）：
+  //   [0] 已注册人数 [1] 累计佣金(分) [2] 待确认佣金(分) [3] 佣金比例(%) [4] 可提现余额(分)
+  const codes = Array.isArray(i.codes) ? i.codes : [];
+  const first = codes[0];
+  const code = typeof first === 'string' ? first : String(pick(first || {}, ['code', 'invite_code'], ''));
+  const stat = Array.isArray(i.stat) ? i.stat.map((n) => Number(n) || 0) : [];
+  const at = (n) => stat[n] || 0;
+  const fen = (v) => (Number(v) || 0) / 100; // 分 → 元
   return {
-    code: String(pick(i, ['invite_code', 'code'], '')),
-    link: String(pick(i, ['invite_url', 'link'], '')),
-    rate: Number(pick(i, ['commission_rate', 'rate'], 0)) || 0,
-    balance: Number(pick(i, ['commission_balance', 'balance'], 0)) || 0,
-    invited: Number(pick(i, ['invite_num', 'invited_count'], 0)) || 0,
+    code,
+    codes: codes.map((c) => (typeof c === 'string'
+      ? { code: c, pv: 0, created_at: 0 }
+      : { code: String(pick(c, ['code'], '')), pv: Number(pick(c, ['pv'], 0)) || 0, created_at: toTs(pick(c, ['created_at'], 0)) })),
+    link: String(pick(i, ['invite_url', 'link'], ''))
+      || (code ? `${session.panelUrl}${API_PREFIX}/#/register?code=${encodeURIComponent(code)}` : ''),
+    registered: at(0),
+    commission: fen(at(1)),
+    pending: fen(at(2)),
+    rate: at(3),
+    balance: fen(at(4)),
+    invited: at(0),
+    stat,
   };
 }
 
@@ -451,16 +586,25 @@ async function redeemGift(code) {
 
 async function notices() {
   const list = await get('/user/notice/fetch?current=1&pageSize=50');
-  return (Array.isArray(list) ? list : []).map((n) => ({
-    id: String(pick(n, ['id'], '')),
-    title: String(pick(n, ['title'], '')),
-    date: dateOnly(toTs(pick(n, ['created_at', 'create_at'], 0))),
-    body: String(pick(n, ['content'], '')),
-    unread: !n.read_at,
-  }));
+  return (Array.isArray(list) ? list : []).map((n) => {
+    // 真实面板的公告**没有已读字段**（抓包确认：只有 id/sort/title/content/show/
+    // created_at/updated_at）。旧代码写 `unread: !n.read_at` —— 字段不存在时
+    // 恒为 true，于是"我的"页永远挂着"2 条未读"。安卓端的 Notice 模型里
+    // 压根没有已读概念，这里也对齐：面板给了已读状态才判断。
+    const readAt = n.read_at;
+    return {
+      id: String(pick(n, ['id'], '')),
+      title: String(pick(n, ['title'], '')),
+      date: dateOnly(toTs(pick(n, ['created_at', 'create_at'], 0))),
+      body: String(pick(n, ['content'], '')),
+      unread: readAt === undefined ? false : !readAt,
+    };
+  });
 }
 
 async function trafficLog() {
+  // 一次刷新里流量页会问两次（区间汇总 + 明细列表），加个短缓存别把面板打两遍
+  if (trafficCache.rows && Date.now() - trafficCache.at < 15000) return trafficCache.rows;
   // 只有 Xboard 提供这个接口。不再按 backend 标记短路 —— 面板分支五花八门，
   // 直接试一次，404 就当没有（返回空数组），不要让标记把人挡住。
   try {
@@ -473,16 +617,50 @@ async function trafficLog() {
       log.warn('trafficLog 返回了非数组，已忽略');
       return [];
     }
-    return arr.map((r) => ({
-      date: String(pick(r, ['date', 'created_at'], '')),
-      upload: Number(pick(r, ['u', 'upload'], 0)) || 0,
-      download: Number(pick(r, ['d', 'download'], 0)) || 0,
-      total: Number(pick(r, ['total'], 0)) || 0,
-    }));
+    trafficCache.rows = aggregateTrafficLog(arr);
+    trafficCache.at = Date.now();
+    return trafficCache.rows;
   } catch (e) {
     log.warn('trafficLog unavailable:', e && e.message);
     return [];
   }
+}
+
+/** 站点流量明细的短缓存：一次界面刷新里会被问两次（区间汇总 + 明细列表） */
+const trafficCache = { at: 0, rows: null };
+
+/**
+ * 按天聚合站点流量明细。
+ * 真机实测（app.pinxiaoche.top，Xboard）：一行 = 一天里的一个计费倍率，
+ * 同一天有多行；字段是 `{d, u, record_at(秒，当地零点), server_rate}`，
+ * **没有** date / upload / download / total。旧代码直接读那些不存在的字段，
+ * 于是「面板流量明细」永远是一列空白日期 + 0 B。
+ *
+ * server_rate **不参与求和**：实测按天原始求和与 /user/getSubscribe 的 u/d 完全一致
+ * （22.795 GB / 104.976 GB 对得上），乘倍率会翻倍，与面板自己显示的"已用流量"不符。
+ */
+function aggregateTrafficLog(arr) {
+  // 面板可能返回非数组（裸对象/字符串/null）——不设防会 TypeError 打穿到渲染层
+  if (!Array.isArray(arr)) return [];
+  const byDay = new Map();
+  for (const r of arr) {
+    if (!r) continue;
+    const rawTs = pick(r, ['record_at', 'date', 'created_at'], 0);
+    let sec = 0;
+    if (typeof rawTs === 'string' && !/^\d+$/.test(rawTs)) {
+      const d = Date.parse(rawTs);
+      sec = Number.isFinite(d) ? Math.floor(d / 1000) : 0;
+    } else {
+      sec = Number(rawTs) || 0;
+      if (sec > 1e12) sec = Math.floor(sec / 1000);
+    }
+    const cur = byDay.get(sec) || { date: dateOnly(sec * 1000), ts: sec, upload: 0, download: 0, total: 0 };
+    cur.upload += Number(pick(r, ['u', 'upload'], 0)) || 0;
+    cur.download += Number(pick(r, ['d', 'download'], 0)) || 0;
+    cur.total = cur.upload + cur.download;
+    byDay.set(sec, cur);
+  }
+  return [...byDay.values()].sort((a, b) => b.ts - a.ts);
 }
 
 async function changePassword(oldPassword, newPassword) {
@@ -533,4 +711,7 @@ module.exports = {
   tickets, createTicket, invite, giftHistory, redeemGift, notices, trafficLog,
   changePassword, sendEmailCode, forgotPassword, registerConfig,
   normalizePanelUrl,
+  // 纯函数，导出给自检用（把面板原始行按天聚合 / 工单正文兜底）
+  aggregateTrafficLog,
+  ticketContent,
 };

@@ -9,9 +9,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "mock": "electron . --mock",
-    "test": "node scripts/selftest-core.js",
-    "test:e2e": "electron scripts/selftest-e2e.js",
+    "uitest": "electron . --uitest",
     "core": "python scripts/fetch-core.py",
     "geo": "python scripts/fetch-geo.py",
     "pack": "electron-builder --win --x64 --dir",
@@ -39,11 +37,8 @@
     "files": [
       "electron/**/*",
       "src/**/*",
-      "scripts/selftest-core.js",
-      "scripts/selftest-e2e.js",
-      "scripts/selftest-ui.js",
-      "scripts/rt-test.js",
-      "scripts/mock-panel.js",
+      "scripts/real-test.js",
+      "scripts/ui-test.js",
       "package.json",
       "node_modules/js-yaml/**/*",
       "node_modules/ws/**/*"

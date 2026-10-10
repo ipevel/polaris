@@ -20,12 +20,9 @@ if (-not (Test-Path 'core\mihomo.exe')) {
   throw "缺少 core\mihomo.exe。先跑 scripts\fetch-core.py 拉内核（见 README）。"
 }
 
-Write-Host '== 核心层自检 ==' -ForegroundColor Cyan
-node scripts\selftest-core.js
-if ($LASTEXITCODE -ne 0) { throw '核心层自检失败，已中止打包' }
-
+# 注意：打包前请确认用户已经明确同意（见 docs/DEVNOTES.md）。
 Write-Host '== 打包 ==' -ForegroundColor Cyan
-npx electron-builder --win --x64
+node node_modules\electron-builder\cli.js --win --x64
 if ($LASTEXITCODE -ne 0) { throw '打包失败' }
 
 $ver = (Get-Content package.json -Raw | ConvertFrom-Json).version

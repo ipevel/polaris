@@ -72,6 +72,8 @@ body {
 .node-row,
 .opt,
 .acc-head,
+[data-acc],
+[data-nav-back],
 [data-nav],
 [data-click],
 [data-group],

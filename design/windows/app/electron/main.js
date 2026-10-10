@@ -9,6 +9,21 @@ const paths = require('./paths');
 const log = require('./logger');
 const store = require('./store');
 
+/** 读 `--name=value` 或 `--name value` 两种写法 */
+function argOf(name) {
+  const eq = process.argv.find((a) => a.startsWith(name + '='));
+  if (eq) return eq.slice(name.length + 1);
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? (process.argv[i + 1] || '') : '';
+}
+
+// 界面自检要"用真账号登录，但别弄脏用户自己的登录态"，所以允许把数据根目录指到别处。
+// **必须在这里设**：下面第一件事就是 paths.root()，它会把结果缓存住，之后再改就晚了。
+if (process.argv.includes('--uitest')) {
+  const dir = argOf('--uitest-data');
+  if (dir) process.env.POLARIS_DATA_DIR = path.resolve(dir);
+}
+
 // Electron 自己的 userData / sessionData / cache 默认落在 %APPDATA%\Polaris ——
 // 便携应用不能这样。必须在 app ready 之前改到 data/ 下，否则"整目录拷走"只搬走了
 // 我们的数据，缓存还留在别人机器上（而且多个实例会抢同一个缓存目录报 EBUSY）。
@@ -27,7 +42,7 @@ const { buildTray, updateTray } = require('./tray');
 const pkg = require('../package.json');
 
 // 模块级可变状态。**必须声明在所有 `return` 分支之前**：
-// 下面 `--doctor` / `--updtest` 两个分支会在模块顶层 return，它们之后的
+// 下面 `--updtest` 分支会在模块顶层 return，它之后的
 // `let` 声明永远不会执行；而定时器/回调是在模块求值完才跑的，一旦那时去碰
 // 这些绑定就是 TDZ 崩（`Cannot access 'quitting' before initialization`），
 // 表现是主进程弹一个模态错误框卡死。曾经就是这么崩的，见 DEVNOTES A-10。
@@ -35,15 +50,7 @@ let mainWindow = null;
 let tray = null;
 let quitting = false;
 
-// 诊断模式：跑端到端自检（本地假面板 + 真实内核 + 真实系统代理），不受单实例锁影响。
-// 放在最前面 —— 正常启动的窗口/托盘/锁全部跳过。
-if (process.argv.includes('--doctor')) {
-  require('../scripts/selftest-e2e');
-  return;
-}
-
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
-const MOCK = process.argv.includes('--mock');
 
 // 自我替换演练：`Polaris.exe --updtest <zip 地址>`。
 // 下载 → 解压 → 写替换脚本 → 退出，由脚本覆盖安装目录并重启。
@@ -56,12 +63,6 @@ const MOCK = process.argv.includes('--mock');
 //         位置参数（那个 URL）之后再跟 `--switch value`，Electron 会在主进程起来之前就退出，
 //         实测 exit code -1、日志一个字都不写，排查起来极像"应用崩了"。
 if (process.argv.includes('--updtest')) {
-  const argOf = (name) => {
-    const eq = process.argv.find((a) => a.startsWith(name + '='));
-    if (eq) return eq.slice(name.length + 1);
-    const i = process.argv.indexOf(name);
-    return i >= 0 ? (process.argv[i + 1] || '') : '';
-  };
   const url = argOf('--updtest');
   const version = argOf('--updtest-version') || 'updtest';
   app.whenReady().then(async () => {
@@ -82,14 +83,18 @@ if (process.argv.includes('--updtest')) {
 }
 
 /* ---------- 单实例 ---------- */
+// 拿不到锁说明已经有一个 Polaris 在跑（同一个数据目录）。这里必须**彻底停住**：
+// 旧代码只调 app.quit() 就继续往下走，whenReady 一到照样 createWindow ——
+// 于是双击多少次就开多少个窗口，托盘里挤一排图标（用户实测报的 bug）。
+// 进程要退干净：quit() 是异步的，所以再用 return 把本模块剩下的注册全部跳过。
 if (!app.requestSingleInstanceLock()) {
   log.info('second instance detected, exit');
   app.quit();
-} else {
-  app.on('second-instance', () => {
-    showMain();
-  });
+  return;
 }
+app.on('second-instance', () => {
+  showMain();
+});
 
 /* ---------- 窗口 ---------- */
 function createWindow() {
@@ -111,8 +116,7 @@ function createWindow() {
     },
   });
 
-  const query = MOCK ? '?mock=1' : '';
-  win.loadFile(path.join(__dirname, '..', 'src', 'index.html'), { query: query ? { mock: '1' } : {} });
+  win.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
 
   win.once('ready-to-show', () => win.show());
 
@@ -189,150 +193,52 @@ app.whenReady().then(async () => {
   store.set('version', pkg.version);
   log.info('='.repeat(60));
   log.info(`Polaris ${pkg.version} start | packaged=${app.isPackaged} portable=${paths.isPortable()}`);
-  log.info(`root=${paths.root()} core=${paths.core()} mock=${MOCK}`);
+  log.info(`root=${paths.root()} core=${paths.core()}`);
 
-  registerCommands({ mock: MOCK });
+  // 登录态跨重启：凭据落在 data/credentials.dat（DPAPI 加密，只有本用户能解），
+  // 启动时读回来 —— 顺带让登录页能拿到站点名/公告。
+  // 旧实现里 restore() 定义了却**从来没有人调用**：文件只写不读，重启就得重新登录，
+  // 而且 session.panelUrl 一直是空的，启动时 siteInfo 必然报"尚未配置面板地址"（DEVNOTES A-20）。
+  if (require('./panel/client').restore()) log.info('panel session restored at boot');
+
+  registerCommands();
   tray = buildTray();
   mainWindow = createWindow();
 
+  // 界面自检：开真窗口、连真面板、用真账号登录、用真鼠标事件点。
+  // 和 real-test.js 的分工：那个只调 IPC（验数据层），这个专门验界面层
+  // （手风琴、返回键、按钮文案、页面显示的是不是面板真数据）。
+  if (process.argv.includes('--uitest')) runUiTest();
+
   app.on('activate', () => showMain());
 
-  // 界面驱动自检：真的去点界面（拖不动/最大化错位/点了没反应这类只有驱动才测得到）
-  if (process.argv.includes('--uitest')) {
-    const { run } = require('../scripts/selftest-ui');
-    setTimeout(async () => {
-      let result = { pass: 0, fail: 1, failures: ['界面自检未运行'], steps: [] };
-      const lines = [];
-      const log = (m) => { lines.push(m); console.log(m); };
-      try {
-        const win = mainWindow;
-        result = await run(win, { log });
-      } catch (e) {
-        result.failures.push(String((e && e.stack) || e));
-      }
-      try {
-        fs.mkdirSync(paths.data(), { recursive: true });
-        fs.writeFileSync(paths.file('uitest-report.txt'),
-          [`Polaris 界面自检 ${new Date().toISOString()}`,
-            `结果：${result.pass} 通过 / ${result.fail} 失败`,
-            result.failures.length ? '失败项：\n' + result.failures.map((f) => '  - ' + f).join('\n') : '失败项：无',
-            '', ...lines].join('\n'), 'utf8');
-      } catch (_) {}
-      quitting = true;
-      app.exit(result.fail ? 1 : 0);
-    }, 1200);
-  }
-
-  // 运行时功能测试：真界面操作 → 真 IPC → 真内核，每步都从内核回读校验。
-  // 开关要写成 --soak=N（位置参数放在开关后面会让 Electron 在主进程起来前静默退出，见 DEVNOTES A-13）
-  if (process.argv.includes('--rttest')) {
-    const { run } = require('../scripts/rt-test');
-    const soakArg = process.argv.find((a) => a.startsWith('--soak='));
-    const si = process.argv.indexOf('--soak');
-    const soakMinutes = Number(soakArg ? soakArg.split('=')[1] : (si >= 0 ? process.argv[si + 1] : 0)) || 0;
-    const keep = process.argv.includes('--keep');
-    setTimeout(async () => {
-      let result = { pass: 0, fail: 1, failures: ['运行时测试未运行'], steps: [], notes: [] };
-      const lines = [];
-      const reportPath = paths.file('rt-report.txt');
-      // 边跑边落盘：跑到一半卡住/被杀也能看到进度（stdout 在 GUI 进程里本来就看不见）
-      const log = (m) => {
-        lines.push(m);
-        try { console.log(m); } catch (_) {}
-        try { fs.appendFileSync(reportPath, m + '\n', 'utf8'); } catch (_) {}
-      };
-      try {
-        result = await run(mainWindow, { log, keep, soakMinutes });
-      } catch (e) {
-        result.failures.push(String((e && e.stack) || e));
-      }
-      try {
-        fs.mkdirSync(paths.data(), { recursive: true });
-        fs.writeFileSync(reportPath,
-          [`Polaris 运行时功能测试 ${new Date().toISOString()}`,
-            `结果：${result.pass} 通过 / ${result.fail} 失败`,
-            result.failures.length ? '失败项：\n' + result.failures.map((f) => '  - ' + f).join('\n') : '失败项：无',
-            '', ...lines].join('\n'), 'utf8');
-      } catch (_) {}
-      quitting = true;
-      app.exit(result.fail ? 1 : 0);
-    }, 1500);
-  }
 });
 
-// 自检模式：起窗口、跑一会儿、留日志、自己退出（供 CI / 无头验证用）
-// 放在 whenReady 外面，避免被 .then 回调里的异常吞掉
-if (process.argv.includes('--smoke')) {
-  log.info('smoke mode armed');
+/** `--uitest --panel=… --email=… --password=… [--uitest-data=<根目录>]` */
+function runUiTest() {
+  const panel = argOf('--panel');
+  const email = argOf('--email');
+  const password = argOf('--password');
+  const done = (code, text) => {
+    try { fs.writeFileSync(paths.file('uitest-report.txt'), text, 'utf8'); } catch (_) {}
+    setTimeout(() => app.exit(code), 200);
+  };
+  if (!panel || !email || !password) {
+    log.error('uitest: 缺少 --panel / --email / --password');
+    return done(2, '缺少 --panel / --email / --password，无法连真面板');
+  }
+  log.info(`uitest: 真面板界面自检开始 panel=${panel} email=${email} root=${paths.root()}`);
+  // 等窗口 ready-to-show + 渲染层 boot() 走完（boot 里有一次异步 get_settings）
   setTimeout(async () => {
-    const out = { ok: true, checks: {}, dom: null, errors: [], console_errors: [] };
-
-    // 收集渲染层的报错，别只依赖 main 侧的日志
     try {
-      const win = BrowserWindow.getAllWindows()[0];
-      if (win) {
-        const domInfo = await win.webContents.executeJavaScript(`(() => ({
-          title: document.title,
-          readyState: document.readyState,
-          pageTitle: (document.querySelector('.page-title') || {}).textContent || null,
-          navItems: document.querySelectorAll('.nav-item').length,
-          cards: document.querySelectorAll('.card').length,
-          sidebarVisible: (document.querySelector('#sidebar') || {}).style
-            ? document.querySelector('#sidebar').style.display !== 'none' : null,
-          textLength: (document.body.innerText || '').length,
-          // 留一小段正文：textLength 不达标时，光看数字查不出「页面渲染成了什么」
-          textPreview: (document.body.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 160),
-          route: document.querySelector('#btn-login') ? 'login'
-            : (document.querySelector('.nav-item.active') || {}).dataset
-              ? document.querySelector('.nav-item.active').dataset.route : null,
-          hasLogin: !!document.querySelector('#btn-login'),
-          theme: document.documentElement.dataset.theme || null,
-          apiHost: !!(window.PolarisAPI && window.PolarisAPI.isHost),
-          views: Object.keys(window.PolarisViews || {}).length,
-          dialogs: Object.keys(window.PolarisDialogs || {}).length,
-          hasFormat: !!window.PolarisFormat,
-        }))()`);
-        out.dom = domInfo;
-        out.console_errors = win.__consoleErrors || [];
-        if (out.console_errors.length) out.ok = false;
-        if (!domInfo || domInfo.readyState !== 'complete') out.ok = false;
-        if (!domInfo || domInfo.navItems !== 5) out.ok = false;
-        if (!domInfo || domInfo.views < 12 || domInfo.dialogs < 10) out.ok = false;
-        // 空页面也算失败：渲染出来但内容是空的，比报错更难发现。
-        // 登录页要单独判：它的文案天生就短（表单靠 placeholder 表达，不算 innerText），
-        // 旧的「一律 >= 60」会把「登录页渲染正确」误判成空页面。
-        const loginOk = domInfo && domInfo.hasLogin === true && domInfo.textLength >= 30;
-        const innerOk = domInfo && domInfo.route !== 'login' && domInfo.textLength >= 60;
-        if (!domInfo || (!loginOk && !innerOk)) out.ok = false;
-      } else {
-        out.ok = false;
-        out.errors.push('没有窗口');
-      }
+      const r = await require('../scripts/ui-test').run(mainWindow, { panel, email, password });
+      log.info(`uitest: ${r.pass} 通过 / ${r.fail} 失败`);
+      done(r.fail ? 1 : 0, r.lines.join('\n') + '\n');
     } catch (e) {
-      out.ok = false;
-      out.errors.push('DOM 检查失败: ' + (e && e.message));
+      log.error('uitest 崩了：' + (e && e.stack));
+      done(2, '界面自检自身异常：' + (e && e.stack));
     }
-
-    try {
-      const { commands } = require('./ipc');
-      out.checks.status = await commands.get_status();
-      out.checks.app_info = await commands.get_app_info();
-      out.checks.settings = await commands.get_settings();
-      out.checks.update = await commands.check_update();
-    } catch (e) {
-      out.ok = false;
-      out.errors.push(String(e && e.message ? e.message : e));
-    }
-    try {
-      fs.mkdirSync(paths.data(), { recursive: true });
-      fs.writeFileSync(paths.file('smoke-result.json'), JSON.stringify(out, null, 2), 'utf8');
-    } catch (e) {
-      log.error('smoke write failed:', e && e.message);
-    }
-    log.info('smoke done ok=%s', out.ok);
-    quitting = true;
-    app.quit();
-  }, 3000);
+  }, 1800);
 }
 
 app.on('before-quit', () => { quitting = true; });
