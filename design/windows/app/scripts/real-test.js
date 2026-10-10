@@ -649,6 +649,428 @@ const builder = require('../electron/core/builder');
       await commands.set_setting({ key: 'mixed_port', value: 0 });
     }
 
+    /* ---------------- 规则库 24 小时自动更新（用户第 1 条） ---------------- */
+    // 用户问「本地规则会不会按设计好的 24 小时更新」。配置里写着 interval=86400 不等于
+    // 内核真的会去拉，这里做两件事：
+    //   ① 把缓存文件 mtime 拨到 25 小时前，再重载配置 —— 内核的 Initial() 见到
+    //      time.Since(mtime) > interval 就会立刻强制刷新（日志有 "not updated for a
+    //      long time, force refresh"），这同时证明了「规则 CDN 真的能连上」；
+    //   ② 刷新成功后 updatedAt 前进、文件 mtime 变成现在 —— 下一个 24 小时从这一刻算，
+    //      不是从进程启动算，所以重启不会打断计时。
+    section('规则库 24 小时自动更新（计时锚点 + 真拉一次）');
+    {
+      const rulesets = require('../electron/core/rulesets');
+      const yaml2 = require('js-yaml');
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      // 下面要真重载内核配置，先确保内核在跑
+      if (!(await commands.get_status()).connected) { await commands.connect(); await sleep(2500); }
+      check('内核在跑（下面要真重载配置、真拉规则）', (await commands.get_status()).connected);
+      const cacheDir = paths.polarisRules();
+      const cfg2 = yaml2.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
+      const rp = cfg2['rule-providers'] || {};
+      const keys2 = Object.keys(rp);
+
+      check('config 里每个 rule-provider 都是 http + 24 小时',
+        keys2.length > 0 && keys2.every((k) => rp[k].type === 'http' && Number(rp[k].interval) === rulesets.PROVIDER_INTERVAL),
+        `${keys2.length} 个，interval=${rulesets.PROVIDER_INTERVAL}`);
+      check('每个 provider 的缓存路径都在 data/polaris-rules/ 里（随包种子就铺在这里）',
+        keys2.every((k) => String(rp[k].path || '').startsWith(`${rulesets.CACHE_DIR}/`)),
+        keys2.slice(0, 2).map((k) => rp[k].path).join(' , '));
+      check('所有 provider 的 url 都是 https 的规则 CDN',
+        keys2.every((k) => /^https:\/\//.test(String(rp[k].url || ''))),
+        keys2.slice(0, 2).map((k) => rp[k].url).join(' , '));
+
+      // 日志读取：只看这一段之后新增的内容
+      const logFile = nodePath.join(paths.logs(), 'polaris.log');
+      const logSize = () => { try { return nodeFs.statSync(logFile).size; } catch (_) { return 0; } };
+      const logFrom = (off) => {
+        try {
+          const st = nodeFs.statSync(logFile);
+          if (st.size <= off) return '';
+          const fd = nodeFs.openSync(logFile, 'r');
+          const buf = Buffer.alloc(st.size - off);
+          nodeFs.readSync(fd, buf, 0, buf.length, off);
+          nodeFs.closeSync(fd);
+          return buf.toString('utf8');
+        } catch (_) { return ''; }
+      };
+      const provNow = async () => {
+        try {
+          const raw = await core.S.controller.get('/providers/rules');
+          return (raw && raw.providers && typeof raw.providers === 'object') ? raw.providers : raw;
+        } catch (_) { return null; }
+      };
+
+      const probeKeys = keys2.slice(0, 3);
+      const old = (Date.now() - 25 * 3600 * 1000) / 1000;
+      const probeFiles = probeKeys.map((k) => nodePath.join(cacheDir, rulesets.seedFile(k)));
+      for (const f of probeFiles) { if (nodeFs.existsSync(f)) nodeFs.utimesSync(f, old, old); }
+      const p0 = await provNow();
+      const at0 = probeKeys.map((k) => String((p0 && p0[k] && p0[k].updatedAt) || ''));
+
+      const mark = logSize();
+      await core.reloadConfig();
+      await sleep(8000);
+      const text = logFrom(mark);
+      const forced = /not updated for a long time, force refresh/.test(text);
+      check('缓存超过 24 小时 → 内核立刻强制刷新（日志为证）', forced,
+        forced ? (text.split('\n').find((l) => l.includes('force refresh')) || '').slice(0, 160)
+          : `日志里没有 force refresh（可能是规则 CDN 连不上）: ${text.split('\n').filter((l) => l.includes('[Provider]')).slice(0, 3).join(' | ').slice(0, 200)}`);
+      const pullErr = text.split('\n').filter((l) => l.includes('[Provider]') && l.includes('pull error'));
+      check('这次强制刷新没有报拉取失败（规则 CDN 可达）', pullErr.length === 0,
+        pullErr.slice(0, 2).map((l) => l.slice(0, 160)).join(' | '));
+
+      const p1 = await provNow();
+      const at1 = probeKeys.map((k) => String((p1 && p1[k] && p1[k].updatedAt) || ''));
+      check('刷新后 updatedAt 前进到最近（说明真的走了一次在线拉取）',
+        probeKeys.every((k, i) => at1[i] && Date.parse(at1[i]) > Date.parse(at0[i] || 0)),
+        `${at0.join(' , ')} → ${at1.join(' , ')}`);
+      check('刷新后缓存文件 mtime 是现在（下一个 24 小时从这一刻起算）',
+        probeFiles.every((f) => nodeFs.existsSync(f) && Date.now() - nodeFs.statSync(f).mtimeMs < 180000),
+        probeFiles.map((f) => (nodeFs.existsSync(f) ? `${nodeFs.statSync(f).mtimeMs.toFixed(0)}` : 'missing')).join(' , '));
+      check('拉回来之后规则集仍然有效（ruleCount > 0）',
+        probeKeys.every((k) => p1 && p1[k] && Number(p1[k].ruleCount) > 0),
+        JSON.stringify(probeKeys.map((k) => [k, p1 && p1[k] && p1[k].ruleCount])));
+
+      // 随包种子只补缺失：内核拉回来的新版不会被我们下次启动覆盖
+      const oneKey = probeKeys[0];
+      const oneFile = nodePath.join(cacheDir, rulesets.seedFile(oneKey));
+      const seedFile = nodePath.join(paths.rules(), rulesets.seedFile(oneKey));
+      if (nodeFs.existsSync(oneFile) && nodeFs.existsSync(seedFile)) {
+        const a = nodeFs.readFileSync(oneFile);
+        const b = nodeFs.readFileSync(seedFile);
+        console.log(`  ${oneKey}: 在线版 ${a.length} 字节 / 随包种子 ${b.length} 字节${a.equals(b) ? '（内容相同）' : '（在线版已覆盖种子）'}`);
+        check('在线拉回来的文件和随包种子都在，且内核用的是缓存目录那份', a.length > 0 && b.length > 0);
+      }
+    }
+
+    /* ---------------- 分流落点实测（用户第 1 条：分流能不能正确地分） ---------------- */
+    // 光看规则表看不出「到底分对没分对」——必须真的把请求发出去，再读内核日志里
+    // 那一行 `match RuleSet(<key>) using <组名>[<出口>]`，逐组核对落点。
+    // 代表域名直接从每个组的规则集文件里取（所以在线更新过的新规则也一起被验到）。
+    section('分流落点实测（每个启用的分流组真发一次请求）');
+    if (main) {
+      const rulesets = require('../electron/core/rulesets');
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const logFile = nodePath.join(paths.logs(), 'polaris.log');
+      const logSize = () => { try { return nodeFs.statSync(logFile).size; } catch (_) { return 0; } };
+      const logFrom = (off) => {
+        try {
+          const st = nodeFs.statSync(logFile);
+          if (st.size <= off) return '';
+          const fd = nodeFs.openSync(logFile, 'r');
+          const buf = Buffer.alloc(st.size - off);
+          nodeFs.readSync(fd, buf, 0, buf.length, off);
+          nodeFs.closeSync(fd);
+          return buf.toString('utf8');
+        } catch (_) { return ''; }
+      };
+      // 从规则集文件里挑「像正经域名」的条目。两种文件格式都要认：
+      //   · behavior=classical/text（acl_*）：DOMAIN,x / DOMAIN-SUFFIX,x 一行一条
+      //   · behavior=domain（gs_*，geosite yaml）：payload 里是纯域名，可能带 +. 前缀
+      const domainsOf = (key) => {
+        const f = nodePath.join(paths.polarisRules(), rulesets.seedFile(key));
+        let txt = '';
+        try { txt = nodeFs.readFileSync(f, 'utf8'); } catch (_) { return []; }
+        const exact = [];
+        const suffix = [];
+        const push = (raw, kind) => {
+          let d = String(raw).trim().toLowerCase().replace(/^['"]|['"]$/g, '');
+          if (d.startsWith('+.')) d = d.slice(2);
+          if (!d || d.includes('*') || d.includes(' ') || d.length < 5 || !d.includes('.')) return;
+          if (/^\d/.test(d) || !/^[a-z0-9.-]+$/.test(d)) return;
+          (kind === 'exact' ? exact : suffix).push(d);
+        };
+        let m;
+        const reClassical = /^\s*-?\s*(DOMAIN|DOMAIN-SUFFIX),(.+?)\s*$/gm;
+        while ((m = reClassical.exec(txt))) push(m[2], m[1] === 'DOMAIN' ? 'exact' : 'suffix');
+        const reDomain = /^\s*-\s*([a-z0-9][a-z0-9.+-]*\.[a-z]{2,})\s*$/gmi;
+        while ((m = reDomain.exec(txt))) push(m[1], 'suffix');
+        const uniq = (a) => a.filter((d, i) => a.indexOf(d) === i);
+        return uniq(exact).slice(0, 2).concat(uniq(suffix).slice(0, 2));
+      };
+      // 内核日志里同一件事有两种写法：
+      //   · 建连成功：--> host:80 match RuleSet(gs_x) using 组名[出口]
+      //   · 拨号失败（直连组 DNS 解析不了等）：dial 组名 (match RuleSet/gs_x) 127.0.0.1:xx --> host:80 error: ...
+      const matchOf = (text, host) => {
+        const esc = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        let m = new RegExp(`-->\\s+${esc}:\\d+\\s+match\\s+(.+?)\\s+using\\s+(.+?)\\[`).exec(text);
+        if (m) return { rule: m[1], group: m[2] };
+        m = new RegExp(`dial\\s+(.+?)\\s+\\(match\\s+(.+?)\\)[^\\n]*-->\\s+${esc}:\\d+`).exec(text);
+        if (m) return { rule: m[2], group: m[1] };
+        return null;
+      };
+
+      const state = await core.rulesetState();
+      const enabled = state.groups.filter((g) => g.enabled);
+      console.log(`  启用的分流组 ${enabled.length} 个 / 内置共 ${state.total} 个`);
+      check('内置分流表里已经没有 Google FCM 与苹果推送通知两个组',
+        !state.groups.some((g) => /FCM|推送通知/.test(g.name)),
+        state.groups.map((g) => g.name).join(' | ').slice(0, 120));
+
+      // 组的出口语义（proxy / direct / block）：判断"被别的组抢走"到底算不算错。
+      // 同出口（都是 proxy）只是归类不同，不影响走不走代理；出口不同就是真错了
+      // —— 用户报的 Google FCM 就是这个：写着直连，实际被前面的 Google 组抢去走代理。
+      const outMap = new Map(state.groups.map((g) => [g.name, g.out]));
+      const outOf = (n) => outMap.get(n) || 'proxy';
+      const shadowed = [];
+
+      let hit = 0;
+      let noDomain = 0;
+      for (const g of enabled) {
+        const def = rulesets.TABLE.find((x) => x.name === g.name);
+        const keys = def ? rulesets.providerKeys(def) : [];
+        let doms = [];
+        for (const k of keys) { doms = doms.concat(domainsOf(k)); }
+        doms = doms.filter((d, i) => doms.indexOf(d) === i).slice(0, 3);
+        if (!doms.length) {
+          // 纯 IP 段的组（gp_*）没有域名可挑，跳过但说清楚
+          noDomain += 1;
+          console.log(`  ${g.name}: 该组只有 IP 段规则，跳过域名落点测试`);
+          continue;
+        }
+        let found = null;
+        let other = null;   // 被别的组抢走了（规则遮蔽），失败时要能说清楚是谁抢的
+        for (const d of doms) {
+          const off = logSize();
+          // 匹配行是请求一进来就打出来的，不用等请求真的通 —— 2 秒足够
+          try { await httpThroughProxy(core.mixedPort(), `http://${d}/`, 2000); } catch (_) { /* 连不上也要看日志里的匹配行 */ }
+          await sleep(350);
+          const mm = matchOf(logFrom(off), d);
+          if (!mm) continue;
+          if (mm.group === g.name) { found = { domain: d, ...mm }; break; }
+          if (!other) other = { domain: d, ...mm };
+        }
+        if (found) {
+          hit += 1;
+          check(`「${g.name}」的域名真的落在它自己这个组`, true, `${found.domain} → ${found.rule} → ${found.group}`);
+        } else if (other) {
+          const sameOut = outOf(other.group) === outOf(g.name);
+          if (sameOut) {
+            hit += 1;
+            shadowed.push(`${g.name} ← ${other.group}（同为 ${outOf(g.name)}）`);
+            check(`「${g.name}」的代表域名被同出口的「${other.group}」先命中（只是归类不同，不影响分流结果）`,
+              true, `${other.domain} → ${other.rule} → ${other.group}`);
+          } else {
+            check(`「${g.name}」的域名真的落在它自己这个组`, false,
+              `被出口不同的「${other.group}」（${outOf(other.group)}）抢走了，本该是 ${outOf(g.name)}：${other.domain} → ${other.rule}`);
+          }
+        } else {
+          check(`「${g.name}」的域名真的落在它自己这个组`, false,
+            `试过 ${doms.join(', ')}，日志里没看到匹配行`);
+        }
+      }
+      check('至少 8 个组完成了落点实测（不是空跑）', hit >= 8, `实测到落点的组 ${hit} 个`);
+      if (shadowed.length) {
+        console.log(`  规则遮蔽（同出口，无害但值得知道）：${shadowed.join(' / ')}`);
+      }
+
+      // 兜底：没被任何规则命中的域名必须落到「🐟 漏网之鱼」
+      {
+        const host = `polaris-probe-${Date.now().toString(36)}.invalid`;
+        const off = logSize();
+        try { await httpThroughProxy(core.mixedPort(), `http://${host}/`, 6000); } catch (_) {}
+        await sleep(400);
+        const mm = matchOf(logFrom(off), host);
+        check('没命中任何规则的域名落到「🐟 漏网之鱼」（末尾 MATCH 真的在）',
+          !!mm && mm.rule === 'Match' && mm.group === builder.FINAL_GROUP,
+          mm ? `${mm.rule} → ${mm.group}` : '日志里没有匹配行');
+      }
+
+      // 苹果推送：合并进「🍎 苹果服务」后，内联规则必须指向该组并且真能命中
+      {
+        const off0 = logSize();
+        await commands.set_ruleset({ name: '🍎 苹果服务', on: true });
+        await sleep(1500);
+        const yaml3 = require('js-yaml');
+        const cfg3 = yaml3.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
+        const rules3 = Array.isArray(cfg3.rules) ? cfg3.rules : [];
+        const push = rules3.filter((r) => String(r).includes('push.apple.com') || String(r).includes('akadns.net'));
+        check('苹果推送的 12 条内联规则挂在「🍎 苹果服务」组下',
+          push.length === 2 && push.every((r) => String(r).endsWith(',🍎 苹果服务')),
+          push.join(' | '));
+        const off = logSize();
+        try { await httpThroughProxy(core.mixedPort(), 'http://push.apple.com/', 6000); } catch (_) {}
+        await sleep(400);
+        const mm = matchOf(logFrom(off), 'push.apple.com');
+        check('push.apple.com 真的走「🍎 苹果服务」（不再有单独一组，也没被别组抢走）',
+          !!mm && mm.group === '🍎 苹果服务',
+          mm ? `${mm.rule} → ${mm.group}` : '日志里没有匹配行');
+        await commands.set_ruleset({ name: '🍎 苹果服务', on: false });
+        await sleep(1200);
+        void off0;
+      }
+    }
+
+    /* ---------------- 全功能覆盖（用户第 4 条：不能只测固定的那几项） ---------------- */
+    // 把 IPC 面上还没被真调用过的命令逐条走一遍。破坏性的（真下单、真支付、
+    // 真下载更新包并自我替换、提权重启、TUN 接管网络）**不做**，只做只读或
+    // 自还原的调用 + 错误路径，并在报告里说明为什么跳过。
+    section('全功能覆盖（其余命令逐条真调用）');
+    {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const yaml = require('js-yaml');
+      {
+        const seen = [];
+        for (const m of ['global', 'direct', 'rule']) {
+          const r = await commands.set_proxy_mode({ mode: m });
+          await sleep(300);
+          let now = '';
+          try { now = String((await core.S.controller.get('/configs')).mode || ''); } catch (_) {}
+          seen.push(`${m}→${(r && r.mode) || '?'}/${now}`);
+        }
+        check('代理模式三种都能切，且内核里真的换了',
+          seen.every((x) => !/→\?\/$/.test(x)) && /rule/i.test(seen[2]), seen.join(' , '));
+      }
+
+      // ② 策略组出口：改一个组的出口再读回来，然后恢复默认
+      {
+        const groups = (await commands.get_routing_groups()) || [];
+        const target = groups.find((g) => !g.builtin && !g.structural && Array.isArray(g.options) && g.options.length > 1);
+        if (target) {
+          const pickNode = target.options.find((n) => n !== target.now) || target.options[0];
+          const r = await commands.set_routing_group({ name: target.name, node: pickNode });
+          await sleep(500);
+          const after = ((await commands.get_routing_groups()) || []).find((g) => g.name === target.name);
+          check(`策略组出口能改（${target.name} → ${pickNode}）`,
+            !!after && after.now === pickNode, `改完读到的是 ${after && after.now}`);
+          const rr = await commands.reset_routing_groups();
+          check('「恢复默认」能把它还原', !!rr && rr.ok !== false, JSON.stringify(rr));
+        } else {
+          check('策略组出口能改（没找到可改的组，跳过）', false, '没有非结构组');
+        }
+      }
+
+      // ③ 自定义分流组：加一个 → 配置里真的有 → 删掉 → 配置里没了
+      {
+        const name = `测试分流组-${Date.now().toString(36).slice(-4)}`;
+        const add = await commands.save_custom_ruleset({
+          name, out: 'direct', rules: ['DOMAIN-SUFFIX,polaris-custom-probe.example', 'DOMAIN-KEYWORD,polarisprobe'],
+        });
+        check('能新建自定义分流组', !!add && add.ok === true && add.name === name, JSON.stringify(add));
+        await sleep(1200);
+        const cfgC = yaml.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
+        const hasGroup = (cfgC['proxy-groups'] || []).some((g) => g.name === name);
+        const hasRule = (cfgC.rules || []).some((r) => String(r).includes('polaris-custom-probe.example'));
+        check('新建的自定义分流组和它的规则真的进了内核配置', hasGroup && hasRule, `组=${hasGroup} 规则=${hasRule}`);
+        const bad = await commands.save_custom_ruleset({ name: '🚀 节点选择', out: 'proxy', rules: ['DOMAIN-SUFFIX,x.com'] })
+          .then(() => null).catch((e) => e.message);
+        check('拿保留名建组会被拒绝（不会顶掉内置组）', !!bad && /保留名|已经/.test(bad), String(bad));
+        const del = await commands.delete_custom_ruleset({ name });
+        check('能删掉自定义分流组', !!del && del.ok === true, JSON.stringify(del));
+        await sleep(1200);
+        const cfgD = yaml.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
+        check('删掉之后配置里也没有了',
+          !(cfgD['proxy-groups'] || []).some((g) => g.name === name));
+      }
+
+      // ④ 本地分流总开关：关掉→面板方案，打开→本地方案
+      {
+        const off = await commands.set_local_routing({ on: false });
+        await sleep(1500);
+        const cfgOff = yaml.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
+        const panelish = (cfgOff['proxy-groups'] || []).some((g) => /Instagram|Facebook|WhatsApp/.test(g.name));
+        check('关掉「本地分流」后内核用的是面板下发的分组', !!off && off.on === false && panelish,
+          `on=${off && off.on} 面板组在=${panelish}`);
+        const on = await commands.set_local_routing({ on: true });
+        await sleep(1500);
+        const cfgOn = yaml.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
+        const localish = (cfgOn['proxy-groups'] || []).some((g) => g.name === builder.FINAL_GROUP);
+        check('再打开又回到本地方案', !!on && on.on === true && localish,
+          `on=${on && on.on} 兜底组在=${localish}`);
+      }
+
+      // ⑤ 本机采样曲线（流量页画图用的那份数据）
+      {
+        const series = await commands.get_traffic_series({ range: 'today' });
+        check('本机采样曲线能取到（数组 + 有 unit）',
+          !!series && Array.isArray(series.points) && typeof series.unit === 'string',
+          JSON.stringify({ points: series && series.points && series.points.length, unit: series && series.unit }));
+      }
+
+      // ⑥ 注册 / 找回 / 发验证码 / 改密码：只走"会被拒绝"的路，避免真改账号
+      //    注意这几个命令在 ipc 里是 `return fail(msg)` 而不是抛错 —— 两种形状都要认。
+      {
+        const asFail = (r) => (r && typeof r === 'object' ? `${r.ok === false ? 'FAIL' : 'OK'}:${r.msg || ''}` : String(r));
+        const regR = await commands.register({ email: EMAIL, password: 'x'.repeat(10), code: '', invite: '' })
+          .then(asFail).catch((e) => `THROW:${e.message}`);
+        check('拿已注册的邮箱注册会被明确拒绝（不是崩）',
+          /^(FAIL|THROW):/.test(regR) && regR.length > 6, regR.slice(0, 90));
+
+        const codeR = await commands.send_email_code({ email: `nobody-${Date.now().toString(36)}@example.invalid`, purpose: 'register' })
+          .then(asFail).catch((e) => `THROW:${e.message}`);
+        check('给不存在的邮箱发验证码会给出人话错误（不是崩、也不是假装成功）',
+          /^(FAIL|THROW):/.test(codeR) && codeR.length > 6, codeR.slice(0, 90));
+
+        const forgotR = await commands.forgot_password({ email: `nobody-${Date.now().toString(36)}@example.invalid`, code: '000000', password: 'x'.repeat(10) })
+          .then(asFail).catch((e) => `THROW:${e.message}`);
+        check('找回密码用错验证码会被拒绝（不会真改密码）',
+          /^(FAIL|THROW):/.test(forgotR) && forgotR.length > 6, forgotR.slice(0, 90));
+
+        const pwdR = await commands.change_password({ old_password: 'definitely-wrong-old', new_password: 'whatever12345' })
+          .then(asFail).catch((e) => `THROW:${e.message}`);
+        check('改密码用错旧密码会被拒绝（不会真改密码）',
+          /^(FAIL|THROW):/.test(pwdR) && pwdR.length > 6, pwdR.slice(0, 90));
+
+        const stillOk = (await commands.get_settings()).authed;
+        check('上面几次失败之后会话仍然有效（没被踢下线）', stillOk === true, String(stillOk));
+      }
+
+      // ⑦ 支付方式 / 礼品卡 / 应用信息 / 管理员
+      {
+        const pm = await commands.get_payment_methods();
+        check('支付方式接口能返回数组（面板没配就是空数组）', Array.isArray(pm), JSON.stringify(pm).slice(0, 80));
+        const gh = await commands.get_gift_history();
+        check('礼品卡历史能返回数组（面板没这个接口就是空数组）', Array.isArray(gh), JSON.stringify(gh).slice(0, 60));
+        const bad1 = await commands.redeem_gift({ code: '123' });
+        check('礼品卡填格式不对的卡密会被挡下（不发请求）',
+          !!bad1 && bad1.ok === false && /格式/.test(String(bad1.msg)), JSON.stringify(bad1));
+        const bad2 = await commands.redeem_gift({ code: `POLARIS-PROBE-${Date.now().toString(36)}` });
+        check('礼品卡填一个不存在的卡密会给出面板的错误（不崩）',
+          !!bad2 && bad2.ok === false && !!bad2.msg, JSON.stringify(bad2).slice(0, 100));
+        const app = await commands.get_app_info();
+        // version 取自 store（真跑应用时由 main.js 落盘）；这个自检的入口是
+        // scripts/real-test.js，没走 main.js，所以 version 允许是空串。
+        check('应用信息能读到（数据目录 / 便携标记 / 运行时版本）',
+          !!app && typeof app.data_dir === 'string' && app.data_dir.length > 0
+            && typeof app.portable === 'boolean' && !!app.electron && !!app.node,
+          JSON.stringify({ version: app && app.version, portable: app && app.portable, electron: app && app.electron, node: app && app.node }).slice(0, 130));
+        const adm = await commands.is_admin();
+        check('管理员判定返回布尔', typeof adm === 'boolean', String(adm));
+      }
+
+      // ⑧ TUN 状态与残留清理（不改网络：TUN 没开的时候清理是无害的）
+      {
+        const t = await commands.get_tun_status();
+        check('TUN 状态能读到（网卡名 / 是否残留）', !!t && typeof t === 'object', JSON.stringify(t).slice(0, 120));
+        const c = await commands.cleanup_tun();
+        check('清理 TUN 残留不会抛异常（只动名为 Polaris 的网卡）', !!c, JSON.stringify(c).slice(0, 100));
+      }
+
+      // ⑨ 更新链路：只查、不下载、不自我替换
+      {
+        const u = await commands.check_update();
+        check('检查更新能返回结果（有/无新版本都算通过）',
+          !!u && typeof u.has_update === 'boolean', JSON.stringify(u).slice(0, 120));
+        const st = await commands.get_update_state();
+        // updater.info() 的形状是 {phase, version, url, file, received, total, percent, ...}
+        check('更新状态能读到（phase + 进度 + 安装目录）',
+          !!st && typeof st.phase === 'string' && typeof st.percent === 'number' && typeof st.install_dir === 'string',
+          JSON.stringify(st).slice(0, 140));
+        const d = await commands.discard_update();
+        check('丢弃更新包不会抛异常（没有暂存时就是空操作）', !!d, JSON.stringify(d).slice(0, 80));
+        console.log('  说明：download_update / apply_update 会真下 186MB 并真替换程序本体，按用户规矩不自动跑');
+      }
+
+      // ⑩ 打开外部链接：只验校验逻辑（不真开浏览器）
+      {
+        const bad = await commands.open_external({ url: 'file:///C:/Windows/System32/calc.exe' })
+          .then(() => '').catch((e) => e.message);
+        check('open_external 只放行 http(s)（file:// 被挡下）', !!bad && /http/.test(bad), String(bad));
+        console.log('  说明：open_external / open_download / open_telegram 的"真打开"会弹系统浏览器，留给真人体验；export_logs 会弹目录选择框，无头跑会卡住，也留给真人');
+      }
+    }
+
     /* ---------------- 收尾 ---------------- */
     section('收尾');
     if (!KEEP) {

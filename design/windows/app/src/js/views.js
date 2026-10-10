@@ -82,7 +82,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>
       </button>
       <div class="status-line">${s.connected ? '<span class="dot"></span>' : ""}<span class="t">${s.busy ? "连接中…" : s.connected ? "已连接" : "未连接"}</span></div>
-      <div class="node-line">${s.connected ? h(s.node || "未选择节点") + (s.latency ? " · " + s.latency + "ms" : "") : (s.loggedIn ? "点击上方按钮开始连接" : "请先登录面板")}</div>
+      ${s.connected ? '<div class="node-line">' + h(s.node || "未选择节点") + (s.latency ? " · " + s.latency + "ms" : "") + "</div>" : ""}
     </div>
     <div class="speed-row">
       <div class="speed-tile up"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2.4" stroke-linecap="round"><path d="M12 4v14"/><path d="M6 12l6 6 6-6"/></svg></span><span><div class="lb">下载</div><div class="vl" id="down-speed">${fmt.speed(s.down_speed)}</div></span></div>
@@ -208,7 +208,9 @@
       </div>
       ${row("区间合计", h(site.total_text), { chev: false, vcls: "strong" })}
       ${site.from ? row("区间", `${h(site.from)} ~ ${h(site.to)}`, { chev: false }) : ""}` 
-      : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细")}
+      : (t.site_log === false
+        ? empty("这个面板没有站点流量明细接口", `识别到的后端是 ${h(t.backend || "xiaov2b")}，只提供账号累计用量`)
+        : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细"))}
     </div>
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时用量 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>

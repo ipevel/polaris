@@ -181,6 +181,9 @@ const commands = {
     let days = [];
     let picked = [];
     let account = null;
+    // 该面板后端到底有没有站点流量明细接口（小 V2B 没有，只有 Xboard 有）
+    const backend = panel.session.backend || store.get('panel_backend') || 'xboard';
+    const siteLog = backend === 'xboard';
     if (panel.isAuthed()) {
       try {
         days = await panel.trafficLog();
@@ -215,6 +218,8 @@ const commands = {
     return {
       range: range || 'today',
       site,
+      site_log: siteLog,
+      backend,
       account,
       session: { up: session.up, down: session.down, up_text: fmt.bytes(session.up), down_text: fmt.bytes(session.down) },
       total_down: fmt.bytes(account ? account.down : session.down),
@@ -412,6 +417,7 @@ const commands = {
       mixed_port: Number(s.mixed_port) || 0,          // 0 = 随机（界面上显示"自动"）
       running_port: core.S.mixedPort || 0,            // 当前内核实际在听的端口
       email: s.last_email || '',          // 用户第 5 条：自己的账号邮箱不打码
+      panel_backend: panel.session.backend || s.panel_backend || '',   // 自动识别出来的后端
       authed: panel.isAuthed(),
     };
   },

@@ -167,7 +167,7 @@ function restore() {
     session.panelUrl = c.panelUrl;
     session.token = c.token;
     session.email = c.email || '';
-    session.backend = c.backend || '';
+    session.backend = c.backend || store.get('panel_backend') || '';
     store.set('panel_url', c.panelUrl);
     store.set('last_email', session.email);
     log.info(`panel session restored: ${c.panelUrl} (${c.email})`);
@@ -199,7 +199,7 @@ async function login(email, password, panelInput) {
 
   session.token = String(token);
   session.email = String(pick(data, ['email'], email));
-  session.backend = detectBackend(panelUrl);
+  session.backend = await detectBackend(panelUrl, { force: true });
 
   store.set('panel_url', panelUrl);
   store.set('last_email', session.email);
@@ -208,10 +208,45 @@ async function login(email, password, panelInput) {
   return { email: session.email };
 }
 
-function detectBackend(url) {
-  void url;
-  // 两个后端路径同构，只有礼品卡一处不同；这里不再靠猜，兑换时两条路径互为兜底。
-  return store.get('panel_backend') || 'xboard';
+/**
+ * 面板后端自动识别 —— 口径照安卓端 LoginViewModel.detectBackendType：
+ * 探测 <panel>/api/v1/guest/comm/config，data 里带
+ * is_captcha / captcha_type / turnstile_site_key / recaptcha_v3_site_key
+ * 任意一个字段就是 Xboard，否则按 V2Board（xiaov2b）处理。
+ * 识别结果落 store，下次直接用；探测失败不猜、不阻断登录（两条路径同构）。
+ * 两端真正的差异只有两处：礼品卡接口路径、流量明细接口（只有 Xboard 有）。
+ */
+const XBOARD_MARKERS = ['is_captcha', 'captcha_type', 'turnstile_site_key', 'recaptcha_v3_site_key'];
+
+async function detectBackend(url, opts) {
+  const force = opts && opts.force;
+  const cached = store.get('panel_backend');
+  if (cached && !force) return cached;
+  let type = '';
+  try {
+    const cfg = await request('GET', '/guest/comm/config', { noAuth: true, timeoutMs: 8000 });
+    const d = cfg && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg : {};
+    const isXboard = XBOARD_MARKERS.some((k) => Object.prototype.hasOwnProperty.call(d, k));
+    type = isXboard ? 'xboard' : 'xiaov2b';
+  } catch (e) {
+    log.warn('backend detect failed:', e && e.message);
+  }
+  if (type) {
+    store.set('panel_backend', type);
+    session.backend = type;
+    log.info(`panel backend detected: ${type} (${url || session.panelUrl || '-'})`);
+  }
+  return type || cached || 'xboard';
+}
+
+// 兑换礼品卡：按识别到的后端先试它那条路径，另一条兜底。
+// 两条路径互为兜底，且**不改**会话里的后端标记 ——
+// 一次兑换失败不能把后续请求都带到另一条路径上去（早期版本踩过这个坑）
+function giftPaths() {
+  const mine = session.backend === 'xiaov2b'
+    ? ['/user/redeemgiftcard', '/user/gift-card/redeem']
+    : GIFT_PATHS;
+  return mine;
 }
 
 const GIFT_PATHS = ['/user/gift-card/redeem', '/user/redeemgiftcard'];
@@ -634,7 +669,7 @@ async function redeemGift(code) {
   // 两条路径互为兜底，且**不改**会话里的后端标记 ——
   // 一次兑换失败不能把后续请求都带到另一条路径上去（早期版本踩过这个坑）
   let lastMsg = '';
-  for (const p of GIFT_PATHS) {
+  for (const p of giftPaths()) {
     try {
       const r = await post(p, { card_code: clean });
       return { ok: true, reward: String(pick(r, ['message', 'text', 'msg'], '兑换成功')), msg: '' };
@@ -667,8 +702,13 @@ async function notices() {
 async function trafficLog() {
   // 一次刷新里流量页会问两次（区间汇总 + 明细列表），加个短缓存别把面板打两遍
   if (trafficCache.rows && Date.now() - trafficCache.at < 15000) return trafficCache.rows;
-  // 只有 Xboard 提供这个接口。不再按 backend 标记短路 —— 面板分支五花八门，
-  // 直接试一次，404 就当没有（返回空数组），不要让标记把人挡住。
+  // 只有 Xboard 有 /user/stat/getTrafficLog（小 V2B 没有这个接口），
+  // 安卓端也是按识别出来的后端决定要不要问明细，这里口径一致。
+  const backend = session.backend || store.get('panel_backend') || 'xboard';
+  if (backend !== 'xboard') {
+    log.info(`trafficLog skipped: backend=${backend} 没有站点流量明细接口`);
+    return [];
+  }
   try {
     const res = await request('GET', '/user/stat/getTrafficLog', { raw: true });
     if (res.status !== 200) return [];
@@ -773,8 +813,9 @@ module.exports = {
   tickets, createTicket, invite, giftHistory, redeemGift, notices, trafficLog,
   changePassword, sendEmailCode, forgotPassword, registerConfig,
   normalizePanelUrl,
-  // 纯函数，导出给自检用（把面板原始行按天聚合 / 工单正文兜底）
+  // 纯函数，导出给自检用（把面板原始行按天聚合 / 工单正文兜底 / 后端识别）
   aggregateTrafficLog,
   ticketContent,
   clearUserInfoCache,
+  detectBackend,
 };

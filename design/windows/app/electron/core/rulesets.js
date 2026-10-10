@@ -93,6 +93,8 @@ const PROVIDERS = {
 };
 
 // 苹果推送内联规则：与 Karing 预设 cn.json 的「📢 苹果推送通知」逐条一致。
+// APNs 推送内联规则（归属「🍎 苹果服务」组）：geosite:apple 只有域名，
+// APNs 的 9 段 IP 网段没有对应的 domain 类别，所以必须内联。
 // {t} 在生成时替换为所属分流组名 —— 不能直接拼在行尾，IP-CIDR 的 no-resolve
 // 必须留在最后，写成 IP-CIDR,<cidr>,<target>,no-resolve。
 const APPLE_PUSH_RULES = [
@@ -153,9 +155,13 @@ const TABLE = [
   { name: '📸 Instagram', defaultOn: false, defaultOut: 'proxy', providers: ['gs_instagram'] },
   { name: '🌏 Google', defaultOn: true, defaultOut: 'proxy', providers: ['gs_google', 'gp_google'] },
   { name: '🌏 Google Play', defaultOn: true, defaultOut: 'proxy', providers: ['gs_google_play'] },
-  { name: '📢 Google FCM', defaultOn: true, defaultOut: 'direct', providers: ['acl_googlefcm'] },
-  { name: '🍎 苹果服务', defaultOn: false, defaultOut: 'direct', providers: ['gs_apple'] },
-  { name: '📢 苹果推送通知', defaultOn: false, defaultOut: 'proxy', providers: [], inlineRules: APPLE_PUSH_RULES },
+  // 2026-10-10 起不再单列「Google FCM」「苹果推送通知」两组：
+  //   · Google FCM 的 44 条规则全被前面的「🌏 Google」覆盖（18 条域名被 +.google.com、
+  //     26 条 IP 落在 gp_cn 之外的 google 网段内），开关怎么设都不生效；
+  //   · 苹果推送通知 12 条里 push.apple.com 被「🍎 苹果服务」的 +.apple.com 抢先匹配。
+  // 现在 Apple 的一切（服务 + APNs 推送内联规则）都归「🍎 苹果服务」一个组，
+  // Google 的一切归「🌏 Google」，少两个空转分组，也不会再有遮蔽导致的"配置与实际不符"。
+  { name: '🍎 苹果服务', defaultOn: false, defaultOut: 'direct', providers: ['gs_apple'], inlineRules: APPLE_PUSH_RULES },
   { name: 'Ⓜ️ 微软Bing', defaultOn: true, defaultOut: 'proxy', providers: ['gs_bing'] },
   { name: 'Ⓜ️ 微软云盘', defaultOn: true, defaultOut: 'direct', providers: ['gs_onedrive'] },
   { name: 'Ⓜ️ 微软服务', defaultOn: true, defaultOut: 'proxy', providers: ['gs_microsoft'] },

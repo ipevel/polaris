@@ -280,6 +280,18 @@ async function run(win, opts) {
     check('套餐进度条是百分比', /^\d+(\.\d+)?%$/.test(bar), `width=${bar}`);
     const usedTxt = await ev(win, 'document.body.innerText.match(/已使用[^\\n]*/)?.[0] || ""');
     check('首页显示的是真实用量（不是 0 GB）', /已使用/.test(usedTxt) && !/已使用\s*0 GB/.test(usedTxt), usedTxt);
+    // 用户第 8 轮第 5 条：未连接时下面那行小字写「请先登录面板」——能进这个页面的人
+    // 都早登录了，这句话没有意义，直接不要。未连接时整行都不该有。
+    const heroHint = await ev(win, `(()=>{const h=document.querySelector('.hero');
+      return {hasLine:!!h?.querySelector('.node-line'), txt:h?h.innerText.replace(/\\s+/g,' ').trim():''};})()`);
+    check('未连接时首页不显示那行说明小字',
+      !heroHint.hasLine && !/请先登录面板|点击上方按钮开始连接/.test(heroHint.txt),
+      `有行=${heroHint.hasLine} 文案=${heroHint.txt}`);
+    // 用户第 8 轮第 3 条：面板后端是自动识别出来的（照安卓端 detectBackendType 那套），
+    // 不是写死 xboard。真面板是 xboard，但要能看到它是"认出来的"。
+    const be = await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.panel_backend||"")');
+    check('面板后端是自动识别出来的（设置里能看到识别结果）',
+      typeof be === 'string' && /^(xboard|xiaov2b)$/.test(be), `panel_backend=${be}`);
   });
 
   /* ---- 3. 连接（真内核） ---- */
@@ -445,6 +457,22 @@ async function run(win, opts) {
     const sw = await ev(win, 'document.querySelectorAll(".switch[data-ruleset]").length');
     check('内置分流开关渲染出来了', sw > 0, `${sw} 个`);
 
+    // 用户第 8 轮第 1 条：Google FCM 与苹果推送通知两个组删掉（它们的规则全被
+    // 🌏 Google / 🍎 苹果服务 抢先命中，留着只会让人以为"配了直连却在走代理"）。
+    const rsInfo = await ev(win, `(()=>{const r=window.__polarisState.rulesets||{};
+      const names=(r.groups||[]).map(g=>g.name);
+      const apple=(r.groups||[]).find(g=>g.name==='🍎 苹果服务');
+      return {total:r.total, sw:document.querySelectorAll('.switch[data-ruleset]').length,
+        fcm:names.filter(n=>/FCM|推送通知/.test(n)),
+        apple:apple?{count:apple.count,inline:apple.inline}:null};})()`);
+    check('分流表里已经没有 Google FCM 与苹果推送通知',
+      rsInfo.fcm.length === 0, `还剩 ${rsInfo.fcm.join(' / ') || '无'}`);
+    check('分流表正好 25 组、页面 25 个开关',
+      rsInfo.total === 25 && rsInfo.sw === 25, `total=${rsInfo.total} 开关=${rsInfo.sw}`);
+    check('苹果推送的 12 条内联规则并进了「🍎 苹果服务」',
+      !!rsInfo.apple && Number(rsInfo.apple.inline) === 12,
+      JSON.stringify(rsInfo.apple));
+
     // 本地分流总开关（与安卓端同一模型：屏蔽面板下发的分流方案）
     const lrOn = await ev(win, '(()=>{const e=document.querySelector(".switch[data-click=\'local-routing\']");return !!e && e.classList.contains("on");})()');
     check('有「使用本地分流方案」开关且默认打开', lrOn === true);
@@ -569,6 +597,16 @@ async function run(win, opts) {
       check(`${r} 区间的数据来自面板（站点用量）`, !d.notLogged && /站点用量/.test(d.label), d.label);
       check(`${r} 区间有合计值`, !!(d.site && d.site.total_text), d.site ? `${d.site.total_text} / ${d.site.days} 天` : '无');
     }
+    // 用户第 8 轮第 3 条：后端是自动识别出来的，流量明细接口只有 xboard 有；
+    // 识别成 xiaov2b 时要显示"这个面板没有明细接口"而不是空白/假数据。
+    const beInfo = await ev(win, `(()=>{const t=window.__polarisState.traffic||{};
+      return {backend:t.backend||'', siteLog:t.site_log,
+        hasEmpty:!!document.querySelector('.empty'),
+        emptyTxt:(document.querySelector('.empty')?.innerText||'').replace(/\\s+/g,' ').trim()};})()`);
+    check('流量页拿到了识别出来的后端名', /^(xboard|xiaov2b)$/.test(beInfo.backend), `backend=${beInfo.backend}`);
+    check('xboard 面板（有明细接口）不显示"没有明细接口"的提示',
+      beInfo.siteLog !== false || !/没有站点流量明细接口/.test(beInfo.emptyTxt),
+      `site_log=${beInfo.siteLog} 空态=${beInfo.emptyTxt || '无'}`);
     // 用户第 6 轮第 4 条：曲线画的是"用量"，标题不能叫"实时速度"
     const chartTitle = await ev(win, `[...document.querySelectorAll('.card b')].map(e=>e.textContent.trim()).find(t=>/本机实时/.test(t))||''`);
     check('曲线标题写的是「本机实时用量」（不是"实时速度"）', /本机实时用量/.test(chartTitle), `实际「${chartTitle}」`);
