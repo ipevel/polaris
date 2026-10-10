@@ -440,9 +440,14 @@ function previewNodes() {
     // 本地方案下各组是 include-all：proxies 字段里只有结构成员（自动选择/故障转移/DIRECT），
     // 节点是内核按 include-all 并进去的。所以预览不能只数 proxies —— 那样会显示
     // 「3 个可选出口」甚至 0 个节点（A-29：连接前节点页是空的）。
+    // 也不能只数节点：内核里 include-all 组的成员 = 显式成员在前 + 其余全部节点在后，
+    // 少算了那三个非节点出口（自动选择/故障转移/DIRECT），预览就和连上之后长得不一样。
     const membersOf = (g) => {
       const list = Array.isArray(g.proxies) ? g.proxies : [];
-      if (g['include-all'] === true) return allNames.slice();
+      if (g['include-all'] === true) {
+        const head = list.slice();
+        return head.concat(allNames.filter((n) => head.indexOf(n) < 0));
+      }
       const real = list.filter((n) => byName.has(n));
       return real.length > 0 ? real : allNames.slice();
     };
@@ -581,27 +586,62 @@ async function speedTest() {
   return S.nodes;
 }
 
-/** 逐组测延迟（并发 4），结果进 S.groupLatency 供 routingGroups() 带出 */
+/**
+ * 一个分组的「当前出口」到底是哪个节点。
+ *
+ * 为什么要递归：本地方案里分流组的首位成员就是主组「🚀 节点选择」，所以
+ * `/proxies` 里 `📹 油管视频.now === '🚀 节点选择'`，而主组的 now 又可能是
+ * 「自动选择」——要一层层剥到真实节点（或 DIRECT/REJECT 这类内置出口）才算出口。
+ * 返回 '' 表示内核还没挑（URLTest/Fallback 的健康检查是异步的）。
+ */
+function resolveExit(proxies, name, depth = 0) {
+  const p = proxies && proxies[name];
+  if (!p || depth > 6) return '';
+  if (!GROUP_TYPES.has(p.type)) return name; // 节点，或 DIRECT/REJECT 这类内置出口
+  const next = p.now || '';
+  if (!next) return '';
+  return resolveExit(proxies, next, depth + 1);
+}
+
+/**
+ * 逐组测延迟（并发 4），结果进 S.groupLatency 供 routingGroups() 带出。
+ *
+ * 内核的 `/proxies/<组名>/delay` 对 URLTest/Fallback 会真的触发一次组内测试，
+ * 对 Selector 返回当前出口的延迟。但它对"出口是另一个分组"的分流组要穿两跳，
+ * 实测有约四分之一的组会超时（用户看到的就是几个组一直「未测」）。
+ * 所以超时/失败时退回**当前出口节点的延迟**（节点那一轮刚测过，数字是准的）——
+ * 这比显示「未测」诚实：出口就是那个节点，它的延迟就是这条路的延迟。
+ */
 async function testGroupDelays() {
   if (S.phase !== 'connected' || !S.controller) return [];
   const url = encodeURIComponent('https://www.gstatic.com/generate_204');
   let groups = [];
+  let proxies = {};
   try { groups = await routingGroups(); } catch (_) { groups = []; }
+  try { proxies = unwrapProxies(await S.controller.get('/proxies')); } catch (_) { proxies = {}; }
   const list = groups.filter((g) => !g.builtin && !g.structural).map((g) => g.name);
   const done = [];
   const worker = async () => {
     for (;;) {
       const name = list.shift();
       if (!name) return;
+      let d = -1;
+      let from = 'kernel';
       try {
         const r = await S.controller.get(`/proxies/${encodeURIComponent(name)}/delay?timeout=5000&url=${url}`, undefined, 8000);
-        const d = r && typeof r.delay === 'number' && r.delay > 0 ? r.delay : -1;
-        S.groupLatency.set(name, d);
-        done.push({ name, latency: d });
-      } catch (_) {
-        S.groupLatency.set(name, -1);
-        done.push({ name, latency: -1 });
+        d = r && typeof r.delay === 'number' && r.delay > 0 ? r.delay : -1;
+      } catch (_) { d = -1; }
+      if (d <= 0) {
+        // 退回当前出口节点的延迟（只认测出来的正数；出口是 DIRECT/REJECT 或节点本身不通就保持 -1）
+        const exit = resolveExit(proxies, name);
+        const cached = exit ? S.speedCache.get(exit) : null;
+        if (cached && typeof cached.latency === 'number' && cached.latency > 0) {
+          d = cached.latency;
+          from = 'exit:' + exit;
+        }
       }
+      S.groupLatency.set(name, d);
+      done.push({ name, latency: d, from });
     }
   };
   await Promise.all(Array.from({ length: 4 }, worker));
@@ -623,6 +663,25 @@ async function setMode(mode) {
 /* ------------------------------------------------------------------ */
 
 const GROUP_TYPES = new Set(['Selector', 'URLTest', 'Fallback', 'LoadBalance', 'Relay']);
+
+/**
+ * 策略组的展示顺序索引：主组 → 自定义组 → 内置分流表（按用户拖动顺序）→ 兜底组。
+ *
+ * 为什么需要它：mihomo 的 /proxies 是 Go map 序列化出来的，键顺序随机，
+ * 界面里如果按名字排序，用户在分流页拖出来的顺序就丢了（用户报：
+ * 「分组调好了位置，为什么外面的节点也不跟着变」）。这里按生成配置时的
+ * 真实顺序重建索引，两处界面（分流页、节点页）就一致了。
+ */
+function groupOrderIndex() {
+  const idx = new Map();
+  let i = 0;
+  const put = (n) => { if (n && !idx.has(n)) idx.set(n, i++); };
+  put(MAIN_GROUP);
+  for (const c of rulesets.normalizeCustom(store.get('custom_rulesets'))) put(c.name);
+  for (const g of rulesets.orderedTable(store.get('routing_order'))) put(g.name);
+  put(FINAL_GROUP);
+  return idx;
+}
 
 /** 从内核读回所有策略组，供分流页展示与切出口 */
 async function routingGroups() {
@@ -649,8 +708,10 @@ async function routingGroups() {
       structural: STRUCTURAL_GROUPS.has(name),
     });
   }
-  // 主选择组排最前，其余按名字稳定排序
-  out.sort((a, b) => (a.name === MAIN_GROUP ? -1 : b.name === MAIN_GROUP ? 1 : a.name.localeCompare(b.name)));
+  // 主组排最前，其余按「配置里的真实顺序」，表里没有的组（面板自带 / GLOBAL）按名字兜底
+  const idx = groupOrderIndex();
+  const rank = (g) => (g.name === MAIN_GROUP ? -1 : idx.has(g.name) ? idx.get(g.name) : 1e6);
+  out.sort((a, b) => (rank(a) - rank(b)) || a.name.localeCompare(b.name));
   return out;
 }
 

@@ -443,6 +443,9 @@ async function plans() {
       hot: !!p.hot || Number(pick(p, ['sort'], 0)) >= 999,
       sell: p.sell === undefined ? true : !!p.sell,
       renew: !!p.renew,
+      // 面板的套餐说明是 Markdown 原文（标题/列表/表格/链接都有），
+      // 原样带到界面由 src/js/md.js 渲染；feats 只是没有正文时的兜底摘要。
+      content: String(pick(p, ['content', 'description'], '') || ''),
       feats: planFeats(p),
     };
   });

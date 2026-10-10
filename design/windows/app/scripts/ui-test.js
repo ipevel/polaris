@@ -334,6 +334,39 @@ async function run(win, opts) {
     const rows = await ev(win, 'document.querySelectorAll(".acc-body .node-row").length');
     check('展开后里面有节点', rows > 0, `${rows} 行`);
 
+    // 用户第 5 轮第 2 条：主组里的「自动选择 / 故障转移 / DIRECT」不是节点，
+    // 显示「其他 / 未测」会让人以为这三个不生效 —— 现在给中文标签 + 当前出口小字。
+    const sp = await ev(win, `(()=>{const st=window.__polarisState;
+      const head=document.querySelector('.acc-head[data-acc]');
+      const body=head.parentElement.querySelector('.acc-body');
+      const rows=[...body.querySelectorAll('.node-row')].slice(0,3).map(r=>({
+        name:((r.querySelector('.nm')||{}).textContent||'').trim(),
+        badge:((r.querySelector('.badge')||{}).textContent||'').trim(),
+        sub:((r.querySelector('.nm-sub')||{}).textContent||'').trim()}));
+      const auto=(st.groups||[]).find(g=>g.name==='自动选择')||{};
+      return {group:head.dataset.acc, rows, autoNow:auto.now||''};})()`);
+    check('主组第一张卡里前三个就是特殊出口', sp.group === '🚀 节点选择' && sp.rows.length === 3, JSON.stringify(sp.rows).slice(0, 220));
+    check('「自动选择」显示「自动」而不是「未测」', sp.rows[0].name === '自动选择' && sp.rows[0].badge === '自动', JSON.stringify(sp.rows[0]));
+    check('「故障转移」显示「备用」而不是「未测」', sp.rows[1].name === '故障转移' && sp.rows[1].badge === '备用', JSON.stringify(sp.rows[1]));
+    check('「DIRECT」显示「直连」而不是「未测」', sp.rows[2].name === 'DIRECT' && sp.rows[2].badge === '直连', JSON.stringify(sp.rows[2]));
+    // 内核的健康检查是异步的：刚连上那几秒 URLTest/Fallback 的 now 可能还是空的。
+    // 空着不显示会让人以为坏了 —— 现在会说「内核正在挑选出口…」，所以这里只要求"有话可说"，
+    // 然后轮询等内核真的挑出来（真面板上实测几秒内就有）。
+    check('「自动选择」写出了当前出口（或明说还在挑）', sp.rows[0].sub.length > 0, `小字=「${sp.rows[0].sub}」`);
+    let autoNow = sp.autoNow;
+    if (!autoNow) {
+      for (let i = 0; i < 20 && !autoNow; i++) {
+        await sleep(1500);
+        autoNow = await ev(win, `((window.__polarisState.groups||[]).find(g=>g.name==='自动选择')||{}).now||''`);
+      }
+    }
+    check('内核真的挑出了「自动选择」的出口（不是永远空着）', !!autoNow, `now=${autoNow || '(等 30 秒还是空)'}`);
+    if (autoNow) {
+      const subNow = await ev(win, `(()=>{const b=document.querySelector('.acc-head[data-acc]').parentElement.querySelector('.acc-body');
+        const r=b&&b.querySelector('.node-row');const s=r&&r.querySelector('.nm-sub');return s?s.textContent.trim():'';})()`);
+      check('「自动选择」的小字写的就是内核挑中的那个节点', subNow.indexOf(autoNow) >= 0, `小字=「${subNow}」 内核 now=${autoNow}`);
+    }
+
     // 第 4 条：按钮叫「延迟测试」，不是「测速」
     const label = await ev(win, 'document.querySelector("#btn-speedtest")?.textContent.trim()');
     check('按钮文案是「延迟测试」', label === '延迟测试', `实际「${label}」`);
@@ -344,20 +377,37 @@ async function run(win, opts) {
     await waitFor(win, '!/测试中/.test(document.querySelector("#btn-speedtest")?.textContent||"")',
       { timeout: 120000, label:'延迟测试跑完' });
     const g = await ev(win, `(()=>{const st=window.__polarisState;
-      const vis=(st.groups||[]).filter(x=>!x.builtin&&!x.structural);
-      // 直连/拦截型分流组（🎯 国内直连、🛑 广告拦截…）的当前出口就是 DIRECT/REJECT，
-      // 内核给不出延迟是应该的，不算"没测出来"。
-      const DIRECT=/^(DIRECT|COMPATIBLE|PASS|REJECT|REJECT-DROP)$/;
-      const direct=vis.filter(x=>DIRECT.test(x.now||''));
-      const need=vis.filter(x=>!DIRECT.test(x.now||''));
-      const withLat=need.filter(x=>typeof x.latency==='number'&&x.latency>0).length;
-      const badge=[...document.querySelectorAll('.acc-head .badge')].map(b=>b.textContent.trim());
-      return {withLat, need:need.length, direct:direct.map(x=>x.name), badge, missing:need.filter(x=>!(typeof x.latency==='number'&&x.latency>0)).map(x=>x.name)};})()`);
-    check('每个「出口是节点」的分组都测出了延迟', g.withLat === g.need,
-      `${g.withLat}/${g.need}${g.direct.length ? `；直连/拦截型 ${g.direct.length} 个不参与判定（${g.direct.slice(0, 3).join('、')}）` : ''}${g.missing.length ? `；没测出：${g.missing.slice(0, 4).join('、')}` : ''}`);
-    check('分组头上看得见延迟', g.badge.some((t) => /\d+ms/.test(t)), g.badge.slice(0, 4).join(' '));
-    check('直连/拦截型分组显示的是「直连/拦截」而不是「未测」',
-      !g.badge.includes('未测') || g.direct.length === 0, `徽标样例 ${g.badge.slice(0, 6).join(' ')}`);
+      const all=st.groups||[];
+      const vis=all.filter(x=>!x.builtin&&!x.structural);
+      const byName={}; for(const x of all) byName[x.name]=x;
+      const latOf={}; for(const n of (st.nodes||[])) latOf[n.name]=n.latency;
+      const EXIT=/^(DIRECT|COMPATIBLE|PASS|REJECT|REJECT-DROP)$/;
+      // 分组的出口可能是一个分组（本地方案里分流组首位就是「🚀 节点选择」），要剥到真实出口
+      const exitOf=(name)=>{let cur=name,hop=0;while(hop++<6){const gg=byName[cur];if(!gg)return cur;
+        if(EXIT.test(gg.now||''))return gg.now;if(!gg.now||gg.now===cur)return '';cur=gg.now;}return '';};
+      const rows=vis.map(x=>{const e=exitOf(x.name);return {name:x.name,lat:x.latency,exit:e,
+        exitLat:e?(latOf[e]===undefined?null:latOf[e]):null};});
+      const direct=rows.filter(r=>EXIT.test(r.exit));
+      const node=rows.filter(r=>!EXIT.test(r.exit));
+      // 不变式：出口节点的延迟测出来了 → 这个组也必须显示得出来；
+      // 出口是直连/拦截 → 徽标必须是「直连/拦截」，不是「未测」。
+      const badNode=node.filter(r=>r.exitLat>0&&!(r.lat>0)).map(r=>r.name+'(出口'+r.exit+'='+r.exitLat+'ms 组='+r.lat+')');
+      const badDirect=direct.filter(r=>!(r.lat>0)).map(r=>r.name+'('+r.exit+')');
+      const cards=[...document.querySelectorAll('.card')].map(c=>{const h=c.querySelector('.acc-head');if(!h)return null;
+        const t=(h.querySelector('.acc-title')||{}).textContent||'';const b=(h.querySelector('.badge')||{}).textContent||'';
+        return {name:t.trim(),badge:b.trim()};}).filter(Boolean);
+      return {rows:rows.length,direct:direct.map(r=>r.name),node:node.length,badNode,badDirect,cards,
+        noLat:node.filter(r=>!(r.lat>0)).map(r=>r.name+'→'+(r.exit||'?')).slice(0,6)};})()`);
+    check('每个「出口节点测得通」的分组都显示出了延迟', g.badNode.length === 0,
+      `${g.rows - g.badNode.length - g.badDirect.length}/${g.rows}${g.badNode.length ? `；没跟上：${g.badNode.slice(0, 4).join('、')}` : ''}${g.noLat.length ? `；出口本身不通（显示未测是对的）：${g.noLat.join('、')}` : ''}`);
+    check('直连/拦截型分组显示的是「直连/拦截」而不是「未测」', g.badDirect.length === 0,
+      g.direct.length ? `直连/拦截型：${g.direct.slice(0, 4).join('、')}${g.badDirect.length ? `；徽标错的：${g.badDirect.join('、')}` : ''}` : '（本轮没有直连/拦截型分组）');
+    const directCards = g.cards.filter((c) => g.direct.indexOf(c.name) >= 0);
+    check('直连/拦截型分组头上的徽标就是「直连」或「拦截」',
+      directCards.every((c) => c.badge === '直连' || c.badge === '拦截'),
+      directCards.map((c) => `${c.name}=${c.badge}`).join(' '));
+    const badge = g.cards.map((c) => c.badge);
+    check('分组头上看得见延迟', badge.some((t) => /\d+ms/.test(t)), badge.slice(0, 4).join(' '));
   });
 
   /* ---- 5. 分流规则页（用户第 2、3 条） ---- */
@@ -399,8 +449,11 @@ async function run(win, opts) {
     check('每行都有拖动手柄', grips >= 2, `${grips} 个`);
     const order0 = await ev(win, '[...document.querySelectorAll(".ruleset-row")].map(e=>e.dataset.rulesetRow)');
     check('内置分流有可排序的多行', order0.length >= 3, `${order0.length} 行`);
-    // 把第 3 行拖到第 1 行位置，断言顺序真的变了且第一行就是它
-    const moving = order0[2];
+    // 被拖的必须是**已启用**的组：节点页只显示启用的分流组，拖一个关掉的组到第一，
+    // 节点页根本看不见它（第一版断言就是这么假红的）。
+    const enabled0 = await ev(win, `[...document.querySelectorAll('.ruleset-row')].filter(r=>{const s=r.querySelector('.switch[data-ruleset]');return !!s&&s.classList.contains('on');}).map(r=>r.dataset.rulesetRow)`);
+    check('有至少两个已启用的分流组可以拖', enabled0.length >= 2, `启用 ${enabled0.length} 个：${enabled0.slice(0, 3).join('、')}`);
+    const moving = enabled0[1] || order0[2];
     const orderExpr = `[...document.querySelectorAll(".ruleset-row")].map(e=>e.dataset.rulesetRow)`;
     for (let i = 1; i <= 3; i++) {
       await settle(win, { quiet: 900, timeout: 15000 });
@@ -414,6 +467,18 @@ async function run(win, opts) {
     const order1 = await ev(win, orderExpr);
     check('拖动真的改了匹配顺序（被拖的排到第一）', order1[0] === moving, `${order0.slice(0, 4).join(' | ')} → ${order1.slice(0, 4).join(' | ')}`);
     check('拖动没有丢行', order1.length === order0.length, `${order0.length} → ${order1.length}`);
+
+    // 用户第 5 轮第 3 条：「分组调好了位置，为什么外面的节点也不跟着变？」
+    // 节点页的分组卡顺序来自主进程的 getRoutingGroups()，必须与分流页同一顺序源。
+    // 这里在"拖到第一位"的状态下直接问节点页的数据源，看它有没有跟着改。
+    await sleep(800);
+    // 注意要排掉主组「🚀 节点选择」：它是配置骨架（永远排第一），不在分流表里，
+    // 也不参与拖动排序 —— 不排掉的话第一个永远是它，断言假红。
+    const nodesOrder = await ev(win, 'window.PolarisAPI.getRoutingGroups().then(gs=>(gs||[]).filter(g=>!g.builtin&&!g.structural&&g.name!=="🚀 节点选择").map(g=>g.name))');
+    check('节点页的分组顺序跟着分流顺序变（拖到第一的组在节点页也排第一）',
+      Array.isArray(nodesOrder) && nodesOrder[0] === moving,
+      `节点页前 4: ${(nodesOrder || []).slice(0, 4).join(' | ')}`);
+
     // 拖回原位，别把用户的顺序留在测试状态
     await realDrag(win, `[data-ruleset-grip="${moving}"]`, `[data-ruleset-row="${order0[1]}"]`, { label: `拖回 ${moving}` });
     await sleep(600);
@@ -421,6 +486,18 @@ async function run(win, opts) {
     await realClick(win, '[data-nav-back]', { label:'返回键' });
     await waitFor(win, 'window.__polarisRoute === "nodes"', { label:'返回到节点页' });
     check('点返回真的退回上一页', true);
+
+    // 还原之后，节点页的分组顺序也必须跟着回退（顺序源是同一个，不能只改一边）
+    await settle(win, { quiet: 900, timeout: 15000 });
+    const nodesBack = await ev(win, `(()=>{const st=window.__polarisState;
+      const titles=[...document.querySelectorAll('.acc-head[data-acc] .acc-title')].map(t=>t.textContent.trim());
+      const rs=(((st.rulesets||{}).groups)||[]).map(g=>g.name);
+      const got=titles.filter(n=>rs.indexOf(n)>=0);
+      const want=rs.filter(n=>titles.indexOf(n)>=0);
+      return {got, want};})()`);
+    check('节点页卡片顺序 = 分流页列表顺序（两个界面同一个顺序源）',
+      JSON.stringify(nodesBack.got) === JSON.stringify(nodesBack.want),
+      `页面 ${nodesBack.got.slice(0, 5).join(' | ')} ←→ 分流 ${nodesBack.want.slice(0, 5).join(' | ')}`);
   });
 
   /* ---- 6. 流量页（用户第 5 条） ---- */
@@ -489,16 +566,21 @@ async function run(win, opts) {
   section('7b. 二级页面（都有返回键 · 数据是面板的）');
   const SECOND = [
     { click: '[data-click="nav-orders"]', route: 'orders', title: '我的订单', need: (d) => d.orders && d.orders.length > 0 },
-    { click: '[data-click="nav-plans"]', route: 'plans', title: '购买套餐', need: (d) => d.plans && d.plans.length > 0 },
+    // 用户第 5 轮第 4 条：入口写「订阅套餐」，点进去也必须写「订阅套餐」（原来页头是「购买套餐」）
+    { click: '[data-click="nav-plans"]', route: 'plans', title: '订阅套餐', need: (d) => d.plans && d.plans.length > 0 },
     { click: '[data-click="nav-tickets"]', route: 'tickets', title: '我的工单', need: null },
-    { click: '[data-click="nav-invite"]', route: 'invite', title: '邀请好友', need: null },
+    { click: '[data-click="nav-invite"]', route: 'invite', title: '邀请返利', need: null },
     { click: '[data-click="nav-giftcard"]', route: 'giftcard', title: '礼品卡兑换', need: null },
-    { click: '[data-click="nav-notices"]', route: 'notices', title: '公告', need: (d) => d.notices && d.notices.length > 0 },
+    { click: '[data-click="nav-notices"]', route: 'notices', title: '公告通知', need: (d) => d.notices && d.notices.length > 0 },
   ];
   for (const s of SECOND) {
     await step(`二级页 ${s.title}`, async () => {
       await ev(win, 'window.PolarisNav("me")');
       await sleep(350);
+      // 入口文案与页头标题必须逐字一致（用户第 5 轮第 4 条报的就是这个）
+      const entry = await ev(win, `(()=>{const e=document.querySelector(${JSON.stringify(s.click)});
+        return e?e.textContent.replace(/\\s+/g,'').trim():'';})()`);
+      check(`「我的」页入口文案是「${s.title}」`, entry.indexOf(s.title) >= 0, `实际「${entry}」`);
       await realClick(win, s.click, { label:`我的页·${s.title}` });
       await waitFor(win, `window.__polarisRoute === "${s.route}"`, { timeout: 15000, label:`进 ${s.title}` });
       const back = await ev(win, '!!document.querySelector("[data-nav-back]")');
@@ -507,10 +589,40 @@ async function run(win, opts) {
       check(`${s.title} 标题正确`, t === s.title, `实际「${t}」`);
       if (s.need) {
         const d = await ev(win, 'window.__polarisState');
-        check(`${s.title} 读到面板数据`, s.need(d), JSON.stringify(s.need === undefined ? null : {
+        check(`${s.title} 读到面板数据`, s.need(d), JSON.stringify({
           orders: (d.orders || []).length, plans: (d.plans || []).length, notices: (d.notices || []).length,
         }));
       }
+
+      // 用户第 5 轮第 5 条：套餐说明是面板下发的 Markdown，必须渲染而不是原样吐出来
+      if (s.route === 'plans') {
+        const mi = await ev(win, `(()=>{const st=window.__polarisState;
+          const raw=(st.plans||[]).map(p=>String(p.content||'')).filter(x=>x.trim());
+          const box=document.querySelector('.plan-md');
+          return {rawCount:raw.length, box:!!box,
+            blocks:document.querySelectorAll('.plan-md .md-h,.plan-md .md-list,.plan-md .md-table-wrap,.plan-md .md-hr,.plan-md .md-p').length,
+            links:document.querySelectorAll('.plan-md .md-link').length,
+            text:(box?box.textContent:'').replace(/\\s+/g,' ').slice(0,80)};})()`);
+        check('套餐说明按 Markdown 渲染出块级标签', mi.rawCount === 0 || (mi.box && mi.blocks > 0), JSON.stringify(mi));
+        check('套餐说明里的链接渲染成可点的 md-link', mi.rawCount === 0 || mi.links > 0, JSON.stringify(mi));
+        check('套餐卡里看不到残留的 Markdown 记号（** / |--- / 裸链接）',
+          mi.rawCount === 0 || !/[*]{2}|[|]---|\]\(/.test(mi.text), JSON.stringify(mi.text));
+      }
+
+      // 公告详情：正文也是 Markdown（真面板那条带 # 标题、* 列表、|表格|）
+      if (s.route === 'notices') {
+        await realClick(win, '.row[data-notice="0"]', { label:'打开第一条公告' });
+        await waitFor(win, '!!document.querySelector(".overlay .md")', { timeout: 10000, label:'公告正文渲染' });
+        const mi = await ev(win, `(()=>{const o=document.querySelector('.overlay');const md=o.querySelector('.md');
+          return {md:!!md, blocks:o.querySelectorAll('.md-h,.md-list,.md-table-wrap,.md-hr,.md-quote,.md-p').length,
+            links:o.querySelectorAll('.md-link').length,
+            rawMarks:o.querySelectorAll('.md').length ? /(^|\\s)#{1,6}\\s|\\*\\*|\\|---/.test(md.textContent) : true};})()`);
+        check('公告正文渲染出块级标签（标题/列表/表格）', mi.md && mi.blocks > 0, JSON.stringify(mi));
+        check('公告正文里没有残留的 Markdown 记号（# 标题 / ** / |---）', mi.rawMarks === false, JSON.stringify(mi));
+        await realClick(win, '.overlay [data-overlay-close]', { label:'关掉公告' });
+        await sleep(250);
+      }
+
       await realClick(win, '[data-nav-back]', { label:`${s.title}·返回` });
       await waitFor(win, 'window.__polarisRoute === "me"', { label:'退回我的页' });
       check(`${s.title} 返回键有效`, true);

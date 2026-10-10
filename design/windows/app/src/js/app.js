@@ -210,6 +210,22 @@
       open[name] = !isOpen;
       render();
     }));
+    bindMarkdownLinks(document);
+  }
+
+  /**
+   * Markdown 正文里的链接（公告、套餐说明）。渲染层不自己开浏览器 ——
+   * 把 URL 交给主进程的 open_external（只放行 http/https），与「前往下载」同一条路。
+   * 页面与弹窗都要绑，所以抽出来。
+   */
+  function bindMarkdownLinks(scope) {
+    $$(".md-link", scope).forEach((a) => a.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = a.dataset.mdlink;
+      if (!url) return;
+      await guard("打开链接", () => api.openExternal(url));
+    }));
   }
 
   async function handleClick(action) {
@@ -456,6 +472,8 @@
       const b = $("#btn-confirm-yes");
       if (b && arg && typeof arg.onYes === "function") b.addEventListener("click", () => { closeDialog(); arg.onYes(); });
     }
+    // 公告正文是 Markdown，里面的链接同样走主进程校验后再开浏览器
+    bindMarkdownLinks(overlayRoot);
   }
 
   async function copyText(text) {

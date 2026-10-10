@@ -471,6 +471,66 @@ const builder = require('../electron/core/builder');
         JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
     }
 
+    /* ---------------- 三个特殊出口（用户第 2 条） ---------------- */
+    // 主组的前三个成员不是节点，是内核的三个特殊出口。用户问「这三个实际生效吗」——
+    // 光看界面看不出来（它们没有"延迟"这个概念，界面显示「未测」正是这个原因），
+    // 必须让内核真的从它们出去一次，并且把内核里的类型也读出来对照。
+    section('三个特殊出口（自动选择 / 故障转移 / DIRECT）真的生效吗');
+    if (main) {
+      const enc = (n) => encodeURIComponent(n);
+      const proxyInfo = async (name) => {
+        try { return await core.S.controller.get(`/proxies/${enc(name)}`); } catch (_) { return null; }
+      };
+      const infoAuto = await proxyInfo(builder.AUTO_GROUP);
+      const infoFall = await proxyInfo(builder.FALLBACK_GROUP);
+      const infoDirect = await proxyInfo('DIRECT');
+      console.log(`  内核里的类型: ${builder.AUTO_GROUP}=${infoAuto && infoAuto.type} / ${builder.FALLBACK_GROUP}=${infoFall && infoFall.type} / DIRECT=${infoDirect && infoDirect.type}`);
+      check('「自动选择」在内核里是 URLTest（真会自己挑最快的）', !!infoAuto && infoAuto.type === 'URLTest', String(infoAuto && infoAuto.type));
+      check('「故障转移」在内核里是 Fallback（真会掉头换下一个）', !!infoFall && infoFall.type === 'Fallback', String(infoFall && infoFall.type));
+      check('DIRECT 在内核里是 Direct（真直连，不绕节点）', !!infoDirect && infoDirect.type === 'Direct', String(infoDirect && infoDirect.type));
+
+      const nodeNames = new Set(((await commands.get_nodes()) || []).map((n) => n.name));
+      // 界面里点那三行就是这个动作：把主组的出口切过去
+      const viaGroup = async (name) => {
+        const sel = await commands.select_node({ name, group: main.name });
+        await new Promise((r) => setTimeout(r, 900));
+        const g = await proxyInfo(main.name);
+        return { sel, now: g && g.now };
+      };
+
+      const a = await viaGroup(builder.AUTO_GROUP);
+      check('把主组切到「自动选择」内核认了', !!a.sel && a.sel.ok === true && a.now === builder.AUTO_GROUP, JSON.stringify(a).slice(0, 160));
+      const autoNow = ((await proxyInfo(builder.AUTO_GROUP)) || {}).now;
+      check('「自动选择」自己挑出了真实节点', !!autoNow && nodeNames.has(autoNow), String(autoNow));
+      try {
+        const r = await httpThroughProxy(core.mixedPort(), 'http://www.gstatic.com/generate_204', 25000);
+        check('经「自动选择」真的能出网（204）', r.status === 204, `status=${r.status} 出口=${autoNow}`);
+      } catch (e) { check('经「自动选择」真的能出网（204）', false, e.message); }
+
+      const f = await viaGroup(builder.FALLBACK_GROUP);
+      check('把主组切到「故障转移」内核认了', !!f.sel && f.sel.ok === true && f.now === builder.FALLBACK_GROUP, JSON.stringify(f).slice(0, 160));
+      const fallNow = ((await proxyInfo(builder.FALLBACK_GROUP)) || {}).now;
+      check('「故障转移」也有当前出口（第一个可用节点）', !!fallNow && nodeNames.has(fallNow), String(fallNow));
+      try {
+        const r = await httpThroughProxy(core.mixedPort(), 'http://www.gstatic.com/generate_204', 25000);
+        check('经「故障转移」真的能出网（204）', r.status === 204, `status=${r.status} 出口=${fallNow}`);
+      } catch (e) { check('经「故障转移」真的能出网（204）', false, e.message); }
+
+      const d = await viaGroup('DIRECT');
+      check('把主组切到「DIRECT」内核认了', !!d.sel && d.sel.ok === true && d.now === 'DIRECT', JSON.stringify(d).slice(0, 160));
+      // 直连的判据用国内站点：本机能不能直连外网取决于所在网络，
+      // 但"走 DIRECT = 走本机网络"这件事，用一定能直连的国内站点验最干净。
+      let dr = null;
+      try { dr = await httpThroughProxy(core.mixedPort(), 'http://www.baidu.com', 20000); } catch (e) { dr = { status: `ERR:${e.message}` }; }
+      check('经「DIRECT」真的走本机网络直连（百度可达）', [200, 301, 302].includes(dr.status), `status=${dr.status}`);
+
+      // 还原成配置默认（主组首位 = 自动选择），别把测试状态留给你
+      const back = await commands.select_node({ name: builder.AUTO_GROUP, group: main.name });
+      check('测完把主组还原成「自动选择」', !!back && back.ok === true, JSON.stringify(back).slice(0, 120));
+    } else {
+      check('找得到主选择组（三个特殊出口挂在它下面）', false, '没有主组');
+    }
+
     /* ---------------- 收尾 ---------------- */
     section('收尾');
     if (!KEEP) {

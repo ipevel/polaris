@@ -3,6 +3,7 @@
 (function () {
   const h = window.PolarisFormat.escape;
   const fmt = window.PolarisFormat;
+  const md = (s) => (window.PolarisMarkdown ? window.PolarisMarkdown.render(s) : h(s));
 
   function head(title, sub, actions) {
     return `<div class="page-head"><div><div class="page-title">${h(title)}</div>` +
@@ -106,8 +107,15 @@
   </div>`;
 
   /* ---------------- 节点 ---------------- */
+  // 主组里的前三个成员不是节点，而是内核的三个特殊出口：自动选择（url-test，内核每 300s
+  // 自己挑最快的）、故障转移（fallback，第一个不通就换下一个）、DIRECT（直连）。
+  // 它们**当然生效**（见 scripts/real-test.js 的「三个特殊出口真的生效」一段），
+  // 但延迟对它们没意义 —— 直连没有延迟，自动选择/故障转移的延迟得等内核的健康检查。
+  // 显示成「其他 / 未测」会让人以为坏了（用户报的就是这个），所以单独给它们标签。
+  const STRUCT_LABEL = { "自动选择": "自动", "故障转移": "备用" };
+
   // 节点页 = 策略组手风琴：分组在**最上面**、可折叠、分组内直接点节点就切那个分组的出口、
-  // 每个分组显示自己的延迟。主组就是面板自带的「🚀 节点选择」（与安卓端同名，见
+  // 每个分组显示自己的延迟。主组就是本地生成的「🚀 节点选择」（与安卓端同名，见
   // electron/core/builder.js 的 SELECTOR_GROUP）—— 旧版自己另建一个叫「节点选择」的组，
   // 于是顶部多出一张重复的分类卡（用户实测报的 bug）。
   Views.nodes = (s) => {
@@ -119,11 +127,26 @@
     // 没点过就默认展开第一个（内核里排最前的就是"节点选择"）
     const isOpen = (name, i) => (open[name] === undefined ? i === 0 : !!open[name]);
 
-    const nodeRow = (n, groupName) => `
-      <div class="node-row" data-node="${h(n.name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer">
+    const nodeRow = (n, groupName) => {
+      const label = STRUCT_LABEL[n.name] || EXIT_LABEL[n.name];
+      if (label) {
+        // 这三个自身也是策略组，「当前：xxx」就是它们真正选中的出口
+        const g = (s.groups || []).find((x) => x.name === n.name);
+        const now = g && g.now && g.now !== n.name ? g.now : "";
+        const ms = g && typeof g.latency === "number" ? g.latency : -1;
+        // 内核的健康检查是异步的：刚连上那几秒 URLTest/Fallback 的 now 还可能是空的。
+        // 空着什么都不显示会让人以为坏了，明确说清"正在挑"。
+        const sub = now ? (ms > 0 ? now + " · " + ms + "ms" : now) : "内核正在挑选出口…";
+        return `<div class="node-row" data-node="${h(n.name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer">
+          <span class="nm">${h(n.name)}</span>${badge(label, "b-blue")}${sub ? `<span class="nm-sub">${h(sub)}</span>` : ""}
+          <span class="radio${n.name === s.node ? " sel" : ""}"></span>
+        </div>`;
+      }
+      return `<div class="node-row" data-node="${h(n.name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer">
         <span class="nm">${h(n.name)}</span>${badge(n.region, "b-blue")}${latBadge(n.latency, n.offline)}
         <span class="radio${n.name === s.node ? " sel" : ""}"></span>
       </div>`;
+    };
 
     const flat = s.nodes.filter((n) => hit(n.name) || hit(n.region));
     const cards = groups.length
@@ -403,22 +426,31 @@
     <button class="btn btn-primary" id="btn-forgot" style="width:100%;height:48px;font-size:15px">重置密码</button>
     <div class="auth-links"><span data-nav="login">返回登录</span></div>`);
 
-  /* ---------------- 购买套餐 ---------------- */
-  Views.plans = (s) => backHead("购买套餐", "",
-    `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="giftcard">🎁 礼品卡</button>`) +
-    (s.plans.length ? `<div class="plan-grid">` + s.plans.map((p) => `
+  /* ---------------- 订阅套餐 ---------------- */
+  // 二级页标题必须与「我的」页里的入口文案逐字一致 —— 用户报过
+  // 「外面是订阅套餐，点进去是购买套餐」（入口叫订阅套餐、页头写购买套餐）。
+  Views.plans = (s) => backHead("订阅套餐", "",
+    `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="giftcard">🎁 礼品卡兑换</button>`) +
+    (s.plans.length ? `<div class="plan-grid">` + s.plans.map((p) => {
+      // 套餐说明是面板下发的 Markdown 原文（标题/列表/表格/链接），
+      // 有正文就渲染正文，没有才退回自动摘要 feats。
+      const body = p.content && String(p.content).trim()
+        ? `<div class="md plan-md">${md(p.content)}</div>`
+        : `<ul>${(p.feats || []).map((f) => `<li>${h(f)}</li>`).join("")}</ul>`;
+      return `
     <div class="plan-card${p.hot ? " hot" : ""}">
       ${p.hot ? '<div class="ribbon">最受欢迎</div>' : ""}
       <h3>${h(p.name)}</h3><div class="price">¥${h(p.price)}<small>/${h(p.unit)}</small></div>
-      <ul>${p.feats.map((f) => `<li>${h(f)}</li>`).join("")}</ul>
+      ${body}
       <button class="btn ${p.hot ? "btn-primary" : "btn-outline"}" data-buy="${h(p.id)}">立即购买</button>
-    </div>`).join("") + `</div>
+    </div>`;
+    }).join("") + `</div>
     <div style="text-align:center;font-size:13px;color:var(--text3);margin-top:18px">支付在浏览器中完成，回到应用后点「我的订单」刷新状态</div>`
     : empty("暂无可购买的套餐", "面板未配置套餐"));
 
   /* ---------------- 订单 ---------------- */
   const ORDER_STATUS = { done: ["已完成", "b-green"], pending: ["待支付", "b-orange"], processing: ["处理中", "b-blue"], refunded: ["已退款", "b-gray"] };
-  Views.orders = (s) => backHead("我的订单", "", `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="plans">购买套餐</button>`) +
+  Views.orders = (s) => backHead("我的订单", "", `<button class="btn btn-outline btn-sm" style="height:40px" data-nav="plans">订阅套餐</button>`) +
     (s.orders.length ? `<div class="card">` + s.orders.map((o) => {
       const st = ORDER_STATUS[o.status] || ["未知", "b-gray"];
       return `<div class="row"><div class="k"><div><div style="font-weight:700;font-size:15px">${h(o.name)}</div>
@@ -437,8 +469,9 @@
         <div class="v">${badge(st[0], st[1])}<span class="chev">›</span></div></div>`;
     }).join("") + `</div>` : empty("还没有工单", "遇到问题可以提交工单联系客服"));
 
-  /* ---------------- 邀请 ---------------- */
-  Views.invite = (s) => backHead("邀请好友") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
+  /* ---------------- 邀请返利 ---------------- */
+  // 标题与「我的」页入口「邀请返利」保持一致
+  Views.invite = (s) => backHead("邀请返利") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
     <div style="font-size:40px;margin-bottom:10px">🎁</div>
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">邀请好友得奖励</div>
     <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px">${s.invite.rate ? "好友消费返佣 " + h(s.invite.rate) + "%" : "把链接分享给好友，双方都有奖励"}</div>
@@ -470,8 +503,8 @@
     s.giftHistory.map((g) => `<div class="row"><div class="k"><span style="font-family:monospace">${h(g.code)}</span></div>
     <div class="v"><div style="text-align:right">${badge(g.reward, "b-green")}<div style="font-size:12px;color:var(--text3);margin-top:4px">${h(g.date)}</div></div></div></div>`).join("") + `</div>` : ""}</div>`;
 
-  /* ---------------- 公告 ---------------- */
-  Views.notices = (s) => backHead("公告") + (s.notices.length ? `<div class="card">` +
+  /* ---------------- 公告通知 ---------------- */
+  Views.notices = (s) => backHead("公告通知") + (s.notices.length ? `<div class="card">` +
     s.notices.map((n, i) => `
     <div class="row" data-notice="${i}" style="cursor:pointer;${n.unread ? "background:var(--blue-soft);margin:0 -24px;padding-left:24px;padding-right:24px" : ""}">
       <div class="k">${n.unread ? '<span style="color:var(--blue);font-size:10px">●</span>' : ""}<div><div style="font-weight:700;font-size:15px">${h(n.title)}</div>
@@ -546,7 +579,7 @@
 
     notice: (n) => `<div class="overlay" data-overlay><div class="dialog">
       <h2>${h(n.title)}</h2><div class="dsub">${h(n.date)}</div>
-      <div style="font-size:14px;color:var(--text2);white-space:pre-line;line-height:1.7;max-height:320px;overflow:auto">${h(n.body || "")}</div>
+      <div class="md" style="max-height:340px;overflow:auto">${md(n.body || "（无内容）")}</div>
       <button class="btn btn-primary" data-overlay-close style="width:100%;height:44px;margin-top:20px">知道了</button>
     </div></div>`,
 
