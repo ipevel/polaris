@@ -1287,7 +1287,7 @@
     state.giftHistory = gh || [];
     state.notices = notices || [];
     state.unreadNotices = state.notices.filter((n) => n.unread).length;
-    // 面板可能没有站点名字段（实测 app.pinxiaoche.top 就没有）——旧代码在这里
+    // 面板可能没有站点名字段（实测某个真面板就没有）——旧代码在这里
     // 要求 site.appName 非空才收，导致整份 siteInfo 被丢掉，登录页副标题永远是空的。
     if (site && (site.appName || site.appDescription || site.appUrl)) state.siteInfo = site;
     if (rcfg) state.registerConfig = Object.assign({ email_verify: 0, invite_force: 0 }, rcfg);

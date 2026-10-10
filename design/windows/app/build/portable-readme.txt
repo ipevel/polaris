@@ -35,17 +35,10 @@
 * 杀毒软件可能对 mihomo.exe 报警 —— 这是代理内核的常见误报。
   内核来源：https://github.com/MetaCubeX/mihomo（GPL-3.0）
 * 数据目录是 exe 同级的 data/。如果放在只读位置（比如只读 U 盘），
-  会自动改用 %LOCALAPPDATA%\Polaris
+  会自动改用 %APPDATA%\Polaris
 
 出问题了
 --------
-先看 data/logs/polaris.log。设置页里也有「导出日志」。
-
-自带诊断模式，不需要装任何东西，在命令行里跑：
-
-    Polaris.exe --doctor             跑一遍端到端自检（用本地假面板，不碰你的账号）
-    Polaris.exe --doctor --sysproxy  连系统代理读写一起验（会自动还原）
-    Polaris.exe --uitest             界面驱动自检（真的点按钮、最大化、滚动）
-    Polaris.exe --mock               用演示数据启动，看界面是不是正常
-
-报告会写到 data/doctor-report.txt 或 data/uitest-report.txt，发给我们就行。
+先看 data/logs/polaris.log（启动、内核起停、面板请求、系统代理改写都记在里面），
+再看 data/config.yaml（内核真正吃进去的配置）。设置页里有「导出日志」，
+导出后把日志发给我们即可。

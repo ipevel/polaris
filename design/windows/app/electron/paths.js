@@ -4,7 +4,7 @@
  *
  * 优先级：
  *   1. 打包后：<exe 所在目录>/data            （绿色、可整目录拷走、U 盘可跑）
- *   2. 打包后但目录只读：%LOCALAPPDATA%/Polaris （U 盘只读等降级场景）
+ *   2. 打包后但目录只读：%APPDATA%/Polaris （U 盘只读等降级场景）
  *   3. 开发态：<app>/.devdata
  *
  * 本模块刻意不强依赖 electron：core/ 与 util/ 下的逻辑要能在纯 Node 下跑自检，

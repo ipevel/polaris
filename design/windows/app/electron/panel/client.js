@@ -51,8 +51,8 @@ function normalizePanelUrl(input) {
 /* 拨号：黑洞地址记忆 + Happy Eyeballs                                  */
 /* ------------------------------------------------------------------ */
 /**
- * 面板域名往往有多条 A/AAAA 记录，其中可能混着连不上的（实测 app.pinxiaoche.top 的
- * 191.101.132.249 与 2406:cb42:0:2018::2 都是 SYN 无应答）。谁先连它谁就卡到超时，
+ * 面板域名往往有多条 A/AAAA 记录，其中可能混着连不上的（实测某个面板的 IPv4 与 IPv6
+ * 两条记录都是 SYN 无应答的黑洞）。谁先连它谁就卡到超时，
  * 界面上就是「网络错误：面板请求超时」—— 安卓端踩过同一个坑（面板 IPv4 黑洞）。
  *
  * 三件事：
@@ -87,9 +87,8 @@ function withTimeout(p, ms, fallback) {
 
 // 两条解析路径都要用：
 //   - dns.lookup（getaddrinfo）：会读 hosts 文件，但在本机拿到过被污染的答案
-//     （实测 app.pinxiaoche.top → 2406:cb42:0:2018::2 / 191.101.132.249，两个都是黑洞）；
-//   - dns.resolve4/6（c-ares，直接问 DNS 服务器）：多数时候返回真地址
-//     （104.21.9.238 / 172.67.161.180，Cloudflare）。
+//     （实测某个面板的域名被解成两个黑洞地址，都不应答 SYN）；
+//   - dns.resolve4/6（c-ares，直接问 DNS 服务器）：多数时候返回真地址（Cloudflare）。
 // 两条路都收，交给 Happy Eyeballs 挑活的；已知连不上的会被排到后面。
 function resolveAll(host, opts) {
   const wantPublic = !!(opts && opts.public);
@@ -125,8 +124,8 @@ function resolveAll(host, opts) {
 
 /**
  * 第三条路：直接问公共 DNS。
- * 本机路由器（fe80::1 / 192.168.1.1）会间歇性只回黑洞地址（实测整整 20s 都只回
- * 2406:cb42:0:2018::2 与 191.101.132.249，应用因此报「面板请求超时」），
+ * 本机路由器（内网网关）会间歇性只回黑洞地址（实测整整 20s 都只回一个 IPv6 与一个 IPv4
+ * 连不上的地址，应用因此报「面板请求超时」），
  * 而同一时刻 223.5.5.5 / 119.29.29.29 / 180.76.76.76 回的是真地址。
  * 只在前面几条路都连不上之后才用（见 request 的重试循环）。
  */
@@ -505,7 +504,7 @@ async function siteInfo() {
   try {
     const cfg = await get('/guest/comm/config', { noAuth: true });
     const appUrl = String(pick(cfg, ['app_url', 'appUrl', 'home_url', 'url'], session.panelUrl));
-    // 面板通常**没有**站点名字段（真机实测 app.pinxiaoche.top 的 /guest/comm/config 里
+    // 面板通常**没有**站点名字段（真机实测某 Xboard 面板的 /guest/comm/config 里
     // 只有 app_description/app_url/logo）。空着会让调用方把整份 siteInfo 丢掉，所以退回域名。
     let appName = String(pick(cfg, ['app_name', 'appName', 'site_name', 'title', 'name'], ''));
     if (!appName) {
@@ -932,7 +931,7 @@ const trafficCache = { at: 0, rows: null };
 
 /**
  * 按天聚合站点流量明细。
- * 真机实测（app.pinxiaoche.top，Xboard）：一行 = 一天里的一个计费倍率，
+ * 真机实测（Xboard 面板）：一行 = 一天里的一个计费倍率，
  * 同一天有多行；字段是 `{d, u, record_at(秒，当地零点), server_rate}`，
  * **没有** date / upload / download / total。旧代码直接读那些不存在的字段，
  * 于是「面板流量明细」永远是一列空白日期 + 0 B。

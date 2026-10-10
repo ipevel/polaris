@@ -50,6 +50,20 @@ let pass = 0;
 let fail = 0;
 const failures = [];
 
+// 数据层门禁验的是**首次运行的默认值**（用户第 1 条：TUN 堆栈默认 system），
+// 而 store 的规则是「存过的值优先于默认值」（见 DEVNOTES A-33）：测试 data 目录里
+// 可能留着上一次界面自检点过的 gvisor，于是这里报红——红的是脏数据，不是产品。
+// 非 --restore（用给定账号真登录）且没指定 --data 时，先从干净设置开始。
+if (!process.argv.includes('--restore') && !DATA_DIR) {
+  try {
+    const settingsPath = require('../electron/paths').file('settings.json');
+    if (nodeFs.existsSync(settingsPath)) {
+      nodeFs.rmSync(settingsPath, { force: true });
+      console.log(`（已重置测试设置，本次跑的是首次运行默认值：${settingsPath}）`);
+    }
+  } catch (e) { console.log(`（重置测试设置失败：${e && e.message}）`); }
+}
+
 function check(name, cond, detail) {
   if (cond) { pass += 1; console.log(`  PASS  ${name}`); }
   else {
@@ -145,7 +159,7 @@ const builder = require('../electron/core/builder');
     }
 
     const st = await commands.get_settings();
-    // 用户第 5 条：自己的邮箱不打码（原来是 c*@mbe.cc）
+    // 用户第 5 条：自己的邮箱不打码（原来是 c*@… 那种掩码）
     check('登录态认出来了且邮箱不打码', st.authed === true && /@/.test(String(st.email)) && String(st.email).indexOf('*') < 0,
       JSON.stringify({ authed: st.authed, email: st.email }));
     if (EMAIL) check('邮箱就是登录用的那个', String(st.email) === String(EMAIL), `「${st.email}」vs「${EMAIL}」`);
@@ -1099,8 +1113,8 @@ const builder = require('../electron/core/builder');
     }
 
     /* ---------------- 面板拨号健壮性（用户第 9 轮第 3 条） ---------------- */
-    // 现象：面板域名解析出来的地址里有黑洞（实测 app.pinxiaoche.top →
-    // 2406:cb42:0:2018::2 / 191.101.132.249，SYN 无应答），谁先连它谁就卡到 20s，
+    // 现象：面板域名解析出来的地址里有黑洞（实测某面板的域名解出两条 SYN 无应答的
+    // 地址），谁先连它谁就卡到 20s，
     // 界面上是「网络错误：面板请求超时」。这里验证 client.js 的三层兜底。
     section('面板拨号健壮性（黑洞地址 / 换地址重试）');
     {
@@ -1114,10 +1128,10 @@ const builder = require('../electron/core/builder');
       check('连不上的地址会被记住', c.isBadAddr(BLACKHOLE) === true);
       const ordered = c.orderAddresses([
         { address: BLACKHOLE, family: 4 },
-        { address: '172.67.161.180', family: 4 },
+        { address: '198.51.100.9', family: 4 },
       ]).map((a) => a.address);
       check('已知连不上的地址排在最后（只降级不排除）',
-        ordered[0] === '172.67.161.180' && ordered[1] === BLACKHOLE, JSON.stringify(ordered));
+        ordered[0] === '198.51.100.9' && ordered[1] === BLACKHOLE, JSON.stringify(ordered));
       c.clearBadAddresses();
       check('清空后不再认为是坏地址', c.isBadAddr(BLACKHOLE) === false);
       check('坏地址记忆有有效期（5 分钟）', c.BAD_ADDR_TTL === 5 * 60 * 1000, String(c.BAD_ADDR_TTL));

@@ -6,9 +6,9 @@
 > 但**存储值优先于默认值**，老 data 目录里存的还是 `gvisor`，A-33）；②登录页那句「仅仅是一个拼车网站」
 > 是**面板给的**（`/guest/comm/config` 的 `app_description`，游客接口不需要登录，也没落盘缓存，
 > 每次启动现拉），不是内置文案；③**「网络错误：面板请求超时」的真根因**：本机路由器会把面板域名
-> 间歇性解析成黑洞地址（实测 `2406:cb42:0:2018::2` 与 `191.101.132.249`，裸 TCP 443 两个都 8s 无应答），
+> 间歇性解析成黑洞地址（实测两个地址裸 TCP 443 都 8s 无应答），
 > 而**同一个域名**用 `dns.resolve4`（c-ares 直接问 DNS 服务器）拿到的是真地址
-> （`104.21.9.238` / `172.67.161.180`，Cloudflare）——谁先连黑洞谁就卡满 20s 超时。
+> （Cloudflare）——谁先连黑洞谁就卡满 20s 超时。
 > 现在 `panel/client.js` 做三层兜底：**①两条解析路合并**（getaddrinfo + c-ares，去重）
 > → **②按地址短超时 + 换地址重试 + 坏地址记忆**（5 分钟，只降级不排除，`connectionAttemptTimeout`
 > 也会记账）→ **③公共 DNS**（`223.5.5.5` / `119.29.29.29` / `180.76.76.76`，只在前面都连不上时用；
@@ -186,7 +186,7 @@ A-22（建工单发 `content` 而面板只认 `message`）在假面板上永远�
 > 它们的实现与踩坑记录仍留在 §三（E-1~E-10、A-6~A-19），因为**教训是有效的**，
 > 只是这些"自动化绿灯"不再被当作验收依据。
 
-当前状态：真面板数据层 **182 / 0**、真面板界面层 **162 / 0**（2026-10-10 20:30，账号 `cm@mbe.cc`）。
+当前状态：真面板数据层 **182 / 0**、真面板界面层 **162 / 0**（2026-10-10 20:30；测试账号与面板地址属私有凭据，不入库）。
 
 ### 已实测通过
 
@@ -206,9 +206,9 @@ A-22（建工单发 `content` 而面板只认 `message`）在假面板上永远�
   三种代理模式切换后 `/configs.mode` 跟着变；界面开关分流组后内核 `/providers/rules` 数量随之增减
   （合计 56,283 条规则）；内核被 `taskkill /F` 后应用 20s 内不再谎报已连接、再点一次能自愈成新 pid；
   面板进程被杀后界面不崩、代理仍 204；断开后系统代理 4 个值逐项回到进入测试前的状态
-- 真实面板（测试账号 `cm@mbe.cc`，`scripts/real-test.js`）：**108 通过 / 0 失败**。
+- 真实面板（测试账号，`scripts/real-test.js`）：**182 通过 / 0 失败**。
   套餐「全区域-年-不重置 已用 0.04 / 500 GB，到期 2027-10-10」、订单、公告、Telegram 入口
-  （`https://t.me/lark_n`，字段在登录后的 `/user/comm/config`）、32 个真节点、
+  （登录后 `/user/comm/config` 的 `telegram_discuss_link`）、32 个真节点、
   流量页三个区间与账号合计对得上；经活节点访问 `gstatic.com/generate_204` 返回 204；
   跑完真流量后面板明细真的涨了（**站点统计闭环**）；拖动排序真的改了匹配顺序并还原；
   **本地方案**：配置里面板的组/规则/rule-provider 全被替换掉、只剩 4 个结构组 + 6 个启用组 +
@@ -1323,7 +1323,7 @@ mihomo 的 provider（`type: file` 与 `type: http` 的 `path`）都走
 `/guest/comm/config` 的 `telegram_url` —— **真面板上没有这个字段**，于是入口永远不出现。
 安卓端的取法是登录后 `GET /user/comm/config` 取 `telegram_discuss_link`
 （`XboardAuthApi.kt:357` → `XboardApi.kt:107`，字段见 `XboardDto.kt:61`）。
-对齐之后真面板给的是 `https://t.me/lark_n`。
+对齐之后真面板给的是一个 `https://t.me/…` 讨论组链接。
 
 顺带一条安全口径：这个链接是要丢给系统浏览器打开的，所以照安卓端
 `ExternalLinks.kt` 的白名单校验域名（只认 `t.me` / `telegram.me` / `telegram.dog`，
@@ -1336,7 +1336,7 @@ mihomo 的 provider（`type: file` 与 `type: http` 的 `path`）都走
 用户第 5 轮第 5 条：「公共和订阅套餐的文字描述要支持 md 代码渲染」。
 真面板给的是 Markdown 原文（探针实测 `E:\AI\_probe_md.js`）：
 
-* 套餐 `/user/plan/fetch` 的 `content`：段落 + `[fine！ 传声筒](https://t.me/lark_ybot)` + `---` + `📢[Telegram频道](...)`；
+* 套餐 `/user/plan/fetch` 的 `content`：段落 + `[文字](https://t.me/…)` + `---` + `📢[Telegram频道](...)`；
 * 公告 `/user/notice/fetch` 的 `content`：`# 线路说明` 标题、`* 亚太·香港 CM（1000mbps）` 列表、
   `**粗体里套链接**`、`---`、以及 **Markdown 表格** `|Question|Answer|` + `|---|---|`，
   而且**一段里的换行是有意义的**（一行一个节点，不是软换行）。
@@ -1421,9 +1421,9 @@ mihomo 的 provider（`type: file` 与 `type: http` 的 `path`）都走
 `panel 请求超时`，而同一台机器上 `curl` 有时通有时不通。逐层量下来的事实：
 
 - **同一时刻，两条解析路径给出的地址完全不同**：
-  - `dns.lookup`（getaddrinfo，Node 默认走这条）→ `2406:cb42:0:2018::2` + `191.101.132.249`；
-  - `dns.resolve4/resolve6`（c-ares，直接问 DNS 服务器）→ `104.21.9.238` / `172.67.161.180`
-    + `2606:4700:303x::…`（Cloudflare 真地址，`curl` 拿到的也是这些）。
+  - `dns.lookup`（getaddrinfo，Node 默认走这条）→ 两个连不上的地址（一 IPv6 一 IPv4）；
+  - `dns.resolve4/resolve6`（c-ares，直接问 DNS 服务器）→ Cloudflare 真地址
+    （`curl` 拿到的也是这些）。
 - 对 getaddrinfo 给的那两个地址做**裸 TCP 443**：两个都 **8s 超时**（黑洞）。强制 https 逐地址：
   IPv4 → `Client network socket disconnected before secure TLS connection was established`（5.1s）、
   IPv6 → 同样错误（264ms）；而**不指定地址、走域名**的请求 1042ms 成功。
@@ -1805,7 +1805,7 @@ npm start                     # 真实模式（唯一的运行方式）
 
 # 真面板联调（要真账号；密码只在命令行给一次，不写进任何文件）
 # 注意：PowerShell 的 `& exe | Out-File` 不等 GUI 进程（日志会是 0 字节），要走 cmd：
-cmd /c "set ELECTRON_RUN_AS_NODE=&& node_modules\electron\dist\electron.exe scripts\real-test.js --panel=https://app.pinxiaoche.top --email=<测试账号> --password=<口令> > E:\AI\_real.txt 2>&1"
+cmd /c "set ELECTRON_RUN_AS_NODE=&& node_modules\electron\dist\electron.exe scripts\real-test.js --panel=<面板地址> --email=<测试账号> --password=<口令> > E:\AI\_real.txt 2>&1"
 # 或者直接用已经登录好的那份 data（凭据是 DPAPI 加密的，拷一份到临时目录就能用）
 copy <成品包目录>\data <临时目录>\data
 node_modules\electron\dist\electron.exe scripts\real-test.js --restore --data=<临时目录>
@@ -1813,7 +1813,7 @@ node_modules\electron\dist\electron.exe scripts\real-test.js --restore --data=<�
 # 真面板界面自检（开真窗口真点；用独立 data，不动你日常登录的那份）
 Remove-Item Env:ELECTRON_RUN_AS_NODE
 Start-Process -FilePath .\node_modules\electron\dist\electron.exe -ArgumentList `
-  '.','--uitest','--panel=https://app.pinxiaoche.top','--email=<测试账号>','--password=<口令>','--uitest-data=E:\AI\_uitest_data'
+  '.','--uitest','--panel=<面板地址>','--email=<测试账号>','--password=<口令>','--uitest-data=E:\AI\_uitest_data'
 # 报告：E:\AI\_uitest_data\data\uitest-report.txt（读时加 -Encoding UTF8）
 
 # 打包（**必须先得到用户明确同意**）
@@ -1838,7 +1838,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\gs_apple.yaml（当"被替换"标记）
 → 放一个 data\USERDATA.txt（当"必须保留"标记）
 → 用任意 http 服务把新 zip 发出来
-→ 副本里的 Polaris.exe --updtest-version=9.9.9 --updtest http://127.0.0.1:8124/Polaris-portable-1.8.0.zip
+→ 副本里的 Polaris.exe --updtest-version=9.9.9 --updtest http://127.0.0.1:8124/Polaris-portable-1.9.0.zip
 
 验收：gs_apple.yaml 回来了、USERDATA.txt 还在、data\update\apply-update.log 里有 done, restarting、
      重启后的进程在跑、data\update 里只剩 apply-update.cmd 与 apply-update.log（包和 staging 都清掉了）。
@@ -1848,8 +1848,8 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
 > 位置参数之后再跟 `--switch value`，Electron 会在主进程起来之前就退出（exit -1、无日志），
 > 见踩坑 A-13。这一条真的花了十几分钟才从"应用崩了"里认出来。
 >
-> 本机注意：`npx` / `npm.ps1` 被执行策略禁止 → 用 `node node_modules\electron-builder\cli.js`、
-> `node scripts\selftest-core.js` 直接跑；跑 Electron 前必须 `Remove-Item Env:ELECTRON_RUN_AS_NODE`
+> 本机注意：`npx` / `npm.ps1` 被执行策略禁止 → 打包用 `node node_modules\electron-builder\cli.js`、
+> 数据层自检用 `node scripts\real-test.js`（旧 `selftest-*.js` 已删）；跑 Electron 前必须 `Remove-Item Env:ELECTRON_RUN_AS_NODE`
 > （**而且这个变量会传染给子进程**，用 Node spawn 起成品包时要把 env 过滤掉，否则 Electron 退化成纯 Node，
 > 报 `<exe>: bad option: --smoke` 并秒退）。
 >
@@ -1893,7 +1893,7 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    - 自定义规则组的 `url` 形态（`type: http` 的 `behavior/format` 校验）只有单元级覆盖。
 
 1.6 **面板域名被本机 DNS 解析成黑洞地址（第 9 轮，已做三层兜底，但根因在路由器）**
-   实测本机路由器会间歇性只回 `2406:cb42:0:2018::2` / `191.101.132.249` 两个连不上的地址，
+   实测本机路由器会间歇性只回两个连不上的地址（一 IPv6 一 IPv4），
    同一个域名用 c-ares 问却是真地址。现在 `panel/client.js` 会**合并两条解析路 + 换地址重试
    + 最后问公共 DNS**，所以应用不会再卡满 20s。但这是"绕过"：真正的修法是路由器/DNS 侧
    别再下发那两个地址。若用户再报"面板请求超时"，先看日志里 `换地址重试 N/4` 后面的
