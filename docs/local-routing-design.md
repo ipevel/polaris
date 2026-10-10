@@ -90,13 +90,21 @@
 
 ## 6. 内置分流表（provider → behavior）
 
-分组、顺序、默认开关与出站语义逐条对齐 **Karing 预设 cn.json**（KaringX/karing
-assets/datas/preset/cn.json）：广告拦截(REJECT 默认,关)、应用净化(关)、苹果推送(关)、
-苹果服务(DIRECT,开)、油管(关)、Gemini(关)、Google Play(开)、Google FCM(关)、
-Google(开)、Facebook(关)、X(关)、TikTok(关)、Instagram(关)、奈飞(关)、WhatsApp(关)、
-电报(关)、Claude(关)、OpenAI(关)、GitHub(关)、微软Bing(关)、微软云盘(关)、
-微软服务(关)、游戏平台(关)、哔哩哔哩(DIRECT,开)、网易音乐(关)、国内直连(DIRECT,开)、
-国外穿墙(开)。
+分组名与规则集沿用 **Karing 预设 cn.json**（KaringX/karing
+assets/datas/preset/cn.json）的数据谱系；但**顺序与默认开关不再照搬 cn.json**，
+改用 2026-10-10 实机确认的预设——高频翻墙目标在前，系统服务居中，国内直连类
+在后，拦截类垫底：
+
+电报(开)、油管(开)、奈飞(开)、X(开)、TikTok(开)、Instagram(开)、
+Facebook(关)、WhatsApp(关)、Gemini(开)、Claude(开)、OpenAI(开)、
+GitHub(开)、Google(开)、Google Play(开)、Google FCM(DIRECT,开)、
+微软Bing(开)、微软云盘(DIRECT,开)、微软服务(开)、苹果服务(DIRECT,开)、
+苹果推送(开)、游戏平台(开)、哔哩哔哩(DIRECT,开)、网易音乐(DIRECT,开)、
+国内直连(DIRECT,开)、国外穿墙(开)、应用净化(REJECT,关)、广告拦截(REJECT,关)。
+
+顺序即规则匹配优先级，改动会影响命中结果，不是纯展示调整。默认开关只在
+`routing.json` 的 `groups` 缺该键时生效；用户拖动过的顺序存在 `order` 键，
+优先于内置顺序。
 
 规则数据源沿用 karing-ruleset 的**数据谱系**（karing-ruleset 本体仅发布 sing-box
 .srs 格式，mihomo 无法读取）：

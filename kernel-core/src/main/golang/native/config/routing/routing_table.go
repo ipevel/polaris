@@ -55,11 +55,11 @@ type Provider struct {
 	NoResolve bool   // IP 类规则集附加 no-resolve
 }
 
-// RuleGroup 一条内置分流规则组（对应 Karing 预设的一行）。
+// RuleGroup 一条内置分流规则组（组名与规则集沿用 Karing 预设）。
 type RuleGroup struct {
 	Name        string   // 组名（与 Karing 预设一致）
-	DefaultOn   bool     // Karing 预设的 switch 默认值
-	DefaultOut  string   // Karing 预设的 outbound：proxy | direct | block
+	DefaultOn   bool     // 默认开关；用户改过则以 routing.json 的 groups 为准
+	DefaultOut  string   // 默认 outbound：proxy | direct | block
 	Providers   []string // 规则集键（按 Karing 预设的 rule_set_build_in 顺序）
 	InlineRules []string // 内联规则，{t} 替换为本组组名
 }
@@ -154,64 +154,66 @@ var lanDirectRules = []string{
 	"IP-CIDR6,fd00::/8,DIRECT,no-resolve",
 }
 
-// Table 内置分流组，顺序/默认值对齐 Karing 预设 cn.json。
+// Table 内置分流组，顺序与默认开关对齐实机预设（2026-10-10 用户指定的
+// 分组顺序与开启状态）：高频翻墙目标在前，系统服务居中，国内直连类在后，
+// 拦截类垫底。顺序即规则匹配优先级，改动会影响命中结果，非纯展示调整。
 // 「恶意软件」组缺失：其引用的 geosite:malware/phishing 类别仅存在于
 // karing-ruleset 的 Iran 专用源，meta-rules-dat 无对应类别，暂不提供。
 var Table = []RuleGroup{
-	{Name: "🛑 广告拦截", DefaultOn: false, DefaultOut: "block",
-		Providers: []string{"gs_category_ads_all", "acl_banad"}},
-	{Name: "🍃 应用净化", DefaultOn: false, DefaultOut: "block",
-		Providers: []string{"acl_banprogramad"}},
-	{Name: "📢 苹果推送通知", DefaultOn: false, DefaultOut: "proxy",
-		InlineRules: applePushInlineRules},
-	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"gs_apple"}},
-	{Name: "📹 油管视频", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "📲 电报消息", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_telegram", "gp_telegram"}},
+	{Name: "📹 油管视频", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_youtube"}},
-	{Name: "♊️ Google Gemini", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"acl_gemini"}},
-	{Name: "🌏 Google Play", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_google_play"}},
-	{Name: "📢 Google FCM", DefaultOn: false, DefaultOut: "direct",
-		Providers: []string{"acl_googlefcm"}},
-	{Name: "🌏 Google", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_google", "gp_google"}},
+	{Name: "🎥 奈飞视频", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_netflix", "gp_netflix"}},
+	{Name: "📲 X", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_x", "gp_twitter", "acl_twitter"}},
+	{Name: "🎧 TikTok", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_tiktok"}},
+	{Name: "📸 Instagram", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_instagram"}},
 	{Name: "📲 Facebook", DefaultOn: false, DefaultOut: "proxy",
 		Providers: []string{"gs_facebook", "gp_facebook", "acl_facebook"}},
-	{Name: "📲 X", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_x", "gp_twitter", "acl_twitter"}},
-	{Name: "🎧 TikTok", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_tiktok"}},
-	{Name: "📸 Instagram", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_instagram"}},
-	{Name: "🎥 奈飞视频", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_netflix", "gp_netflix"}},
 	{Name: "📲 WhatsApp", DefaultOn: false, DefaultOut: "proxy",
 		Providers: []string{"gs_whatsapp", "acl_whatsapp"}},
-	{Name: "📲 电报消息", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_telegram", "gp_telegram"}},
-	{Name: "💬 Claude", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "♊️ Google Gemini", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"acl_gemini"}},
+	{Name: "💬 Claude", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"acl_claude"}},
-	{Name: "💬 OpenAI", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "💬 OpenAI", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_openai"}},
-	{Name: "🐱 GitHub", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "🐱 GitHub", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_github"}},
-	{Name: "Ⓜ️ 微软Bing", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "🌏 Google", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_google", "gp_google"}},
+	{Name: "🌏 Google Play", DefaultOn: true, DefaultOut: "proxy",
+		Providers: []string{"gs_google_play"}},
+	{Name: "📢 Google FCM", DefaultOn: true, DefaultOut: "direct",
+		Providers: []string{"acl_googlefcm"}},
+	{Name: "Ⓜ️ 微软Bing", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_bing"}},
-	{Name: "Ⓜ️ 微软云盘", DefaultOn: false, DefaultOut: "direct",
+	{Name: "Ⓜ️ 微软云盘", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"gs_onedrive"}},
-	{Name: "Ⓜ️ 微软服务", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "Ⓜ️ 微软服务", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_microsoft"}},
-	{Name: "🎮 游戏平台", DefaultOn: false, DefaultOut: "proxy",
+	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",
+		Providers: []string{"gs_apple"}},
+	{Name: "📢 苹果推送通知", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: applePushInlineRules},
+	{Name: "🎮 游戏平台", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"acl_steam", "acl_epic", "acl_origin", "acl_sony", "acl_nintendo"}},
 	{Name: "📺 哔哩哔哩", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"acl_bilibilihmt", "acl_bilibili"}},
-	{Name: "🎶 网易音乐", DefaultOn: false, DefaultOut: "direct",
+	{Name: "🎶 网易音乐", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"acl_neteasemusic"}},
 	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"gp_cn", "acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"}},
 	{Name: "🌏 国外穿墙", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_geolocation_ncn", "acl_proxygfwlist", "acl_proxymedia"}},
+	{Name: "🍃 应用净化", DefaultOn: false, DefaultOut: "block",
+		Providers: []string{"acl_banprogramad"}},
+	{Name: "🛑 广告拦截", DefaultOn: false, DefaultOut: "block",
+		Providers: []string{"gs_category_ads_all", "acl_banad"}},
 }
 
 // OrderedTable 按用户自定义顺序返回内置分流表。

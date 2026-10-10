@@ -312,7 +312,7 @@ constructor(
         written
     }
 
-    /** 分流规则管理页：恢复全部组的内置默认开关，写盘后广播重载。 */
+    /** 分流规则管理页：恢复全部组的内置默认开关与内置默认顺序，写盘后广播重载。 */
     suspend fun resetRoutingGroups(): Boolean = withContext(ioDispatcher) {
         val written = routingStateStore.resetGroups()
         if (written) requestReload()

@@ -189,8 +189,13 @@ constructor(
         return write(current.copy(groups = current.groups + (name to enabled)))
     }
 
-    /** 清空全部组开关（恢复内置默认）；返回写入是否成功。 */
-    fun resetGroups(): Boolean = write(load().copy(groups = emptyMap()))
+    /**
+     * 清空全部组的自定义开关**与**拖动顺序，一键回到内置默认值；返回写入是否成功。
+     *
+     * 顺序也必须一起清：拖动过的顺序写进 `routing.json` 后会长期覆盖内置顺序，
+     * 只清开关的话，「恢复默认」按下去列表顺序仍旧是用户拖出来的样子。
+     */
+    fun resetGroups(): Boolean = write(load().copy(groups = emptyMap(), order = emptyList()))
 
     /**
      * 置内置分流组顺序并落盘；返回写入是否成功。

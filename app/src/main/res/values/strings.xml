@@ -302,8 +302,8 @@
     <string name="routing_outbound_proxy">默认走代理</string>
     <string name="routing_outbound_direct">默认直连</string>
     <string name="routing_outbound_block">默认拦截</string>
-    <string name="routing_rules_reset">恢复默认开关</string>
-    <string name="routing_rules_reset_desc">清除所有组的自定义开关，回到内置默认值</string>
+    <string name="routing_rules_reset">恢复默认</string>
+    <string name="routing_rules_reset_desc">清除所有组的自定义开关与拖动顺序，回到内置默认值</string>
     <string name="routing_custom_add">添加自定义规则组</string>
     <string name="routing_custom_add_desc">点击删除已添加的自定义组；规则集由内核定期抓取更新</string>
     <string name="routing_custom_name_hint">组名（1–32 字符，不可与内置组重名）</string>

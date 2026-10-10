@@ -178,7 +178,7 @@ class RoutingRulesViewModelTest {
         assertEquals(RoutingGroups.size, names.size) // 重排不得丢组
         assertEquals("🌏 国外穿墙", names[0])
         assertEquals("🛑 广告拦截", names[1])
-        assertEquals("🍃 应用净化", names[2]) // 未指定的组按内置默认顺序追加在后
+        assertEquals("📲 电报消息", names[2]) // 未指定的组按内置默认顺序追加在后
     }
 
     @Test

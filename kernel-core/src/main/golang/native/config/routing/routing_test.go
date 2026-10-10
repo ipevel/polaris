@@ -124,7 +124,7 @@ func TestDefaultOnGroups(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 
-	// Karing 预设默认开启的组必须生成规则；默认关闭的组不生成
+	// 默认开启的组必须生成规则；默认关闭的组不生成
 	expectRule := "RULE-SET,gs_apple,🍎 苹果服务"
 	if !containsRule(cfg.Rule, expectRule) {
 		t.Fatalf("missing rule %q", expectRule)
@@ -545,7 +545,17 @@ func TestOrderedTable(t *testing.T) {
 
 func TestBuildAppliesGroupOrder(t *testing.T) {
 	state := defaultEnabledState()
-	last := Table[len(Table)-1].Name
+	// 必须挑一个默认开启的组：默认关闭的组不生成规则，不会出现在结果里。
+	last := ""
+	for i := len(Table) - 1; i >= 0; i-- {
+		if Table[i].DefaultOn {
+			last = Table[i].Name
+			break
+		}
+	}
+	if last == "" {
+		t.Fatal("Table 中没有默认开启的组")
+	}
 	state.Order = []string{last}
 	cfg := testRawConfig()
 	if err := Build(cfg, state, nil); err != nil {

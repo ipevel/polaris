@@ -307,7 +307,7 @@
     <string name="routing_outbound_direct">Direct by default</string>
     <string name="routing_outbound_block">Block by default</string>
     <string name="routing_rules_reset">Reset to defaults</string>
-    <string name="routing_rules_reset_desc">Clear custom toggles and restore built-in defaults</string>
+    <string name="routing_rules_reset_desc">Clear custom toggles and drag order, restore built-in defaults</string>
     <string name="routing_custom_add">Add custom rule group</string>
     <string name="routing_custom_add_desc">Tap a group below to delete it; rule sets are fetched and refreshed by the kernel</string>
     <string name="routing_custom_name_hint">Name (1–32 chars, must not clash with built-ins)</string>
