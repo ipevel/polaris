@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -48,13 +49,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -95,8 +93,24 @@ import com.slte.app.utils.FormatUtils
    ============================================================ */
 
 /**
- * 速率卡：数值用 [animateFloatAsState] 平滑过渡（v5 结论沿用：
- * 连接后速率每秒刷新，直接换字符串会让数字"跳"，插值后读数连续滑动）。
+ * 速率读数的数值槽宽度：等宽字体下容纳 8 个字符（`104.32MB` 是 [FormatUtils.traffic] 的最长输出）。
+ *
+ * 槽宽固定后，位数变化不会再推动后面的 `/s`——这是"数字跳得晃眼"的主要来源：
+ * 比例字体里 `1` 明显窄于 `0`，`1.5MB` → `12.3MB` → `8.2MB` 每秒来一次，
+ * 整行读数连同单位一起横向抖。数值右对齐在槽内，末位数字与单位固定在同一个像素上，
+ * 只有左侧字符增减（滚动里程表效果），与成熟客户端一致。
+ */
+private val SpeedValueSlotWidth = 108.dp
+
+/**
+ * 速率卡。
+ *
+ * 平滑分两层，缺一不可：
+ * - **数值层**（`MainViewModel` 的非对称指数滑动平均）压掉秒级采样的毛刺；
+ * - **显示层**（等宽 + tabular 数字 + 固定槽宽 + 右对齐）压掉位数变化带来的横向位移。
+ *
+ * 动画时长必须**小于**采样周期（`SPEED_WATCH_INTERVAL_MS` = 1000ms，实际 1.0~1.2s 含 AIDL 往返）：
+ * 时长一旦超过采样周期，每次新采样都会打断上一次未完成的动画，数字反而持续抖动。
  */
 @Composable
 private fun SpeedTile(
@@ -107,10 +121,11 @@ private fun SpeedTile(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val c = V5ThemeColors.current
     val animatedBps by
         animateFloatAsState(
             targetValue = bps.toFloat(),
-            animationSpec = tween(650),
+            animationSpec = tween(500),
             label = "speedTileBps",
         )
     MacaronTile(tone, label, modifier, icon = icon, live = active) {
@@ -118,23 +133,35 @@ private fun SpeedTile(
             // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
             Text(
                 "--",
-                fontSize = 28.sp,
+                fontSize = V5Type.sp22,
                 fontWeight = FontWeight.Bold,
-                color = V5ThemeColors.current.text3,
+                color = c.text3,
             )
         } else {
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(fontSize = 28.sp, fontWeight = FontWeight.Bold, color = V5ThemeColors.current.text)) {
-                        append(FormatUtils.traffic(animatedBps.toLong()))
-                    }
-                    withStyle(SpanStyle(fontSize = V5Type.sp12, fontWeight = FontWeight.SemiBold, color = V5ThemeColors.current.text2)) {
-                        // 单位必须是 /s：FormatUtils.traffic() 已经带了 KB/MB/GB 的字节量纲，
-                        // 再拼 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。
-                        append("/s")
-                    }
-                },
-            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    // FormatUtils.traffic() 自带 KB/MB/GB 量纲，所以单位行只补 "/s"，
+                    // 拼成 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。
+                    text = FormatUtils.traffic(animatedBps.toLong()),
+                    fontSize = V5Type.sp22,
+                    fontWeight = FontWeight.Bold,
+                    // 等宽字体：数字等宽，位数变化不产生横向位移（与 V5Type.value 同一字体族）。
+                    // 无需 fontFeatureSettings = "tnum"：那是 TextStyle 的字段，且等宽字体下数字本来就等宽。
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    softWrap = false,
+                    color = c.text,
+                    modifier = Modifier.width(SpeedValueSlotWidth),
+                )
+                Text(
+                    text = "/s",
+                    fontSize = V5Type.sp12,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.text2,
+                    modifier = Modifier.padding(start = V5Spacing.dp2),
+                )
+            }
         }
     }
 }

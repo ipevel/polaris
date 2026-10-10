@@ -64,6 +64,7 @@ object V5Type {
     val sp17 = 17.sp
     val sp18 = 18.sp
     val sp21 = 21.sp
+    val sp22 = 22.sp
 
     /** 常规字距（导航标签等）。 */
     val tracking = 0.3.sp
