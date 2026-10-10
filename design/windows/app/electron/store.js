@@ -13,7 +13,7 @@ const DEFAULTS = {
   // —— 前端可见（api.js get_settings 的形状）——
   theme: 'system',            // system | light | dark
   lang: 'zh-CN',
-  tun: 'gvisor',              // gvisor | system | mixed
+  tun: 'system',              // gvisor | system | mixed（默认 system：Windows 上性能最好）
   expire_notify: true,
   traffic_notify: true,
   autostart: false,

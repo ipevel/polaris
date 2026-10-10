@@ -72,6 +72,32 @@
   /* ---------------- 渲染 ---------------- */
   let renderCount = 0;
   let lastRenderKey = null;      // 上一次真正写进 DOM 的内容（route + html）
+  let dragClickGuard = false;    // 拖动后的"补一次 click"只装一次捕获监听
+  let suppressClickUntil = 0;    // 拖动松手后到这个时间点为止的 click 一律吃掉
+  // 指针按着的时候不换 DOM。一次 click = pointerdown → pointerup → click，中间要是
+  // 来了一次真数据重绘（比如"延迟测试"跑完、状态刷新），鼠标松开时落点已经在**新**
+  // 元素上，浏览器补发的 click 只能派给共同祖先（#content），元素上的处理器一次都
+  // 不会被调用 —— 用户看到的就是"点了没反应"（实测：进入分流页后第一次点开关被吞，
+  // 于是"关掉"没生效、"再打开"反而把它关了，整屏断言跟着连锁变红）。
+  // 按下超过 5 秒视为卡住（指针移出窗口收不到 pointerup），自动放行，免得界面冻住。
+  let pointerDownAt = 0;
+  let pendingSwap = null;
+  document.addEventListener("pointerdown", () => { pointerDownAt = Date.now(); }, true);
+  const releasePointer = () => {
+    pointerDownAt = 0;
+    if (!pendingSwap) return;
+    const p = pendingSwap;
+    pendingSwap = null;
+    // 排到 click 之后：浏览器在 pointerup 之后**同步**补发 click，setTimeout(0) 在它后面。
+    setTimeout(() => {
+      if (pointerDownAt) return;                 // 又按下了，等下一次松手
+      lastRenderKey = p.key;
+      content.innerHTML = p.html;
+      p.bind();
+    }, 0);
+  };
+  document.addEventListener("pointerup", releasePointer, true);
+  document.addEventListener("pointercancel", releasePointer, true);
   function render() {
     // 自检用：设置页曾经因为 loadTunStatus→render 互相调用而无限重绘，
     // 只有数渲染次数才测得到（DOM 断言在同一个 JS 帧里看不出问题）。
@@ -88,6 +114,10 @@
     const swap = (html, bind) => {
       const key = state.route + "\u0000" + html;
       if (key === lastRenderKey) return;
+      if (pointerDownAt && Date.now() - pointerDownAt < 5000) {   // 按着不放：等松手再换
+        pendingSwap = { key, html, bind };
+        return;
+      }
       lastRenderKey = key;
       content.innerHTML = html;
       bind();
@@ -260,12 +290,6 @@
       // 链接由主进程现取现校验（域名白名单），渲染层不传 URL
       const r = await guard("打开 Telegram", () => api.invoke("open_telegram"));
       if (r && r.ok === false) toast(r.msg || "面板没有配置 Telegram 群组");
-    } else if (action === "refresh-sub") {
-      state.refreshing = true;
-      const r = await guard("刷新订阅", () => api.refreshSubscription());
-      state.refreshing = false;
-      if (r) { await refreshAll(); toast("订阅已刷新，共 " + r.count + " 个节点"); }
-      render();
     } else if (action === "show-subscribe-url") {
       const info = await guard("获取订阅链接", () => api.invoke("get_subscribe_url"));
       if (info) openDialog("subscribeUrl", info);
@@ -329,12 +353,33 @@
         if (box) box.textContent = "";
         const el = $("#port-value");
         const raw = (el && el.value || "").trim();
-        const r = await guard("保存端口", () => api.setSetting("mixed_port", raw === "" ? 0 : Number(raw)));
+        const next = raw === "" ? 0 : Number(raw);
+        const was = state.settings.mixed_port || 0;
+        const r = await guard("保存端口", () => api.setSetting("mixed_port", next));
         if (!r) return;
         state.settings.mixed_port = r.mixed_port || 0;
         closeDialog();
         render();
         toast(r.mixed_port ? `本机代理端口已设为 ${r.mixed_port}` : "本机代理端口已改为自动");
+        // 用户第 9 条：端口改了要跟「连接」同步，别让用户自己记得断开重连
+        if (state.connected && r.mixed_port !== was) {
+          openDialog("confirm", {
+            title: "端口已保存",
+            body: `本机代理端口已经改成 ${r.mixed_port || "自动"}，现在内核还在用 ${state.settings.running_port || "旧端口"}。断开重连一次让它生效吗？`,
+            yes: "断开并重连",
+            onYes: async () => {
+              try {
+                await api.disconnect();
+                state.connected = false;
+              } catch (e) {
+                toast("断开失败：" + (e.message || e));
+                render();
+                return;
+              }
+              await connectAndRefresh();
+            },
+          });
+        }
       });
     }
     if (name === "customRuleset") {
@@ -493,6 +538,7 @@
     pw.addEventListener("click", async () => {
       if (state.busy) return;
       state.busy = true; render();
+      let justConnected = false;
       try {
         if (state.connected) {
           await api.disconnect();
@@ -502,17 +548,81 @@
           if (!state.settings.authed) { state.busy = false; nav("login"); return; }
           await api.connect();
           state.connected = true;
+          justConnected = true;
           toast("已连接");
         }
         state.busy = false;
         await refreshAll();
       } catch (e) {
         state.busy = false;
-        toast((state.connected ? "断开" : "连接") + "失败：" + (e.message || e));
+        const msg = e.message || String(e);
+        // 端口被别的软件占着 → 问一句要不要替用户请它走（用户第 10 条）
+        if (!state.connected && /已被其它程序占用/.test(msg)) {
+          await handlePortConflict();
+          return;
+        }
+        toast((state.connected ? "断开" : "连接") + "失败：" + msg);
         await refreshStatus();
       }
       render();
+      // 用户第 7 条：连上就自动测一次延迟，不用再进节点页手动点
+      if (justConnected) runDelayTest(true);
     });
+  }
+
+  /**
+   * 端口被别的程序占用（用户第 10 条）。
+   * 先把「谁占着」摆出来（进程名 + PID），用户点了确认才请它退出；
+   * 关掉之后顺手替用户重连一次，省得再点一下电源。
+   */
+  async function handlePortConflict() {
+    // 端口可能是在别处改的（设置弹窗 / 主进程兜底），先问一次最新值再查占用者，
+    // 不然会拿旧的 mixed_port 去查，查出来是"没人占用"，用户看到一句莫名其妙的话。
+    state.settings = await api.getSettings().catch(() => state.settings);
+    const port = (state.settings && state.settings.mixed_port) || 0;
+    const owner = await guard("查看端口占用", () => api.portOwner(port));
+    if (!owner || !owner.busy) {
+      toast("端口还是被占着，但没查出是谁，请换个端口或手动关掉占用它的软件");
+      await refreshStatus();
+      render();
+      return;
+    }
+    render();
+    openDialog("confirm", {
+      title: "本机代理端口被占用",
+      body: `${port} 端口正被「${owner.name}」(PID ${owner.pid}) 占用，所以内核起不来。要关掉它并重连吗？`,
+      yes: `关掉 ${owner.name}`,
+      onYes: async () => {
+        const r = await guard("关闭占用端口的程序", () => api.closePortOwner(owner.pid));
+        if (!r || !r.closed) {
+          toast(`没能关掉 ${owner.name}（可能需要管理员权限），请手动退出它或换个端口`);
+          return;
+        }
+        toast(r.forced ? `${r.name} 没响应，已强制结束` : `已关闭 ${r.name}`);
+        await connectAndRefresh();
+      },
+    });
+  }
+
+  /** 断开 → 连接 → 刷新，失败给一句人话（重连复用时少写一遍） */
+  async function connectAndRefresh() {
+    state.busy = true; render();
+    try {
+      await api.connect();
+      state.connected = true;
+      state.busy = false;
+      // 端口可能刚换过，重连后把运行端口也刷新一下（设置页要显示真实值）
+      state.settings = await api.getSettings().catch(() => state.settings);
+      await refreshAll();
+      render();
+      toast("已连接");
+      runDelayTest(true);
+    } catch (e) {
+      state.busy = false;
+      toast("连接失败：" + (e.message || e));
+      await refreshStatus();
+      render();
+    }
   }
 
   function bindAuth() {
@@ -615,18 +725,7 @@
       }
     }));
     const st = $("#btn-speedtest");
-    if (st) st.addEventListener("click", async () => {
-      state.testing = true; render();
-      const r = await guard("延迟测试", () => api.speedTest());
-      state.testing = false;
-      if (r) {
-        state.nodes = await api.getNodes().catch(() => state.nodes);
-        // 每个分组的延迟也一起回来了，刷新分组列表才能看到
-        state.groups = await api.getRoutingGroups().catch(() => state.groups);
-      }
-      render();
-      if (r) toast("延迟测试完成");
-    });
+    if (st) st.addEventListener("click", () => runDelayTest(false));
     const rf = $("#btn-refresh-sub");
     if (rf) rf.addEventListener("click", async () => {
       state.refreshing = true;
@@ -637,7 +736,65 @@
     });
   }
 
-  function bindTraffic() { /* 分段切换在 bindCommon 处理 */ }
+  /**
+   * 延迟测试（节点 + 每个分组）。按钮与「连接成功后自动跑一次」共用。
+   * 用户第 7 条：连上就自动测一次，不要让人再进节点页手动点。
+   */
+  async function runDelayTest(auto) {
+    if (state.testing) return;
+    state.testing = true; render();
+    const r = await guard("延迟测试", () => api.speedTest());
+    state.testing = false;
+    if (r) {
+      state.nodes = await api.getNodes().catch(() => state.nodes);
+      // 每个分组的延迟也一起回来了，刷新分组列表才能看到
+      state.groups = await api.getRoutingGroups().catch(() => state.groups);
+    }
+    render();
+    if (r) toast(auto ? "已自动完成延迟测试" : "延迟测试完成");
+  }
+
+  /**
+   * 流量图悬停：鼠标划过就报出那个时间点的下载/上传用量。
+   * 不用 SVG 坐标换算 —— views.js 已经把每个点切成一块透明热区 rect[data-chart-i]，
+   * 命中哪块就是第几个点，指哪画哪，不会因为缩放/边距算出错的点。
+   */
+  function bindTraffic() {
+    const svg = $("#traffic-chart");
+    const tip = $("#traffic-tip");
+    const hover = $("#chart-hover");
+    const pts = (state.trafficSeries && state.trafficSeries.points) || [];
+    if (!svg || !tip || !hover || !pts.length) return;
+    const W = 620, PAD = Number(svg.dataset.pad) || 34;
+    const H = Number(svg.dataset.h) || 170;
+    const max = Number(svg.dataset.max) || 1;
+    const unit = svg.dataset.unit || "MB";
+    const px = (i) => PAD + (i / Math.max(1, pts.length - 1)) * (W - PAD - 10);
+    const py = (v) => H - 20 - (v / max) * (H - 44);
+    const mib = (mb) => fmt.bytes(Math.round(Number(mb || 0) * 1048576));
+    const hide = () => { tip.hidden = true; hover.textContent = ""; };
+    svg.addEventListener("mouseleave", hide);
+    svg.addEventListener("mousemove", (ev) => {
+      const raw = ev.target && ev.target.getAttribute ? ev.target.getAttribute("data-chart-i") : null;
+      if (raw === null || raw === undefined) return hide();
+      const i = Number(raw);
+      const p = pts[i];
+      if (!p) return hide();
+      const cx = px(i).toFixed(1);
+      hover.innerHTML =
+        `<line x1="${cx}" y1="18" x2="${cx}" y2="${H - 20}" stroke="#c7c7cc" stroke-width="1"/>` +
+        `<circle cx="${cx}" cy="${py(p.down).toFixed(1)}" r="4" fill="#1a73e8" stroke="#fff" stroke-width="1.5"/>` +
+        `<circle cx="${cx}" cy="${py(p.up).toFixed(1)}" r="4" fill="#ff9500" stroke="#fff" stroke-width="1.5"/>`;
+      tip.textContent = `${p.label}　↓ ${mib(p.down)}　↑ ${mib(p.up)}（${unit}）`;
+      tip.hidden = false;
+      // 贴着指针，但别飘出卡片
+      const box = svg.getBoundingClientRect();
+      const tipBox = tip.getBoundingClientRect();
+      const left = Math.max(4, Math.min(box.width - tipBox.width - 4, ev.clientX - box.left - tipBox.width / 2));
+      tip.style.left = left + "px";
+      tip.style.top = Math.max(0, ev.clientY - box.top - tipBox.height - 10) + "px";
+    });
+  }
 
   function bindRouting() {
     const b = $("#btn-routing-reset");
@@ -728,6 +885,18 @@
     const grips = $$("[data-ruleset-grip]");
     if (!grips.length) return;
     const clear = () => $$(".ruleset-row").forEach((r) => r.classList.remove("dragging", "drop-before", "drop-after"));
+    // 松手后浏览器还会补一个 click（落点在**目标行**上）——那一行有「指定出口」的点击处理，
+    // 于是"拖完顺序"会顺带弹出一个出口选择框，把后面的操作全挡住（实测：拖动之后
+    // 侧边栏与返回键都点不动，因为遮罩还在）。这里在捕获阶段吃掉紧跟在拖动后的那一次 click。
+    if (!dragClickGuard) {
+      dragClickGuard = true;
+      document.addEventListener("click", (e) => {
+        if (Date.now() > suppressClickUntil) return;
+        suppressClickUntil = 0;
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+    }
     for (const grip of grips) {
       grip.addEventListener("pointerdown", (ev) => {
         if (ev.button !== 0) return;
@@ -763,6 +932,13 @@
           document.removeEventListener("pointerup", onUp, true);
           document.removeEventListener("pointercancel", onUp, true);
           clear();
+          // 只要在**手柄**上按过一下，松手后浏览器补发的那次 click 就必须吃掉 ——
+          // 哪怕这一下没拖动、或者拖回原位（moved=false / to===from）。
+          // 第一版只在"顺序真的变了"时才装抑制，结果"原地拖一下"漏掉：
+          // 此时 mousedown 在手柄（属于这一行）、mouseup 还在这一行，
+          // click 的落点就是这一行本身 → 行上的「指定出口」处理被触发 → 弹窗遮罩常驻。
+          // 实测就是这么挂的（ui-test 第 5 段 3 条红）。
+          suppressClickUntil = Date.now() + 400;
           if (!moved || to === from) return;
           const r = await guard("调整顺序", () => api.reorderRuleset(name, to));
           if (!r) return;
@@ -788,7 +964,12 @@
     state.rulesets = rulesets;
   }
 
-  function bindSettings() {
+  /**
+   * 设置项开关（.switch[data-setting]）的点击处理。
+   * 设置页与「我的」页都有这类开关（到期提醒/流量提醒搬到了「我的」页），
+   * 所以必须由两边共同调用 —— 只挂在 bindSettings 上会让「我的」页的开关点不动。
+   */
+  function bindSettingSwitches() {
     $$(".switch[data-setting]").forEach((sw) => sw.addEventListener("click", async () => {
       const k = sw.dataset.setting;
       const next = !state.settings[k];
@@ -811,13 +992,17 @@
       }
       if (k === "sys_proxy" && !next && state.connected) { toast("断开连接后再关闭系统代理"); return; }
       state.settings[k] = next;
-      await guard("保存设置", () => api.setSetting(k, next));
       sw.classList.toggle("on", next);
+      const r = await guard("保存设置", () => api.setSetting(k, next));
+      if (!r) { state.settings[k] = !next; sw.classList.toggle("on", !next); }
     }));
-    $$("[data-click]").forEach(() => {});
   }
 
-  function bindMe() { /* data-click 已在 bindCommon 处理 */ }
+  function bindSettings() {
+    bindSettingSwitches();
+  }
+
+  function bindMe() { bindSettingSwitches(); }
 
   function bindPlans() {
     $$("[data-buy]").forEach((b) => b.addEventListener("click", async () => {

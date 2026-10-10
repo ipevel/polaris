@@ -21,18 +21,39 @@ const traffic = require('./core/traffic');
 const panel = require('./panel/client');
 const autostart = require('./net/autostart');
 const elevate = require('./net/elevate');
+const portowner = require('./net/portowner');
 const sysproxy = require('./net/sysproxy');
 const fmt = require('./util/format');
 const ui = require('./ui');
 
 const CH = 'polaris:invoke';
-// 本次会话的峰值速率（MB/s）。旧代码从不重置 —— 断开重连后「峰值」还是
-// 几小时前那一次的最高值，用户以为刚才跑出了那个速度。
-const peak = { down: 0, up: 0 };
-function resetPeak() { peak.down = 0; peak.up = 0; }
 
 function needAuth() {
   if (!panel.isAuthed()) throw new Error('尚未登录面板');
+}
+
+/**
+ * 套餐/用量的**唯一**口径。首页、「我的」、流量页三处都从这里拿数据。
+ * 旧代码流量页自己又拼了一套（u.u + u.d、transfer_enable），于是同一屏里
+ * 「已用流量 0 B / 500 GB + 套餐未订阅」和「我的」页的真实套餐名互相矛盾 ——
+ * 只要 `/user/getSubscribe` 抖一下，流量页就退化成"看起来没订阅"。
+ */
+async function planSnapshot() {
+  const u = await panel.userInfo();
+  const usedBytes = Number(u.used_bytes || 0);
+  const totalBytes = Number(u.total_bytes || 0);
+  return {
+    name: u.plan_name,
+    used: u.used,
+    total: u.total,
+    expire: u.expire,
+    used_bytes: usedBytes,
+    total_bytes: totalBytes,
+    used_text: fmt.bytes(usedBytes),
+    total_text: fmt.bytes(totalBytes),
+    up: u.u,
+    down: u.d,
+  };
 }
 
 /**
@@ -85,7 +106,6 @@ const commands = {
 
   connect: async () => {
     needAuth();
-    resetPeak();                     // 新会话从 0 起算
     // 刚登录就点连接时，订阅往往还在拉的路上（登录后 refreshAll 是异步的）。
     // 旧实现在这里直接抛「尚未拉取订阅，请先登录面板」—— 用户明明刚登录成功，
     // 看到这句只会以为登录坏了。这里自己先把订阅补齐再连。
@@ -127,7 +147,6 @@ const commands = {
     const { count } = core.prepareConfig();
     if (core.status().connected) {
       // 已在连接：重载配置而不是让用户手动断开重连
-      resetPeak();
       await core.disconnect();
       await core.connect();
     }
@@ -153,10 +172,7 @@ const commands = {
 
   /* ================= 流量 ================= */
   get_traffic: async ({ range }) => {
-    const st = core.status();
     const session = traffic.totals();
-    let online = 0;
-    for (const n of core.cachedNodes()) if (!n.offline) online += 1;
 
     // 站点流量：面板明细按天聚合，今日/本周/本月都用**站点数据**算。
     // 旧版拿本机内核的采样曲线求和当成"今日流量"，那是本机转发量，不是账号用量
@@ -183,13 +199,14 @@ const commands = {
         log.warn('trafficLog for traffic failed:', e && e.message);
       }
       try {
-        const u = await panel.userInfo();
+        const p = await planSnapshot();
         account = {
-          up: u.u, down: u.d, total: (u.u || 0) + (u.d || 0),
-          used_text: fmt.bytes((u.u || 0) + (u.d || 0)),
-          quota_text: fmt.bytes(u.transfer_enable || 0),
-          plan_name: u.plan_name,
-          expire: u.expire,
+          up: p.up, down: p.down, total: (p.up || 0) + (p.down || 0),
+          used_bytes: p.used_bytes, total_bytes: p.total_bytes,
+          used_text: p.used_text,
+          quota_text: p.total_text,
+          plan_name: p.name,
+          expire: p.expire,
         };
       } catch (e) {
         log.warn('userInfo for traffic failed:', e && e.message);
@@ -202,8 +219,6 @@ const commands = {
       session: { up: session.up, down: session.down, up_text: fmt.bytes(session.up), down_text: fmt.bytes(session.down) },
       total_down: fmt.bytes(account ? account.down : session.down),
       total_up: fmt.bytes(account ? account.up : session.up),
-      peak: `${fmt.speed(peak.down)} / ${fmt.speed(peak.up)} MB/s`,
-      online_nodes: online,
       days,
       // 区间过滤后的明细：渲染层直接用它，省掉一次重复的面板查询
       // （面板明细是整页最慢的一项，之前 get_traffic 与 get_traffic_log 各拉一次）。
@@ -278,12 +293,8 @@ const commands = {
   /* ================= 面板业务 ================= */
   get_plan: async () => {
     needAuth();
-    const u = await panel.userInfo();
     // used/total 是 GB（面板口径，两位小数）；_text 走字节换算，小用量不会显示成 0 GB
-    return {
-      name: u.plan_name, used: u.used, total: u.total, expire: u.expire,
-      used_text: fmt.bytes(u.used_bytes), total_text: fmt.bytes(u.total_bytes),
-    };
+    return await planSnapshot();
   },
 
   get_plans: async () => {
@@ -470,6 +481,21 @@ const commands = {
 
   cleanup_tun: async () => require('./net/tun').cleanup(),
 
+  /* ---- 端口占用（用户第 10 条）：先看清楚是谁，再请它自己走 ---- */
+
+  port_owner: async ({ port } = {}) => {
+    const p = Number(port) || Number(store.get('mixed_port')) || 0;
+    return ok(portowner.owner(p));
+  },
+
+  close_port_owner: async ({ pid } = {}) => {
+    const id = Number(pid) || 0;
+    if (!id) return fail('没给出要关闭的进程');
+    const r = await portowner.close(id);
+    log.info(`close port owner: pid=${id} name=${r.name} closed=${r.closed} forced=${r.forced}`);
+    return ok(r);
+  },
+
   /* ================= 更新 / 诊断 ================= */
   check_update: async () => {
     await remote.load(true).catch(() => {});
@@ -592,10 +618,6 @@ function register() {
 
   // 状态推送：速率、连接状态、运行时长
   core.onStatus((st) => {
-    if (st.connected) {
-      peak.down = Math.max(peak.down, st.down_speed || 0);
-      peak.up = Math.max(peak.up, st.up_speed || 0);
-    }
     ui.emit('status', st);
   });
 

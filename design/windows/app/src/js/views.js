@@ -190,6 +190,7 @@
     const W = 620, H = 170, PAD = 34;
     const x = (i) => PAD + (i / Math.max(1, pts.length - 1)) * (W - PAD - 10);
     const y = (v) => H - 20 - (v / max) * (H - 44);
+    const slot = (W - PAD - 10) / Math.max(1, pts.length - 1);   // 每个点的悬停热区宽度
     const line = (key) => pts.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(p[key]).toFixed(1)).join(" ");
     const area = pts.length ? `${line("down")} L${x(pts.length - 1).toFixed(1)},${H - 20} L${x(0).toFixed(1)},${H - 20} Z` : "";
     const ticks = pts.filter((_, i) => pts.length <= 8 || i % Math.ceil(pts.length / 6) === 0);
@@ -210,9 +211,10 @@
       : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细")}
     </div>
     <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时速度 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时用量 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>
       <span style="font-size:13px;color:var(--text2)"><span style="color:var(--blue)">●</span> 下载　<span style="color:var(--orange)">●</span> 上传</span></div>
-      ${pts.length ? `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
+      <div class="chart-wrap">
+      ${pts.length ? `<svg id="traffic-chart" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" data-pad="${PAD}" data-h="${H}" data-max="${max}" data-unit="${h(series.unit || "MB")}">
         <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a73e8" stop-opacity=".32"/><stop offset="1" stop-color="#1a73e8" stop-opacity=".03"/></linearGradient></defs>
         <g stroke="#ececf0"><line x1="${PAD}" y1="20" x2="${PAD}" y2="${H - 20}"/><line x1="${PAD}" y1="${H - 20}" x2="${W - 6}" y2="${H - 20}"/></g>
         <path d="${area}" fill="url(#g1)"/>
@@ -223,7 +225,11 @@
           return `<text x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="middle">${h(p.label)}</text>`;
         }).join("")}</g>
         <g font-size="11" fill="#8e8e93"><text x="4" y="26">${h(series.unit || "MB")}</text><text x="4" y="${H - 22}">0</text></g>
-      </svg>` : empty("暂无流量记录", "连接后开始统计")}
+        <g id="chart-hover"></g>
+        <g class="chart-hit">${pts.map((p, i) => `<rect data-chart-i="${i}" x="${Math.max(0, x(i) - slot / 2).toFixed(1)}" y="14" width="${slot.toFixed(1)}" height="${H - 34}" fill="transparent"/>`).join("")}</g>
+      </svg>
+      <div class="chart-tip" id="traffic-tip" hidden></div>` : empty("暂无流量记录", "连接后开始统计")}
+      </div>
       <div style="font-size:13px;color:var(--text2);margin-top:4px">当前下载 <span id="down-speed">${fmt.speed(s.down_speed)}</span> · 当前上传 <span id="up-speed">${fmt.speed(s.up_speed)}</span></div>
     </div>
     <div class="speed-row" style="margin:0 0 4px">
@@ -232,12 +238,10 @@
     </div>
     <div class="section-label">面板累计</div>
     <div class="card">
-      ${acct ? row("已用流量", `${h(acct.used_text)} / ${h(acct.quota_text)}`, { chev: false, vcls: "strong" })
+      ${acct ? row("已用流量", `${h(acct.used_text || "—")} / ${h(acct.quota_text || "—")}`, { chev: false, vcls: "strong" })
         : row("总下载", h(t.total_down || "—"), { chev: false, vcls: "strong" })}
       ${acct ? row("套餐", h(acct.plan_name || "—"), { chev: false }) : row("总上传", h(t.total_up || "—"), { chev: false, vcls: "strong" })}
       ${acct && acct.expire ? row("到期", h(acct.expire), { chev: false }) : ""}
-      ${row("本次峰值", h(t.peak || "—"), { chev: false, vcls: "strong" })}
-      ${row("在线节点", String(t.online_nodes || 0), { chev: false, vcls: "strong" })}
     </div>
     ${s.trafficLog && s.trafficLog.length ? `<div class="section-label">站点流量明细</div><div class="card">` +
       s.trafficLog.map((r2) => row(h(r2.date),
@@ -335,13 +339,7 @@
       ${rowSwitch("允许局域网连接", "allow_lan", s.settings.allow_lan)}
       ${rowSwitch("IPv6", "ipv6", s.settings.ipv6)}
     </div>
-    <div class="section-label">分流与订阅</div><div class="card">
-      ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
-      ${row("重新拉取订阅", "现在拉取", { click: "refresh-sub" })}
-    </div>
-    <div class="section-label">提醒</div><div class="card">
-      ${rowSwitch("到期提醒", "expire_notify", s.settings.expire_notify)}
-      ${rowSwitch("流量提醒", "traffic_notify", s.settings.traffic_notify)}
+    <div class="section-label">启动与更新</div><div class="card">
       ${rowSwitch("开机自启动", "autostart", s.settings.autostart)}
       ${rowSwitch("自动检查更新", "auto_update", s.settings.auto_update)}
     </div>
@@ -363,7 +361,8 @@
   // 与安卓端"我的"逐项对齐（名称与顺序都照手机 app 的「我的服务」列表）：
   // 订阅套餐 / 礼品卡兑换 / 我的订单 / 邀请返利 / 我的工单 / 公告通知 / Telegram。
   // Telegram 入口只在面板真下发了链接时才出现（安卓端同样取不到就隐藏）。
-  // 分流规则与订阅链接**不在这里**（安卓端也没有），它们在设置页的「分流与订阅」里。
+  // 分流规则在节点页（顶部分流规则按钮）、重新拉取订阅在节点页（刷新订阅），
+  // 所以这里不再重复给入口；到期/流量提醒从设置页搬到了这里（提醒是"我的"自己的事）。
   Views.me = (s) => head("我的") + `<div class="col-narrow">
     <div class="card" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--blue);font-weight:700">${h((s.email || "?").slice(0, 1).toUpperCase())}</div>
@@ -375,6 +374,11 @@
       <div style="font-size:14px;margin-bottom:10px">已使用 <b>${h(planUsed(s))}</b> / ${h(planTotal(s))}</div>
       <div class="progress"><div style="width:${fmt.percent(s.plan.used, s.plan.total)}%"></div></div>
       <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(s.plan.expire || "—")}</div>
+    </div>
+    <div class="section-label">提醒</div><div class="card" style="margin-bottom:14px">
+      ${rowSwitch("到期提醒", "expire_notify", s.settings.expire_notify, ["⏰", "#ff9f43"])}
+      ${rowSwitch("流量提醒", "traffic_notify", s.settings.traffic_notify, ["📶", "#34c759"])}
+      ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
     </div>
     <div class="card">
       ${row("订阅套餐", "", { icon: ["◈", "#1a73e8"], click: "nav-plans" })}

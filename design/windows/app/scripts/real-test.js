@@ -149,6 +149,9 @@ const builder = require('../electron/core/builder');
     check('登录态认出来了且邮箱不打码', st.authed === true && /@/.test(String(st.email)) && String(st.email).indexOf('*') < 0,
       JSON.stringify({ authed: st.authed, email: st.email }));
     if (EMAIL) check('邮箱就是登录用的那个', String(st.email) === String(EMAIL), `「${st.email}」vs「${EMAIL}」`);
+    // 用户第 6 轮第 1 条：TUN 堆栈默认 system（Windows 上性能最好）。
+    // 只在全新数据目录（--data 指向的空目录）里才有意义 —— 已有设置会被沿用。
+    check('TUN 堆栈默认是 system（用户第 1 条）', st.tun === 'system', `当前「${st.tun}」`);
 
     const reg = await commands.get_register_config();
     console.log(`  注册配置: ${JSON.stringify(reg)}`);
@@ -221,6 +224,39 @@ const builder = require('../electron/core/builder');
       }
     }
 
+    // 用户第 6 轮第 6 条：流量页「面板累计」写成 0 B / 未订阅。
+    // 根因是流量页自己又拼了一套口径（u.u + u.d、transfer_enable），和「我的」页
+    // （get_plan）不同源 —— 面板一抖动就退化成"看起来没订阅"。这里锁死"同源"。
+    const trafficToday = await commands.get_traffic({ range: 'today' });
+    const planAgain = await commands.get_plan();
+    check('流量页与「我的」页的已用流量同源（字节口径，不再显示 0 B）',
+      trafficToday.account && trafficToday.account.used_text === planAgain.used_text,
+      `流量「${trafficToday.account && trafficToday.account.used_text}」 vs 我的「${planAgain.used_text}」`);
+    check('流量页与「我的」页的额度同源',
+      trafficToday.account && trafficToday.account.quota_text === planAgain.total_text,
+      `流量「${trafficToday.account && trafficToday.account.quota_text}」 vs 我的「${planAgain.total_text}」`);
+    check('流量页的套餐名与「我的」页一致且不是「未订阅」',
+      trafficToday.account && trafficToday.account.plan_name === planAgain.name && planAgain.name !== '未订阅',
+      `「${trafficToday.account && trafficToday.account.plan_name}」`);
+    check('账号用量是字节数（946 KB 这种小用量不会变成 0）',
+      Number(trafficToday.account && trafficToday.account.used_bytes) > 0,
+      `${trafficToday.account && trafficToday.account.used_bytes} 字节`);
+    check('「本次峰值」「在线节点」两个字段已经不再下发给界面（用户第 6 条说不要）',
+      !('peak' in trafficToday) && !('online_nodes' in trafficToday),
+      Object.keys(trafficToday).join(','));
+
+    // userInfo 的短缓存：45 秒内重复调用必须复用同一份数据（流量页/首页/我的页同时要），
+    // 但**不能**把"未订阅"缓存住（一次抖动不该让界面一直是未订阅）。
+    const client = require('../electron/panel/client');
+    client.clearUserInfoCache();
+    const u1 = await client.userInfo();
+    const u2 = await client.userInfo();
+    check('userInfo 有短缓存（同一份数据不重复打面板）', u1 === u2);
+    client.clearUserInfoCache();
+    const u3 = await client.userInfo();
+    check('清掉缓存后会重新拉取', u3 !== u1 && u3.plan_name === u1.plan_name, `「${u3.plan_name}」`);
+    check('真实面板拿到的套餐名不是「未订阅」', u3.plan_name !== '未订阅', `「${u3.plan_name}」`);
+
     /* ---------------- 订阅与节点 ---------------- */
     section('订阅与节点（真节点）');
     const sub = await commands.refresh_subscription();
@@ -236,6 +272,36 @@ const builder = require('../electron/core/builder');
     const bad = list.filter((n) => /剩余流量|到期|官网|expire/i.test(n.name || ''));
     check('没有信息伪节点', bad.length === 0, bad.map((n) => n.name).join('|'));
     console.log(`  示例: ${list.slice(0, 5).map((n) => `${n.name}(${n.latency})`).join(' | ')}`);
+
+    /* ---- 用户第 8 条：节点顺序照网站下发，不能被重排 ---- */
+    // 内核会把 include-all 的成员按名字排序（config.go 的 slices.Sort(AllProxies)），
+    // 所以本地方案改成显式列节点。这里拿订阅原文的顺序与内核里分组的成员顺序逐项比。
+    {
+      const yaml = require('js-yaml');
+      const mainName = require('../electron/core/rulesets').GROUP_SELECTOR;
+      let want = [];
+      try {
+        const raw = yaml.load(nodeFs.readFileSync(nodePath.join(paths.profiles(), 'subscribe.yaml'), 'utf8')) || {};
+        want = (Array.isArray(raw.proxies) ? raw.proxies : [])
+          .map((p) => p && p.name)
+          .filter((n) => n && !/剩余流量|到期|官网|expire/i.test(n));
+      } catch (e) {
+        console.log(`  （读订阅原文失败：${e.message}）`);
+      }
+      const groups = await commands.get_routing_groups();
+      const main = (Array.isArray(groups) ? groups : []).find((g) => g.name === mainName);
+      const members = main && Array.isArray(main.options) ? main.options.slice() : [];
+      const structural = ['🚀 节点选择', '自动选择', '故障转移', 'DIRECT', 'REJECT'];
+      const got = members.filter((n) => structural.indexOf(n) < 0);
+      const inConfig = got.slice().sort();
+      const wantInConfig = want.filter((n) => inConfig.indexOf(n) >= 0);
+      check('节点顺序 = 网站下发的顺序（不是内核按名字排的）',
+        want.length > 0 && JSON.stringify(got) === JSON.stringify(wantInConfig),
+        `订阅前 4: ${want.slice(0, 4).join(' | ')} ／ 内核前 4: ${got.slice(0, 4).join(' | ')}`);
+      check('分组里不是按名字排序的（第一项不是字节序最小的那个）',
+        got.length > 1 && got[0] !== got.slice().sort()[0],
+        `第一项=${got[0]} ／ 排序后第一项=${got.slice().sort()[0]}`);
+    }
 
     /* ---------------- 端口 + 连接 + 真流量 ---------------- */
     section(`连接（本机代理端口 ${PORT || '随机'}）`);
@@ -392,14 +458,23 @@ const builder = require('../electron/core/builder');
       check('主选择组在第一位（安卓端 selectorGroup 契约）', cfgGroups[0] === rulesets.GROUP_SELECTOR, cfgGroups.slice(0, 3).join(','));
       check('四个结构组都在', [rulesets.GROUP_SELECTOR, rulesets.GROUP_AUTO, rulesets.GROUP_FALLBACK, rulesets.GROUP_FINAL]
         .every((n) => cfgGroups.includes(n)), cfgGroups.join(','));
-      check('主组首位成员是「自动选择」（默认出口）',
-        JSON.stringify((cfg['proxy-groups'][0] || {}).proxies || []) === JSON.stringify([rulesets.GROUP_AUTO, rulesets.GROUP_FALLBACK, 'DIRECT']),
-        JSON.stringify((cfg['proxy-groups'][0] || {}).proxies));
-      check('各组都是 include-all（节点不写死在配置里，订阅更新不用重拼）',
-        (cfg['proxy-groups'] || []).filter((g) => g.name !== rulesets.GROUP_FINAL).every((g) => g['include-all'] === true),
-        JSON.stringify((cfg['proxy-groups'] || []).map((g) => [g.name, !!g['include-all']])));
-      check('兜底组刻意不 include-all（成员只有 主组+DIRECT）',
-        (cfg['proxy-groups'].find((g) => g.name === rulesets.GROUP_FINAL) || {})['include-all'] !== true);
+      // 用户第 8 条：不能再用 include-all —— 内核合并 include-all 成员前会
+      // slices.Sort(AllProxies)（config.go:943），顺序就不是网站下发的了。
+      // 所以改成把节点显式写进 groups，顺序 = 订阅顺序（上面「订阅与节点」段已逐项比过）。
+      const main = cfg['proxy-groups'][0] || {};
+      const mainProxies = Array.isArray(main.proxies) ? main.proxies : [];
+      check('主组前三个成员是「自动选择 / 故障转移 / DIRECT」（默认出口）',
+        JSON.stringify(mainProxies.slice(0, 3)) === JSON.stringify([rulesets.GROUP_AUTO, rulesets.GROUP_FALLBACK, 'DIRECT']),
+        JSON.stringify(mainProxies.slice(0, 5)));
+      check('主组把节点显式写进去了（不是 include-all）',
+        main['include-all'] !== true && mainProxies.length > 3, `include-all=${!!main['include-all']} 成员 ${mainProxies.length} 个`);
+      check('所有组都不再使用 include-all（否则内核会按名字重排）',
+        (cfg['proxy-groups'] || []).every((g) => g['include-all'] !== true),
+        JSON.stringify((cfg['proxy-groups'] || []).filter((g) => g['include-all'] === true).map((g) => g.name)));
+      check('兜底组只有 主组+DIRECT（刻意不给它节点）',
+        JSON.stringify(((cfg['proxy-groups'].find((g) => g.name === rulesets.GROUP_FINAL) || {}).proxies) || []) ===
+          JSON.stringify([rulesets.GROUP_SELECTOR, 'DIRECT']),
+        JSON.stringify((cfg['proxy-groups'].find((g) => g.name === rulesets.GROUP_FINAL) || {}).proxies));
 
       // ② rule-provider 全部改成 http + 24h 在线更新，路径落在 data/polaris-rules/
       const rp = cfg['rule-providers'] || {};
@@ -529,6 +604,49 @@ const builder = require('../electron/core/builder');
       check('测完把主组还原成「自动选择」', !!back && back.ok === true, JSON.stringify(back).slice(0, 120));
     } else {
       check('找得到主选择组（三个特殊出口挂在它下面）', false, '没有主组');
+    }
+
+    /* ---------------- 端口占用与端口保存（用户第 9、10 条） ---------------- */
+    section('端口占用与端口保存（用户第 9、10 条）');
+    {
+      const net = require('net');
+      const { spawn } = require('child_process');
+      const freePort = () => new Promise((resolve) => {
+        const s = net.createServer();
+        s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });
+      });
+
+      const p1 = await freePort();
+      const none = await commands.port_owner({ port: p1 });
+      check('空闲端口上查不到占用者', !!none && none.busy === false, JSON.stringify(none));
+
+      // 起一个"别的代理软件"占住端口（纯 listener，用 electron 的 node 模式跑）
+      const dummy = spawn(process.execPath,
+        ['-e', `require('net').createServer().listen(${p1},'127.0.0.1');setTimeout(()=>{},600000)`],
+        { env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1' }), stdio: 'ignore', windowsHide: true });
+      await new Promise((r) => setTimeout(r, 1500));
+      const own = await commands.port_owner({ port: p1 });
+      check('能查出占着端口的进程名和 PID',
+        !!own && own.busy === true && Number(own.pid) === dummy.pid && !!own.name, JSON.stringify(own));
+
+      const closed = await commands.close_port_owner({ pid: dummy.pid });
+      check('请它退出之后它真的没了', !!closed && closed.closed === true, JSON.stringify(closed));
+      const after = await commands.port_owner({ port: p1 });
+      check('关掉之后端口就空出来了', !!after && after.busy === false, JSON.stringify(after));
+      try { dummy.kill(); } catch (_) {}
+
+      // 第 9 条：端口设好要长久保存，而且下次连接真的用它
+      const fixed = await freePort();
+      const sv = await commands.set_setting({ key: 'mixed_port', value: fixed });
+      check('端口保存成功', !!sv && sv.ok === true && sv.mixed_port === fixed, JSON.stringify(sv));
+      const st1 = await commands.get_settings();
+      check('端口长久保存（重新读设置还在）', Number(st1.mixed_port) === fixed, `mixed_port=${st1.mixed_port}`);
+      if ((await commands.get_status()).connected) await commands.disconnect();
+      await commands.connect();
+      const st2 = await commands.get_settings();
+      check('连接后内核真的跑在这个端口上',
+        Number(st2.running_port) === fixed, `running_port=${st2.running_port} 期望=${fixed}`);
+      await commands.set_setting({ key: 'mixed_port', value: 0 });
     }
 
     /* ---------------- 收尾 ---------------- */

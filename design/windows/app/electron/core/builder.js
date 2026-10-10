@@ -8,7 +8,8 @@
  * 分流方案与安卓端 kernel-core 的 config/routing 同构（routing_build.go）：
  * **屏蔽面板下发的 proxy-groups / rules / rule-providers / sub-rules，
  * 只用本地内置方案**；面板节点（proxies）与 proxy-providers 原样保留，
- * 靠 include-all 成为本地各组的成员（订阅更新后不用重拼配置）。
+ * 各组的节点成员按**订阅顺序**显式列出（不用 include-all —— 内核会先
+ * slices.Sort 再合并，顺序就不是网站下发的了，见 buildLocalRouting 里的注释）。
  */
 
 const crypto = require('crypto');
@@ -40,7 +41,7 @@ function randomSecret() {
 
 /**
  * 内置分流组的成员：首位即默认出口（select 组默认选首位），对齐 Karing 预设语义。
- * 节点不在这里枚举 —— include-all 会把全部节点并进每一组（安卓端同款），
+ * 节点不在这里枚举 —— 调用方 members() 会把全部节点按订阅顺序接在后面，
  * 用户才能给单个分类指定具体节点，订阅加节点也不用重拼配置。
  */
 function groupMembers(defaultOut) {
@@ -73,9 +74,25 @@ function buildLocalRouting(out, routing, directDomains) {
   }
 
   // 顺序即契约：主选择组必须排第一（安卓端 KernelProxyGroup.selectorGroup() 取首个 Selector 组）
+  //
+  // 成员为什么显式枚举、不用 include-all（用户第 8 条「节点排序要按网站下发的排序」）：
+  // 内核在把节点并进 include-all 组之前会 `slices.Sort(AllProxies)`
+  // （kernel-core/src/foss/golang/clash/config/config.go:943），于是界面里的节点顺序
+  // 变成"内核按名字字节序排的"（🇩🇪 在最前），而不是网站下发的订阅顺序。
+  // 显式按订阅顺序列出成员，顺序就完全由订阅决定；订阅更新后配置会重拼，不受影响。
+  // 例外：订阅用 proxy-providers 提供节点时名字没法静态枚举，只能退回 include-all
+  // （顺序由内核定，这一点无法绕开）。
+  const useIncludeAll = providerNames.length > 0;
+  const nodeNames = proxies
+    .map((p) => p && p.name)
+    .filter((n) => typeof n === 'string' && n && !reserved.has(n));
+  const members = (head) => (useIncludeAll
+    ? { proxies: head, 'include-all': true }
+    : { proxies: head.concat(nodeNames) });
+
   const groups = [
-    { name: SELECTOR_GROUP, type: 'select', proxies: [AUTO_GROUP, FALLBACK_GROUP, 'DIRECT'], 'include-all': true },
-    {
+    Object.assign({ name: SELECTOR_GROUP, type: 'select' }, members([AUTO_GROUP, FALLBACK_GROUP, 'DIRECT'])),
+    Object.assign({
       name: AUTO_GROUP,
       type: 'url-test',
       url: rulesets.TEST_URL,
@@ -83,16 +100,14 @@ function buildLocalRouting(out, routing, directDomains) {
       tolerance: 50,
       // 只认 204：留空时 mihomo 默认 "*"，中间盒的拦截页（200）也会被当成"通"
       'expected-status': '204',
-      'include-all': true,
-    },
-    {
+    }, members([])),
+    Object.assign({
       name: FALLBACK_GROUP,
       type: 'fallback',
       url: rulesets.TEST_URL,
       interval: 300,
       'expected-status': '204',
-      'include-all': true,
-    },
+    }, members([])),
   ];
   const ruleProviders = {};
   const rules = [];
@@ -105,14 +120,14 @@ function buildLocalRouting(out, routing, directDomains) {
   // 内置分类里有 gs_geolocation_ncn 这种"整个非中国"的大网，排后面就永远轮不到自定义规则。
   for (const g of rulesets.normalizeCustom(routing.custom)) {
     if (!g.enabled) continue;
-    groups.push({ name: g.name, type: 'select', proxies: groupMembers(g.out), 'include-all': true });
+    groups.push(Object.assign({ name: g.name, type: 'select' }, members(groupMembers(g.out))));
     for (const r of g.rules) rules.push(rulesets.ruleLine(r, g.name));
   }
 
   const enabled = new Set(rulesets.normalizeEnabled(routing.enabled));
   for (const g of rulesets.orderedTable(routing.order)) {
     if (!enabled.has(g.name)) continue;
-    groups.push({ name: g.name, type: 'select', proxies: groupMembers(g.defaultOut), 'include-all': true });
+    groups.push(Object.assign({ name: g.name, type: 'select' }, members(groupMembers(g.defaultOut))));
     for (const key of rulesets.providerKeys(g)) {
       const p = rulesets.PROVIDERS[key];
       if (!p) continue;

@@ -189,6 +189,7 @@ async function login(email, password, panelInput) {
   if (!panelUrl) throw new PanelError('请填写面板地址', 'input');
   if (!email || !password) throw new PanelError('请输入邮箱和密码', 'input');
 
+  clearUserInfoCache();   // 换账号了，别把上一个账号的套餐留给新账号
   session.panelUrl = panelUrl;
   session.token = '';
 
@@ -216,6 +217,7 @@ function detectBackend(url) {
 const GIFT_PATHS = ['/user/gift-card/redeem', '/user/redeemgiftcard'];
 
 function logout() {
+  clearUserInfoCache();
   session.token = '';
   session.email = '';
   session.backend = '';
@@ -290,7 +292,15 @@ async function siteInfo() {
   }
 }
 
-async function userInfo() {
+// userInfo 的短缓存：流量页/首页/我的页会同时要同一份数据，
+// 每次都重新拉两个接口既慢又容易把面板打到限流；45 秒内的重复调用直接复用。
+// 关键是**只缓存取到了套餐的结果** —— 一次网络抖动不该把"未订阅"缓存下来。
+let userInfoCache = null;
+const USER_INFO_TTL = 45000;
+
+async function userInfo(options) {
+  const force = !!(options && options.force);
+  if (!force && userInfoCache && Date.now() - userInfoCache.at < USER_INFO_TTL) return userInfoCache.data;
   // 累计流量、套餐对象、到期时间都在 /user/getSubscribe 里：/user/info **没有 u/d、
   // 也没有 plan 对象**（只有 plan_id / transfer_enable / expired_at）。
   // 旧代码只读 /user/info，于是「我的」页永远是"未订阅 / 已使用 0 GB"——真实面板实测。
@@ -307,12 +317,20 @@ async function userInfo() {
   const expiredAt = toTs(pick(sub, ['expired_at'], pick(u, ['expired_at', 'expire_at', 'expiredAt'], 0)));
   const planName = (plan && plan.name)
     || String(pick(u, ['plan_name', 'planName'], '')) || String(pick(sub, ['plan_name'], ''));
+  // 这次没取到套餐、但上一次取到过 —— 是这次请求失败，不是用户真的退订了。
+  // 沿用上一次的套餐名/到期时间，别让界面抖成"未订阅"。
+  if (!planName && userInfoCache && userInfoCache.data.plan_name !== '未订阅') {
+    return Object.assign({}, userInfoCache.data, {
+      up: upUsed, down: downUsed,
+      used: userInfoCache.data.used, total: userInfoCache.data.total,
+    });
+  }
   // 总量优先用字节数换算（getSubscribe.transfer_enable 是字节），退回套餐的 GB 值
   const totalGb = transferEnable > 0
     ? transferEnable / (1024 ** 3)
     : Number(pick(plan || {}, ['transfer_enable'], 0)) || 0;
   const round2 = (n) => Math.round(n * 100) / 100;
-  return {
+  const data = {
     email: String(pick(u, ['email'], pick(sub, ['email'], session.email))),
     balance: Number(pick(u, ['balance'], 0)) || 0,
     plan_name: String(planName || '未订阅'),
@@ -331,7 +349,11 @@ async function userInfo() {
     d: downUsed,
     ...(plan ? { plan } : {}),
   };
+  if (planName || transferEnable > 0) userInfoCache = { at: Date.now(), data };
+  return data;
 }
+
+function clearUserInfoCache() { userInfoCache = null; }
 
 async function subscribeInfo() {
   const s = await get('/user/getSubscribe');
@@ -754,4 +776,5 @@ module.exports = {
   // 纯函数，导出给自检用（把面板原始行按天聚合 / 工单正文兜底）
   aggregateTrafficLog,
   ticketContent,
+  clearUserInfoCache,
 };

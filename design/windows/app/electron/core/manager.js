@@ -434,22 +434,21 @@ function previewNodes() {
     const cfg = yaml.load(fs.readFileSync(configFile(), 'utf8'));
     const proxies = Array.isArray(cfg && cfg.proxies) ? cfg.proxies : [];
     const groups = Array.isArray(cfg && cfg['proxy-groups']) ? cfg['proxy-groups'] : [];
-    const byName = new Map(proxies.map((p) => [p.name, p]));
     const allNames = proxies.map((p) => p.name);
 
-    // 本地方案下各组是 include-all：proxies 字段里只有结构成员（自动选择/故障转移/DIRECT），
-    // 节点是内核按 include-all 并进去的。所以预览不能只数 proxies —— 那样会显示
-    // 「3 个可选出口」甚至 0 个节点（A-29：连接前节点页是空的）。
-    // 也不能只数节点：内核里 include-all 组的成员 = 显式成员在前 + 其余全部节点在后，
-    // 少算了那三个非节点出口（自动选择/故障转移/DIRECT），预览就和连上之后长得不一样。
+    // 本地方案下各组的 proxies 就是**全部成员**（结构出口 + 按订阅顺序的节点）：
+    // builder 显式枚举节点而不是用 include-all，因为内核会先 slices.Sort(AllProxies)
+    // 再合并（config.go:943），include-all 组的顺序是内核按名字排的，不是网站下发的。
+    // 预览必须照内核的读法来：显式成员原样返回，只有 include-all 组才追加其余节点。
+    // 否则预览会漏掉那三个非节点出口（自动选择/故障转移/DIRECT），
+    // 与连上之后长得不一样（A-32：用户以为这三个"没生效"）。
     const membersOf = (g) => {
       const list = Array.isArray(g.proxies) ? g.proxies : [];
       if (g['include-all'] === true) {
         const head = list.slice();
         return head.concat(allNames.filter((n) => head.indexOf(n) < 0));
       }
-      const real = list.filter((n) => byName.has(n));
-      return real.length > 0 ? real : allNames.slice();
+      return list.length > 0 ? list.slice() : allNames.slice();
     };
 
     S.groups = groups.map((g) => {

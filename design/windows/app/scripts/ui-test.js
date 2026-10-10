@@ -136,6 +136,23 @@ async function clickUntil(win, sel, cond, { tries = 3, timeout = 6000, label = '
   throw err;
 }
 
+/**
+ * 把一个开关拨到想要的状态，并用**主进程**读回来确认（readExpr 必须查主进程，不能只看 DOM）。
+ * 只看 DOM 的 on/off 不够：界面上是乐观切换，"这一下点击被重绘吞掉"时它会静默什么都不做，
+ * 而 DOM 上看起来已经变了 —— 实测就是这么把「本地分流」留在关闭状态，后面一串断言全跟着红。
+ * 返回点了几次；-1 表示点了 tries 次也没拨过去。
+ */
+async function flipUntil(win, sel, readExpr, want, { tries = 3, label = '' } = {}) {
+  for (let i = 1; i <= tries; i++) {
+    const cur = await ev(win, readExpr);
+    if (cur === want) return i - 1;
+    await realClick(win, sel, { label: `${label}（第 ${i} 次）` });
+    await sleep(1500);
+    await settle(win, { quiet: 900, timeout: 25000 });
+  }
+  return (await ev(win, readExpr)) === want ? tries : -1;
+}
+
 async function setInput(win, sel, value) {
   const ok = await ev(win, `(()=>{const el=document.querySelector(${JSON.stringify(sel)});
     if(!el) return false; el.focus(); el.value=${JSON.stringify(value)};
@@ -275,6 +292,11 @@ async function run(win, opts) {
     check('界面显示已连接', st.connected === true, `phase=${st.phase}`);
     const nd = await ev(win, 'document.querySelector(".node-line")?.textContent.trim()');
     check('首页显示当前节点', !!nd && nd !== '点击上方按钮开始连接', nd);
+    // 用户第 7 条：连上就自动测一次延迟，不该再让人进节点页手动点。
+    // 这里在"还没点过任何延迟测试按钮"的状态下等节点自己带上延迟。
+    const lat = await waitFor(win, `(window.__polarisState.nodes||[]).filter(n=>typeof n.latency==='number'&&n.latency>=0).length`,
+      { timeout: 90000, label:'连接后自动完成延迟测试' }).catch(() => 0);
+    check('连接后自动跑了一次延迟测试（不用进节点页手动点）', Number(lat) > 0, `有延迟的节点 ${lat} 个`);
     // 连接后主进程还会拉一轮面板数据（几秒），等它回来再进下一段 ——
     // 否则下一段读到的是连接前的本地预览（旧的 config.yaml），会误报"分组重复"。
     await settle(win);
@@ -429,16 +451,15 @@ async function run(win, opts) {
     const lrTxt = await ev(win, PAGE_TEXT);
     check('页面上说明了它会屏蔽面板下发的规则', lrTxt.indexOf('屏蔽面板下发的分流规则') >= 0);
     // 关掉再打开：验证开关真的能切换（顺带验证降级回面板方案再切回来不会把连接弄断）
-    await realClick(win, '.switch[data-click="local-routing"]', { label: '关掉本地分流' });
-    await sleep(1200);
-    await settle(win, { quiet: 900, timeout: 20000 });
-    const lrOff = await ev(win, '(()=>{const e=document.querySelector(".switch[data-click=\'local-routing\']");return !!e && !e.classList.contains("on");})()');
-    check('关掉后开关是关的状态（面板方案生效）', lrOff === true);
-    await realClick(win, '.switch[data-click="local-routing"]', { label: '打开本地分流' });
-    await sleep(1200);
-    await settle(win, { quiet: 900, timeout: 20000 });
-    const lrBack = await ev(win, '(()=>{const e=document.querySelector(".switch[data-click=\'local-routing\']");return !!e && e.classList.contains("on");})()');
-    check('再打开又回到本地分流方案（不留测试状态）', lrBack === true);
+    // 断言以主进程的 store 为准（routing_on），不是 DOM 上的乐观样式。
+    const lrOffTries = await flipUntil(win, '.switch[data-click="local-routing"]',
+      'window.PolarisAPI.getRulesets().then(r=>r.on)', false, { label: '关掉本地分流' });
+    check('关掉后主进程也认为在用面板方案（面板方案生效）', lrOffTries >= 0,
+      lrOffTries < 0 ? '点了 3 次都没关掉' : (lrOffTries === 0 ? '本来就是关的' : `第 ${lrOffTries} 次点中`));
+    const lrBackTries = await flipUntil(win, '.switch[data-click="local-routing"]',
+      'window.PolarisAPI.getRulesets().then(r=>r.on)', true, { label: '打开本地分流' });
+    check('再打开又回到本地分流方案（不留测试状态）', lrBackTries >= 0,
+      lrBackTries < 0 ? '点了 3 次都没打开' : (lrBackTries === 0 ? '本来就是开的' : `第 ${lrBackTries} 次点中`));
     const stillOn = await ev(win, '!!(window.__polarisState && window.__polarisState.connected)');
     check('切换分流方案没有把连接弄断', stillOn === true);
 
@@ -479,9 +500,22 @@ async function run(win, opts) {
       Array.isArray(nodesOrder) && nodesOrder[0] === moving,
       `节点页前 4: ${(nodesOrder || []).slice(0, 4).join(' | ')}`);
 
-    // 拖回原位，别把用户的顺序留在测试状态
-    await realDrag(win, `[data-ruleset-grip="${moving}"]`, `[data-ruleset-row="${order0[1]}"]`, { label: `拖回 ${moving}` });
-    await sleep(600);
+    // 「原地拖一下」：手柄上按下、松手还在同一行。这是最容易漏的一条路径 ——
+    // mousedown 与 mouseup 都落在这一行，浏览器补发的那次 click 落点就是这一行本身，
+    // 于是行上的「指定出口」处理被触发、弹窗遮罩留在界面上，后面所有点击全被挡住
+    // （上一轮 3 条红全是"该坐标最上面是 <div class="overlay">"，根因就在这里）。
+    await realDrag(win, `[data-ruleset-grip="${moving}"]`, `[data-ruleset-row="${moving}"]`, { label: `原地拖一下 ${moving}` });
+    await sleep(700);
+    const stuck = await ev(win, 'document.querySelectorAll(".overlay").length');
+    check('原地拖一下不会弹出「指定出口」遮罩', Number(stuck) === 0, `overlay=${stuck}`);
+
+    // 真正拖回原位：现在第一行是它自己，原位 = 原来第一行那一行
+    await realDrag(win, `[data-ruleset-grip="${moving}"]`, `[data-ruleset-row="${order0[0]}"]`, { label: `拖回 ${moving}` });
+    await sleep(900);
+    const order2 = await ev(win, orderExpr);
+    check('拖回原位后顺序还原', order2[0] === order0[0], `${order1.slice(0, 3).join(' | ')} → ${order2.slice(0, 3).join(' | ')}`);
+    const stuck2 = await ev(win, 'document.querySelectorAll(".overlay").length');
+    check('拖回原位之后也没有残留遮罩', Number(stuck2) === 0, `overlay=${stuck2}`);
 
     await realClick(win, '[data-nav-back]', { label:'返回键' });
     await waitFor(win, 'window.__polarisRoute === "nodes"', { label:'返回到节点页' });
@@ -535,6 +569,39 @@ async function run(win, opts) {
       check(`${r} 区间的数据来自面板（站点用量）`, !d.notLogged && /站点用量/.test(d.label), d.label);
       check(`${r} 区间有合计值`, !!(d.site && d.site.total_text), d.site ? `${d.site.total_text} / ${d.site.days} 天` : '无');
     }
+    // 用户第 6 轮第 4 条：曲线画的是"用量"，标题不能叫"实时速度"
+    const chartTitle = await ev(win, `[...document.querySelectorAll('.card b')].map(e=>e.textContent.trim()).find(t=>/本机实时/.test(t))||''`);
+    check('曲线标题写的是「本机实时用量」（不是"实时速度"）', /本机实时用量/.test(chartTitle), `实际「${chartTitle}」`);
+    // 用户第 6 轮第 6 条：面板累计的已用流量/套餐要真的调对
+    const acc = await ev(win, `(()=>{const t=window.__polarisState.traffic||{};const a=t.account||null;
+      const rows=[...document.querySelectorAll('.card .row')].map(r=>({k:(r.querySelector('.k')?.textContent||'').trim(),v:(r.querySelector('.v')?.textContent||'').trim()}));
+      const pick=k=>{const x=rows.find(r=>r.k.indexOf(k)>=0);return x?x.v:''};
+      return {account:a, used:pick('已用流量'), plan:pick('套餐'), peak:pick('本次峰值'), online:pick('在线节点')};})()`);
+    check('流量页的已用流量不是 0 B（面板累计调对了）', !!acc.used && !/^0\s*B/.test(acc.used.trim()), `「${acc.used}」`);
+    check('流量页的套餐名不是「未订阅」', !!acc.plan && acc.plan !== '未订阅' && acc.plan !== '—', `「${acc.plan}」`);
+    check('流量页与「我的」页读的是同一份套餐数据',
+      !!acc.account && acc.plan === (await ev(win, 'window.__polarisState.plan.name')), `流量「${acc.plan}」`);
+    check('「本次峰值」这行已经删掉（用户第 6 条）', acc.peak === '', acc.peak ? `还有「${acc.peak}」` : '');
+    check('「在线节点」这行已经删掉（用户第 6 条）', acc.online === '', acc.online ? `还有「${acc.online}」` : '');
+    // 用户第 6 轮第 5 条：鼠标划过曲线要显示那个位置的用量
+    const hit = await ev(win, `(()=>{const r=document.querySelector('[data-chart-i="1"]')||document.querySelector('[data-chart-i]');
+      if(!r) return {noChart:true};
+      const b=r.getBoundingClientRect();
+      r.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:b.left+2,clientY:b.top+6}));
+      const tip=document.getElementById('traffic-tip');
+      return {hidden:tip?tip.hidden:null, text:tip?tip.textContent:'', dots:document.querySelectorAll('#chart-hover circle').length};})()`);
+    if (hit.noChart) {
+      out('  （本机还没采样出流量点，曲线没画出来，跳过悬停读数断言）');
+    } else {
+      check('鼠标划过曲线弹出读数', hit.hidden === false && hit.text.length > 0, `「${hit.text}」`);
+      check('读数里有下载/上传两个值', /↓/.test(hit.text) && /↑/.test(hit.text), hit.text);
+      check('读数时曲线上有两个定位点', hit.dots === 2, `${hit.dots} 个`);
+      const gone = await ev(win, `(()=>{const s=document.getElementById('traffic-chart');
+        s.dispatchEvent(new MouseEvent('mouseleave',{bubbles:false}));
+        const tip=document.getElementById('traffic-tip');
+        return {hidden:tip.hidden, marks:document.querySelectorAll('#chart-hover circle').length};})()`);
+      check('鼠标移开读数收起来', gone.hidden === true && gone.marks === 0, JSON.stringify(gone));
+    }
   });
 
   /* ---- 7. 我的页（用户第 6、7 条） ---- */
@@ -545,7 +612,7 @@ async function run(win, opts) {
     const badge = await ev(win, 'document.querySelector(".card .badge")?.textContent.trim()');
     check('我的页徽标不是「未订阅」', badge && badge !== '未订阅', `「${badge}」`);
     const body = await ev(win, PAGE_TEXT);
-    check('我的页没有「分流规则」入口（已挪到设置）', body.indexOf('分流规则') < 0);
+    check('我的页没有「分流规则」入口（它在节点页顶栏）', body.indexOf('分流规则') < 0);
     // 用户第 5 条：自己的邮箱不打码
     const mail = await ev(win, 'window.__polarisState.email');
     check('我的页邮箱不打码', !!mail && mail.indexOf('*') < 0 && mail.indexOf('@') > 0, `「${mail}」`);
@@ -561,6 +628,25 @@ async function run(win, opts) {
     const tg = await ev(win, '(window.__polarisState.siteInfo||{}).telegramUrl||""');
     const tgRow = await ev(win, '!!document.querySelector(\'[data-click="open-telegram"]\')');
     check('面板给了 Telegram 链接就有入口（没给就隐藏）', tg ? tgRow : !tgRow, tg ? `链接 ${tg}` : '面板未配置');
+    // 用户第 6 轮第 3 条：到期提醒/流量提醒从设置页搬到这里
+    const exp = await ev(win, '!!document.querySelector(\'.switch[data-setting="expire_notify"]\')');
+    const tra = await ev(win, '!!document.querySelector(\'.switch[data-setting="traffic_notify"]\')');
+    check('我的页有「到期提醒」开关（从设置页搬过来）', exp);
+    check('我的页有「流量提醒」开关（从设置页搬过来）', tra);
+    const meTxt = await ev(win, PAGE_TEXT);
+    check('我的页的提醒分段在提醒两个字下', /提醒/.test(meTxt));
+    // 订阅链接：设置页那段删了，入口挪到这里（不能整个功能消失）
+    const subRow = await ev(win, '!!document.querySelector(\'[data-click="show-subscribe-url"]\')');
+    check('我的页有「订阅链接」入口', subRow);
+    // 开关真的能点（点一下再点回来，别留测试状态）；同样以主进程的 store 为准
+    const expOffTries = await flipUntil(win, '.switch[data-setting="expire_notify"]',
+      'window.PolarisAPI.getSettings().then(s=>s.expire_notify)', false, { label: '点到期提醒' });
+    check('点「到期提醒」开关真的生效', expOffTries >= 0,
+      expOffTries < 0 ? '点了 3 次都没关掉' : (expOffTries === 0 ? '本来就是关的' : `第 ${expOffTries} 次点中`));
+    const expOnTries = await flipUntil(win, '.switch[data-setting="expire_notify"]',
+      'window.PolarisAPI.getSettings().then(s=>s.expire_notify)', true, { label: '再点回来' });
+    check('再点回打开（不留测试状态）', expOnTries >= 0,
+      expOnTries < 0 ? '点了 3 次都没打开' : (expOnTries === 0 ? '本来就是开的' : `第 ${expOnTries} 次点中`));
   });
 
   section('7b. 二级页面（都有返回键 · 数据是面板的）');
@@ -630,17 +716,27 @@ async function run(win, opts) {
   }
 
   /* ---- 8. 设置页（入口该在哪在哪 · 用户第 7 条） ---- */
-  section('8. 设置页（分流与订阅归这里）');
+  section('8. 设置页（用户第 6 轮：分流与订阅整段删掉、提醒搬到我的页）');
   await step('设置页', async () => {
     await realClick(win, '.nav-item[data-route="settings"]', { label:'侧边栏·设置' });
     await waitFor(win, 'window.__polarisRoute === "settings"', { timeout: 15000, label:'进设置页' });
     check('点侧边栏真的到了设置页', true, await ev(win, 'document.querySelector(".page-title")?.textContent.trim()'));
     const has = await ev(win, '!!document.querySelector(\'[data-click="nav-routing"]\')');
     check('设置页不再有「分流规则」入口（与节点页重复，用户第 3 条）', !has);
+    // 用户第 6 轮第 2 条：整段删掉（订阅链接搬去我的页、重新拉取订阅本来就在节点页）
     const hasSub = await ev(win, '!!document.querySelector(\'[data-click="show-subscribe-url"]\')');
-    check('设置页有「订阅链接」入口', hasSub);
+    check('设置页没有「订阅链接」入口了（整段删掉）', !hasSub);
     const txt = await ev(win, PAGE_TEXT);
-    check('设置页有「分流与订阅」分段', txt.indexOf('分流与订阅') >= 0);
+    check('设置页没有「分流与订阅」分段', txt.indexOf('分流与订阅') < 0);
+    check('设置页没有「重新拉取订阅」行', txt.indexOf('重新拉取订阅') < 0);
+    // 用户第 6 轮第 3 条：两个提醒开关搬到我的页
+    const expInSet = await ev(win, '!!document.querySelector(\'.switch[data-setting="expire_notify"]\')');
+    const traInSet = await ev(win, '!!document.querySelector(\'.switch[data-setting="traffic_notify"]\')');
+    check('设置页没有「到期提醒」开关了', !expInSet);
+    check('设置页没有「流量提醒」开关了', !traInSet);
+    // 用户第 6 轮第 1 条：TUN 堆栈默认 system
+    const tun = await ev(win, 'window.__polarisState.settings.tun');
+    check('TUN 堆栈默认是 system（用户第 1 条）', tun === 'system', `当前 ${tun}`);
     // 用户第 4 条：设置里不要「面板」段
     const labels = await ev(win, '[...document.querySelectorAll(".section-label")].map(e=>e.textContent.trim())');
     check('设置页没有「面板」分段', labels.indexOf('面板') < 0, labels.join(' / '));
@@ -657,8 +753,65 @@ async function run(win, opts) {
     if (stacks && stacks.length) out('  （未捕获异常堆栈：\n    ' + stacks.join('\n    ') + '）');
   });
 
-  /* ---- 10. 收尾：断开（不退出登录，方便你接着看） ---- */
-  section('10. 收尾');
+  /* ---- 10. 端口被别的软件占用（用户第 10 条） ---- */
+  section('10. 端口被别的软件占用（优雅地关掉它）');
+  await step('端口冲突', async () => {
+    const net = require('net');
+    const { spawn } = require('child_process');
+    // 先借一个空闲端口号，再起一个"别的代理软件"（纯 listener）占住它
+    const freePort = await new Promise((resolve) => {
+      const s = net.createServer();
+      s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });
+    });
+    const dummy = spawn(process.execPath,
+      ['-e', `require('net').createServer().listen(${freePort},'127.0.0.1');setTimeout(()=>{},600000)`],
+      { env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1' }), stdio: 'ignore', windowsHide: true });
+    await sleep(1500);
+
+    const who = await ev(win, `window.PolarisAPI.portOwner(${freePort})`);
+    check('port_owner 能查出占着端口的进程', !!who && who.busy === true && Number(who.pid) === dummy.pid,
+      JSON.stringify(who));
+
+    // 把本机代理端口设成这个被占的端口，再点连接
+    await ev(win, `window.PolarisAPI.setSetting("mixed_port", ${freePort})`);
+    await ev(win, 'window.PolarisNav("home")');
+    await sleep(500);
+    if (await ev(win, 'window.__polarisState.connected')) {
+      await realClick(win, '#power', { label:'先断开' });
+      await waitFor(win, '!/已连接/.test(document.querySelector(".status-line .t")?.textContent||"连接中…")',
+        { timeout: 30000, label:'先断开' });
+    }
+    await realClick(win, '#power', { label:'连接按钮（端口被占）' });
+    await waitFor(win, 'document.querySelectorAll(".overlay").length > 0',
+      { timeout: 60000, label:'弹出端口占用确认框' });
+    const dlg = await ev(win, `(()=>{const o=document.querySelector('.overlay');
+      return {title:(o.querySelector('h2')||{}).textContent||'',
+              body:(o.querySelector('.dsub')||{}).textContent||'',
+              yes:(o.querySelector('#btn-confirm-yes')||{}).textContent||''};})()`);
+    check('端口被占时不是"假装连上"，而是弹框说清是谁占的',
+      /占用/.test(dlg.title) && dlg.body.indexOf(String(dummy.pid)) >= 0 && dlg.body.indexOf(String(freePort)) >= 0,
+      JSON.stringify(dlg));
+    check('确认按钮写的是关掉那个软件', /关掉/.test(dlg.yes), dlg.yes);
+
+    await realClick(win, '#btn-confirm-yes', { label:'关掉占用端口的软件' });
+    await waitFor(win, 'window.__polarisState.connected === true',
+      { timeout: 120000, label:'关掉占用者之后自动重连' });
+    check('关掉占用者之后自动重连成功', true);
+    const rp = await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.running_port)');
+    check('内核真的听在这个端口上', Number(rp) === freePort, `running_port=${rp} 期望=${freePort}`);
+
+    let gone = false;
+    try { process.kill(dummy.pid, 0); } catch (_) { gone = true; }
+    check('占用端口的那个程序真的被关掉了', gone, `pid=${dummy.pid}`);
+    try { dummy.kill(); } catch (_) {}
+
+    // 端口改回自动，别把这个临时端口留在用户设置里
+    await ev(win, 'window.PolarisAPI.setSetting("mixed_port", 0)');
+    await sleep(300);
+  });
+
+  /* ---- 11. 收尾：断开（不退出登录，方便你接着看） ---- */
+  section('11. 收尾');
   await step('断开', async () => {
     await ev(win, 'window.PolarisNav("home")');
     await sleep(300);

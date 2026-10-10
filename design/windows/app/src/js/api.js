@@ -92,5 +92,7 @@
     restartAsAdmin: () => invoke("restart_as_admin"),
     getTunStatus: () => invoke("get_tun_status"),
     cleanupTun: () => invoke("cleanup_tun"),
+    portOwner: (port) => invoke("port_owner", { port }),
+    closePortOwner: (pid) => invoke("close_port_owner", { pid }),
   };
 })();
