@@ -14,8 +14,6 @@ import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -93,24 +90,20 @@ import com.slte.app.utils.FormatUtils
    ============================================================ */
 
 /**
- * 速率读数的数值槽宽度：等宽字体下容纳 8 个字符（`104.32MB` 是 [FormatUtils.traffic] 的最长输出）。
- *
- * 槽宽固定后，位数变化不会再推动后面的 `/s`——这是"数字跳得晃眼"的主要来源：
- * 比例字体里 `1` 明显窄于 `0`，`1.5MB` → `12.3MB` → `8.2MB` 每秒来一次，
- * 整行读数连同单位一起横向抖。数值右对齐在槽内，末位数字与单位固定在同一个像素上，
- * 只有左侧字符增减（滚动里程表效果），与成熟客户端一致。
- */
-private val SpeedValueSlotWidth = 108.dp
-
-/**
  * 速率卡。
  *
- * 平滑分两层，缺一不可：
- * - **数值层**（`MainViewModel` 的非对称指数滑动平均）压掉秒级采样的毛刺；
- * - **显示层**（等宽 + tabular 数字 + 固定槽宽 + 右对齐）压掉位数变化带来的横向位移。
+ * **不做任何显示动画**：每秒直接换成新读数，内核报几就显示几。
+ * 早先版本用 `animateFloatAsState` 在两次采样之间做数值插值，一秒钟内会画出几十个
+ * 中间值，看起来就像里程表/倒计时在翻数字——这正是"跳得眼睛疼"的来源，已移除。
  *
- * 动画时长必须**小于**采样周期（`SPEED_WATCH_INTERVAL_MS` = 1000ms，实际 1.0~1.2s 含 AIDL 往返）：
- * 时长一旦超过采样周期，每次新采样都会打断上一次未完成的动画，数字反而持续抖动。
+ * 读数稳定性改由另外两层保证，都不涉及逐帧插值：
+ * - **数值层**：`MainViewModel` 的非对称指数滑动平均压掉秒级采样的毛刺；
+ * - **排版层**：等宽字体 + 数值占满剩余宽度并右对齐，压掉位数变化带来的横向位移。
+ *
+ * 字号定在 [V5Type.sp26]：`MacaronTile` 在 360dp 屏上卡内可用宽 126dp，
+ * 扣掉 `/s` 后数值能分到约 114dp；[FormatUtils.speedValue] 最长 7 个字符
+ * （`999.9KB`），等宽字体每字符 0.6em → 7 × 26 × 0.6 ≈ 109dp，放得下；
+ * 再往上（28sp ≈ 118dp）就会把末位数字顶出卡片，所以上限就是 26sp。
  */
 @Composable
 private fun SpeedTile(
@@ -122,28 +115,22 @@ private fun SpeedTile(
     modifier: Modifier = Modifier,
 ) {
     val c = V5ThemeColors.current
-    val animatedBps by
-        animateFloatAsState(
-            targetValue = bps.toFloat(),
-            animationSpec = tween(500),
-            label = "speedTileBps",
-        )
     MacaronTile(tone, label, modifier, icon = icon, live = active) {
         if (!active) {
             // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
             Text(
                 "--",
-                fontSize = V5Type.sp22,
+                fontSize = V5Type.sp26,
                 fontWeight = FontWeight.Bold,
                 color = c.text3,
             )
         } else {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    // FormatUtils.traffic() 自带 KB/MB/GB 量纲，所以单位行只补 "/s"，
-                    // 拼成 "bps" 会变成 "17.55MB bps"（量纲与文字都错）。
-                    text = FormatUtils.traffic(animatedBps.toLong()),
-                    fontSize = V5Type.sp22,
+                    // FormatUtils.speedValue() 自带 KB/MB/GB 量纲，所以单位行只补 "/s"，
+                    // 拼成 "bps" 会变成 "17.5MB bps"（量纲与文字都错）。
+                    text = FormatUtils.speedValue(bps),
+                    fontSize = V5Type.sp26,
                     fontWeight = FontWeight.Bold,
                     // 等宽字体：数字等宽，位数变化不产生横向位移（与 V5Type.value 同一字体族）。
                     // 无需 fontFeatureSettings = "tnum"：那是 TextStyle 的字段，且等宽字体下数字本来就等宽。
@@ -152,7 +139,10 @@ private fun SpeedTile(
                     maxLines = 1,
                     softWrap = false,
                     color = c.text,
-                    modifier = Modifier.width(SpeedValueSlotWidth),
+                    // 占满剩余宽度再右对齐：末位数字与 `/s` 钉在同一像素，只有左侧字符增减。
+                    // 用 weight 而不是固定槽宽，是为了把卡片能给的宽度全部用上——
+                    // 固定槽宽一旦小于实际字宽就会把数字裁掉。
+                    modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = "/s",

@@ -53,7 +53,32 @@ object FormatUtils {
         return String.format(Locale.US, "%.2f", v).trimEnd('0').trimEnd('.') + "KB"
     }
 
-    fun speed(bytesPerSecond: Long): String = "${traffic(bytesPerSecond)}/s"
+    fun speed(bytesPerSecond: Long): String = "${speedValue(bytesPerSecond)}/s"
+
+    /**
+     * 首页速率卡的数值文本（不含 `/s`，单位由 UI 单独排版）。
+     *
+     * 和 [traffic] 的唯一区别是**单位提升阈值取 `999.95` 而不是 `1024`**，小数固定 1 位。
+     * 于是整数部分最多 3 位，现实速率（< 1 PB/s）下整串最长 7 个字符（`999.9KB`）。
+     *
+     * 速率卡把数值和 `/s` 排在同一行，能用的宽度是定死的，字号 × 字符数必须放得下。
+     * 走 [traffic] 的话，`1024KB` 有 8 个字符、`8388608TB` 有 9 个，会被截成错误读数。
+     */
+    fun speedValue(bytesPerSecond: Long): String {
+        if (bytesPerSecond <= 0L) return "0B"
+        if (bytesPerSecond < 1024L) return "${bytesPerSecond}B"
+        val units = arrayOf("KB", "MB", "GB", "TB")
+        var v = bytesPerSecond.toDouble() / 1024.0
+        var i = 0
+        while (v >= UNIT_PROMOTE_AT && i < units.size - 1) {
+            v /= 1024.0
+            i++
+        }
+        return String.format(Locale.US, "%.1f", v).trimEnd('0').trimEnd('.') + units[i]
+    }
+
+    /** 1 位小数下四舍五入到 1000 的边界；取 999.95 保证提升后整数部分永远 ≤ 3 位。 */
+    private const val UNIT_PROMOTE_AT = 999.95
 
     /**
      * 连接时长：毫秒 → `H:MM:SS`（不足 1 小时给 `MM:SS`）。

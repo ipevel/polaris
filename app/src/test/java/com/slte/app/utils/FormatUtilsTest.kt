@@ -12,6 +12,7 @@ import java.util.Locale
 import java.util.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -82,6 +83,49 @@ class FormatUtilsTest {
         assertEquals("1024GB", FormatUtils.traffic(1024L * 1024 * 1024 * 1024 - 1))
         assertEquals("1024TB", FormatUtils.traffic(1024L * 1024 * 1024 * 1024 * 1024))
         assertEquals("8388608TB", FormatUtils.traffic(Long.MAX_VALUE))
+    }
+
+    @Test
+    fun `速率读数保留一位小数且最多七个字符`() {
+        assertEquals("0B", FormatUtils.speedValue(0L))
+        assertEquals("0B", FormatUtils.speedValue(-1L))
+        assertEquals("1B", FormatUtils.speedValue(1L))
+        assertEquals("1023B", FormatUtils.speedValue(1023L))
+        assertEquals("1KB", FormatUtils.speedValue(1024L))
+        assertEquals("48.6KB", FormatUtils.speedValue((48.62 * 1024).toLong()))
+        assertEquals("1.5KB", FormatUtils.speedValue(1536L))
+        // 999.9KB 是提升阈值以下能画出的最长读数
+        assertEquals("999.9KB", FormatUtils.speedValue(1023_897L))
+        // 再往上就进位成 MB，整数部分永远不超过 3 位
+        assertEquals("1MB", FormatUtils.speedValue(1024L * 1024 - 1))
+        assertEquals("1GB", FormatUtils.speedValue(1024L * 1024 * 1024 - 1))
+        assertEquals("1TB", FormatUtils.speedValue(1024L * 1024 * 1024 * 1024 - 1))
+        assertEquals("8388608TB", FormatUtils.speedValue(Long.MAX_VALUE))
+    }
+
+    @Test
+    fun `速率读数不超过速率卡能容纳的字符数`() {
+        // 速率卡按 7 个字符定字号（V5HomeScreen.SpeedTile），超长会把末位数字裁掉。
+        // 只覆盖现实速率（≤ 999 TB/s）；再往上（约 1 PB/s）才会因为 TB 数量级本身变长而超 7 字符。
+        val samples =
+            listOf(
+                0L,
+                1L,
+                1023L,
+                1024L,
+                1024L * 1024 - 1,
+                1024L * 1024,
+                1024L * 1024 * 1024 - 1,
+                1024L * 1024 * 1024 * 999,
+                1024L * 1024 * 1024 * 1024 - 1,
+                1024L * 1024 * 1024 * 1024 * 999,
+            ) +
+                (1..40).map { 1024L * it * 37 } +
+                (1..40).map { 1024L * 1024 * it * 53 }
+        samples.forEach { bytes ->
+            val text = FormatUtils.speedValue(bytes)
+            assertTrue("speedValue($bytes) = $text 超过 7 个字符", text.length <= 7)
+        }
     }
 
     @Test
