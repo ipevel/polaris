@@ -45,8 +45,8 @@ fun slteHost(url: String): String? = url
 
 val slteAppName = slteValue("POLARIS_APP_NAME") ?: "Polaris"
 val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
-val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 55
-val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.8.0"
+val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 29860189
+val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.8.1"
 
 // Android 包名的每一段必须以字母开头（数字不能打头：91.vip.fun 这类会被 AAPT 拒绝）。
 // POLARIS_APPLICATION_ID 由 build.yml 的手动输入提供，填错时 AAPT 要到资源链接阶段才报
