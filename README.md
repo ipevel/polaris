@@ -15,14 +15,17 @@
 
 ## 简介
 
-Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核的 Android 代理客户端，支持 XiaoV2b / Xboard 面板，登录时自动识别，无需换包。
+Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核的代理客户端，支持 XiaoV2b / Xboard 面板，登录时自动识别，无需换包。Android 为主客户端；另附 **Windows 便携版**（源码在 `windows-portable` 分支的 `design/windows/app/`，免安装、解压即用、共用同一套面板账号与分流方案）。
 
 - **界面**：iOS 极简风，深色 / 浅色 / 跟随系统，简中 / 繁中 / English
 - **功能**：一键连接与实时速率、节点与分流、流量统计、套餐与订单、应用内更新
 - **保活**：VPN 服务跑在独立进程，连接前引导关闭电池优化
 - **安全**：面板地址不内置、仅接受 HTTPS，凭据仅发往白名单域名
+- **Windows 便携版**：单个 zip 解压即用，不写注册表、不落 `%APPDATA%`；内置内核与规则库，带系统代理与 TUN 模式
 
 ## 下载与安装
+
+### Android
 
 1. 从 [Releases](https://github.com/ipevel/polaris/releases) 下载 `Polaris-<版本号>.apk`（arm64-v8a）。
 2. **校验完整性**：比对下载页的 `SHA256SUMS.txt`（Windows `certutil -hashfile <APK> SHA256`，Linux/macOS `sha256sum <APK>`），不一致请勿安装。
@@ -30,6 +33,16 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 4. 首次启动在登录页填写**你自己的面板网址**。
 
 > 仅通过 GitHub Releases 分发。App 内「我的 → 关于软件 → 检查更新」可直接下载安装新版本（覆盖安装，数据保留）；也可以从 Releases 手动下载 APK 覆盖安装。其他渠道的安装包不保证来源与完整性。
+
+### Windows
+
+1. 从同一个 [Releases](https://github.com/ipevel/polaris/releases) 下载 `Polaris-portable-<版本号>.zip`（Windows 10/11 x64）。
+2. **解压到任意目录**（推荐非系统盘、路径不含空格），双击 `Polaris.exe` 即可，无需安装、无需管理员权限。
+3. 目录结构：`Polaris.exe` + `core/`（mihomo 内核 + wintun）+ `resources/geo/`、`resources/rules/`（内置地理库与 47 个分流规则集）+ `data/`（配置、订阅、日志，首次运行自动创建）。
+4. TUN 模式需要管理员权限（设置页里点开关会引导重启为管理员）；仅用系统代理时不需要。
+5. 卸载 = 直接删掉整个目录；`data/` 是唯一会产生写入的地方。
+
+> 包内**不含任何面板地址与账号**，首次启动在登录页填自己的面板网址。源码与开发/打包细节见 `windows-portable` 分支的 `design/windows/app/README.md`、`design/windows/app/docs/DEVNOTES.md`。
 
 ## 上游仓库
 
@@ -81,6 +94,29 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ```
 
 > **推送即出包**：每次推送到 main，CI 会把调试包作为 artifact 上传（Actions → run → Artifacts，保留 7 天）。它是 **debug 签名**，无法覆盖已装的正式版；正式分发走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`，发布前须跑完本地门禁，见 [CONTRIBUTING.md](CONTRIBUTING.md)）。
+
+### Windows 便携版
+
+源码在 `windows-portable` 分支的 `design/windows/app/`（Electron 工程，与 Android 侧构建互不影响）。两条门禁都在该目录下跑，**都必须真跑**（真面板、真账号、真节点）：
+
+```bash
+cd design/windows/app
+
+# 数据层门禁：真面板登录 → 拉订阅 → 起内核 → 经代理访问外网 → 面板业务接口
+node_modules/electron/dist/electron.exe scripts/real-test.js \
+  --panel=<你的面板地址> --email=<测试账号> --password=<口令>
+
+# 界面层门禁：开真窗口真点击走完所有页面（用独立 data 目录，不动日常那份）
+node_modules/electron/dist/electron.exe . --uitest \
+  --panel=<面板地址> --email=<测试账号> --password=<口令> --uitest-data=<临时目录>
+
+# 打包（出 dist/Polaris-portable-<版本>.zip；打包前两条门禁必须全绿）
+node node_modules/electron-builder/cli.js --win --x64
+```
+
+> 跑 Electron 前若环境里设了 `ELECTRON_RUN_AS_NODE`（某些 IDE / agent 会设），必须先清掉，否则 Electron 退化成纯 Node。
+> Windows 端的版本号唯一来源是 `design/windows/app/package.json` 的 `version`，发布时必须与 Android 的 `versionName` 一致（同一个 Release、同一个 tag）。
+> 内核与地理库/规则库已随仓库与成品包分发；仅在升级内核或改内核补丁链时才需要重跑 `scripts/fetch-core.py` / `scripts/fetch-geo.py`。
 
 ## 配置
 
