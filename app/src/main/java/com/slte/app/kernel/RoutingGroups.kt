@@ -8,6 +8,10 @@ package com.slte.app.kernel
  * groups 键）。真源是内核 `native/config/routing/routing_table.go`——名称
  * 必须逐字一致（含 emoji），否则开关写不进对应组。列表顺序即规则匹配
  * 优先级，也必须与内核表保持一致。
+ *
+ * 「📢 Google FCM」「📢 苹果推送通知」两个组已移除（2026-10-10）：排在
+ * 🌏 Google 与 🍎 苹果服务之后时，它们的规则会被前面的组提前命中，开关设成
+ * 什么出口都不生效。Google 统一走「🌏 Google」，苹果统一走「🍎 苹果服务」。
  */
 data class RoutingGroupInfo(
     val name: String,
@@ -31,12 +35,10 @@ val RoutingGroups: List<RoutingGroupInfo> =
         RoutingGroupInfo("🐱 GitHub", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🌏 Google", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🌏 Google Play", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📢 Google FCM", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("Ⓜ️ 微软Bing", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("Ⓜ️ 微软云盘", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("Ⓜ️ 微软服务", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🍎 苹果服务", defaultOn = true, defaultOut = "direct"),
-        RoutingGroupInfo("📢 苹果推送通知", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🎮 游戏平台", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("📺 哔哩哔哩", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🎶 网易音乐", defaultOn = true, defaultOut = "direct"),

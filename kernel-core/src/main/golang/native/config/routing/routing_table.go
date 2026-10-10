@@ -97,7 +97,6 @@ var Providers = map[string]Provider{
 	"acl_banad":          {"acl_banad", providerBaseACL + "BanAD.list", "classical", "text", false},
 	"acl_banprogramad":   {"acl_banprogramad", providerBaseACL + "BanProgramAD.list", "classical", "text", false},
 	"acl_gemini":         {"acl_gemini", providerBaseACL + "Ruleset/Gemini.list", "classical", "text", false},
-	"acl_googlefcm":      {"acl_googlefcm", providerBaseACL + "Ruleset/GoogleFCM.list", "classical", "text", false},
 	"acl_facebook":       {"acl_facebook", providerBaseACL + "Ruleset/Facebook.list", "classical", "text", false},
 	"acl_twitter":        {"acl_twitter", providerBaseACL + "Ruleset/Twitter.list", "classical", "text", false},
 	"acl_whatsapp":       {"acl_whatsapp", providerBaseACL + "Ruleset/Whatsapp.list", "classical", "text", false},
@@ -118,22 +117,6 @@ var Providers = map[string]Provider{
 	"acl_chinamedia":     {"acl_chinamedia", providerBaseACL + "ChinaMedia.list", "classical", "text", false},
 	"acl_proxygfwlist":   {"acl_proxygfwlist", providerBaseACL + "ProxyGFWlist.list", "classical", "text", false},
 	"acl_proxymedia":     {"acl_proxymedia", providerBaseACL + "ProxyMedia.list", "classical", "text", false},
-}
-
-// 苹果推送内联规则：与 Karing 预设 cn.json 的「📢 苹果推送通知」逐条一致。
-var applePushInlineRules = []string{
-	"DOMAIN-SUFFIX,push.apple.com,{t}",
-	"DOMAIN-SUFFIX,akadns.net,{t}",
-	"DOMAIN-KEYWORD,apple.com.edgekey.net,{t}",
-	"IP-CIDR,17.249.0.0/16,{t},no-resolve",
-	"IP-CIDR,17.252.0.0/16,{t},no-resolve",
-	"IP-CIDR,17.57.144.0/22,{t},no-resolve",
-	"IP-CIDR,17.188.128.0/18,{t},no-resolve",
-	"IP-CIDR,17.188.20.0/23,{t},no-resolve",
-	"IP-CIDR6,2620:149:a44::/48,{t},no-resolve",
-	"IP-CIDR6,2403:300:a42::/48,{t},no-resolve",
-	"IP-CIDR6,2403:300:a51::/48,{t},no-resolve",
-	"IP-CIDR6,2a01:b740:a42::/48,{t},no-resolve",
 }
 
 // 本地网络/私有地址直连（固定 DIRECT，不占用分流组）。
@@ -159,6 +142,10 @@ var lanDirectRules = []string{
 // 拦截类垫底。顺序即规则匹配优先级，改动会影响命中结果，非纯展示调整。
 // 「恶意软件」组缺失：其引用的 geosite:malware/phishing 类别仅存在于
 // karing-ruleset 的 Iran 专用源，meta-rules-dat 无对应类别，暂不提供。
+// 「Google FCM」「苹果推送通知」两个组已移除（2026-10-10）：排在 Google 与
+// 苹果服务之后时，它们的域名与 IP 规则 100%/部分被前面的组提前命中，分组开关
+// 设成什么出口都不生效（配置与实际行为不符）。Google 统一走「🌏 Google」，
+// 苹果统一走「🍎 苹果服务」，不再单列。
 var Table = []RuleGroup{
 	{Name: "📲 电报消息", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_telegram", "gp_telegram"}},
@@ -188,8 +175,6 @@ var Table = []RuleGroup{
 		Providers: []string{"gs_google", "gp_google"}},
 	{Name: "🌏 Google Play", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_google_play"}},
-	{Name: "📢 Google FCM", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"acl_googlefcm"}},
 	{Name: "Ⓜ️ 微软Bing", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_bing"}},
 	{Name: "Ⓜ️ 微软云盘", DefaultOn: true, DefaultOut: "direct",
@@ -198,8 +183,6 @@ var Table = []RuleGroup{
 		Providers: []string{"gs_microsoft"}},
 	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"gs_apple"}},
-	{Name: "📢 苹果推送通知", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: applePushInlineRules},
 	{Name: "🎮 游戏平台", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"acl_steam", "acl_epic", "acl_origin", "acl_sony", "acl_nintendo"}},
 	{Name: "📺 哔哩哔哩", DefaultOn: true, DefaultOut: "direct",

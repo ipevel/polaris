@@ -19,7 +19,7 @@
 | 策略组成员 | `include-all: true` 自动纳入全部节点 | 订阅更新后无需重新生成；节点增减自动跟随 |
 | 规则数据 | 内置 APK assets 预播种 + http rule-provider 自动更新 | 冷启动断网时使用内置文件可立即生效；联网后内核按 interval 从 jsDelivr 刷新 |
 | 选择持久化 | 本地分流启用时 `StoreSelected=true`（mihomo cache.db） | 每条分流组的出口选择必须跨重连存活；本地分流关闭时维持现状 false |
-| 规则数据源 | karing-ruleset 数据谱系：`MetaCubeX/meta-rules-dat@meta`（geosite/geoip）+ `ACL4SSR/ACL4SSR@master`（Clash 清单），经 fastly.jsdelivr.net | 与 karing-ruleset 同一上游、每日自动更新；48 个种子全量内置（1.5MB） |
+| 规则数据源 | karing-ruleset 数据谱系：`MetaCubeX/meta-rules-dat@meta`（geosite/geoip）+ `ACL4SSR/ACL4SSR@master`（Clash 清单），经 fastly.jsdelivr.net | 与 karing-ruleset 同一上游、每日自动更新；47 个种子全量内置（约 1.4MB） |
 
 ## 3. 状态文件契约（routing.json）
 
@@ -81,10 +81,9 @@
 
 1. 自家后端域名直连（Go 侧 `directDomains`，与 patchRules 双防线一致）
 2. 本地网络/私有地址直连（内联，含 no-resolve）
-3. 苹果推送内联规则（域名字段 + IP-CIDR no-resolve，Karing 同款）
-4. 依内置分流表顺序：每启用组的 `RULE-SET,<key>,<组名>`（ipcidr 类加 `,no-resolve`）+ 组内联规则
-5. ProxyLite 的裸关键字转内联 `DOMAIN-KEYWORD,<kw>,<组名>`（classical 行为不收裸关键字，必须内联）
-6. `MATCH,🐟 漏网之鱼`
+3. 依内置分流表顺序：每启用组的 `RULE-SET,<key>,<组名>`（ipcidr 类加 `,no-resolve`）+ 组内联规则（当前内置组均无内联规则，该机制保留供后续扩展）
+4. ProxyLite 的裸关键字转内联 `DOMAIN-KEYWORD,<kw>,<组名>`（classical 行为不收裸关键字，必须内联）
+5. `MATCH,🐟 漏网之鱼`
 
 不使用 GEOIP 规则（避免 geoip.db 冷启动下载依赖，国内 IP 由 ChinaIp/ChinaIpV6/ChinaCompanyIp provider 覆盖）。
 
@@ -97,10 +96,15 @@ assets/datas/preset/cn.json）的数据谱系；但**顺序与默认开关不再
 
 电报(开)、油管(开)、奈飞(开)、X(开)、TikTok(开)、Instagram(开)、
 Facebook(关)、WhatsApp(关)、Gemini(开)、Claude(开)、OpenAI(开)、
-GitHub(开)、Google(开)、Google Play(开)、Google FCM(DIRECT,开)、
+GitHub(开)、Google(开)、Google Play(开)、
 微软Bing(开)、微软云盘(DIRECT,开)、微软服务(开)、苹果服务(DIRECT,开)、
-苹果推送(开)、游戏平台(开)、哔哩哔哩(DIRECT,开)、网易音乐(DIRECT,开)、
+游戏平台(开)、哔哩哔哩(DIRECT,开)、网易音乐(DIRECT,开)、
 国内直连(DIRECT,开)、国外穿墙(开)、应用净化(REJECT,关)、广告拦截(REJECT,关)。
+
+共 25 组。「Google FCM」「苹果推送通知」两组已移除（2026-10-10）：排在
+🌏 Google 与 🍎 苹果服务之后时，它们的域名与 IP 规则分别有 100% 和 1 条被前面
+的组提前命中，分组开关设成什么出口都不生效，属于配置与实际行为不符。Google
+统一走「🌏 Google」，苹果统一走「🍎 苹果服务」，不再单列。
 
 顺序即规则匹配优先级，改动会影响命中结果，不是纯展示调整。默认开关只在
 `routing.json` 的 `groups` 缺该键时生效；用户拖动过的顺序存在 `order` 键，

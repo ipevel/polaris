@@ -124,6 +124,24 @@
   （`ok cfa/native/config/routing 0.872s`）。
 - 产物摘要：见同目录 `SHA256SUMS`（`2739cf53…5091aee`）。
 
+## 2026-10-10 重建记录（移除两个被遮蔽的分流组）
+
+- 变更：`native/config/routing/routing_table.go` 删除「📢 Google FCM」与
+  「📢 苹果推送通知」两个分流组，以及只被它们引用的 `acl_googlefcm` provider 项与
+  `applePushInlineRules`（12 条内联规则）；`app/src/main/assets/routing/providers/acl_googlefcm.yaml`
+  同步删除，内置种子 48 → 47，分组 27 → 25（见 `docs/local-routing-design.md`）。
+  原因：这两组排在「🌏 Google」与「🍎 苹果服务」之后，域名规则 100%、IP 规则 1 条被
+  前面的组提前命中，分组开关设成什么出口都不生效——配置与实际行为不符。
+  Google 统一走「🌏 Google」，苹果统一走「🍎 苹果服务」，不再单列。
+- 构建命令：同上（Go 1.23.4 windows/amd64，`GOPROXY=off` 走本地模块缓存；
+  产物 75,181,304 字节）。
+- 验证：产物内**已不含** `📢 Google FCM` / `📢 苹果推送通知` / `GoogleFCM.list` /
+  `push.apple.com` 四串（旧产物四串全在），字节级确认改动真的进了 so；
+  `llvm-nm -D --defined-only` 比对旧/新产物**导出符号 156 = 156 完全一致**，
+  因此 `libclash.h` 不替换（沿用 Polaris 手工维护版：Go 1.23.4 起不再生成
+  `_GoStringLen`/`_GoStringPtr`，C 侧无任何调用方）。
+- 产物摘要：见同目录 `SHA256SUMS`（`a87939f8…d220c0`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。
