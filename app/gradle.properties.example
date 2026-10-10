@@ -19,7 +19,8 @@ POLARIS_VERSION_NAME=1.4.0
 # ---------------- 后端 API ----------------
 # 后端 API 主地址（https，替换为你的真实地址，如 https://api.yourdomain.com）
 POLARIS_API_BASE_URL=https://api.example.com
-# 后端类型：xiaov2b（V2Board 系）/ xboard（Xboard）
+# 后端类型编译期占位值：xiaov2b（V2Board 系）/ xboard（Xboard）
+# 遗留字段，运行时无效——两套适配器都会打进包内，登录时自动识别后端，此处改什么都不影响 App 行为
 POLARIS_API_TYPE=xiaov2b
 # 订阅接口路径（与后端契约一致时无需改动）
 POLARIS_SUBSCRIBE_PATH=/api/v1/client/subscribe

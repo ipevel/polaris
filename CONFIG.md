@@ -20,7 +20,7 @@ Polaris 的配置分三层，按优先级从高到低：
 | `POLARIS_VERSION_CODE` | `1` | 版本号（整数） |
 | `POLARIS_VERSION_NAME` | `1.0.0` | 版本号（显示） |
 | `POLARIS_API_BASE_URL` | `https://api.example.com` | 后端 API 主地址（https） |
-| `POLARIS_API_TYPE` | `—（遗留，不再作运行时默认）` | 遗留变量：后端类型已改为登录时自动识别，不再以此值兜底 |
+| `POLARIS_API_TYPE` | `xiaov2b` | 编译期占位值（遗留字段）：两套适配器都会打进包内，登录时自动识别后端，此处改什么都不影响 App 行为 |
 | `POLARIS_SUBSCRIBE_PATH` | `/api/v1/client/subscribe` | 订阅接口路径（与后端契约一致时勿动） |
 | `POLARIS_REMOTE_CONFIG_URLS` | 空 | 远程配置源 URL（逗号分隔多个，https） |
 | `POLARIS_ALLOWED_DOMAINS` | 空 | 追加 API 域名白名单（API 与配置源域名自动并入，一般无需填写） |

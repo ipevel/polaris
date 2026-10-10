@@ -41,7 +41,7 @@ on:
         description: 面板 API 地址
         required: true
       apiType:
-        description: 面板版本
+        description: 编译期后端占位值（遗留字段；运行时登录会自动识别后端类型，此处不影响 App 行为）
         type: choice
         options:
           - xiaov2b
@@ -102,8 +102,8 @@ on:
       releaseNotes:
         description: |
           Release 变更说明（留空则不输出「变更说明」小节；填 auto 会写成「见 git log」）。
-          注意：本仓库应用内更新功能已移除，变更说明**不得**描述更新/升级功能的增删，
-          只写「修复若干已知问题」这类中性措辞；同理 commit 标题也不要写。
+          变更说明写用户可感知的结果即可（如「修复若干已知问题」），不必罗列实现细节；
+          commit 标题保持同一尺度。
         required: false
         default: ''
       iconB64:
@@ -460,7 +460,6 @@ jobs:
       - name: 组装 Release 说明
         env:
           VERSION: ${{ inputs.versionName }}
-          API_TYPE: ${{ inputs.apiType }}
           NOTES: ${{ inputs.releaseNotes }}
         run: |
           set -e
@@ -470,7 +469,7 @@ jobs:
             echo "| 项 | 值 |"
             echo "| --- | --- |"
             echo "| 版本 | \`${VERSION}\` |"
-            echo "| 后端类型 | \`${API_TYPE}\` |"
+            echo "| 面板后端 | 登录时自动识别（XiaoV2b / Xboard） |"
             echo "| 提交 | \`${GITHUB_SHA:0:7}\` |"
             echo "| 构建时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |"
             echo ""
@@ -554,10 +553,9 @@ jobs:
           fi
           echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
 
-      - name: 停用 config/remote.json 的更新字段（应用内更新已移除）
+      - name: 清空 config/remote.json 的遗留更新字段（仅历史版本客户端读取）
         env:
           VERSION: ${{ inputs.versionName }}
-          NOTES: ${{ inputs.releaseNotes }}
           TAG_INPUT: ${{ inputs.releaseTag }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -569,35 +567,20 @@ jobs:
             exit 1
           fi
 
-          # 顺序不变量：只有在 Release 资产真实存在之后，才允许把新版本号写进 remote.json。
-          # 否则 App 会先刷到「有新版本」却下载不到包（或下载到上一版的包）。
+          # 顺序不变量：只有在 Release 资产真实存在之后，才允许改动 remote.json——
+          # 历史版本 App 会据该文件提示更新，写早了会出现「提示有新版本却下载不到包」。
           ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')" || { echo "::error::Release $TAG 不存在，中止 remote.json 更新"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -qx "Polaris-${VERSION}.apk" || { echo "::error::Release $TAG 缺少资产 Polaris-${VERSION}.apk，中止 remote.json 更新"; exit 1; }
 
           git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
           cd polaris-updater
-          # 直链跟随实际 Release 标签 $TAG（默认 v${VERSION}）：修复自定义 releaseTag
-          # 时 remote.json 直链指向 v${VERSION} 而资产挂在自定义 tag 上的 404 陷阱
-          APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/Polaris-${VERSION}.apk"
-          # 必须显式 export：Python 子进程经 os.environ 读取，未导出时 update_apk_url 恒为空串
-          export APK_URL
-          # 从构建产物校验文件中提取 APK SHA-256，写入 remote.json，供 App 端做「版本号/直链/校验和
-          # 三者同源」的自洽性判定（UpdateViewModel 读取 update_apk_sha256），确认对应 Release 已真实发布；
-          # 用户也可在 Release 页据 SHA-256 核对下载包。
-          APK_SHA="$(awk '{print tolower($1)}' ../out/SHA256SUMS.txt | head -1)"
-          # 取不到合法校验和就失败，绝不发布空值：空校验和会让 App 端无从验证下载包
-          # （App 侧已拒绝安装无校验和的包，更应在发布侧断开）
-          if ! printf '%s' "$APK_SHA" | grep -qE '^[0-9a-f]{64}$'; then
-            echo "::error::未取到合法的 APK SHA-256（实际值：'${APK_SHA}'），中止 remote.json 更新"
-            exit 1
-          fi
-          export APK_SHA
           python3 -c "
           import json, os
           version = os.environ['VERSION']
-          # 应用内更新功能已整体移除：不再向 remote.json 写入任何更新字段。
-          # 保留这些键并置空，是为了让仍在读该文件的历史版本 App 解析到空版本号后不再提示更新，
-          # 同时避免新旧 schema 分叉（RemoteConfigData 为整份序列化缓存）。
+          # 应用内更新已改走 GitHub Releases（AppUpdateChecker 直查 Releases API），
+          # remote.json 的 update_* 字段已无 App 读取。保留这些键并置空，是为了让仍在读该文件的
+          # 历史版本 App 解析到空版本号后不再提示更新，同时避免新旧 schema 分叉
+          # （RemoteConfigData 为整份序列化缓存）。
           with open('config/remote.json', 'r') as f:
               cfg = json.load(f)
           cfg['update_version'] = ''
