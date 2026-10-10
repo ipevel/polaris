@@ -103,6 +103,7 @@
       </div>
       <div class="progress"><div style="width:${fmt.percent(s.plan.used, s.plan.total)}%"></div></div>
       <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(s.plan.expire || "—")}</div>
+      ${!s.plan.name && s.panelError ? `<div style="font-size:13px;color:var(--orange);margin-top:6px">${h(s.panelError)}</div>` : ""}
     </div>
   </div>`;
 
@@ -167,7 +168,9 @@
       // 未连接时内核还没起，拿不到策略组 —— 退回本地配置预览的扁平列表
       : `<div class="card" style="margin-bottom:14px">
           <div class="acc-head"><div><div class="acc-title">节点选择</div><div class="acc-sub">当前：${h(s.node || "未选择")}</div></div></div>
-          ${flat.length ? flat.map((n) => nodeRow(n, "")).join("") : empty("没有匹配的节点", s.nodes.length ? "换个关键词试试" : "点右上角刷新订阅")}
+          ${flat.length ? flat.map((n) => nodeRow(n, "")).join("")
+            : (s.nodes.length ? empty("没有匹配的节点", "换个关键词试试")
+              : empty("还没有节点数据", s.subError || "点右上角「刷新订阅」拉取节点"))}
         </div>`;
 
     return head("节点", `${s.nodes.length} 个节点${groups.length ? " · " + groups.length + " 个分组" : ""}`,
@@ -210,7 +213,11 @@
       ${site.from ? row("区间", `${h(site.from)} ~ ${h(site.to)}`, { chev: false }) : ""}` 
       : (t.site_log === false
         ? empty("这个面板没有站点流量明细接口", `识别到的后端是 ${h(t.backend || "xiaov2b")}，只提供账号累计用量`)
-        : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细"))}
+        // 登录态和"面板请求失败"是两件事：面板超时时如果写"未登录面板"，
+        // 用户会以为掉登录了（用户第 11 轮第 3 条）。这里分开说。
+        : (s.settings.authed
+          ? empty("面板暂时读不到流量明细", "面板请求超时或失败，稍后重试；本机用量在下面照常统计")
+          : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细")))}
     </div>
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时用量 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>
@@ -368,7 +375,7 @@
   Views.me = (s) => head("我的") + `<div class="col-narrow">
     <div class="card" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--blue);font-weight:700">${h((s.email || "?").slice(0, 1).toUpperCase())}</div>
-      <div style="min-width:0"><div style="font-size:16px;font-weight:700;word-break:break-all">${h(s.email || "未登录")}</div>
+      <div style="min-width:0"><div style="font-size:16px;font-weight:700;word-break:break-all">${h(s.email || (s.settings.authed ? "已登录" : "未登录"))}</div>
       <span class="badge b-blue" style="margin-top:6px;display:inline-block">${h(s.plan.name || "未订阅")}</span></div>
     </div></div>
     <div class="card" style="margin-bottom:14px">

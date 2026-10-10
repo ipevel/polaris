@@ -245,7 +245,20 @@ function request(method, apiPath, { body, raw, timeoutMs = 20000, noAuth = false
           }
           const text = Buffer.concat(chunks).toString('utf8');
           if (res.statusCode === 401 || res.statusCode === 403) {
-            fail(new PanelError('登录已失效，请重新登录', 'auth'));
+            // 401 = 面板明确说凭据不行。
+            // 403 要分两种：面板自己回的 JSON（真没权限/凭据失效）与 CDN/WAF 回的
+            // HTML 拦截页（网络层的事，跟登录态无关）。旧代码把 403 一律当成
+            // "登录已失效"→ ipc 里直接 logout() 清凭据，于是用户重启应用后
+            // "账号还在、却处处提示没登录"（用户第 11 轮第 3 条）。
+            let body = null;
+            try { body = JSON.parse(text); } catch (_) {}
+            const panelShaped = !!body && typeof body === 'object'
+              && ('status' in body || 'message' in body || 'data' in body);
+            if (res.statusCode === 401 || panelShaped) {
+              fail(new PanelError('登录已失效，请重新登录', 'auth'));
+            } else {
+              fail(new PanelError(`面板返回 HTTP ${res.statusCode}（疑似被 CDN 拦截，不是登录问题）`, 'http'));
+            }
             return;
           }
           if (raw) { resolve({ status: res.statusCode, text, headers: res.headers }); return; }
@@ -625,23 +638,109 @@ async function refreshSubscription() {
   return { bytes: res.text.length };
 }
 
-function requestAbsolute(url) {
+/**
+ * 下载订阅原文（绝对地址）。
+ *
+ * 旧实现是一次 `mod.get`、30s 超时、不重试、不换地址 —— 真机上就撞上了
+ * "订阅下载超时"：用户日志里 23:11:49 超时失败，23:12:04 再点一次同一个地址就成功了
+ * （40824 字节）。订阅拉不下来 = 节点页空的、连接也起不来，代价太大，所以这里
+ * 和面板 API 用同一套容错：连接阶段失败就重新解析地址再来，最多 3 轮，
+ * 连不上的地址记进 badAddresses（下次自动排到最后）。
+ */
+async function requestAbsolute(url, { timeoutMs = 30000, maxAttempts = 3 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let target = url;
+  let redirects = 0;
+  let attempt = 0;
+  let lastErr = null;
+  while (attempt < maxAttempts) {
+    const left = deadline - Date.now();
+    if (left <= 1000) break;
+    attempt += 1;
+    try {
+      const r = await absoluteOnce(target, left, attempt >= 2);
+      if (r.redirect) {
+        if ((redirects += 1) > 5) throw new PanelError('订阅跳转次数过多', 'shape');
+        target = r.redirect;
+        attempt -= 1;                       // 跟跳转不吃尝试次数
+        continue;
+      }
+      return r;
+    } catch (e) {
+      lastErr = e;
+      // 已经连上过（收到服务器响应）就别重试了，重试的是"连不上"这件事
+      if (e.connected || attempt >= maxAttempts) throw e;
+      for (const a of (e.tried || [])) markBadAddr(a);
+      log.warn(`订阅下载失败（${e.message}），换地址重试 ${attempt + 1}/${maxAttempts}`);
+    }
+  }
+  throw lastErr || new PanelError('订阅下载超时', 'timeout');
+}
+
+function absoluteOnce(url, budgetMs, usePublic) {
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(url); } catch (e) { reject(new PanelError('订阅地址非法', 'input')); return; }
     const mod = u.protocol === 'https:' ? https : http;
-    const req = mod.get(url, { headers: { 'User-Agent': UA }, timeout: 30000 }, (res) => {
+    const isIpHost = /^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname) || u.hostname.indexOf(':') >= 0;
+    const tried = new Set();
+    const reqOpts = {
+      headers: { 'User-Agent': UA },
+      timeout: budgetMs,
+      autoSelectFamily: true,
+      autoSelectFamilyAttemptTimeout: 250,
+    };
+    if (!isIpHost) reqOpts.lookup = makeLookup(tried, usePublic);
+    let connected = false;
+    let settled = false;
+    // 连接阶段单独计时：订阅地址常在 CDN 上，解析/握手挂住时要能换地址重来
+    const connectTimer = setTimeout(() => {
+      if (connected || settled) return;
+      const e = new PanelError(`订阅地址连接超时（试过 ${[...tried].join(', ') || '未知地址'}）`, 'timeout');
+      e.connectPhase = true;
+      e.tried = [...tried];
+      req.destroy(e);
+    }, Math.min(10000, Math.max(3000, Math.round(budgetMs / 3))) + DNS_TIMEOUT);
+
+    const req = mod.get(url, reqOpts, (res) => {
+      connected = true;
+      clearTimeout(connectTimer);
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        requestAbsolute(new URL(res.headers.location, url).toString()).then(resolve, reject);
+        settled = true;
+        let next = null;
+        try { next = new URL(res.headers.location, url).toString(); } catch (_) {}
+        if (next) resolve({ redirect: next });
+        else reject(new PanelError('订阅跳转地址非法', 'shape'));
         return;
       }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString('utf8') }));
+      res.on('end', () => {
+        settled = true;
+        resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString('utf8') });
+      });
     });
     req.on('timeout', () => req.destroy(new PanelError('订阅下载超时', 'timeout')));
-    req.on('error', (e) => reject(new PanelError(e.message || '订阅下载失败', 'net')));
+    req.on('error', (e) => {
+      clearTimeout(connectTimer);
+      if (settled) return;
+      settled = true;
+      const pe = e instanceof PanelError ? e : new PanelError(e.message || '订阅下载失败', 'net');
+      pe.connected = connected;
+      pe.tried = pe.tried || [...tried];
+      reject(pe);
+    });
+    req.on('socket', (s) => {
+      if (s.connecting) {
+        s.once('connect', () => { connected = true; clearTimeout(connectTimer); });
+        s.on('connectionAttemptTimeout', (ip) => markBadAddr(ip));
+        s.on('connectionAttemptFailed', (ip) => markBadAddr(ip));
+      } else {
+        connected = true;
+        clearTimeout(connectTimer);
+      }
+    });
   });
 }
 

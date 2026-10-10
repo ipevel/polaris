@@ -264,6 +264,15 @@ async function run(win, opts) {
     check('真登录成功（进首页）', true, `账号 ${who}`);
     const sb = await ev(win, 'getComputedStyle(document.querySelector("#sidebar")).display !== "none"');
     check('登录后侧边栏回来了', sb);
+    // 用户第 11 轮第 1/4 条：登录这一步就要把节点数据准备好，而不是等用户去点连接。
+    // 这一段刻意断言在"还没点过连接按钮"的时刻（连接在下一段）。
+    const nReady = await waitFor(win, '(window.__polarisState.nodes||[]).length > 0',
+      { timeout: 90000, label:'登录后自动准备好节点数据' }).catch(() => -1);
+    check('登录后（未连接）节点数据已就绪', Number(nReady) > 0, `轮询 ${nReady}`);
+    const subOk = await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.has_subscription===true)');
+    check('设置里能看出"登录了且有订阅"（不再一律显示未登录）', subOk === true);
+    const portNow = await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.mixed_port)');
+    check('本机代理端口有值（默认 7890，不再是 0/自动）', Number(portNow) > 0, `mixed_port=${portNow}`);
   });
 
   /* ---- 2. 首页 ---- */
@@ -296,6 +305,22 @@ async function run(win, opts) {
 
   /* ---- 3. 连接（真内核） ---- */
   section('3. 连接（真内核真配置）');
+  // 默认本机代理端口是 7890（用户第 11 轮第 2 条）。这台开发机上 7890 被别的代理
+  // 占着（harness 自己的代理），点连接会弹「端口被占」确认框 —— 那是第 10 段专门测的
+  // 路径，本段要测的是"连接能成功"，所以先换一个空闲端口，收尾时再还回去。
+  const portOriginal = Number(await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.mixed_port)')) || 0;
+  if (portOriginal) {
+    const who = await ev(win, `window.PolarisAPI.portOwner(${portOriginal})`);
+    if (who && who.busy) {
+      const net = require('net');
+      const free = await new Promise((resolve) => {
+        const s = net.createServer();
+        s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });
+      });
+      await ev(win, `window.PolarisAPI.setSetting("mixed_port", ${free})`);
+      out(`  （本机代理端口 ${portOriginal} 被 pid=${who.pid}(${who.name || '?'}) 占着，本段改用空闲端口 ${free}）`);
+    }
+  }
   await step('点连接', async () => {
     await realClick(win, '#power', { label:'连接按钮' });
     await waitFor(win, `/已连接/.test(document.querySelector(".status-line .t")?.textContent||"")`,
@@ -845,6 +870,7 @@ async function run(win, opts) {
       JSON.stringify(who));
 
     // 把本机代理端口设成这个被占的端口，再点连接
+    const portBefore = Number(await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.mixed_port)')) || 0;
     await ev(win, `window.PolarisAPI.setSetting("mixed_port", ${freePort})`);
     await ev(win, 'window.PolarisNav("home")');
     await sleep(500);
@@ -877,8 +903,8 @@ async function run(win, opts) {
     check('占用端口的那个程序真的被关掉了', gone, `pid=${dummy.pid}`);
     try { dummy.kill(); } catch (_) {}
 
-    // 端口改回自动，别把这个临时端口留在用户设置里
-    await ev(win, 'window.PolarisAPI.setSetting("mixed_port", 0)');
+    // 端口改回原来的值（现在默认是 7890），别把这个临时端口留在用户设置里
+    await ev(win, `window.PolarisAPI.setSetting("mixed_port", ${portBefore})`);
     await sleep(300);
   });
 
@@ -897,6 +923,12 @@ async function run(win, opts) {
       check('断开成功（本来就没连）', true);
     }
   });
+  // 第 3 段可能为了让连接跑通用过一个临时空闲端口，这里把用户原本的设置还回去
+  const portEnd = Number(await ev(win, 'window.PolarisAPI.getSettings().then(s=>s.mixed_port)')) || 0;
+  if (portOriginal && portEnd !== portOriginal) {
+    await ev(win, `window.PolarisAPI.setSetting("mixed_port", ${portOriginal})`);
+    out(`  （本机代理端口已还原为 ${portOriginal}）`);
+  }
 
   out(`\n结果：${pass} 通过 / ${fail} 失败`);
   return { pass, fail, lines };

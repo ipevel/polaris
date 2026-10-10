@@ -37,6 +37,9 @@
     openGroups: {},        // 节点页分组手风琴的展开状态（未记录时第一个分组默认展开）
     testing: false,
     refreshing: false,
+    // 拉订阅失败的原因（节点页/流量页要拿它说清楚"为什么是空的"）。
+    // 旧代码只 console.warn，用户看到的是"登录了但节点是空的"（用户第 11 轮第 1 条）。
+    subError: "",
     redeeming: false,
     authError: "",
     giftError: "",
@@ -684,7 +687,10 @@
           await refreshAll(true);
           nav("home");
           toast("登录成功");
-          autoRefreshSubscription();
+          // 登录这一步就把节点数据准备好（用户第 11 轮第 1、4 条）。
+          // 旧代码把这件事留给"点连接"，于是登录后节点页是空的、点连接变成"在拉订阅"。
+          await ensureSubscription("login");
+          render();
         } else {
           state.authError = (r && r.msg) || "登录失败";
           render();
@@ -1262,20 +1268,28 @@
       applyTheme(state.settings.theme || "system");
     }
     await refreshStatus();
+    // 面板抖动一次（超时/被 CDN 重置）不能把已经拿到的数据抹成空 —— 旧代码一律
+    // `.catch(() => [])`，于是"网络一抖，套餐变未订阅、订单变空、公告变空"，
+    // 用户看到的就是"没读取到网站信息 / 像没登录"（用户第 11 轮第 3、4 条）。
+    // 现在失败就保留上一次的值，只把这一项标成"没刷新成功"。
+    let planFailed = false;
     const [nodes, groups, rulesets, plan, plans, orders, tickets, invite, gh, notices, site, rcfg] = await Promise.all([
-      api.getNodes().catch(() => []),
-      api.getRoutingGroups().catch(() => []),
+      api.getNodes().catch(() => state.nodes),
+      api.getRoutingGroups().catch(() => state.groups),
       api.getRulesets().catch(() => state.rulesets),
-      api.getPlan().catch(() => null),
-      api.getPlans().catch(() => []),
-      api.getOrders().catch(() => []),
-      api.getTickets().catch(() => []),
-      api.getInvite().catch(() => null),
-      api.getGiftHistory().catch(() => []),
-      api.getNotices().catch(() => []),
+      api.getPlan().catch(() => { planFailed = true; return state.plan; }),
+      api.getPlans().catch(() => state.plans),
+      api.getOrders().catch(() => state.orders),
+      api.getTickets().catch(() => state.tickets),
+      api.getInvite().catch(() => state.invite),
+      api.getGiftHistory().catch(() => state.giftHistory),
+      api.getNotices().catch(() => state.notices),
       api.getSiteInfo().catch(() => state.siteInfo),
       api.invoke("get_register_config").catch(() => state.registerConfig),
     ]);
+    // 套餐这一项决定「我的」页那个徽章写什么。读失败且本地也没有旧值时，
+    // 不能写"未订阅"（那是在说"你没买套餐"，事实是"没读到"）。
+    state.panelError = planFailed && !(state.plan && state.plan.name) ? "面板暂时读不到，稍后自动重试" : "";
     state.nodes = nodes || [];
     state.groups = groups || [];
     if (rulesets) state.rulesets = rulesets;
@@ -1301,32 +1315,60 @@
       .catch(() => {});
   }
 
-  let autoRefreshing = false;
-  let subRefreshPromise = null;   // 正在进行的"拉订阅"，延迟测试要等它（见 runDelayTest）
-  async function autoRefreshSubscription() {
-    if (autoRefreshing || !state.settings.authed) return;
-    // state.busy = 用户正在点连接/断开。这时候拉订阅会和那次连接抢内核：
-    // 订阅刷新内部是"断开 → 重连"，叠在用户刚拉起来的内核上会把它拆掉，
-    // 主进程报 `read ECONNRESET`，最后内核是死的（见 DEVNOTES A-41）。
-    // 不丢掉这次检查 —— 等它忙完再看一眼，否则过期的订阅要等 12 小时才会再拉。
-    if (state.busy) { setTimeout(autoRefreshSubscription, 15000); return; }
-    autoRefreshing = true;
+  let subRefreshPromise = null;   // 正在进行的"准备节点数据"（连接/延迟测试要等它）
+  /**
+   * 把节点数据准备好（用户第 11 轮第 1、4 条）。
+   *
+   * 旧行为：订阅只在"点连接 / 设置页手动刷新 / 12 小时过期"时才拉，所以刚登录时
+   * 节点页是空的（连 config.yaml 都还没生成），而点连接反倒变成"在拉订阅"。
+   * 现在登录成功、启动时已登录、以及自动过期检查都走这里；失败原因会显示在
+   * 节点页上，不再只 console.warn 一下（那等于没有反馈）。
+   *
+   * 真拉还是秒回由主进程的 ensure_subscription 决定：本地没订阅、订阅过期、
+   * 配置没生成才真拉。
+   */
+  function ensureSubscription(reason) {
+    if (!state.settings.authed) return Promise.resolve(false);
+    if (subRefreshPromise) return subRefreshPromise;        // 同一时刻只准备一次
+    // 用户正在点连接/断开时别动内核（订阅刷新会重建配置，见 DEVNOTES A-41）
+    if (state.busy && reason !== "login") {
+      return new Promise((res) => setTimeout(() => res(ensureSubscription(reason)), 15000));
+    }
+    const loud = reason !== "auto";
+    state.subError = "";
+    state.refreshing = true;
+    if (state.route === "nodes") render();
     subRefreshPromise = (async () => {
       try {
-        const stale = !state.settings.subscription_updated_at ||
-          Date.now() - state.settings.subscription_updated_at > 12 * 3600 * 1000;
-        if (stale || state.nodes.length === 0) {
-          const r = await api.refreshSubscription();
-          if (r && r.ok) { state.nodes = await api.getNodes().catch(() => state.nodes); render(); }
+        const r = await api.ensureSubscription({ reason });
+        if (r && r.ok) {
+          state.nodes = await api.getNodes().catch(() => state.nodes);
+          state.settings = await api.getSettings().catch(() => state.settings);
+          state.groups = await api.getRoutingGroups().catch(() => state.groups);
+          return true;
         }
+        return false;
       } catch (e) {
-        console.warn("自动拉取订阅失败", e);
+        state.subError = e.message || String(e);
+        console.warn(`准备节点数据失败（${reason}）`, e);
+        if (loud) toast(`节点数据没准备好：${state.subError}`);
+        return false;
       } finally {
-        autoRefreshing = false;
+        state.refreshing = false;
         subRefreshPromise = null;
+        if (state.route === "nodes" || state.route === "home") render();
       }
     })();
     return subRefreshPromise;
+  }
+
+  /** 定时/自动检查：只在订阅过期或本地没有节点时才真拉（判断在主进程里） */
+  function autoRefreshSubscription() {
+    if (!state.settings.authed) return Promise.resolve(false);
+    const stale = !state.settings.subscription_updated_at ||
+      Date.now() - state.settings.subscription_updated_at > 12 * 3600 * 1000;
+    if (!stale && state.nodes.length > 0) return Promise.resolve(false);
+    return ensureSubscription("auto");
   }
 
   async function boot() {
@@ -1353,7 +1395,10 @@
     bindLiveStatus();
     await refreshAll();
     if (state.route === "home") render();
-    autoRefreshSubscription();
+    // 启动时已登录（登录态由凭据恢复）：同样要把节点数据准备好 ——
+    // 用户第 11 轮第 3 条"账号登录着但各处提示没登录"，一半原因是订阅/配置
+    // 还没就绪、面板请求又失败，界面退化成空态。
+    ensureSubscription("boot");
     // 虚拟网卡状态要起 PowerShell，放到界面出来之后再查，不占启动路径
     loadTunStatus();
     // 「自动检查更新」这个开关以前是死的（只有 UI，没有任何代码读它）。

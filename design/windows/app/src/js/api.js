@@ -31,6 +31,8 @@
     speedTest: () => invoke("speed_test"),
     testGroupDelays: () => invoke("test_group_delays"),
     refreshSubscription: () => invoke("refresh_subscription"),
+    // 登录后/启动时把节点数据准备好（本地没订阅、订阅过期、配置没生成时才真拉）
+    ensureSubscription: (arg) => invoke("ensure_subscription", arg || {}),
     setProxyMode: (mode) => invoke("set_proxy_mode", { mode }),
 
     /* 流量 */

@@ -127,18 +127,61 @@ const commands = {
   connect: async () =>
     serialKernel(async () => {
       needAuth();
-      // 刚登录就点连接时，订阅往往还在拉的路上（登录后 refreshAll 是异步的）。
-      // 旧实现在这里直接抛「尚未拉取订阅，请先登录面板」—— 用户明明刚登录成功，
-      // 看到这句只会以为登录坏了。这里自己先把订阅补齐再连。
+      // 「点连接 = 开代理」：这里**不再**顺手拉订阅（用户第 11 轮第 2/4 条）。
+      // 旧实现在这里补拉订阅，于是用户点了连接却看到"订阅下载超时"、代理没起来 ——
+      // 拉数据是登录那一步的事（见 ensure_subscription），连接只负责把内核拉起来。
       if (!hasSubscribeFile()) {
-        log.info('connect: 本地还没有订阅，先自动拉一次');
-        await pullSubscription();
-        core.setDirectDomains(remote.directDomains());
-        core.prepareConfig();
+        throw new Error('还没有节点数据，请先在「节点」页点「刷新订阅」');
       }
       const st = await core.connect();
       return ok({ connected: st.connected, node: st.node });
     }),
+
+  /**
+   * 登录后 / 启动时把「节点数据」准备好（用户第 11 轮第 1、4 条）。
+   *
+   * 旧行为：订阅只在三个时机拉 —— 点连接、设置页手动刷新、12 小时过期。
+   * 于是刚登录时节点页是空的（本地连 config.yaml 都还没生成，previewNodes 只能返回空数组），
+   * 用户以为"登录没拉到节点"，而点连接又变成"在拉订阅"。
+   *
+   * 现在：本地没订阅、订阅过期、或配置还没生成时补一次；三者都不需要就秒回。
+   */
+  ensure_subscription: async ({ force } = {}) => {
+    needAuth();
+    const have = hasSubscribeFile();
+    const updatedAt = Number(store.get('subscription_updated_at')) || 0;
+    const stale = !updatedAt || Date.now() - updatedAt > 12 * 3600 * 1000;
+    const needFetch = !!force || !have || stale;
+    let fetched = false;
+    // 面板拉取留在内核锁外（跟 refresh_subscription 同理）：用户在这个十几秒里
+    // 点连接应该立刻能连上，而不是等订阅下载完。
+    if (needFetch) {
+      await pullSubscription();
+      fetched = true;
+      core.setDirectDomains(remote.directDomains());
+    }
+    return serialKernel(async () => {
+      try {
+        // 订阅在但配置没生成（首次登录、配置被清掉、上次组装失败）→ 就地补一份，
+        // 否则节点页在未连接时永远拿不到东西（previewNodes 读的就是 config.yaml）。
+        if (fetched || !fs.existsSync(paths.file('config.yaml'))) {
+          // 连接中必须沿用旧端口/密钥，否则 runtime.json 会指向内核没在听的端口
+          core.prepareConfig({ reuse: core.status().connected });
+        }
+      } catch (e) {
+        // 订阅文件在但读不出来（典型：放进 OneDrive/同步盘的占位符没水合）——
+        // 说清楚是哪一步坏了，别让界面只显示"空节点"。
+        throw new Error(`本地订阅读取失败：${e.message}`);
+      }
+      if (fetched && core.status().connected) {
+        // 拉到了新订阅而内核正在跑：重载一次，否则界面上的节点和内核实际用的不是同一份
+        await core.disconnect();
+        await core.connect();
+      }
+      const nodes = await core.loadNodes(true);
+      return ok({ fetched, count: nodes.length });
+    });
+  },
 
   disconnect: async () =>
     serialKernel(async () => {
@@ -444,6 +487,10 @@ const commands = {
       email: s.last_email || '',          // 用户第 5 条：自己的账号邮箱不打码
       panel_backend: panel.session.backend || s.panel_backend || '',   // 自动识别出来的后端
       authed: panel.isAuthed(),
+      // 本地有没有节点数据（订阅原文 + 组装好的 config.yaml）。界面用它区分
+      // 「还没登录」和「登录了但订阅没拉下来」——旧代码这两种情况都显示"未登录"，
+      // 用户看到的是"账号没登录"，其实账号是好的（用户第 11 轮第 3 条）。
+      has_subscription: hasSubscribeFile() && fs.existsSync(paths.file('config.yaml')),
     };
   },
 

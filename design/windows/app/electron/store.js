@@ -28,7 +28,9 @@ const DEFAULTS = {
   tun_mode: false,            // 是否启用 TUN（需管理员）
   allow_lan: false,
   ipv6: false,
-  mixed_port: 0,              // 0 = 随机
+  // 默认固定 7890（用户第 11 轮第 2 条：点连接就该直接能用，不该让人手填端口）。
+  // 0 = 随机；被别的程序占着时走"端口冲突"流程（manager.assertPortFree + 界面问一句要不要关掉它）。
+  mixed_port: 7890,
   controller_port: 0,
   last_group: '节点选择',
   last_node: '',
@@ -41,7 +43,32 @@ const DEFAULTS = {
   routing_rules: null,        // null = 用内置表的 defaultOn；数组 = 用户显式开关的组名
   routing_order: null,        // null = 用内置表顺序；数组 = 用户自定义顺序（分流页拖动调整）
   custom_rulesets: [],        // 用户自己写的分流组：[{name,out,enabled,rules:['DOMAIN-SUFFIX,x.com']}]
+  // 设置文件的结构版本，用来做一次性迁移（见 migrate()）。
+  // 没有这一项的老 settings.json 一律当作 0。
+  settings_schema: 2,
 };
+
+/**
+ * 老设置文件的一次性迁移。
+ *
+ * 为什么需要：store 的规则是「存过的值优先于默认值」，而 save() 会把整个 cache
+ * （默认值 + 用户改过的）一起写盘 —— 所以老版本的用户只要改过任何一项设置，
+ * settings.json 里就留着一份 `mixed_port: 0`（旧默认值），
+ * 新默认的 7890 对他们永远不会生效（用户第 11 轮第 2 条要的就是"点连接就能用"）。
+ *
+ * schema 1 → 2：`mixed_port === 0` 且文件里没有 schema 标记 = 从没主动选过端口，
+ * 按新默认给 7890。升级后用户自己再改成 0（= 自动）会被记成 schema 2，不再迁移。
+ */
+function migrate(data) {
+  const from = Number(data.settings_schema) || 0;
+  if (from >= DEFAULTS.settings_schema) return data;
+  if (from < 2 && Number(data.mixed_port) === 0) {
+    data.mixed_port = DEFAULTS.mixed_port;
+    log.info(`settings migrate: mixed_port 0 -> ${DEFAULTS.mixed_port}（旧默认值改成固定端口）`);
+  }
+  data.settings_schema = DEFAULTS.settings_schema;
+  return data;
+}
 
 let cache = null;
 
@@ -50,12 +77,18 @@ function file() { return paths.file('settings.json'); }
 function load() {
   if (cache) return cache;
   let data = {};
+  let had = false;
   try {
     data = JSON.parse(fs.readFileSync(file(), 'utf8'));
+    had = true;
   } catch (_) {
     data = {};
   }
+  const before = data.settings_schema;
+  data = migrate(data);
   cache = Object.assign({}, DEFAULTS, data);
+  // 迁移过的（或第一次跑）落一次盘，免得每次启动都重算
+  if (had && before !== cache.settings_schema) save();
   return cache;
 }
 

@@ -167,6 +167,47 @@ const builder = require('../electron/core/builder');
     // 只在全新数据目录（--data 指向的空目录）里才有意义 —— 已有设置会被沿用。
     check('TUN 堆栈默认是 system（用户第 1 条）', st.tun === 'system', `当前「${st.tun}」`);
 
+    /* ---------------- 登录即就绪（用户第 11 轮第 1/2/4 条） ---------------- */
+    section('登录后不点连接就该有节点数据（用户第 11 轮第 1/4 条）');
+    const ens = await commands.ensure_subscription({ reason: 'test' });
+    check('ensure_subscription 成功', ens.ok === true && Number(ens.count) > 0, JSON.stringify(ens));
+    const nodesReady = await commands.get_nodes();
+    check('未连接时节点列表非空（登录那一步就把数据拉好了）',
+      Array.isArray(nodesReady) && nodesReady.length > 0, `nodes=${nodesReady && nodesReady.length}`);
+    const stReady = await commands.get_settings();
+    check('界面能区分"登录了但订阅没下来"', stReady.has_subscription === true,
+      JSON.stringify({ authed: stReady.authed, has_subscription: stReady.has_subscription }));
+    if (!RESTORE) {
+      // 用户第 11 轮第 2 条：默认端口 7890（旧默认是 0 = 随机，用户得自己填）。
+      // 只在首次运行的默认值上有意义；--restore 用的是别人目录里的设置。
+      check('本机代理端口默认 7890（用户第 11 轮第 2 条）', Number(stReady.mixed_port) === 7890,
+        `当前 ${stReady.mixed_port}`);
+    }
+    // 用户第 11 轮第 4 条：连接只负责开代理。没有订阅时它必须说人话，
+    // 而不是自己去拉订阅（旧行为：点了连接看到"订阅下载超时"、代理还没起来）。
+    // 用户第 11 轮第 4 条：连接只负责开代理。没有订阅时它必须说人话，
+    // 而不是自己去拉订阅（旧行为：点了连接看到"订阅下载超时"、代理还没起来）。
+    {
+      const sub = nodePath.join(paths.profiles(), 'subscribe.yaml');
+      const bak = sub + '.selfcheck-bak';
+      const cfg = paths.file('config.yaml');
+      const cfgBak = cfg + '.selfcheck-bak';
+      let moved = false, cfgMoved = false;
+      try {
+        if (nodeFs.existsSync(sub)) { nodeFs.renameSync(sub, bak); moved = true; }
+        if (nodeFs.existsSync(cfg)) { nodeFs.renameSync(cfg, cfgBak); cfgMoved = true; }
+        let msg = '';
+        try { await commands.connect(); } catch (e) { msg = (e && e.message) || String(e); }
+        check('没有节点数据时 connect 抛的是人话（不是去偷偷拉订阅）',
+          /还没有节点数据/.test(msg), `实际「${msg}」`);
+      } finally {
+        if (moved) { try { nodeFs.renameSync(bak, sub); } catch (_) {} }
+        if (cfgMoved) { try { nodeFs.renameSync(cfgBak, cfg); } catch (_) {} }
+      }
+      const back = await commands.get_nodes();
+      check('把订阅放回去之后节点还在', Array.isArray(back) && back.length > 0, `nodes=${back && back.length}`);
+    }
+
     const reg = await commands.get_register_config();
     console.log(`  注册配置: ${JSON.stringify(reg)}`);
 
@@ -318,7 +359,7 @@ const builder = require('../electron/core/builder');
     }
 
     /* ---------------- 端口 + 连接 + 真流量 ---------------- */
-    section(`连接（本机代理端口 ${PORT || '随机'}）`);
+    section(`连接（本机代理端口 ${PORT || Number((await commands.get_settings()).mixed_port) || '随机'}）`);
     if (PORT) {
       const r = await commands.set_setting({ key: 'mixed_port', value: PORT });
       check(`端口设为 ${PORT}`, r.ok === true && r.mixed_port === PORT, JSON.stringify(r));
@@ -329,12 +370,14 @@ const builder = require('../electron/core/builder');
     let connErr = null;
     try { conn = await commands.connect(); } catch (e) { connErr = e; }
     if (connErr) {
-      // 端口被别的程序占着（真机上 7890 是 BettboxCore）——必须给一句人话，
-      // 而不是"已连接"却没有代理可用。验完错误路径再退回自动端口跑通全流程。
-      if (PORT && /已被其它程序占用/.test(String(connErr.message))) {
-        check(`端口 ${PORT} 被占时给出人话提示（不是假装连上）`, true);
+      // 端口被别的程序占着（真机上 7890 是 BettboxCore；本机 7890 是开发环境自己的代理）——
+      // 必须给一句人话，而不是"已连接"却没有代理可用。验完错误路径再退回自动端口跑通全流程。
+      // 注意：默认端口也是 7890（用户第 11 轮第 2 条），所以这里不能只在 --port 时兜底。
+      if (/已被其它程序占用/.test(String(connErr.message))) {
+        check(`端口 ${core.mixedPort() || PORT} 被占时给出人话提示（不是假装连上）`, true);
         console.log(`  ${connErr.message}`);
         await commands.set_setting({ key: 'mixed_port', value: 0 });
+        connErr = null;
         try { conn = await commands.connect(); } catch (e2) { connErr = e2; }
       }
       if (!conn) { check('连接成功', false, String(connErr && connErr.message)); }
@@ -687,7 +730,7 @@ const builder = require('../electron/core/builder');
       const st2 = await commands.get_settings();
       check('连接后内核真的跑在这个端口上',
         Number(st2.running_port) === fixed, `running_port=${st2.running_port} 期望=${fixed}`);
-      await commands.set_setting({ key: 'mixed_port', value: 0 });
+      await commands.set_setting({ key: 'mixed_port', value: Number(portBefore) || 0 });
     }
 
     /* ---------------- 规则库 24 小时自动更新（用户第 1 条） ---------------- */
