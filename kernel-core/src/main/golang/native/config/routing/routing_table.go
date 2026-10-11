@@ -69,6 +69,7 @@ type RuleGroup struct {
 var Providers = map[string]Provider{
 	// --- geosite（meta-rules-dat，payload 裸域名 → behavior: domain）---
 	"gs_category_ads_all": {"gs_category_ads_all", providerBaseGeo + "geosite/category-ads-all.yaml", "domain", "yaml", false},
+	"gs_cn":               {"gs_cn", providerBaseGeo + "geosite/cn.yaml", "domain", "yaml", false},
 	"gs_apple":            {"gs_apple", providerBaseGeo + "geosite/apple.yaml", "domain", "yaml", false},
 	"gs_youtube":          {"gs_youtube", providerBaseGeo + "geosite/youtube.yaml", "domain", "yaml", false},
 	"gs_google_play":      {"gs_google_play", providerBaseGeo + "geosite/google-play.yaml", "domain", "yaml", false},
@@ -190,11 +191,15 @@ var Table = []RuleGroup{
 	{Name: "🎶 网易音乐", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"acl_neteasemusic"}},
 	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"gp_cn", "acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"},
-		// ChinaDomain.list 只覆盖 700 多个长尾域名，且会被每日远程更新覆盖；
-		// 抖音/快手/小红书/番茄小说这类主流国内 App 的域名一旦不在里面，就会漏到
-		// 「🐟 漏网之鱼」走代理，表现为「连上 VPN 就断网、断开就好」
-		// （用户 2026-10-11 反馈）。这里用内联规则兜底，不依赖远程规则集。
+		// 国内域名覆盖分两层，缺一不可：
+		// 1) gs_cn = MetaCubeX geosite/cn（11 万+ 条国内域名，聚合 v2fly/ACL4SSR/Loyalsoldier
+		//    等来源），是长尾覆盖的主力。原先这个组只有 gp_cn（geoip/cn，纯 IP 段）加
+		//    ACL4SSR 的 ChinaDomain.list（700 多条），**完全没有成规模的国内域名表**，
+		//    所以抖音/快手/小红书/番茄小说这类主流 App 一旦不在 ChinaDomain.list 里就漏到
+		//    「🐟 漏网之鱼」走代理，表现为「连上 VPN 就断网、断开就好」（用户 2026-10-11 反馈）。
+		// 2) 内联规则兜底：geosite/cn 是第三方每日更新的远程规则集，可能缺条目、也可能被
+		//    CDN 抖动影响拉取，所以把用户点名的主流 App 域名再内联一遍，保证不依赖远程也能命中。
+		Providers: []string{"gs_cn", "gp_cn", "acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"},
 		InlineRules: []string{
 			// 抖音 / 字节跳动
 			"DOMAIN-SUFFIX,douyin.com,{t}",
