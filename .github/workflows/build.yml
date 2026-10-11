@@ -227,6 +227,11 @@ jobs:
       POLARIS_RELEASE_CODE: ${{ needs.version.outputs.versionCode }}
       POLARIS_RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
       - name: 安装 JDK 17
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -480,6 +485,9 @@ jobs:
         run: python -m pip install requests
 
       - name: 拉取内核与 GeoIP 数据
+        # windows-latest 的默认 shell 是 pwsh，`set -e` 会被解析成 Set-Variable -e 而报错；
+        # 这几步要 POSIX 语法（set -e / # 注释 / 变量展开），显式指定 bash。
+        shell: bash
         working-directory: design/windows/app
         run: |
           set -e
@@ -489,6 +497,7 @@ jobs:
           python scripts/fetch-geo.py
 
       - name: 对齐版本号
+        shell: bash
         working-directory: design/windows/app
         run: |
           set -e
