@@ -151,6 +151,7 @@
         const on = r === state.route || (state.route === "routing" && r === "nodes");
         el.classList.toggle("active", on);
       });
+      syncUpdateDot();
       bindCommon();
       ({
         nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
@@ -204,6 +205,9 @@
     ensurePageData(route);
   }
   window.PolarisNav = nav;
+  // 自检用（与 PolarisNav / PolarisDialog 同性质）：红点这类"状态变了要重绘"的逻辑，
+  // 需要在不开新路由的前提下强制重绘一次才能验。
+  window.PolarisRender = render;
 
   /** 二级页面返回：没有历史就回"我的" */
   function goBack() {
@@ -299,14 +303,41 @@
     }));
   }
 
+  /**
+   * 侧边栏「设置」上的更新红点（用户第 13 轮第 2 条：有更新才亮，无更新不亮）。
+   * 依据是 get_settings 的 `update_available` —— 它是"上次查到的线上最新版 vs 当前版本"
+   * 现算的，而"线上最新版"落在 settings.json 里，所以**重启后红点还在**，
+   * 装完新版本它自己会灭。
+   */
+  function syncUpdateDot() {
+    const el = document.querySelector('.nav-item[data-route="settings"]');
+    if (!el) return;
+    const has = !!(state.settings && state.settings.update_available);
+    el.classList.toggle("has-dot", has);
+    const v = state.settings && state.settings.update_version;
+    el.title = has ? `有新版本 ${v}，去「设置 → 检查更新」` : "";
+  }
+
+  /** 把一次检查更新的结果落到界面状态（红点 + 设置页那一行）。 */
+  function applyUpdateInfo(u) {
+    if (!u) return;
+    state.settings.update_available = !!u.has_update;
+    state.settings.update_version = u.has_update ? String(u.version || "") : "";
+    if (u.has_update || u.staged) {
+      lastUpdate = Object.assign({ current: state.settings.version }, u);
+      state.updateInfo = u;
+    }
+    syncUpdateDot();
+    if (state.route === "settings") render();
+  }
+
   async function handleClick(action) {
     if (action === "proxy-mode") openDialog("proxy", state);
     else if (action === "check-update") {
       const u = await guard("检查更新", () => api.checkUpdate());
       if (!u) return;
+      applyUpdateInfo(u);
       if (u.has_update) {
-        lastUpdate = Object.assign({ current: state.settings.version }, u);
-        state.updateInfo = u;
         openDialog("update", lastUpdate);
       } else if (u.staged) {
         // 上次下好了没装：版本没变也要让用户能装
@@ -1507,7 +1538,7 @@
   }
 
   /**
-   * 静默检查更新：只弹一条 toast、并把设置页那一行改成「有新版本 x.y.z」，
+   * 静默检查更新：只弹一条 toast、并把设置页那一行与侧边栏「设置」的红点点亮，
    * 不自动弹窗打断用户（弹窗交给用户点「检查更新」）。
    */
   async function autoCheckUpdate() {
@@ -1516,11 +1547,11 @@
     try {
       const u = await api.checkUpdate();
       if (u && (u.has_update || u.staged)) {
-        state.updateInfo = u;
-        lastUpdate = Object.assign({ current: state.settings.version }, u);
+        applyUpdateInfo(u);
         if (u.has_update) toast("发现新版本 " + u.version + "，可在「设置 → 检查更新」安装");
         else toast("有已下载好的更新 " + u.version + "，可在「设置 → 检查更新」安装");
-        if (state.route === "settings") render();
+      } else if (u) {
+        applyUpdateInfo(u);   // 没更新也要落一次：红点该灭就灭
       }
     } catch (_) { /* 检查更新失败不打扰用户 */ }
     finally { state.checkingUpdate = false; }

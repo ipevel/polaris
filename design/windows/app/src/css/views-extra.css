@@ -169,3 +169,22 @@
 }
 :root[data-theme="dark"] .chart-tip { background: rgba(58, 58, 62, .96); }
 .chart-hit rect { cursor: crosshair; }
+
+/* ---- 应用内更新的红点（用户第 13 轮第 2 条）----
+   有更新时：侧边栏「设置」右上角一个红点，设置页「检查更新」那一行也一个；
+   没更新时两者都不存在（app.js 的 syncUpdateDot / views.js 的 row 都不渲染）。
+   蓝色按钮是品牌色，红点是"有新东西"的通用语言，所以这里刻意不用蓝。 */
+.nav-item.has-dot::after {
+  content: "";
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-left: auto; flex: none;
+  background: #ff3b30; box-shadow: 0 0 8px rgba(255, 59, 48, .85);
+}
+.dot-new {
+  display: inline-block; vertical-align: middle;
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 7px;
+  background: #ff3b30; box-shadow: 0 0 8px rgba(255, 59, 48, .85);
+}
+:root[data-theme="dark"] .nav-item.has-dot::after,
+:root[data-theme="dark"] .dot-new { background: #ff453a; box-shadow: 0 0 8px rgba(255, 69, 58, .85); }

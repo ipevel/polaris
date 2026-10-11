@@ -68,6 +68,9 @@ function save(obj) {
     } else {
       log.error('safeStorage 不可用，拒绝明文保存凭据');
     }
+    // 备份到 %LOCALAPPDATA%（DPAPI 加密后的字节原样复制）：便携目录被整包替换
+    // 或云同步清掉时能回填，见 electron/backup.js 的头注释。
+    require('../backup').mirrorNow();
   } catch (e) {
     log.error('credentials save failed:', e && e.message);
   }
@@ -76,6 +79,8 @@ function save(obj) {
 function clear() {
   cache = null;
   try { fs.rmSync(file(), { force: true }); } catch (_) {}
+  // 备份也要删：否则下次"文件不见了就回填"会把已经注销的登录态复活
+  require('../backup').forget('credentials.dat');
 }
 
 module.exports = { load, save, clear, available };

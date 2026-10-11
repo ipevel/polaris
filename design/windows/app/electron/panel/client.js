@@ -395,6 +395,43 @@ function persist() {
   });
 }
 
+/**
+ * 轻量校验磁盘上恢复出来的 token 还有效吗。
+ *
+ * 返回 'ok' | 'auth' | 'net'：
+ *   ok   = 面板正常应答，登录态可用；
+ *   auth = 面板明确拒绝（401 / 403 且回的是面板自己的 JSON），**只有这一种才允许清凭据**；
+ *   net  = 超时 / 连不上 / 5xx / 被 CDN 拦，一律当作"面板这会儿不可达"，
+ *          绝不能据此判定用户没登录 —— 用户的真实事故就是面板抽风一次，
+ *          应用把 credentials.dat 删了，从此每次打开都是登录页。
+ *
+ * 只在启动时调一次（main.js），代价是一个小请求；失败不阻塞界面。
+ */
+async function verify() {
+  if (!session.token) return 'auth';
+  try {
+    await request('GET', '/user/comm/config', { timeoutMs: 8000 });
+    session.verifiedAt = Date.now();
+    session.rejected = false;
+    return 'ok';
+  } catch (e) {
+    return e && e.kind === 'auth' ? 'auth' : 'net';
+  }
+}
+
+/**
+ * 面板明确拒绝了当前 token（运行中某个请求拿到 401/403）。
+ * **只把内存里的会话置空，绝不动磁盘上的凭据**：以前这里走的是 logout() →
+ * credentials.clear() → credentials.dat 被删掉，于是"退出软件再打开就永久未登录"。
+ * 磁盘文件留着，下次启动 boot 时会 verify() 一次：面板还是拒绝才真清。
+ */
+function invalidate() {
+  clearUserInfoCache();
+  session.token = '';
+  session.rejected = true;
+  log.warn('panel session invalidated (面板拒绝了这个凭据)，磁盘上的凭据先留着，下次启动复核');
+}
+
 async function login(email, password, panelInput) {
   const panelUrl = normalizePanelUrl(panelInput || store.get('panel_url'));
   if (!panelUrl) throw new PanelError('请填写面板地址', 'input');
@@ -1105,6 +1142,7 @@ async function register(email, password, emailCode, inviteCode) {
 module.exports = {
   session, PanelError,
   restore, login, logout, isAuthed, register,
+  verify, invalidate,
   siteInfo, telegramLink, safeTelegram, userInfo, subscribeInfo, refreshSubscription,
   plans, orders, createOrder, orderDetail, paymentMethods, checkoutUrl,
   tickets, createTicket, invite, giftHistory, redeemGift, notices, trafficLog,

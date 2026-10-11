@@ -32,6 +32,18 @@
     return p.total_text || `${p.total == null ? "—" : p.total} GB`;
   }
 
+  /**
+   * 套餐数据到底回来了没有。
+   * `state.plan` 的初始值是 `{name:'—', used:0, total:0}`，直接渲染出来就是
+   * 「已使用 0 GB / 0 GB · 到期时间 —」—— 用户看到的是"我的套餐没了"。
+   * 第 13 轮实测：新登录那一次首页先渲染的就是这个占位值，界面自检的四条红全出在这。
+   * 没回来时宁可写"读取中…"，也不写假的 0。
+   */
+  function planReady(s) {
+    const p = (s && s.plan) || {};
+    return !!(p.name && p.name !== "—" && p.name !== "未订阅");
+  }
+
   function row(k, v, opts) {
     opts = opts || {};
     const ic = opts.icon ? `<span class="mini-icon" style="background:${opts.icon[1]}">${opts.icon[0]}</span>` : "";
@@ -98,11 +110,11 @@
     <div class="section-label">当前套餐</div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:14px">已使用 <b>${h(planUsed(s))}</b> / ${h(planTotal(s))}</div>
+        <div style="font-size:14px">已使用 <b>${h(planReady(s) ? planUsed(s) : "—")}</b> / ${h(planReady(s) ? planTotal(s) : "—")}</div>
         <button class="btn btn-primary btn-sm" data-nav="plans">续费</button>
       </div>
-      <div class="progress"><div style="width:${fmt.percent(s.plan.used, s.plan.total)}%"></div></div>
-      <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(s.plan.expire || "—")}</div>
+      <div class="progress"><div style="width:${planReady(s) ? fmt.percent(s.plan.used, s.plan.total) : 0}%"></div></div>
+      <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(planReady(s) ? (s.plan.expire || "—") : "读取中…")}</div>
       ${!s.plan.name && s.panelError ? `<div style="font-size:13px;color:var(--orange);margin-top:6px">${h(s.panelError)}</div>` : ""}
     </div>
   </div>`;
@@ -368,9 +380,11 @@
     </div>
     <div class="section-label">关于</div><div class="card">
       ${row("当前版本", h(s.settings.version), { chev: false })}
-      ${row("检查更新", s.updateInfo && s.updateInfo.has_update
-        ? '<span style="color:var(--blue)">有新版本 ' + h(s.updateInfo.version) + "</span>"
-        : '<span style="color:var(--blue)">检查更新</span>', { chev: false, click: "check-update" })}
+      ${row("检查更新", s.settings.update_available
+        ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.settings.update_version) + "</span>"
+        : (s.updateInfo && s.updateInfo.staged
+          ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.updateInfo.version) + "（已下载）</span>"
+          : '<span style="color:var(--blue)">检查更新</span>'), { chev: false, click: "check-update" })}
       ${row("导出日志", "", { chev: false, click: "export-logs" })}
       ${row("开源许可", "GPL-3.0", { click: "license" })}
       ${row("运行模式", s.appInfo.portable ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
@@ -390,13 +404,13 @@
     <div class="card" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--blue);font-weight:700">${h((s.email || "?").slice(0, 1).toUpperCase())}</div>
       <div style="min-width:0"><div style="font-size:16px;font-weight:700;word-break:break-all">${h(s.email || (s.settings.authed ? "已登录" : "未登录"))}</div>
-      <span class="badge b-blue" style="margin-top:6px;display:inline-block">${h(s.plan.name || "未订阅")}</span></div>
+      <span class="badge b-blue" style="margin-top:6px;display:inline-block">${h(planReady(s) ? s.plan.name : (s.settings.authed ? "读取中…" : "未订阅"))}</span></div>
     </div></div>
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:14px;font-weight:700">当前套餐</div><button class="btn btn-primary btn-sm" data-nav="plans">续费</button></div>
-      <div style="font-size:14px;margin-bottom:10px">已使用 <b>${h(planUsed(s))}</b> / ${h(planTotal(s))}</div>
-      <div class="progress"><div style="width:${fmt.percent(s.plan.used, s.plan.total)}%"></div></div>
-      <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(s.plan.expire || "—")}</div>
+      <div style="font-size:14px;margin-bottom:10px">已使用 <b>${h(planReady(s) ? planUsed(s) : "—")}</b> / ${h(planReady(s) ? planTotal(s) : "—")}</div>
+      <div class="progress"><div style="width:${planReady(s) ? fmt.percent(s.plan.used, s.plan.total) : 0}%"></div></div>
+      <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(planReady(s) ? (s.plan.expire || "—") : "读取中…")}</div>
     </div>
     <div class="section-label">提醒</div><div class="card" style="margin-bottom:14px">
       ${rowSwitch("到期提醒", "expire_notify", s.settings.expire_notify, ["⏰", "#ff9f43"])}

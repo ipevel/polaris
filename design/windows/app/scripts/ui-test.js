@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /**
  * 真面板 · 真窗口 · 真鼠标点击 的界面自检。
  *
@@ -286,7 +286,10 @@ async function run(win, opts) {
   await step('首页套餐', async () => {
     // 登录现在是"先进首页、面板数据边到边显示"（用户第 12 轮第 6 条），
     // 所以这里必须等套餐那一项落地，不能直接读 —— 直接读会读到"还没拉回来"。
-    await waitFor(win, '!!(window.__polarisState.plan && window.__polarisState.plan.name)',
+    // 注意判据要排掉占位值 `—`：state.plan 的初始值就是 `{name:'—'}`，
+    // 只判 `!!plan.name` 会被它满足、等待立刻返回（第 13 轮踩过）。
+    await waitFor(win, `!!(window.__polarisState.plan && window.__polarisState.plan.name
+      && window.__polarisState.plan.name !== '—')`,
       { timeout: 60000, label:'首页套餐数据回来' }).catch(() => {});
     const p = await ev(win, 'window.__polarisState.plan');
     check('套餐名不是"未订阅"', p && p.name && p.name !== '—' && p.name !== '未订阅', JSON.stringify(p && p.name));
@@ -936,6 +939,42 @@ async function run(win, opts) {
     check('设置页没有「面板」分段', labels.indexOf('面板') < 0, labels.join(' / '));
     check('设置页没有「面板地址」行', txt.indexOf('面板地址') < 0);
     check('设置页没有「当前账号」行', txt.indexOf('当前账号') < 0);
+
+    // ---- 应用内更新的红点（用户第 13 轮第 2 条）----
+    // 有更新才亮、无更新不亮，且状态要落盘（重启后还在）。真面板当前就是最新版，
+    // 所以先验"没更新时不亮"，再手动把 update_available 打开验"亮起来"，
+    // 最后还原 —— 红点是纯展示逻辑，不该为了测它去伪造一个线上新版本。
+    const dotWhenFresh = await ev(win, `({
+      nav: !!document.querySelector('.nav-item[data-route="settings"].has-dot'),
+      row: !!document.querySelector('.dot-new'),
+      avail: !!window.__polarisState.settings.update_available,
+    })`);
+    check('没有更新时侧边栏「设置」不亮红点',
+      dotWhenFresh.nav === dotWhenFresh.avail && dotWhenFresh.row === dotWhenFresh.avail,
+      JSON.stringify(dotWhenFresh));
+    const dotOn = await ev(win, `(() => {
+      window.__polarisState.settings.update_available = true;
+      window.__polarisState.settings.update_version = '99.9.9';
+      window.PolarisRender();
+      return {
+        nav: !!document.querySelector('.nav-item[data-route="settings"].has-dot'),
+        row: !!document.querySelector('.dot-new'),
+        txt: document.body.innerText.indexOf('有新版本 99.9.9') >= 0,
+      };
+    })()`);
+    check('有更新时侧边栏「设置」亮红点', dotOn.nav === true, JSON.stringify(dotOn));
+    check('有更新时「检查更新」那一行也亮红点并写出新版本号',
+      dotOn.row === true && dotOn.txt === true, JSON.stringify(dotOn));
+    await ev(win, `(() => {
+      window.__polarisState.settings.update_available = false;
+      window.__polarisState.settings.update_version = '';
+      window.PolarisRender();
+    })()`);
+    const dotOff = await ev(win, `({
+      nav: !!document.querySelector('.nav-item[data-route="settings"].has-dot'),
+      row: !!document.querySelector('.dot-new'),
+    })`);
+    check('把更新标记清掉后红点又消失', dotOff.nav === false && dotOff.row === false, JSON.stringify(dotOff));
   });
 
   /* ---- 9. 渲染层报错 ---- */

@@ -1318,6 +1318,79 @@ const builder = require('../electron/core/builder');
       c.clearBadAddresses();
     }
 
+    /* ---------------- 救命备份（用户第 13 轮第 1 条） ---------------- */
+    // 「退出软件（不退出登录）再打开就显示未登录」的真机原因：用户把新包覆盖解压进
+    // 同一个目录，data/ 连同 credentials.dat、settings.json 一起没了。
+    // 现在这两个文件在 %LOCALAPPDATA%\Polaris\backup\<安装目录指纹>\ 有备份，
+    // 启动时发现缺了就回填。这一段验回填逻辑本身（真机那条路径由成品包 --uitest 覆盖）。
+    section('登录态与数据的救命备份（第 13 轮第 1 条）');
+    {
+      const backup = require('../electron/backup');
+      const nfs = require('fs');
+      const credFile = paths.file('credentials.dat');
+      const setFile = paths.file('settings.json');
+
+      backup.mirrorNow();
+      const inf = backup.info();
+      check('凭据与设置都有备份（%LOCALAPPDATA%\\Polaris\\backup\\<安装目录指纹>）',
+        inf.has['credentials.dat'].backup === true && inf.has['settings.json'].backup === true,
+        `${inf.dir} ${JSON.stringify(inf.has)}`);
+
+      const credBefore = nfs.existsSync(credFile) ? nfs.readFileSync(credFile) : null;
+      nfs.rmSync(credFile, { force: true });
+      nfs.rmSync(setFile, { force: true });
+      const restored = backup.restoreIfMissing();
+      check('data/ 里两个文件被删掉后能自动回填', restored.length === 2, JSON.stringify(restored));
+      check('回填出来的凭据与原来逐字节一致（DPAPI 密文原样复制）',
+        !!credBefore && nfs.existsSync(credFile) && Buffer.compare(nfs.readFileSync(credFile), credBefore) === 0);
+      const stBack = nfs.existsSync(setFile) ? JSON.parse(nfs.readFileSync(setFile, 'utf8')) : {};
+      check('回填出来的 settings.json 里还认得面板地址（不用重新填）',
+        !!stBack.panel_url, String(stBack.panel_url || ''));
+
+      // 只读：便携目录里的文件在，就不该被动过（用户手动改过就听他的）
+      const before2 = nfs.readFileSync(setFile);
+      backup.restoreIfMissing();
+      check('文件在的时候回填不动它（只在真的缺了才动手）',
+        Buffer.compare(nfs.readFileSync(setFile), before2) === 0);
+    }
+
+    /* ---------------- 更新红点（用户第 13 轮第 2 条） ---------------- */
+    section('应用内更新的红点口径（有更新才亮 · 没更新不亮 · 重启后还在）');
+    {
+      const st = require('../electron/store');
+      const cmp = (a, b) => {
+        const pa = String(a || '').split('.').map((x) => parseInt(x, 10) || 0);
+        const pb = String(b || '').split('.').map((x) => parseInt(x, 10) || 0);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+          const x = pa[i] || 0; const y = pb[i] || 0;
+          if (x !== y) return x > y ? 1 : -1;
+        }
+        return 0;
+      };
+      const keep = st.get('update_latest');
+      const u = await commands.check_update();
+      check('check_update 返回布尔 has_update', typeof u.has_update === 'boolean',
+        JSON.stringify({ has_update: u.has_update, version: u.version }));
+      const s1 = await commands.get_settings();
+      check('检查更新后"线上最新版"落盘了（红点才能跨重启还在）',
+        typeof s1.update_version === 'string' && s1.update_version === String(st.get('update_latest') || ''),
+        JSON.stringify({ settings: s1.update_version, store: st.get('update_latest') }));
+      check('红点口径 = 线上最新版比当前版本新（装完新版本自己灭）',
+        s1.update_available === (cmp(s1.update_version, s1.version) > 0),
+        JSON.stringify({ latest: s1.update_version, current: s1.version, avail: s1.update_available }));
+
+      st.set('update_latest', '99.9.9');
+      const s2 = await commands.get_settings();
+      check('线上有更高版本时 update_available=true（界面据此亮红点）',
+        s2.update_available === true && s2.update_version === '99.9.9',
+        JSON.stringify({ avail: s2.update_available, v: s2.update_version }));
+
+      st.set('update_latest', keep || '');
+      const s3 = await commands.get_settings();
+      check('还原后红点状态跟着回去', s3.update_available === (cmp(s3.update_version, s3.version) > 0),
+        JSON.stringify({ latest: s3.update_version, avail: s3.update_available }));
+    }
+
     /* ---------------- 收尾 ---------------- */
     section('收尾');
     if (!KEEP) {
@@ -1330,6 +1403,10 @@ const builder = require('../electron/core/builder');
         await commands.logout();
         const st2 = await commands.get_settings();
         check('退出登录后 authed=false', st2.authed === false, JSON.stringify(st2.authed));
+        // 备份里的凭据也要一起删：否则下次"文件不见了就回填"会把已注销的登录态复活
+        const inf3 = require('../electron/backup').info();
+        check('退出登录后备份里的凭据也删掉了（不会被回填复活）',
+          inf3.has['credentials.dat'].backup === false, JSON.stringify(inf3.has['credentials.dat']));
       }
     }
   } catch (e) {

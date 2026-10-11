@@ -22,6 +22,10 @@ const DEFAULTS = {
   panel_url: '',
   last_email: '',
   auto_update: true,
+  // 上次查到的线上最新版（空串 = 没查到更新）。设置页与侧边栏的红点由它与
+  // 当前 version 现算，存版本号而不是布尔值，装完新版本红点自己消失（用户第 13 轮第 2 条）。
+  update_latest: '',
+  update_checked_at: 0,
   // —— 内核 / 网络 ——
   proxy_mode: 'rule',         // rule | global | direct
   sys_proxy: true,            // 连接时是否设置系统代理
@@ -100,6 +104,8 @@ function save() {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(tmp, JSON.stringify(cache, null, 2), 'utf8');
     fs.renameSync(tmp, target);
+    // 顺手在 %LOCALAPPDATA% 留一份救命备份：便携目录被整包替换/云同步清掉时能回填
+    require('./backup').mirrorNow();
   } catch (e) {
     log.warn('settings save failed:', e && e.message);
   }

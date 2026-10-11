@@ -8,6 +8,7 @@ const { app, BrowserWindow, Menu, Tray, nativeImage, shell, dialog, ipcMain } = 
 const paths = require('./paths');
 const log = require('./logger');
 const store = require('./store');
+const ui = require('./ui');
 
 /** 读 `--name=value` 或 `--name value` 两种写法 */
 function argOf(name) {
@@ -36,6 +37,18 @@ try {
   // 只读介质等情况：退回默认路径，不因为这个起不来
   console.warn('无法重定向 Electron 数据目录，将使用默认位置:', e && e.message);
 }
+
+// 便携目录被整包替换/云同步清掉时，settings.json 与 credentials.dat 会一起没掉，
+// 用户看到的就是"打开软件又要重新登录、连面板地址都是空的"。这两个文件在
+// %LOCALAPPDATA% 有备份，缺了就从备份回填（只在文件真的不存在时动手）。
+// 必须在这里做：store.load() / panel.restore() 都在后面，晚了就来不及。
+try {
+  const restored = require('./backup').restoreIfMissing();
+  if (restored.length) log.info(`data/ 里的 ${restored.join('、')} 从备份回填（安装目录可能被整包替换过）`);
+} catch (e) {
+  log.warn('backup restore skipped:', e && e.message);
+}
+
 const { register: registerCommands } = require('./ipc');
 const { buildTray, updateTray } = require('./tray');
 
@@ -205,6 +218,12 @@ app.whenReady().then(async () => {
   tray = buildTray();
   mainWindow = createWindow();
 
+  // 复核磁盘上那份凭据（用户第 13 轮第 1 条："退出软件再打开账号显示未登录"）。
+  // 只有面板**明确拒绝**（401/403 且回的是面板自己的 JSON）才清凭据并回登录页；
+  // 超时/连不上/被 CDN 拦一律保留 —— 面板抽风一次不该让用户重新登录。
+  // 放在窗口之后异步做，不占启动路径。
+  verifyStoredSession();
+
   // 界面自检：开真窗口、连真面板、用真账号登录、用真鼠标事件点。
   // 和 real-test.js 的分工：那个只调 IPC（验数据层），这个专门验界面层
   // （手风琴、返回键、按钮文案、页面显示的是不是面板真数据）。
@@ -213,6 +232,31 @@ app.whenReady().then(async () => {
   app.on('activate', () => showMain());
 
 });
+
+/**
+ * 启动时复核登录态。`--uitest` 下由自检自己决定要不要登录，这里不插手
+ * （否则会在自检"故意删掉凭据逼一次真登录"的用例里插一条导航）。
+ */
+async function verifyStoredSession() {
+  const panel = require('./panel/client');
+  if (!panel.isAuthed()) return;
+  if (process.argv.includes('--uitest')) return;
+  try {
+    const r = await panel.verify();
+    if (r === 'auth') {
+      log.warn('存储的登录态已被面板拒绝（401/403），清除凭据并回到登录页');
+      panel.logout();
+      ui.toast('登录已失效，请重新登录');
+      ui.navigate('login');
+    } else if (r === 'net') {
+      log.warn('复核登录态时面板不可达，保留登录态（不当成未登录）');
+    } else {
+      log.info('存储的登录态复核通过');
+    }
+  } catch (e) {
+    log.warn('复核登录态出错，保留登录态：' + (e && e.message));
+  }
+}
 
 /** `--uitest --panel=… --email=… --password=… [--uitest-data=<根目录>]` */
 function runUiTest() {
@@ -250,6 +294,10 @@ app.on('window-all-closed', (e) => {
 
 // 退出前的最后清理（还原系统代理 / 停内核）
 app.on('will-quit', async () => {
+  try {
+    // 退出前再同步一次救命备份：这一轮里改过的设置/新登录的凭据都要落进备份
+    require('./backup').mirrorNow();
+  } catch (_) { /* 备份失败不影响退出 */ }
   try {
     const { shutdown } = require('./core/manager');
     await shutdown('app-quit');

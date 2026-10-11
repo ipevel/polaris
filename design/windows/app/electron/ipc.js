@@ -33,6 +33,22 @@ function needAuth() {
 }
 
 /**
+ * 版本号比较（只认点分数字，够用了）。a > b 返回 1，相等 0，a < b 返回 -1。
+ * 用来把「上次查到的线上最新版」与当前版本比出"该不该亮红点"——
+ * 存的是版本号而不是布尔值，用户装完新版本红点会自己消失。
+ */
+function cmpVersion(a, b) {
+  const pa = String(a || '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || '').split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
  * 套餐/用量的**唯一**口径。首页、「我的」、流量页三处都从这里拿数据。
  * 旧代码流量页自己又拼了一套（u.u + u.d、transfer_enable），于是同一屏里
  * 「已用流量 0 B / 500 GB + 套餐未订阅」和「我的」页的真实套餐名互相矛盾 ——
@@ -577,6 +593,11 @@ const commands = {
       email: s.last_email || '',          // 用户第 5 条：自己的账号邮箱不打码
       panel_backend: panel.session.backend || s.panel_backend || '',   // 自动识别出来的后端
       authed: panel.isAuthed(),
+      // 应用内更新的红点口径（用户第 13 轮第 2 条）：有更新才亮，没更新不亮。
+      // 存的是"上次查到的线上最新版"，与当前版本现算，所以装完新版本自己会灭。
+      update_available: cmpVersion(s.update_latest, s.version) > 0,
+      update_version: s.update_latest || '',
+      update_checked_at: Number(s.update_checked_at) || 0,
       // 本地有没有节点数据（订阅原文 + 组装好的 config.yaml）。界面用它区分
       // 「还没登录」和「登录了但订阅没拉下来」——旧代码这两种情况都显示"未登录"，
       // 用户看到的是"账号没登录"，其实账号是好的（用户第 11 轮第 3 条）。
@@ -669,6 +690,12 @@ const commands = {
     await remote.load(true).catch(() => {});
     const u = remote.updateInfo();
     const st = updater.info();
+    // 把"线上最新版"落盘：设置页那个红点要在**重启之后**还在（用户第 13 轮第 2 条），
+    // 不能只活在这一次会话的内存里。没更新时写空串，红点随之消失。
+    store.patch({
+      update_latest: u.has_update ? String(u.version || '') : '',
+      update_checked_at: Date.now(),
+    });
     return {
       has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
       // 便携版能不能自己装：打包 + 安装目录可写才允许，否则退回「前往下载」
@@ -758,11 +785,18 @@ function register() {
       return out;
     } catch (e) {
       log.error(`command ${cmd} failed:`, e && e.message);
-      // 凭据过期（面板 401/403）：清掉登录态并把界面送回登录页。
+      // 凭据过期（面板 401/403）：把内存里的会话置空并把界面送回登录页。
       // 不做的话用户会停在"已登录"的界面上，之后每个请求各报一次错。
       // login 命令本身除外 —— 密码错也可能返回 401，那时说"登录已失效"没人看得懂。
+      //
+      // 注意这里用的是 invalidate() 而不是 logout()：logout() 会
+      // credentials.clear() 把 credentials.dat 删掉，于是面板抽风一次
+      // （CDN 回 403 面板 JSON、面板临时拒绝）用户就**永久**变成未登录 ——
+      // 真机事故：用户报"退出软件再打开账号显示未登录"，就是这个链路。
+      // 现在磁盘上的凭据留着，下次启动 main.js 会 verify() 复核：
+      // 面板还是明确拒绝，才真清（用户第 13 轮第 1 条）。
       if (e && e.kind === 'auth' && cmd !== 'login') {
-        try { panel.logout(); } catch (_) {}
+        try { panel.invalidate(); } catch (_) {}
         ui.toast('登录已失效，请重新登录');
         ui.navigate('login');
       }
