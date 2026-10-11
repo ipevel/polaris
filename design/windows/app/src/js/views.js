@@ -108,12 +108,12 @@
   </div>`;
 
   /* ---------------- 节点 ---------------- */
-  // 主组里的前三个成员不是节点，而是内核的三个特殊出口：自动选择（url-test，内核每 300s
-  // 自己挑最快的）、故障转移（fallback，第一个不通就换下一个）、DIRECT（直连）。
+  // 主组里的前几个成员不是节点，而是内核的特殊出口：自动选择（url-test，内核每 300s
+  // 自己挑最快的）、故障转移（fallback，第一个不通就换下一个）、DIRECT（直连）、REJECT（拦截）。
   // 它们**当然生效**（见 scripts/real-test.js 的「三个特殊出口真的生效」一段），
   // 但延迟对它们没意义 —— 直连没有延迟，自动选择/故障转移的延迟得等内核的健康检查。
-  // 显示成「其他 / 未测」会让人以为坏了（用户报的就是这个），所以单独给它们标签。
-  const STRUCT_LABEL = { "自动选择": "自动", "故障转移": "备用" };
+  // 显示成「其他 / 未测」会让人以为坏了（用户报的就是这个），所以按种类单独给标签：
+  // 策略组 → 「策略组 / 自动」，直连拦截 → 「不需要」（与安卓端 MemberRow 同口径）。
 
   // 节点页 = 策略组手风琴：分组在**最上面**、可折叠、分组内直接点节点就切那个分组的出口、
   // 每个分组显示自己的延迟。主组就是本地生成的「🚀 节点选择」（与安卓端同名，见
@@ -125,50 +125,64 @@
     // 结构组（兜底组 🐟 漏网之鱼、自动选择、故障转移、GLOBAL）只是配置骨架，不是给用户选的分类
     const groups = (Array.isArray(s.groups) ? s.groups : []).filter((g) => !g.builtin && !g.structural);
     const open = s.openGroups || {};
-    // 没点过就默认展开第一个（内核里排最前的就是"节点选择"）
-    const isOpen = (name, i) => (open[name] === undefined ? i === 0 : !!open[name]);
+    // 进节点页时全部折叠，展开状态只认显式记过的那一个（用户第 12 轮第 4 条）。
+    // 旧代码"没点过就默认展开第一个"，于是每次进页都自己弹开一张卡、切页回来也恢复不了。
+    const isOpen = (name) => !!open[name];
 
-    const nodeRow = (n, groupName) => {
-      const label = STRUCT_LABEL[n.name] || EXIT_LABEL[n.name];
-      if (label) {
-        // 这三个自身也是策略组，「当前：xxx」就是它们真正选中的出口
-        const g = (s.groups || []).find((x) => x.name === n.name);
-        const now = g && g.now && g.now !== n.name ? g.now : "";
-        const ms = g && typeof g.latency === "number" ? g.latency : -1;
-        // 内核的健康检查是异步的：刚连上那几秒 URLTest/Fallback 的 now 还可能是空的。
-        // 空着什么都不显示会让人以为坏了，明确说清"正在挑"。
-        const sub = now ? (ms > 0 ? now + " · " + ms + "ms" : now) : "内核正在挑选出口…";
-        return `<div class="node-row" data-node="${h(n.name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer">
-          <span class="nm">${h(n.name)}</span>${badge(label, "b-blue")}${sub ? `<span class="nm-sub">${h(sub)}</span>` : ""}
-          <span class="radio${n.name === s.node ? " sel" : ""}"></span>
-        </div>`;
+    // 成员名的种类（安卓端 KernelProxyGroup.memberKindOf 同口径）：
+    // 名字同时也是策略组 → 组出口；DIRECT/REJECT 这类 → 内置出口；其余 → 真实节点。
+    const groupNames = new Set((s.groups || []).map((g) => g.name));
+    const primary = (s.groups || []).find((g) => g.primary);
+    const primaryName = primary ? primary.name : "";
+
+    /**
+     * 一个成员行。选中态只信内核回读的分组出口 now —— 安卓端 NodeGroupCard 是
+     * `selected = member.name == selectedName`，绝不做乐观更新。
+     * 旧代码用的是全局 state.node，于是"外面写着 A、点开勾的却是 B"（用户第 12 轮第 1 条）。
+     */
+    const memberRow = (name, now, groupName) => {
+      const attr = `data-node="${h(name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer"`;
+      const radio = `<span class="radio${name === now ? " sel" : ""}"></span>`;
+      const exitLabel = EXIT_LABEL[name];
+      if (exitLabel) {
+        return `<div class="node-row" ${attr}><span class="nm">${h(exitLabel)}</span>${badge("不需要", "b-gray")}${radio}</div>`;
       }
-      return `<div class="node-row" data-node="${h(n.name)}"${groupName ? ` data-node-group="${h(groupName)}"` : ""} style="cursor:pointer">
-        <span class="nm">${h(n.name)}</span>${badge(n.region, "b-blue")}${latBadge(n.latency, n.offline)}
-        <span class="radio${n.name === s.node ? " sel" : ""}"></span>
-      </div>`;
+      if (groupNames.has(name)) {
+        // 主组作为出口时，安卓端的写法是「跟随「节点选择」」—— 比自己再画一遍组名清楚
+        const label = name === primaryName ? `跟随「${name}」` : name;
+        return `<div class="node-row" ${attr}><span class="nm">${h(label)}</span>${badge("策略组", "b-blue")}${badge("自动", "b-gray")}${radio}</div>`;
+      }
+      const n = s.nodes.find((x) => x.name === name) || { name, region: "", latency: -1, offline: false };
+      return `<div class="node-row" ${attr}><span class="nm">${h(n.name)}</span>${badge(n.region, "b-blue")}${latBadge(n.latency, n.offline)}${radio}</div>`;
     };
+
+    // 组内成员：与安卓端 visibleGroupMembers 一致 —— 去掉「故障转移」这个入口
+    // （每个组里它都排在自动选择后面，点它等于把整个组交给 fallback，用户第 12 轮第 2 条），
+    // 除非当前出口正好就是它。顺序保持内核给的顺序（= 网站下发的订阅顺序）。
+    const memberNames = (g) => (g.options || [])
+      .filter((n) => n !== g.name && !(n === "故障转移" && g.now !== "故障转移"));
 
     const flat = s.nodes.filter((n) => hit(n.name) || hit(n.region));
     const cards = groups.length
-      ? groups.map((g, i) => {
-        const opened = isOpen(g.name, i);
-        const members = (g.options || []).map((name) => s.nodes.find((n) => n.name === name)
-          || { name, region: "", latency: -1, offline: false }).filter((n) => hit(n.name) || hit(n.region));
+      ? groups.map((g) => {
+        const opened = isOpen(g.name);
+        const members = memberNames(g)
+          .filter((name) => hit(name) || hit((s.nodes.find((x) => x.name === name) || {}).region))
+          .map((name) => memberRow(name, g.now, g.name));
         return `<div class="card" style="margin-bottom:14px">
-          <div class="acc-head" data-acc="${h(g.name)}" style="cursor:pointer">
+          <div class="acc-head" data-acc="${h(g.name)}"${g.primary ? ' data-acc-primary="1"' : ""} style="cursor:pointer">
             <div><div class="acc-title" style="font-size:15px">${h(g.name)}</div>
             <div class="acc-sub">${g.count ? g.count + " 个可选出口 · " : ""}当前：${h(g.now || "—")}</div></div>
             <div style="display:flex;align-items:center;gap:10px">${groupBadge(g)}
             <span class="chev${opened ? " open" : ""}" style="font-size:20px">›</span></div>
           </div>
-          ${opened ? `<div class="acc-body">${members.length ? members.map((n) => nodeRow(n, g.name)).join("") : empty("没有匹配的节点", "换个关键词试试")}</div>` : ""}
+          ${opened ? `<div class="acc-body">${members.length ? members.join("") : empty("没有匹配的节点", "换个关键词试试")}</div>` : ""}
         </div>`;
       }).join("")
       // 未连接时内核还没起，拿不到策略组 —— 退回本地配置预览的扁平列表
       : `<div class="card" style="margin-bottom:14px">
           <div class="acc-head"><div><div class="acc-title">节点选择</div><div class="acc-sub">当前：${h(s.node || "未选择")}</div></div></div>
-          ${flat.length ? flat.map((n) => nodeRow(n, "")).join("")
+          ${flat.length ? flat.map((n) => memberRow(n.name, s.node, "")).join("")
             : (s.nodes.length ? empty("没有匹配的节点", "换个关键词试试")
               : empty("还没有节点数据", s.subError || "点右上角「刷新订阅」拉取节点"))}
         </div>`;

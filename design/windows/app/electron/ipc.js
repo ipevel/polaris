@@ -71,6 +71,84 @@ function hasSubscribeFile() {
   return fs.existsSync(path.join(paths.profiles(), 'subscribe.yaml'));
 }
 
+/* ------------------------------------------------------------------ */
+/* 站点流量明细的长缓存                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 面板的站点流量明细（`/user/stat/getTrafficLog`）是一次**聚合查询**，实测单个
+ * 请求 7~30 秒（面板侧按天 group by，数据量越大越慢）。旧代码只在 client 层做了
+ * 15 秒缓存，于是流量页点「今日 / 本周 / 本月」每一下都要重新等这十几秒 ——
+ * 用户第 12 轮第 5 条「完全不能随着点击切换」。
+ *
+ * 这里的口径：
+ *  · 5 分钟内的缓存直接用，切区间只做本地切片（pickTrafficDays），点一下就变；
+ *  · 过期了但手里还有旧数据 → **立刻给旧数据**，同时在后台刷一次
+ *    （stale-while-revalidate）：宁可让用户看到 5 分钟前的数字，也不要让他等 20 秒；
+ *  · 从没成功过 → 只能等第一次（登录后主进程会预热，通常用户还没点进流量页就有了）；
+ *  · 刷到过的明细落一份 `data/site-log.json`：下次启动**立刻**就有东西可显示，
+ *    不用再等那十几秒（用户第 12 轮第 5 条"需要等很多才能刷新"）；
+ *  · 刷新失败保留旧数据，不清空（面板抖一下不该让整页变空）。
+ */
+const SITE_TTL_MS = 5 * 60 * 1000;
+let siteCache = { at: 0, days: [] };
+let siteInflight = null;
+
+function loadSiteLog() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(paths.file('site-log.json'), 'utf8'));
+    if (raw && Array.isArray(raw.days) && raw.days.length) {
+      siteCache = { at: Number(raw.at) || 0, days: raw.days };
+    }
+  } catch (_) { /* 没有 / 坏了都当没有 */ }
+}
+
+function saveSiteLog() {
+  try {
+    const f = paths.file('site-log.json');
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify({ at: siteCache.at, days: siteCache.days }), 'utf8');
+  } catch (e) { log.warn('site log save failed:', e && e.message); }
+}
+
+function refreshSiteLog() {
+  if (siteInflight) return siteInflight;
+  siteInflight = Promise.resolve()
+    .then(() => panel.trafficLog())
+    .then((days) => {
+      siteCache = { at: Date.now(), days: Array.isArray(days) ? days : [] };
+      if (siteCache.days.length) saveSiteLog();
+      return siteCache.days;
+    })
+    .catch((e) => {
+      log.warn('site traffic log failed:', e && e.message);
+      return siteCache.days;   // 失败保留旧值
+    })
+    .then((days) => { siteInflight = null; return days; });
+  return siteInflight;
+}
+
+/** 预热（登录 / 连接后调用）：不关心结果，只是把缓存填上 */
+function warmSiteLog() { if (panel.isAuthed()) refreshSiteLog().catch(() => {}); }
+
+function siteDays() {
+  // 没登录时磁盘上那份不算数：那是上一个会话（可能还是别的账号）的数字
+  if (!panel.isAuthed()) return Promise.resolve([]);
+  const fresh = siteCache.at && Date.now() - siteCache.at < SITE_TTL_MS;
+  if (fresh) return Promise.resolve(siteCache.days);
+  const p = refreshSiteLog();              // 过期就顺手在后台刷
+  return siteCache.at ? Promise.resolve(siteCache.days) : p;   // 有旧值立刻给旧的
+}
+
+function clearSiteLog() {
+  siteCache = { at: 0, days: [] };
+  siteInflight = null;
+  // 换账号了：磁盘上那份是上一个账号的用量，必须一起删掉，否则下次启动会先显示别人的数字
+  try { fs.rmSync(paths.file('site-log.json'), { force: true }); } catch (_) {}
+}
+
+loadSiteLog();
+
 function ok(extra) { return Object.assign({ ok: true }, extra || {}); }
 function fail(msg) { return { ok: false, msg: msg || '操作失败' }; }
 
@@ -148,6 +226,9 @@ const commands = {
    */
   ensure_subscription: async ({ force } = {}) => {
     needAuth();
+    // 启动（已登录）走的就是这里：顺手把流量页要用的站点明细在后台预热，
+    // 用户点进流量页时不用干等面板那次十几秒的聚合查询。
+    warmSiteLog();
     const have = hasSubscribeFile();
     const updatedAt = Number(store.get('subscription_updated_at')) || 0;
     const stale = !updatedAt || Date.now() - updatedAt > 12 * 3600 * 1000;
@@ -193,7 +274,10 @@ const commands = {
 
   select_node: async ({ name, group }) => {
     if (!name) throw new Error('缺少节点名');
-    return ok({ node: await core.selectNode(name, group) });
+    const r = await core.selectNode(name, group);
+    // main 告诉渲染层"这次改的是不是主组"：只有主组的出口才等于"当前节点"，
+    // 在分流组里换节点不该把首页那张当前节点条改掉（用户第 12 轮第 1 条）。
+    return ok({ node: r.node, group: r.group, main: r.group === core.MAIN_GROUP });
   },
 
   // 「延迟测试」：节点 + 每个策略组都测一遍（用户要求分组那行也显示延迟）
@@ -206,6 +290,9 @@ const commands = {
 
   refresh_subscription: async () => {
     needAuth();
+    // 用户主动刷新 = 明确要看最新的，站点明细缓存一并作废并在后台重拉
+    clearSiteLog();
+    warmSiteLog();
     // 面板拉取不占内核锁：用户在这个十几秒里点连接应该立刻能连上
     await pullSubscription();
     return serialKernel(async () => {
@@ -254,7 +341,7 @@ const commands = {
     const siteLog = backend === 'xboard';
     if (panel.isAuthed()) {
       try {
-        days = await panel.trafficLog();
+        days = await siteDays();
         picked = pickTrafficDays(range || 'today', days);
         const up = picked.reduce((a, x) => a + x.upload, 0);
         const down = picked.reduce((a, x) => a + x.download, 0);
@@ -304,7 +391,7 @@ const commands = {
   get_traffic_log: async ({ range } = {}) => {
     if (!panel.isAuthed()) return [];
     try {
-      const days = await panel.trafficLog();
+      const days = await siteDays();
       return range ? pickTrafficDays(range, days) : days;
     } catch (e) { log.warn('trafficLog failed:', e.message); return []; }
   },
@@ -313,6 +400,8 @@ const commands = {
   login: async ({ email, password, panel: panelInput }) => {
     try {
       const r = await panel.login(email, password, panelInput);
+      clearSiteLog();          // 换账号了，别把上一个账号的流量明细端出来
+      warmSiteLog();           // 登录后立刻预热站点明细：用户点进流量页时它已经在了
       await remote.load(true).catch(() => {});
       core.setDirectDomains(remote.directDomains());
       return ok({ email: r.email });
@@ -324,6 +413,7 @@ const commands = {
   logout: async () => {
     await core.disconnect().catch(() => {});
     panel.logout();
+    clearSiteLog();
     store.patch({ last_node: '', last_email: store.get('last_email') });
     return ok();
   },

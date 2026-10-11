@@ -85,18 +85,23 @@
   // 按下超过 5 秒视为卡住（指针移出窗口收不到 pointerup），自动放行，免得界面冻住。
   let pointerDownAt = 0;
   let pendingSwap = null;
+  let pendingTimer = null;
+  const applyPending = () => {
+    if (!pendingSwap) return;
+    const p = pendingSwap;
+    pendingSwap = null;
+    lastRenderKey = p.key;
+    content.innerHTML = p.html;
+    p.bind();
+  };
   document.addEventListener("pointerdown", () => { pointerDownAt = Date.now(); }, true);
   const releasePointer = () => {
     pointerDownAt = 0;
     if (!pendingSwap) return;
-    const p = pendingSwap;
-    pendingSwap = null;
     // 排到 click 之后：浏览器在 pointerup 之后**同步**补发 click，setTimeout(0) 在它后面。
     setTimeout(() => {
       if (pointerDownAt) return;                 // 又按下了，等下一次松手
-      lastRenderKey = p.key;
-      content.innerHTML = p.html;
-      p.bind();
+      applyPending();
     }, 0);
   };
   document.addEventListener("pointerup", releasePointer, true);
@@ -119,6 +124,14 @@
       if (key === lastRenderKey) return;
       if (pointerDownAt && Date.now() - pointerDownAt < 5000) {   // 按着不放：等松手再换
         pendingSwap = { key, html, bind };
+        // 兜底：指针移出窗口时收不到 pointerup，"按着"会被永远当成真的 ——
+        // 那样这一屏内容就再也不刷新了（要等下一次 render 才补上）。5 秒后强制放行一次。
+        clearTimeout(pendingTimer);
+        pendingTimer = setTimeout(() => {
+          pendingTimer = null;
+          pointerDownAt = 0;
+          applyPending();
+        }, 5200);
         return;
       }
       lastRenderKey = key;
@@ -180,10 +193,15 @@
       if (PRIMARY_ROUTES.includes(route)) navStack = [];
     }
     state.route = route;
+    // 每次**进入**节点页都把分组折叠回去（用户第 12 轮第 4 条）：上次点开的分组
+    // 不该在切走再切回来以后还敞着，否则一进页面就是半屏节点列表。
+    if (route === "nodes" && prev !== "nodes") state.openGroups = {};
     render();
     // 虚拟网卡状态要起 PowerShell（冷启动实测 ~2.7s），只在进设置页时查一次。
     // 绝不能放在 bindSettings 里 —— 那会变成 render→loadTunStatus→render 死循环。
     if (route === "settings") loadTunStatus();
+    // 该页要的面板数据按需补（进流量页顺带把站点明细拉起来）
+    ensurePageData(route);
   }
   window.PolarisNav = nav;
 
@@ -251,14 +269,16 @@
     }));
     // 二级页面的返回键（用户报「基本上所有二级页面都没有返回按钮」）
     $$("[data-nav-back]").forEach((el) => el.addEventListener("click", (e) => { e.stopPropagation(); goBack(); }));
-    // 节点页的分组手风琴：点标题栏展开/收起
+    // 节点页的分组手风琴：点标题栏展开/收起。
+    // 单开手风琴 —— 展开一个，其余（含主组卡）全部收起；点已展开的那个就是收起。
+    // 安卓端其实没有手风琴（RoutingGroups.toggleCollapsed 是各开各的），
+    // 但用户第 12 轮第 4 条明确要求"点开下一个，上一个自动回到折叠"。
     $$("[data-acc]").forEach((el) => el.addEventListener("click", () => {
       const name = el.dataset.acc;
       const open = state.openGroups || (state.openGroups = {});
-      // 没记录过时第一个分组是展开的，点它第一次应该是"收起"
-      const cur = open[name] === undefined ? state.groups.filter((g) => !g.builtin && !g.structural)[0] : null;
-      const isOpen = open[name] === undefined ? (cur && cur.name === name) : !!open[name];
-      open[name] = !isOpen;
+      const wasOpen = !!open[name];
+      for (const k of Object.keys(open)) open[k] = false;
+      if (!wasOpen) open[name] = true;
       render();
     }));
     bindMarkdownLinks(document);
@@ -578,7 +598,9 @@
         // 先把已知的连接状态画出来（状态线 / 当前节点立刻更新），再去拉面板数据 ——
         // 面板那一轮要几秒，等它回来才重绘的话，用户会看到"已连接但首页还是未连接的样子"。
         render();
-        await refreshAll();
+        // 连接状态一变，节点/分组的"当前出口"和延迟就都变了 —— 这两项强制重拉，
+        // 别被 60 秒的 TTL 挡住（面板那十几项仍走渐进，不阻塞这里）。
+        await refreshAll(false, { only: ["nodes", "groups"] });
       } catch (e) {
         state.busy = false;
         const msg = e.message || String(e);
@@ -644,7 +666,7 @@
       render();                       // 先按已知状态立起界面，再去拉面板数据
       // 端口可能刚换过，重连后把运行端口也刷新一下（设置页要显示真实值）
       state.settings = await api.getSettings().catch(() => state.settings);
-      await refreshAll();
+      await refreshAll(false, { only: ["nodes", "groups"] });
       render();
       toast("已连接");
       runDelayTest(true);
@@ -684,12 +706,16 @@
         if (r && r.ok) {
           state.email = r.email || email;
           state.loggedIn = true;
-          await refreshAll(true);
+          // 用户第 12 轮第 6 条：冷启动登录要等太久。登录这一步**只等校验凭据**
+          // （那次面板请求躲不掉），之后立刻进首页；面板那十几项数据、订阅准备
+          // 全部改成后台渐进加载，先回来的先显示。
+          state.settings = Object.assign({}, state.settings, { authed: true, email: state.email });
           nav("home");
           toast("登录成功");
+          refreshAll(true, { force: true });     // 不 await
           // 登录这一步就把节点数据准备好（用户第 11 轮第 1、4 条）。
           // 旧代码把这件事留给"点连接"，于是登录后节点页是空的、点连接变成"在拉订阅"。
-          await ensureSubscription("login");
+          ensureSubscription("login");           // 不 await
           render();
         } else {
           state.authError = (r && r.msg) || "登录失败";
@@ -716,8 +742,10 @@
       const r = await guard("注册", () => api.register(email, p1, code, invite));
       if (r && r.ok) {
         state.email = r.email || email;
-        await refreshAll(true);
+        state.settings = Object.assign({}, state.settings, { authed: true, email: state.email });
         nav("home"); toast("注册成功");
+        refreshAll(true, { force: true });       // 同登录：不 await，先进界面
+        ensureSubscription("register");
       } else { state.authError = (r && r.msg) || "注册失败"; render(); }
     });
 
@@ -750,10 +778,15 @@
       const group = el.dataset.nodeGroup || undefined;
       const r = await guard("切换节点", () => api.selectNode(el.dataset.node, group));
       if (r && r.ok) {
-        state.node = r.node;
-        const n = state.nodes.find((x) => x.name === r.node);
-        if (n && n.latency > 0) state.latency = n.latency;
-        // 分组的"当前出口"也要跟着变
+        // 只有主组的出口才等于"当前节点"。在分流组里换节点时也去改 state.node，
+        // 会让首页/节点页顶上那条"当前节点"显示一个内核主组根本没在用的名字
+        // （用户第 12 轮第 1 条：外面显示的和点开看到的不是一个）。
+        if (r.main) {
+          state.node = r.node;
+          const n = state.nodes.find((x) => x.name === r.node);
+          if (n && n.latency > 0) state.latency = n.latency;
+        }
+        // 分组的"当前出口"和徽章上的延迟都要跟着变（第 3 条）
         state.groups = await api.getRoutingGroups().catch(() => state.groups);
         render(); toast("已切换到 " + r.node);
       }
@@ -765,7 +798,11 @@
       state.refreshing = true;
       const r = await guard("刷新订阅", () => api.refreshSubscription());
       state.refreshing = false;
-      if (r) { await refreshAll(); toast("订阅已刷新，共 " + r.count + " 个节点"); }
+      if (r) {
+        // 订阅换了 → 节点列表与分组都得重拉（强制，别被 TTL 挡住）
+        await refreshAll(false, { force: true, only: ["nodes", "groups"] });
+        toast("订阅已刷新，共 " + r.count + " 个节点");
+      }
       render();
     });
   }
@@ -1251,65 +1288,128 @@
   async function loadTraffic() {
     // 明细直接用 get_traffic 一起回来的 picked，不再单独发一次 get_traffic_log
     // —— 那是同一个面板查询（实测整页最慢的一项），发两次等于白等一倍。
+    // 失败时**保留上一次的值**：面板抖一下不该把整页抹成 0（主进程那边有 5 分钟
+    // 缓存 + 过期先给旧值再后台刷，所以正常情况下这里只做本地切片，毫秒级返回）。
     const [t, series] = await Promise.all([
-      api.getTraffic(state.trafficRange).catch(() => ({})) ,
-      api.getTrafficSeries(state.trafficRange).catch(() => ({ points: [], unit: "MB" })),
+      api.getTraffic(state.trafficRange).catch(() => null),
+      api.getTrafficSeries(state.trafficRange).catch(() => null),
     ]);
-    state.traffic = t || {};
-    state.trafficSeries = series || { points: [], unit: "MB" };
-    state.trafficLog = Array.isArray(state.traffic.picked) ? state.traffic.picked : [];
+    if (t) {
+      state.traffic = t;
+      state.trafficLog = Array.isArray(t.picked) ? t.picked : [];
+    }
+    if (series) state.trafficSeries = series;
   }
 
-  /** 登录后 / 连接后统一刷新 */
-  async function refreshAll(includeAuth) {
+  /* 面板数据的分项定义：谁要、怎么拉、拿到后落到 state 的哪一项。
+   *
+   * 用户第 12 轮第 6 条：冷启动登录要等太久。旧 refreshAll 一次 Promise.all 等齐
+   * 十几项，而最慢的那项（站点流量明细）实测能到 20 秒 —— 整个界面被它拖住。
+   * 现在每项各自落地、落地一项重绘一次：先回来的先显示，慢的慢慢补。 */
+  const PANEL_ITEMS = [
+    { key: "nodes", load: () => api.getNodes(), apply: (v) => { if (v) state.nodes = v; } },
+    { key: "groups", load: () => api.getRoutingGroups(), apply: (v) => { if (v) state.groups = v; } },
+    { key: "rulesets", load: () => api.getRulesets(), apply: (v) => { if (v) state.rulesets = v; } },
+    { key: "plan", load: () => api.getPlan(), apply: (v) => { if (v) { state.plan = v; state.panelError = ""; } } },
+    { key: "plans", load: () => api.getPlans(), apply: (v) => { if (v && v.length) state.plans = v; } },
+    { key: "orders", load: () => api.getOrders(), apply: (v) => { if (v) state.orders = v; } },
+    { key: "tickets", load: () => api.getTickets(), apply: (v) => { if (v) state.tickets = v; } },
+    { key: "invite", load: () => api.getInvite(), apply: (v) => { if (v) state.invite = v; } },
+    { key: "giftHistory", load: () => api.getGiftHistory(), apply: (v) => { if (v) state.giftHistory = v; } },
+    {
+      key: "notices", load: () => api.getNotices(), apply: (v) => {
+        if (!v) return;
+        state.notices = v;
+        state.unreadNotices = v.filter((n) => n.unread).length;
+      },
+    },
+    {
+      key: "siteInfo", load: () => api.getSiteInfo(), apply: (v) => {
+        // 面板可能没有站点名字段（实测某个真面板就没有）——旧代码要求
+        // site.appName 非空才收，导致整份 siteInfo 被丢掉，登录页副标题永远是空的。
+        if (v && (v.appName || v.appDescription || v.appUrl)) state.siteInfo = v;
+      },
+    },
+    {
+      key: "registerConfig", load: () => api.invoke("get_register_config"), apply: (v) => {
+        if (v) state.registerConfig = Object.assign({ email_verify: 0, invite_force: 0 }, v);
+      },
+    },
+  ];
+  const PANEL_TTL_MS = 60 * 1000;
+  const panelInflight = {};
+  const panelAt = {};
+  let renderTimer = null;
+
+  /** 合并同一轮里的多次重绘（渐进加载一项一绘，但别把事件循环堵死） */
+  function scheduleRender() {
+    if (renderTimer) return;
+    renderTimer = setTimeout(() => { renderTimer = null; render(); }, 30);
+  }
+
+  function panelItem(key) { return PANEL_ITEMS.filter((x) => x.key === key)[0]; }
+
+  function pullPanelItem(it, force) {
+    if (!it || !state.settings.authed) return Promise.resolve();
+    if (panelInflight[it.key]) return panelInflight[it.key];
+    if (!force && panelAt[it.key] && Date.now() - panelAt[it.key] < PANEL_TTL_MS) return Promise.resolve();
+    const p = Promise.resolve()
+      .then(() => it.load())
+      .then((v) => { it.apply(v); panelAt[it.key] = Date.now(); })
+      .catch((e) => {
+        // 失败保留旧值（旧代码一律 `.catch(() => [])`，于是"网络一抖，套餐变未订阅、
+        // 订单变空、公告变空"，用户看到的就是"没读取到网站信息 / 像没登录"）。
+        if (it.key === "plan" && !(state.plan && state.plan.name)) {
+          state.panelError = "面板暂时读不到，稍后自动重试";
+        }
+        console.warn("[panel]", it.key, e && e.message);
+      })
+      .then(() => { panelInflight[it.key] = null; scheduleRender(); });
+    panelInflight[it.key] = p;
+    return p;
+  }
+
+  function pullPanelItems(force, only) {
+    if (!state.settings.authed) return Promise.resolve([]);
+    const list = only ? only.map(panelItem) : PANEL_ITEMS;
+    return Promise.all(list.map((it) => pullPanelItem(it, force)));
+  }
+
+  /* 每个页面要用到哪些面板项：进页面就补拉，别等用户点开才发现是空的 */
+  const PAGE_ITEMS = {
+    home: ["plan", "notices"],
+    nodes: ["nodes", "groups"],
+    traffic: ["plan", "siteInfo"],
+    me: ["plan", "orders", "tickets", "invite", "giftHistory", "notices"],
+  };
+  function ensurePageData(route) {
+    if (!state.settings.authed) return;
+    const keys = PAGE_ITEMS[route];
+    if (keys) pullPanelItems(false, keys);
+    if (route === "traffic") {
+      loadTraffic()
+        .then(() => { if (state.route === "traffic") render(); })
+        .catch(() => {});
+    }
+  }
+
+  /** 登录后 / 连接后统一刷新：只等"本机状态"，面板数据边到边显示 */
+  async function refreshAll(includeAuth, opts) {
+    const force = !!(opts && opts.force);
+    const only = opts && opts.only;
     if (includeAuth) {
       state.settings = await api.getSettings().catch(() => state.settings);
       state.appInfo = await api.getAppInfo().catch(() => state.appInfo);
       applyTheme(state.settings.theme || "system");
     }
     await refreshStatus();
-    // 面板抖动一次（超时/被 CDN 重置）不能把已经拿到的数据抹成空 —— 旧代码一律
-    // `.catch(() => [])`，于是"网络一抖，套餐变未订阅、订单变空、公告变空"，
-    // 用户看到的就是"没读取到网站信息 / 像没登录"（用户第 11 轮第 3、4 条）。
-    // 现在失败就保留上一次的值，只把这一项标成"没刷新成功"。
-    let planFailed = false;
-    const [nodes, groups, rulesets, plan, plans, orders, tickets, invite, gh, notices, site, rcfg] = await Promise.all([
-      api.getNodes().catch(() => state.nodes),
-      api.getRoutingGroups().catch(() => state.groups),
-      api.getRulesets().catch(() => state.rulesets),
-      api.getPlan().catch(() => { planFailed = true; return state.plan; }),
-      api.getPlans().catch(() => state.plans),
-      api.getOrders().catch(() => state.orders),
-      api.getTickets().catch(() => state.tickets),
-      api.getInvite().catch(() => state.invite),
-      api.getGiftHistory().catch(() => state.giftHistory),
-      api.getNotices().catch(() => state.notices),
-      api.getSiteInfo().catch(() => state.siteInfo),
-      api.invoke("get_register_config").catch(() => state.registerConfig),
-    ]);
-    // 套餐这一项决定「我的」页那个徽章写什么。读失败且本地也没有旧值时，
-    // 不能写"未订阅"（那是在说"你没买套餐"，事实是"没读到"）。
-    state.panelError = planFailed && !(state.plan && state.plan.name) ? "面板暂时读不到，稍后自动重试" : "";
-    state.nodes = nodes || [];
-    state.groups = groups || [];
-    if (rulesets) state.rulesets = rulesets;
-    if (plan) state.plan = plan;
-    state.plans = (plans || []).length ? plans : state.plans;
-    state.orders = orders || [];
-    state.tickets = tickets || [];
-    if (invite) state.invite = invite;
-    state.giftHistory = gh || [];
-    state.notices = notices || [];
-    state.unreadNotices = state.notices.filter((n) => n.unread).length;
-    // 面板可能没有站点名字段（实测某个真面板就没有）——旧代码在这里
-    // 要求 site.appName 非空才收，导致整份 siteInfo 被丢掉，登录页副标题永远是空的。
-    if (site && (site.appName || site.appDescription || site.appUrl)) state.siteInfo = site;
-    if (rcfg) state.registerConfig = Object.assign({ email_verify: 0, invite_force: 0 }, rcfg);
     state.email = state.settings.email || state.settings.last_email || "";
+    // 面板那十几项不 await：拉回来一项就应用一项、重绘一次（用户第 12 轮第 6 条）。
+    // only 是"只要这几项"（连接状态变了就只重拉 nodes/groups）。
+    await pullPanelItems(force, only);
+    if (only) return;
     // 流量明细是整条链路最慢的一项（面板侧聚合查询，实测单个请求能到 10-30 秒）。
-    // 以前这里是 await loadTraffic()，于是"连上之后节点页出内容"被它拖住 ——
-    // 用户看到的是：点了连接，节点页/首页几十秒都是空的。改成后台补齐，
-    // 谁在看流量页就等它回来后自己重绘一次。
+    // 单独放后台补齐，谁在看流量页就等它回来后自己重绘一次。
     loadTraffic()
       .then(() => { if (state.route === "traffic" || state.route === "home") render(); })
       .catch(() => {});

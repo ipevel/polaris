@@ -258,8 +258,14 @@ async function run(win, opts) {
     await setInput(win, '#login-panel', panel);
     await setInput(win, '#login-email', email);
     await setInput(win, '#login-pass', password);
+    const tLogin = Date.now();
     await realClick(win, '#btn-login', { label:'登录按钮' });
     await waitFor(win, 'window.__polarisRoute === "home"', { timeout: 40000, label:'登录后进首页' });
+    const loginMs = Date.now() - tLogin;
+    // 用户第 12 轮第 6 条：登录只等"登录接口"本身，面板那一堆数据边到边显示。
+    // 旧行为是登录后 await refreshAll() 才切页 —— 十几个面板请求里有几个超时（各 20 秒），
+    // 于是"登录转圈转很久"。这里卡住这条：点登录到进首页必须在十几秒内。
+    check('登录只等登录接口，不等人后面板数据（第 6 条）', loginMs < 15000, `点登录到进首页 ${loginMs}ms`);
     const who = await ev(win, 'window.__polarisState.email');
     check('真登录成功（进首页）', true, `账号 ${who}`);
     const sb = await ev(win, 'getComputedStyle(document.querySelector("#sidebar")).display !== "none"');
@@ -278,6 +284,10 @@ async function run(win, opts) {
   /* ---- 2. 首页 ---- */
   section('2. 首页（套餐不能是「未订阅」）');
   await step('首页套餐', async () => {
+    // 登录现在是"先进首页、面板数据边到边显示"（用户第 12 轮第 6 条），
+    // 所以这里必须等套餐那一项落地，不能直接读 —— 直接读会读到"还没拉回来"。
+    await waitFor(win, '!!(window.__polarisState.plan && window.__polarisState.plan.name)',
+      { timeout: 60000, label:'首页套餐数据回来' }).catch(() => {});
     const p = await ev(win, 'window.__polarisState.plan');
     check('套餐名不是"未订阅"', p && p.name && p.name !== '—' && p.name !== '未订阅', JSON.stringify(p && p.name));
     check('套餐总额有值', p && Number(p.total) > 0, `total=${p && p.total}`);
@@ -380,53 +390,118 @@ async function run(win, opts) {
     check('两张「直连」分类卡不再并存', !(bothDirect.cn && bothDirect.gl), `直连类分组：${bothDirect.direct.join(' / ') || '无'}`);
     check('节点列表非空', n.nodes > 0, `${n.nodes} 个`);
 
-    // 手风琴：点第一个分组头 → 收起；再点 → 展开
+    // 手风琴（用户第 12 轮第 4 条）：进页全折叠、展开一个其余自动收起、切页回来仍是折叠。
     // 注意 .acc-body 是 .acc-head 的**兄弟**（都在 .card 里），不是子元素 ——
     // 写成 ".acc-head .acc-body" 永远选不中，会把"收起"断言假绿。
-    const BODY = '!!document.querySelector(".acc-head[data-acc]").parentElement.querySelector(".acc-body")';
-    const first = await ev(win, 'document.querySelector(".acc-head[data-acc]")?.dataset.acc');
-    const open1 = await ev(win, BODY);
-    check('默认第一个分组是展开的', open1, `分组=${first}`);
-    await clickUntil(win, '.acc-head[data-acc]', '!' + BODY, { label:`分组头 ${first}·收起` });
-    check('点分组头能收起', true);
-    await clickUntil(win, '.acc-head[data-acc]', BODY, { label:`分组头 ${first}·展开` });
+    const BODY_COUNT = 'document.querySelectorAll(".acc-body").length';
+    const openBodies = await ev(win, BODY_COUNT);
+    check('进节点页时所有分组都是折叠的', Number(openBodies) === 0, `展开的卡 ${openBodies} 张`);
+
+    const heads = await ev(win, `[...document.querySelectorAll('.acc-head[data-acc]')].map(e=>e.dataset.acc)`);
+    const headSel = (name) => `.acc-head[data-acc=${JSON.stringify(name)}]`;
+    const bodyOf = (name) => `(()=>{const h=document.querySelector(${JSON.stringify(headSel(name))});
+      return !!(h && h.parentElement.querySelector('.acc-body'));})()`;
+
+    const first = heads[0];
+    // 手风琴对**所有**卡片生效（含主组卡）：展开一个，其余全收起。
+    // 安卓端 RoutingGroups.toggleCollapsed 其实是各开各的，但用户第 12 轮第 4 条要求单开。
+    const routingHeads = await ev(win,
+      `[...document.querySelectorAll('.acc-head[data-acc]:not([data-acc-primary])')].map(e=>e.dataset.acc)`);
+    const a1 = routingHeads[0];
+    const a2 = routingHeads[1];
+    await clickUntil(win, headSel(a1), bodyOf(a1), { label:`分流组 ${a1}·展开` });
+    check('点分流组的标题栏能展开', true, `分组=${a1}`);
     const rows = await ev(win, 'document.querySelectorAll(".acc-body .node-row").length');
     check('展开后里面有节点', rows > 0, `${rows} 行`);
 
-    // 用户第 5 轮第 2 条：主组里的「自动选择 / 故障转移 / DIRECT」不是节点，
-    // 显示「其他 / 未测」会让人以为这三个不生效 —— 现在给中文标签 + 当前出口小字。
-    const sp = await ev(win, `(()=>{const st=window.__polarisState;
-      const head=document.querySelector('.acc-head[data-acc]');
-      const body=head.parentElement.querySelector('.acc-body');
-      const rows=[...body.querySelectorAll('.node-row')].slice(0,3).map(r=>({
-        name:((r.querySelector('.nm')||{}).textContent||'').trim(),
-        badge:((r.querySelector('.badge')||{}).textContent||'').trim(),
-        sub:((r.querySelector('.nm-sub')||{}).textContent||'').trim()}));
-      const auto=(st.groups||[]).find(g=>g.name==='自动选择')||{};
-      return {group:head.dataset.acc, rows, autoNow:auto.now||''};})()`);
-    check('主组第一张卡里前三个就是特殊出口', sp.group === '🚀 节点选择' && sp.rows.length === 3, JSON.stringify(sp.rows).slice(0, 220));
-    check('「自动选择」显示「自动」而不是「未测」', sp.rows[0].name === '自动选择' && sp.rows[0].badge === '自动', JSON.stringify(sp.rows[0]));
-    check('「故障转移」显示「备用」而不是「未测」', sp.rows[1].name === '故障转移' && sp.rows[1].badge === '备用', JSON.stringify(sp.rows[1]));
-    check('「DIRECT」显示「直连」而不是「未测」', sp.rows[2].name === 'DIRECT' && sp.rows[2].badge === '直连', JSON.stringify(sp.rows[2]));
-    // 内核的健康检查是异步的：刚连上那几秒 URLTest/Fallback 的 now 可能还是空的。
-    // 空着不显示会让人以为坏了 —— 现在会说「内核正在挑选出口…」，所以这里只要求"有话可说"，
-    // 然后轮询等内核真的挑出来（真面板上实测几秒内就有）。
-    check('「自动选择」写出了当前出口（或明说还在挑）', sp.rows[0].sub.length > 0, `小字=「${sp.rows[0].sub}」`);
-    let autoNow = sp.autoNow;
-    if (!autoNow) {
-      for (let i = 0; i < 20 && !autoNow; i++) {
-        await sleep(1500);
-        autoNow = await ev(win, `((window.__polarisState.groups||[]).find(g=>g.name==='自动选择')||{}).now||''`);
-      }
+    if (a2) {
+      await clickUntil(win, headSel(a2), bodyOf(a2), { label:`分流组 ${a2}·展开` });
+      const after = await ev(win, `(()=>({bodies:document.querySelectorAll('.acc-body').length,
+        first:${bodyOf(a1)}, second:${bodyOf(a2)}}))()`);
+      check('点开下一个分流组时上一个自动收起（单开手风琴）',
+        after.bodies === 1 && after.second && !after.first, JSON.stringify(after));
+      await clickUntil(win, headSel(a2), '!' + bodyOf(a2), { label:`分流组 ${a2}·收起` });
+      check('点已展开的分流组标题栏能收起', true);
     }
-    check('内核真的挑出了「自动选择」的出口（不是永远空着）', !!autoNow, `now=${autoNow || '(等 30 秒还是空)'}`);
-    if (autoNow) {
-      const subNow = await ev(win, `(()=>{const b=document.querySelector('.acc-head[data-acc]').parentElement.querySelector('.acc-body');
-        const r=b&&b.querySelector('.node-row');const s=r&&r.querySelector('.nm-sub');return s?s.textContent.trim():'';})()`);
-      check('「自动选择」的小字写的就是内核挑中的那个节点', subNow.indexOf(autoNow) >= 0, `小字=「${subNow}」 内核 now=${autoNow}`);
+    // 主组卡也在同一套手风琴里：展开它，刚才那张分流组卡必须自己收起
+    await clickUntil(win, headSel(a1), bodyOf(a1), { label:`分流组 ${a1}·再展开` });
+    await clickUntil(win, headSel(first), bodyOf(first), { label:`主组 ${first}·展开` });
+    const both = await ev(win, `(()=>({bodies:document.querySelectorAll('.acc-body').length,
+      routing:${bodyOf(a1)}, primary:${bodyOf(first)}}))()`);
+    check('展开主组卡时分流组卡也自动收起（同一套手风琴）',
+      both.bodies === 1 && both.primary && !both.routing, JSON.stringify(both));
+    await clickUntil(win, headSel(first), '!' + bodyOf(first), { label:`主组 ${first}·收起` });
+
+    // 切到别的选项卡再回来，仍然是全折叠（用户第 12 轮第 4 条）
+    await realClick(win, '.nav-item[data-route="traffic"]', { label:'节点→流量' });
+    await waitFor(win, 'window.__polarisRoute === "traffic"', { label:'去流量页' });
+    await realClick(win, '.nav-item[data-route="nodes"]', { label:'流量→节点' });
+    await waitFor(win, 'window.__polarisRoute === "nodes"', { label:'回节点页' });
+    const backBodies = await ev(win, BODY_COUNT);
+    check('切走再回到节点页，分组又都是折叠的', Number(backBodies) === 0, `展开的卡 ${backBodies} 张`);
+
+    // 成员行与安卓端 MemberRow / visibleGroupMembers 同口径（用户第 12 轮第 2 条）：
+    //  · 主组作为出口 → 「跟随「🚀 节点选择」」；其余策略组 → 原样组名；都标「策略组 / 自动」
+    //  · DIRECT/REJECT → 「直连」「拦截」+「不需要」
+    //  · 「故障转移」不进列表（安卓端 visibleGroupMembers 只滤掉它）
+    //  · 勾选态只认该组回读的 now，不做乐观更新（第 1 条）
+    await clickUntil(win, headSel(first), bodyOf(first), { label:`分组头 ${first}·展开` });
+    const readRows = (name) => ev(win, `(()=>{const st=window.__polarisState;
+      const h=document.querySelector(${JSON.stringify(headSel(name))});
+      if(!h) return {missing:true};
+      const body=h.parentElement.querySelector('.acc-body');
+      const g=(st.groups||[]).find(x=>x.name===h.dataset.acc)||{};
+      const rows=body?[...body.querySelectorAll('.node-row')].map(r=>({
+        name:((r.querySelector('.nm')||{}).textContent||'').trim(),
+        badges:[...r.querySelectorAll('.badge')].map(b=>b.textContent.trim()),
+        sel:!!r.querySelector('.radio.sel')})):[];
+      return {group:h.dataset.acc, now:g.now||'', rows};})()`);
+    const sp = await readRows(first);
+    check('展开的卡就是被点开的那张', sp.group === first, `点的是 ${first}，展开的是 ${sp.group}`);
+    check('组内不再有「故障转移」入口',
+      sp.rows.every((r) => r.name !== '故障转移'), sp.rows.slice(0, 6).map((r) => r.name).join(' / '));
+    const autoRow = sp.rows.filter((r) => r.name === '自动选择')[0];
+    check('「自动选择」标着「策略组 / 自动」（不是「未测」）',
+      !!autoRow && autoRow.badges.indexOf('策略组') >= 0 && autoRow.badges.indexOf('自动') >= 0,
+      JSON.stringify(autoRow));
+    const directRow = sp.rows.filter((r) => r.name === '直连')[0];
+    check('「DIRECT」显示成「直连」并标「不需要」',
+      !!directRow && directRow.badges.indexOf('不需要') >= 0, JSON.stringify(directRow));
+
+    // 内核的健康检查是异步的：刚连上那几秒分组的 now 可能还是空的。空着不显示会让人
+    // 以为坏了，所以卡片头写「当前：—」，等内核真的挑出来（真面板上实测几秒内就有）。
+    let now1 = sp.now;
+    for (let i = 0; i < 20 && !now1; i++) {
+      await sleep(1500);
+      now1 = (await readRows(first)).now;
+    }
+    check('内核真的挑出了「🚀 节点选择」的出口（不是永远空着）', !!now1, `now=${now1 || '(等 30 秒还是空)'}`);
+    if (now1) {
+      const sp2 = await readRows(first);
+      const selRow = sp2.rows.filter((r) => r.sel)[0];
+      const want = now1 === 'DIRECT' ? '直连' : now1 === 'REJECT' ? '拦截'
+        : now1 === '🚀 节点选择' ? `跟随「${now1}」` : now1;
+      check('组内勾选的那一行就是该组的当前出口（外面写的和点开看到的必须一致）',
+        !!selRow && selRow.name === want, `勾选=「${selRow && selRow.name}」 now=「${now1}」 期望=「${want}」`);
+    }
+
+    // 分流组里「主组作为出口」要写成「跟随「🚀 节点选择」」（安卓端 memberLabel 同口径）
+    if (heads.length > 1) {
+      const gname = heads.filter((x) => x !== first)[0];
+      await clickUntil(win, headSel(gname), bodyOf(gname), { label:`分组头 ${gname}·展开` });
+      const r2 = await readRows(gname);
+      const follow = r2.rows.filter((r) => r.name.indexOf('跟随「') === 0)[0];
+      check('分流组里「主组作为出口」写成「跟随「…」」并标「策略组」',
+        !!follow && follow.badges.indexOf('策略组') >= 0,
+        `${gname}: ${r2.rows.slice(0, 4).map((r) => r.name + '[' + r.badges.join(',') + ']').join(' / ')}`);
+      await clickUntil(win, headSel(gname), '!' + bodyOf(gname), { label:`分组头 ${gname}·收起` });
     }
 
     // 第 4 条：按钮叫「延迟测试」，不是「测速」
+    // 连接后会自动跑一次延迟测试（用户第 7 轮第 7 条），跑的时候按钮文案就是「测试中…」。
+    // 这里验的是"这个按钮叫什么"，先等自动那次跑完，别把运行态当成文案。
+    await waitFor(win, '!window.__polarisState.testing',
+      { timeout: 180000, label:'连接后的自动延迟测试跑完' }).catch(() => {});
     const label = await ev(win, 'document.querySelector("#btn-speedtest")?.textContent.trim()');
     // 找不到按钮时别只报「实际 undefined」——把当时到底停在哪一页、页面上有什么摆出来，
     // 否则只能靠猜（这个断言曾经莫名其妙红过一次，日志里什么都没留下）。
@@ -450,6 +525,10 @@ async function run(win, opts) {
     check('点下去真的在跑（不是空按钮）', true);
     await waitFor(win, '!/测试中/.test(document.querySelector("#btn-speedtest")?.textContent||"")',
       { timeout: 120000, label:'延迟测试跑完' });
+    // 测速跑完那次重绘要真的落到 DOM 上再读卡片（踩过一次：报告里卡片数 0、
+    // 但状态里 20 个分组都在，只打出一串空串，完全查不动是"没重绘"还是"跳页了"）。
+    await waitFor(win, 'document.querySelectorAll(".card .acc-head").length > 0',
+      { timeout: 15000, label:'测速后节点页卡片回到 DOM' }).catch(() => {});
     const g = await ev(win, `(()=>{const st=window.__polarisState;
       const all=st.groups||[];
       const vis=all.filter(x=>!x.builtin&&!x.structural);
@@ -481,7 +560,16 @@ async function run(win, opts) {
       directCards.every((c) => c.badge === '直连' || c.badge === '拦截'),
       directCards.map((c) => `${c.name}=${c.badge}`).join(' '));
     const badge = g.cards.map((c) => c.badge);
-    check('分组头上看得见延迟', badge.some((t) => /\d+ms/.test(t)), badge.slice(0, 4).join(' '));
+    // 失败时要知道"界面当时到底在哪一页、是谁把它挪走的"：只报徽标文本的话，
+    // 卡片为空只会打出空串（踩过一次：报告里 FAIL 后面什么都没有，完全查不动）。
+    const dom = await ev(win, `(()=>{const st=window.__polarisState||{};const c=document.querySelector('#content');
+      return {route:window.__polarisRoute,stateRoute:st.route,testing:!!st.testing,connected:!!st.connected,
+        cards:document.querySelectorAll('.card').length,accHeads:document.querySelectorAll('.acc-head').length,
+        speedBtn:!!document.querySelector('#btn-speedtest'),
+        first:(c&&c.firstElementChild)?((c.firstElementChild.className||'')+' | '+((c.firstElementChild.textContent||'').trim().slice(0,40))):'',
+        nav:(window.__navLog||[]).slice(-10).map(x=>x.to+' ← '+x.by.slice(0,80))};})()`);
+    check('分组头上看得见延迟', badge.some((t) => /\d+ms/.test(t)),
+      badge.slice(0, 4).join(' ') + ' || ' + JSON.stringify(dom));
   });
 
   /* ---- 5. 分流规则页（用户第 2、3 条） ---- */
@@ -730,13 +818,16 @@ async function run(win, opts) {
 
   section('7b. 二级页面（都有返回键 · 数据是面板的）');
   const SECOND = [
-    { click: '[data-click="nav-orders"]', route: 'orders', title: '我的订单', need: (d) => d.orders && d.orders.length > 0 },
+    { click: '[data-click="nav-orders"]', route: 'orders', title: '我的订单', need: (d) => d.orders && d.orders.length > 0,
+      wait: '(window.__polarisState.orders||[]).length>0' },
     // 用户第 5 轮第 4 条：入口写「订阅套餐」，点进去也必须写「订阅套餐」（原来页头是「购买套餐」）
-    { click: '[data-click="nav-plans"]', route: 'plans', title: '订阅套餐', need: (d) => d.plans && d.plans.length > 0 },
+    { click: '[data-click="nav-plans"]', route: 'plans', title: '订阅套餐', need: (d) => d.plans && d.plans.length > 0,
+      wait: '(window.__polarisState.plans||[]).length>0' },
     { click: '[data-click="nav-tickets"]', route: 'tickets', title: '我的工单', need: null },
     { click: '[data-click="nav-invite"]', route: 'invite', title: '邀请返利', need: null },
     { click: '[data-click="nav-giftcard"]', route: 'giftcard', title: '礼品卡兑换', need: null },
-    { click: '[data-click="nav-notices"]', route: 'notices', title: '公告通知', need: (d) => d.notices && d.notices.length > 0 },
+    { click: '[data-click="nav-notices"]', route: 'notices', title: '公告通知', need: (d) => d.notices && d.notices.length > 0,
+      wait: '(window.__polarisState.notices||[]).length>0' },
   ];
   for (const s of SECOND) {
     await step(`二级页 ${s.title}`, async () => {
@@ -753,6 +844,9 @@ async function run(win, opts) {
       const t = await ev(win, 'document.querySelector(".page-title")?.textContent.trim()');
       check(`${s.title} 标题正确`, t === s.title, `实际「${t}」`);
       if (s.need) {
+        // 面板数据现在是懒加载的（第 12 轮第 6 条：先出页面、数据边到边显示），
+        // 路由切过去的那一刻这一项可能还在路上 —— 直接读会读到空数组，把"还没回来"误报成"读不到"。
+        if (s.wait) await waitFor(win, s.wait, { timeout: 60000, label:`${s.title} 面板数据回来` }).catch(() => {});
         const d = await ev(win, 'window.__polarisState');
         check(`${s.title} 读到面板数据`, s.need(d), JSON.stringify({
           orders: (d.orders || []).length, plans: (d.plans || []).length, notices: (d.notices || []).length,

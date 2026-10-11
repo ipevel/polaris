@@ -254,8 +254,11 @@ const builder = require('../electron/core/builder');
     /* ---------------- 流量页面（必须来自面板） ---------------- */
     section('流量页面（今天 / 本周 / 本月 取面板明细）');
     console.log(`  账号已用 ${plan.used} GB（面板按 GB 两位小数，几 KB 会显示成 0.00，所以不能拿它判断明细有没有数据）`);
+    const rangeMs = [];
     for (const range of ['today', 'week', 'month']) {
+      const t0 = Date.now();
       const t = await commands.get_traffic({ range });
+      rangeMs.push(Date.now() - t0);
       const site = t.site || {};
       const tl = await commands.get_traffic_log({ range });
       const rows = Array.isArray(tl) ? tl : [];
@@ -299,6 +302,18 @@ const builder = require('../electron/core/builder');
     check('「本次峰值」「在线节点」两个字段已经不再下发给界面（用户第 6 条说不要）',
       !('peak' in trafficToday) && !('online_nodes' in trafficToday),
       Object.keys(trafficToday).join(','));
+
+    // 用户第 12 轮第 5 条：点「今日/本周/本月」要等十几秒才换数字。
+    // 面板那次聚合查询本身快不了（实测单个请求 7~30 秒），能改的是"别每次都去问"：
+    // 主进程现在有 5 分钟长缓存 + 过期先给旧值再后台刷（stale-while-revalidate），
+    // 区间切换只是本地切片。第一次（刚登录、缓存还空）只能等面板，从第二次起必须秒回。
+    check('切换流量区间不再每次重打面板（第一次之后都是本地切片）',
+      rangeMs.slice(1).every((ms) => ms < 2500),
+      rangeMs.map((ms, i) => `${['today', 'week', 'month'][i]}=${ms}ms`).join(' '));
+    // 明细落盘：下次启动不用再等这十几秒（data/site-log.json）
+    const siteFile = require('../electron/paths').file('site-log.json');
+    check('站点明细落了一份磁盘缓存（下次启动立刻有得显示）',
+      require('fs').existsSync(siteFile), siteFile);
 
     // userInfo 的短缓存：45 秒内重复调用必须复用同一份数据（流量页/首页/我的页同时要），
     // 但**不能**把"未订阅"缓存住（一次抖动不该让界面一直是未订阅）。
@@ -688,6 +703,52 @@ const builder = require('../electron/core/builder');
       check('测完把主组还原成「自动选择」', !!back && back.ok === true, JSON.stringify(back).slice(0, 120));
     } else {
       check('找得到主选择组（三个特殊出口挂在它下面）', false, '没有主组');
+    }
+
+    /* ---------------- 分流组换节点（用户第 12 轮第 1、2、3 条） ---------------- */
+    section('分流组换节点（外面写的和点开看到的必须一致）');
+    if (main) {
+      const allGroups = (await commands.get_routing_groups()) || [];
+      const routing = allGroups.filter((g) => !g.builtin && !g.structural && !g.primary && (g.options || []).length);
+      const target = routing[0];
+      if (target) {
+        const before = await commands.get_status();
+        const nodesList = (await commands.get_nodes()) || [];
+        // 挑一个"真实节点"（不是 DIRECT/REJECT/其它策略组），并且不是当前出口
+        const skip = new Set(['DIRECT', 'REJECT', 'COMPATIBLE', 'PASS',
+          builder.AUTO_GROUP, builder.FALLBACK_GROUP, builder.SELECTOR_GROUP, target.name]);
+        const cands = (target.options || []).filter((n) => !skip.has(n));
+        const node = cands.filter((n) => n !== target.now)[0] || cands[0];
+        if (node) {
+          const r = await commands.select_node({ name: node, group: target.name });
+          await new Promise((res) => setTimeout(res, 800));
+          const after = await commands.get_status();
+          check('分流组里换节点：回读确认 ok 且 main=false（改的不是主组）',
+            !!r && r.ok === true && r.main === false, JSON.stringify(r).slice(0, 180));
+          const g2 = ((await commands.get_routing_groups()) || []).filter((x) => x.name === target.name)[0];
+          check('分流组的出口真的换成了刚点的那个节点（不是乐观更新）',
+            !!g2 && g2.now === node, `${target.name}: ${target.now} → ${g2 && g2.now}（期望 ${node}）`);
+          // 第 1 条的核心：在分流组里换节点**不该**改掉全局「当前节点」，
+          // 否则首页/节点页顶上写 A、点开该组勾的却是 B。
+          check('在分流组里换节点不会改掉全局「当前节点」',
+            after.node === before.node, `全局 ${before.node} → ${after.node}`);
+          // 第 3 条：分组外面显示的延迟 = 该组**当前出口节点**的延迟
+          const prox = await core.S.controller.get(`/proxies/${encodeURIComponent(node)}`).catch(() => null);
+          const hist = prox && Array.isArray(prox.history) && prox.history.length
+            ? prox.history[prox.history.length - 1].delay : 0;
+          const cacheLat = (nodesList.filter((n) => n.name === node)[0] || {}).latency || 0;
+          const cands2 = [hist, cacheLat].filter((v) => v > 0);
+          check('分组卡上的延迟跟的是「当前出口节点」的延迟（不是分组自己的旧数字）',
+            cands2.length ? cands2.indexOf(g2 && g2.latency) >= 0 : (g2 && g2.latency) === -1,
+            `组=${g2 && g2.latency}ms 出口 ${node}: 内核 history=${hist}ms 测速缓存=${cacheLat}ms`);
+          // 还原成原出口
+          await commands.select_node({ name: target.now, group: target.name }).catch(() => {});
+        } else {
+          check('分流组里有可切换的真实节点', false, `${target.name} 的候选项：${(target.options || []).slice(0, 6).join('、')}`);
+        }
+      } else {
+        check('找得到可切换的分流组', false, `共 ${allGroups.length} 个组`);
+      }
     }
 
     /* ---------------- 端口占用与端口保存（用户第 9、10 条） ---------------- */

@@ -323,8 +323,8 @@ async function startKernel() {
   S.groupLatency.clear();      // 新内核的延迟要重新测，别显示上一轮的
   S.lastTick = Date.now();
 
-  // 应用上次选择
-  const lastGroup = store.get('last_group') || MAIN_GROUP;
+  // 应用上次选择：恢复的是**主组**的出口（last_group 现在只记主组，见 selectNode）
+  const lastGroup = MAIN_GROUP;
   const lastNode = store.get('last_node');
   try {
     const cfg = await controller.get('/configs');
@@ -459,6 +459,8 @@ function previewNodes() {
         now: '',
         count: members.length,
         options: members,
+        latency: -1,
+        primary: g.name === MAIN_GROUP,
         builtin: g.name === 'GLOBAL',
         structural: STRUCTURAL_GROUPS.has(g.name),
       };
@@ -478,8 +480,10 @@ async function loadNodes(force = false) {
   if (!S.controller) return previewNodes();
   if (!force && S.nodes.length > 0) return S.nodes;
   const proxies = unwrapProxies(await S.controller.get('/proxies'));  if (!proxies || Object.keys(proxies).length === 0) return S.nodes;
-  const groupName = resolveGroup(proxies, store.get('last_group'));
-  if (store.get('last_group') !== groupName) store.set('last_group', groupName);
+  // 「当前节点」永远是**主组**的出口。以前这里跟 store.last_group 走，而分流组换节点
+  // 也会写 last_group（见 selectNode），于是"在分流组里换了个节点"会顺手把首页那条
+  // 当前节点改掉 —— 用户第 12 轮第 1 条："外面已经显示正确的了，点开后显示的却是别的"。
+  const groupName = resolveGroup(proxies, MAIN_GROUP);
   const group = proxies[groupName];
   let memberNames;
   if (group && Array.isArray(group.all) && group.all.length > 0) {
@@ -519,16 +523,20 @@ async function selectNode(name, groupName) {
   if (S.phase !== 'connected') throw new Error('尚未连接');
   // 节点页的分组手风琴里点某一项时，要切的是**那个分组**的出口，
   // 不是上次记住的分组（用户点「自动选择」里的节点却改了「节点选择」的出口是 bug）。
-  const want = groupName || store.get('last_group') || MAIN_GROUP;
+  const want = groupName || MAIN_GROUP;
   const r = await selectNodeInGroup(S.controller, want, name);
   if (r.group === MAIN_GROUP) {
     S.node = r.node;
     store.set('last_node', r.node);
+    // last_group 只记主组：它是"上次选中的那个组"。分流组的出口不等于"当前节点"，
+    // 记进来会让 loadNodes 与重连恢复都跟着那个分流组跑（同上）。
+    store.set('last_group', r.group);
   }
-  store.set('last_group', r.group);
   await loadNodes(true);
   emit();
-  return r.node;
+  // 把"改的是哪个组"一起回给渲染层：只有主组的出口才等于"当前节点"，
+  // 在分流组里换节点时不能把首页那条当前节点改掉（用户第 12 轮第 1 条）。
+  return { node: r.node, group: r.group };
 }
 
 async function speedTest() {
@@ -691,10 +699,23 @@ async function routingGroups() {
   for (const [name, p] of Object.entries(proxies)) {
     if (!p || !GROUP_TYPES.has(p.type)) continue;
     const options = Array.isArray(p.all) ? p.all.slice() : [];
-    // 分组的延迟：内核会在 history 里记它自己最近一次探测的结果
-    // （URLTest/Fallback 每次请求都可能刷新；Selector 就是当前出口的延迟）。
+    // 分组的延迟 = **当前出口那个节点**的延迟（用户第 12 轮第 3 条）。
+    // 旧代码只看分组自己的 history：内核的 Selector history 是"上一次探测"留下的，
+    // 用户在组里换了节点，外面卡片上的徽章还挂着旧数字 —— 外面和里面显示的不是一件事。
+    // 现在按 resolveExit 一层层剥到真实出口，取它自己的延迟：
+    // 内核 history → 本次测速缓存 → 分组自己的 history → 分组测速缓存 → -1。
+    const exit = resolveExit(proxies, name);
+    const exitProxy = exit ? proxies[exit] : null;
+    const exitHist = exitProxy && Array.isArray(exitProxy.history) && exitProxy.history.length
+      ? exitProxy.history[exitProxy.history.length - 1] : null;
+    const exitMs = exitHist && typeof exitHist.delay === 'number' && exitHist.delay > 0 ? exitHist.delay : 0;
+    const exitCached = exit ? S.speedCache.get(exit) : null;
+    const nodeMs = exitCached && typeof exitCached.latency === 'number' && exitCached.latency > 0 ? exitCached.latency : 0;
     const hist = Array.isArray(p.history) && p.history.length ? p.history[p.history.length - 1] : null;
     const cached = S.groupLatency.get(name);
+    const latency = exitMs || nodeMs
+      || (hist && typeof hist.delay === 'number' && hist.delay > 0 ? hist.delay : 0)
+      || (typeof cached === 'number' && cached > 0 ? cached : -1);
     out.push({
       name,
       type: p.type,
@@ -702,7 +723,8 @@ async function routingGroups() {
       count: options.length,
       // 只把真实节点作为候选项；嵌套分组也允许选，恢复默认时会有用
       options,
-      latency: hist && typeof hist.delay === 'number' && hist.delay > 0 ? hist.delay : (cached || -1),
+      latency,
+      primary: name === MAIN_GROUP,
       builtin: name === 'GLOBAL',
       structural: STRUCTURAL_GROUPS.has(name),
     });
@@ -1011,5 +1033,6 @@ module.exports = {
   reorderRuleset, saveCustomRuleset, deleteCustomRuleset,
   requireCore, setDirectDomains, mixedPort: () => S.mixedPort,
   wantedMixedPort, assertPortFree,
+  MAIN_GROUP, STRUCTURAL_GROUPS,
   S,
 };
