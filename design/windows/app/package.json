@@ -1,0 +1,79 @@
+{
+  "name": "polaris-windows",
+  "productName": "Polaris",
+  "version": "1.10.0",
+  "description": "北辰 Polaris Windows 客户端（便携版）",
+  "license": "GPL-3.0",
+  "author": "Polaris Contributors",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "uitest": "electron . --uitest",
+    "core": "python scripts/fetch-core.py",
+    "geo": "python scripts/fetch-geo.py",
+    "pack": "electron-builder --win --x64 --dir",
+    "dist": "electron-builder --win --x64",
+    "clean": "node scripts/clean.js"
+  },
+  "dependencies": {
+    "js-yaml": "5.4.3",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "app.polaris.windows",
+    "productName": "Polaris",
+    "copyright": "Copyright (c) Polaris Contributors",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "scripts/real-test.js",
+      "scripts/ui-test.js",
+      "package.json",
+      "node_modules/js-yaml/**/*",
+      "node_modules/ws/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "core",
+        "to": "core",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/geo",
+        "to": "geo",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/rules",
+        "to": "rules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "build/portable-readme.txt",
+        "to": "../使用说明.txt"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Polaris-portable-${version}.zip",
+      "icon": "build/icon.ico"
+    },
+    "compression": "maximum"
+  }
+}
