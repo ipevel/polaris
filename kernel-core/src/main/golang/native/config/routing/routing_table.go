@@ -190,7 +190,93 @@ var Table = []RuleGroup{
 	{Name: "🎶 网易音乐", DefaultOn: true, DefaultOut: "direct",
 		Providers: []string{"acl_neteasemusic"}},
 	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"gp_cn", "acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"}},
+		Providers: []string{"gp_cn", "acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"},
+		// ChinaDomain.list 只覆盖 700 多个长尾域名，且会被每日远程更新覆盖；
+		// 抖音/快手/小红书/番茄小说这类主流国内 App 的域名一旦不在里面，就会漏到
+		// 「🐟 漏网之鱼」走代理，表现为「连上 VPN 就断网、断开就好」
+		// （用户 2026-10-11 反馈）。这里用内联规则兜底，不依赖远程规则集。
+		InlineRules: []string{
+			// 抖音 / 字节跳动
+			"DOMAIN-SUFFIX,douyin.com,{t}",
+			"DOMAIN-SUFFIX,iesdouyin.com,{t}",
+			"DOMAIN-SUFFIX,amemv.com,{t}",
+			"DOMAIN-SUFFIX,byteimg.com,{t}",
+			"DOMAIN-SUFFIX,bytedance.com,{t}",
+			"DOMAIN-SUFFIX,bytetos.com,{t}",
+			"DOMAIN-SUFFIX,toutiao.com,{t}",
+			"DOMAIN-SUFFIX,toutiaocdn.com,{t}",
+			"DOMAIN-SUFFIX,volcengine.com,{t}",
+			"DOMAIN-SUFFIX,volces.com,{t}",
+			"DOMAIN-SUFFIX,zjcdn.com,{t}",
+			// 快手
+			"DOMAIN-SUFFIX,kuaishou.com,{t}",
+			"DOMAIN-SUFFIX,kuaishouzt.cn,{t}",
+			"DOMAIN-SUFFIX,gifshow.com,{t}",
+			"DOMAIN-SUFFIX,kwaicdn.com,{t}",
+			"DOMAIN-SUFFIX,ksapisrv.com,{t}",
+			// 小红书
+			"DOMAIN-SUFFIX,xiaohongshu.com,{t}",
+			"DOMAIN-SUFFIX,xhscdn.com,{t}",
+			"DOMAIN-SUFFIX,xhslink.com,{t}",
+			// 番茄小说
+			"DOMAIN-SUFFIX,fanqienovel.com,{t}",
+			"DOMAIN-SUFFIX,sigfanqie.com,{t}",
+			// 微信 / QQ
+			"DOMAIN-SUFFIX,weixin.qq.com,{t}",
+			"DOMAIN-SUFFIX,qlogo.cn,{t}",
+			"DOMAIN-SUFFIX,qpic.cn,{t}",
+			"DOMAIN-SUFFIX,gtimg.com,{t}",
+			"DOMAIN-SUFFIX,myqcloud.com,{t}",
+			// 淘宝 / 阿里
+			"DOMAIN-SUFFIX,taobaocdn.com,{t}",
+			"DOMAIN-SUFFIX,alipayobjects.com,{t}",
+			"DOMAIN-SUFFIX,aliyuncs.com,{t}",
+			"DOMAIN-SUFFIX,aliyun.com.cn,{t}",
+			"DOMAIN-SUFFIX,dingtalk.com,{t}",
+			"DOMAIN-SUFFIX,alibaba-inc.com,{t}",
+			// 京东
+			"DOMAIN-SUFFIX,jd.hk,{t}",
+			"DOMAIN-SUFFIX,jdcloud.com,{t}",
+			"DOMAIN-SUFFIX,360buyimg.com,{t}",
+			// 百度
+			"DOMAIN-SUFFIX,baidubce.com,{t}",
+			"DOMAIN-SUFFIX,bdimg.com,{t}",
+			"DOMAIN-SUFFIX,baidupcs.com,{t}",
+			// 网易
+			"DOMAIN-SUFFIX,netease.im,{t}",
+			"DOMAIN-SUFFIX,126.com,{t}",
+			"DOMAIN-SUFFIX,126.net,{t}",
+			// 微博 / 新浪
+			"DOMAIN-SUFFIX,sina.com,{t}",
+			"DOMAIN-SUFFIX,sina.cn,{t}",
+			"DOMAIN-SUFFIX,weibo.com.cn,{t}",
+			"DOMAIN-SUFFIX,sinaimg.com,{t}",
+			"DOMAIN-SUFFIX,sinaedge.com,{t}",
+			// 美团 / 点评
+			"DOMAIN-SUFFIX,meituan.com,{t}",
+			"DOMAIN-SUFFIX,dpfile.com,{t}",
+			// 拼多多
+			"DOMAIN-SUFFIX,yangkeduo.com,{t}",
+			// 滴滴
+			"DOMAIN-SUFFIX,didichuxing.com,{t}",
+			"DOMAIN-SUFFIX,didistatic.com,{t}",
+			// 华为 / 小米 / OPPO / vivo
+			"DOMAIN-SUFFIX,vmall.com,{t}",
+			"DOMAIN-SUFFIX,oppo.com,{t}",
+			"DOMAIN-SUFFIX,opposhop.cn,{t}",
+			"DOMAIN-SUFFIX,vivo.com.cn,{t}",
+			// 其他常见国内站点
+			"DOMAIN-SUFFIX,360.cn,{t}",
+			"DOMAIN-SUFFIX,360.com,{t}",
+			"DOMAIN-SUFFIX,sohu.com,{t}",
+			"DOMAIN-SUFFIX,58.com,{t}",
+			"DOMAIN-SUFFIX,ganji.com,{t}",
+			"DOMAIN-SUFFIX,qcloud.com,{t}",
+			"DOMAIN-SUFFIX,tencent.com,{t}",
+			"DOMAIN-SUFFIX,tencentcs.com,{t}",
+			"DOMAIN-SUFFIX,zhipin.com,{t}",
+			"DOMAIN-SUFFIX,zhihu.com.cn,{t}",
+		}},
 	{Name: "🌏 国外穿墙", DefaultOn: true, DefaultOut: "proxy",
 		Providers: []string{"gs_geolocation_ncn", "acl_proxygfwlist", "acl_proxymedia"}},
 	{Name: "🍃 应用净化", DefaultOn: false, DefaultOut: "block",
