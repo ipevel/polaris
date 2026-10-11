@@ -27,6 +27,8 @@ import com.slte.app.data.update.AppUpdateDownloader
 import com.slte.app.ui.component.ToastTip
 import com.slte.app.ui.theme.SlteIcons
 import com.slte.app.ui.theme.V5ThemeColors
+import com.slte.app.ui.v5.LocalHasAppUpdate
+import com.slte.app.ui.v5.UpdateDot
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5PageBody
 import com.slte.app.ui.v5.V5PageScaffold
@@ -51,6 +53,7 @@ fun AboutScreen(
     val siteInfo by viewModel.siteInfo.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val downloadResult by viewModel.downloadResult.collectAsStateWithLifecycle()
+    val downloadProgress by viewModel.progress.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val c = V5ThemeColors.current
 
@@ -90,13 +93,20 @@ fun AboutScreen(
         when (val r = downloadResult) {
             is AppUpdateDownloader.DownloadResult.Failed ->
                 toastMessage = context.getString(R.string.update_download_failed, r.reason)
-            is AppUpdateDownloader.DownloadResult.NeedsPermission ->
+            is AppUpdateDownloader.DownloadResult.NeedsPermission -> {
                 toastMessage = context.getString(R.string.update_install_permission_needed)
-            is AppUpdateDownloader.DownloadResult.Started ->
-                toastMessage = context.getString(R.string.update_downloading)
+                // 已跳系统设置，弹窗留着没意义（进度也归零了）。
+                viewModel.dismissUpdate()
+            }
+            is AppUpdateDownloader.DownloadResult.Started -> {
+                // 不弹提示：弹窗原地变成了进度条，用户已经看得见"开始了"。
+                // 这里再弹一条只会盖住进度条上方的说明。
+            }
             is AppUpdateDownloader.DownloadResult.AlreadyDownloading ->
                 toastMessage = context.getString(R.string.update_download_in_progress)
-            is AppUpdateDownloader.DownloadResult.Installed -> Unit
+            is AppUpdateDownloader.DownloadResult.Installed ->
+                // 系统安装界面已接管，关掉弹窗免得它压在安装界面上。
+                viewModel.dismissUpdate()
             null -> Unit
         }
         if (downloadResult != null) viewModel.consumeDownloadResult()
@@ -107,13 +117,20 @@ fun AboutScreen(
     (updateState as? AppUpdateState.Available)?.let { available ->
         UpdateSheet(
             info = available.info,
-            onDismiss = { viewModel.dismissUpdate() },
-            onUpdate = {
-                // 提示交给下载器回报的 Started / AlreadyDownloading，避免这里先弹一次
-                // "正在后台下载更新…"、下载器再弹一次，两条 toast 排队叠在一起。
-                viewModel.startDownload(available.info)
-                viewModel.dismissUpdate()
+            progress = downloadProgress,
+            onDismiss = {
+                // 下载中吞掉关闭请求。返回键已由 `V5Sheet` 在 `dismissible = false` 时
+                // 直接消费掉（它必须声明在 ModalBottomSheet 之后才拦得住，见那边的注释），
+                // 这里是第二道保险：遮罩点击等其它路径同样不该把进度条弄丢——
+                // 弹窗一旦消失，下载还在跑，用户既看不到进度也找不到取消。
+                if (downloadProgress == null) viewModel.dismissUpdate()
             },
+            onUpdate = {
+                // 不关弹窗：它原地切成进度条 + 取消，见 UpdateSheet 的 KDoc。
+                // 也不再自己弹"正在下载"提示，状态由弹窗本身表达。
+                viewModel.startDownload(available.info)
+            },
+            onCancel = { viewModel.cancelDownload() },
         )
     }
 
@@ -160,8 +177,16 @@ fun AboutScreen(
                     title = stringResource(R.string.about_check_update),
                     icon = SlteIcons.UpdateSubscription,
                     value =
-                    if (updateState == AppUpdateState.Checking) {
-                        stringResource(R.string.update_checking)
+                    when {
+                        updateState == AppUpdateState.Checking -> stringResource(R.string.update_checking)
+                        downloadProgress != null -> stringResource(R.string.update_downloading)
+                        else -> null
+                    },
+                    // 有新版本时在箭头左侧带提示点。用 trailing 槽而不是 value：
+                    // value 在"检查中"/"下载中"时已被占用，两个状态不能互相顶掉。
+                    trailing =
+                    if (LocalHasAppUpdate.current) {
+                        { UpdateDot(description = stringResource(R.string.update_dot_desc)) }
                     } else {
                         null
                     },

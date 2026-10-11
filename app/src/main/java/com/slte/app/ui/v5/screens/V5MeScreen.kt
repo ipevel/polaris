@@ -28,8 +28,10 @@ import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.AvatarP
 import com.slte.app.ui.v5.ChipTone
+import com.slte.app.ui.v5.LocalHasAppUpdate
 import com.slte.app.ui.v5.NavTab
 import com.slte.app.ui.v5.SectionTitle
+import com.slte.app.ui.v5.UpdateDot
 import com.slte.app.ui.v5.V5Card
 import com.slte.app.ui.v5.V5CardFlat
 import com.slte.app.ui.v5.V5Chip
@@ -191,6 +193,14 @@ internal fun V5MeScreen(
                 V5RowItem(
                     title = stringResource(R.string.me_about),
                     icon = Icons.Outlined.Info,
+                    // 应用有新版本时在箭头左侧带一个提示点（状态来自 MainActivity 提供的
+                    // LocalHasAppUpdate）。提示点只有颜色，所以补一句读屏文案。
+                    trailing =
+                    if (LocalHasAppUpdate.current) {
+                        { UpdateDot(description = stringResource(R.string.update_dot_desc)) }
+                    } else {
+                        null
+                    },
                     chevron = true,
                     onClick = onAbout,
                 )

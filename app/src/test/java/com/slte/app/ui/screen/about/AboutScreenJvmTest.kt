@@ -47,6 +47,9 @@ class AboutScreenJvmTest {
         // `StateFlow.value` 在 Robolectric 沙箱类加载器下不是 `DownloadResult`，
         // 取值处插入的 CHECKCAST 会抛 ClassCastException，必须显式喂一个空流。
         every { vm.downloadResult } returns MutableStateFlow<AppUpdateDownloader.DownloadResult?>(null)
+        // 同理：应用内下载进度也是 `StateFlow<Progress?>`，不喂会在 `collectAsStateWithLifecycle()`
+        // 取值处抛同样的 CCE。
+        every { vm.progress } returns MutableStateFlow<AppUpdateDownloader.Progress?>(null)
         return vm
     }
 

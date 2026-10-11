@@ -252,14 +252,17 @@
     <string name="update_now">立即更新</string>
     <string name="update_up_to_date">已是最新版本</string>
     <string name="update_check_failed">檢查失敗，請稍後重試</string>
-    <string name="update_downloading">正在後台下載更新…</string>
+    <string name="update_downloading">正在下載更新…</string>
     <string name="update_download_in_progress">更新包正在下載中，請稍候</string>
-    <string name="update_download_title">正在下載 %1$s</string>
+    <string name="update_download_progress">%1$s / %2$s</string>
+    <string name="update_download_progress_unknown">已下載 %1$s</string>
+    <string name="update_download_cancel">取消</string>
+    <string name="update_dot_desc">有新版本</string>
     <string name="update_download_failed">更新失敗：%1$s</string>
     <string name="update_install_permission_needed">請在系統設定中允許「安裝未知應用」，返回後繼續安裝</string>
     <string name="update_download_dir_unavailable">無法存取外部下載目錄</string>
     <string name="update_download_incomplete">下載未成功，請重試</string>
-    <string name="update_download_file_missing">下載檔案不存在</string>
+    <string name="update_download_network_error">網路連線失敗</string>
     <string name="update_download_checksum_failed">安裝包校驗失敗，已刪除</string>
     <string name="about_log_share_failed">無法分享日誌</string>
 

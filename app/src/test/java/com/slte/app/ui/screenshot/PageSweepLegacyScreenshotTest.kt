@@ -619,6 +619,8 @@ class PageSweepLegacyScreenshotTest {
         every { vm.updateState } returns MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
         // 同上：新增的 downloadResult 不喂会在 `LaunchedEffect(downloadResult)` 取值处抛 CCE。
         every { vm.downloadResult } returns MutableStateFlow<AppUpdateDownloader.DownloadResult?>(null)
+        // 应用内下载进度同理：`collectAsStateWithLifecycle()` 会在取值处 CHECKCAST。
+        every { vm.progress } returns MutableStateFlow<AppUpdateDownloader.Progress?>(null)
         return vm
     }
 

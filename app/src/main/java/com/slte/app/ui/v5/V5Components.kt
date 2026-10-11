@@ -694,10 +694,21 @@ enum class NavTab(val icon: ImageVector, @StringRes val labelRes: Int) {
     ME(Icons.Outlined.Person, R.string.tab_profile),
 }
 
-/** iOS 标准 Tab 栏：贴底通栏、顶部发丝线、图标 + 小标签、选中品牌蓝。 */
+/**
+ * iOS 标准 Tab 栏：贴底通栏、顶部发丝线、图标 + 小标签、选中品牌蓝。
+ *
+ * [badges] 里的 Tab 在图标右上角带一个提示点（目前只有「我的」用它表示"有新版本"）。
+ * 带提示点时无障碍名称会补一句「有新版本」——只靠颜色表达状态，读屏用户感知不到。
+ */
 @Composable
-fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (NavTab) -> Unit = {}) {
+fun V5BottomNavBar(
+    active: NavTab,
+    modifier: Modifier = Modifier,
+    badges: Set<NavTab> = emptySet(),
+    onSelect: (NavTab) -> Unit = {},
+) {
     val c = V5ThemeColors.current
+    val badgeDesc = stringResource(R.string.update_dot_desc)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -713,6 +724,7 @@ fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (Nav
         ) {
             NavTab.entries.forEach { tab ->
                 val on = tab == active
+                val badged = tab in badges
                 val tabLabel = stringResource(tab.labelRes)
                 Column(
                     modifier = Modifier
@@ -722,14 +734,21 @@ fun V5BottomNavBar(active: NavTab, modifier: Modifier = Modifier, onSelect: (Nav
                             v5Clickable(
                                 role = Role.Tab,
                                 selected = on,
-                                label = tabLabel,
+                                label = if (badged) "$tabLabel，$badgeDesc" else tabLabel,
                                 onClick = { onSelect(tab) },
                             ),
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(tab.icon, null, modifier = Modifier.size(24.dp), tint = if (on) c.accent else c.text3)
+                    Box {
+                        Icon(tab.icon, null, modifier = Modifier.size(24.dp), tint = if (on) c.accent else c.text3)
+                        if (badged) {
+                            UpdateDot(
+                                modifier = Modifier.align(Alignment.TopEnd).offset(x = V5Spacing.dp2, y = -V5Spacing.dp2),
+                            )
+                        }
+                    }
                     Text(
                         tabLabel,
                         fontSize = 10.sp,

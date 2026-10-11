@@ -256,14 +256,17 @@
     <string name="update_now">Update now</string>
     <string name="update_up_to_date">Already up to date</string>
     <string name="update_check_failed">Check failed, please try again later</string>
-    <string name="update_downloading">Downloading update in background…</string>
+    <string name="update_downloading">Downloading update…</string>
     <string name="update_download_in_progress">The update is already downloading, please wait</string>
-    <string name="update_download_title">Downloading %1$s</string>
+    <string name="update_download_progress">%1$s / %2$s</string>
+    <string name="update_download_progress_unknown">%1$s downloaded</string>
+    <string name="update_download_cancel">Cancel</string>
+    <string name="update_dot_desc">Update available</string>
     <string name="update_download_failed">Update failed: %1$s</string>
     <string name="update_install_permission_needed">Allow \"install unknown apps\" in system settings, then come back to continue</string>
     <string name="update_download_dir_unavailable">Cannot access the external download directory</string>
     <string name="update_download_incomplete">Download did not complete, please try again</string>
-    <string name="update_download_file_missing">The downloaded file is missing</string>
+    <string name="update_download_network_error">Network connection failed</string>
     <string name="update_download_checksum_failed">Package verification failed, the file was deleted</string>
     <string name="about_log_share_failed">Couldn\'t share the log</string>
 

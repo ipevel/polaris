@@ -51,11 +51,22 @@ fun V5PageScaffold(
             V5BottomNavBar(
                 active = tab,
                 modifier = Modifier.align(Alignment.BottomCenter),
+                badges = navBadges(),
                 onSelect = onNavSelect,
             )
         }
     }
 }
+
+/**
+ * 底部导航要显示的提示点。
+ *
+ * 目前只有「我的」Tab 会带提示点（应用有新版本，值来自 `MainActivity` 提供的
+ * [LocalHasAppUpdate]）。放在骨架里而不是逐页透传，是因为四个 Tab 页各自渲染底栏，
+ * 透传要改四处调用链，而它本来就是全局状态。
+ */
+@Composable
+private fun navBadges(): Set<NavTab> = if (LocalHasAppUpdate.current) setOf(NavTab.ME) else emptySet()
 
 /**
  * 贴底通栏导航为可滚动主体预留的底部高度。
