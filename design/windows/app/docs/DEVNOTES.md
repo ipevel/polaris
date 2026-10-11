@@ -208,20 +208,36 @@ A-22（建工单发 `content` 而面板只认 `message`）在假面板上永远�
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.9.0.zip   185,985,363 B（≈ 177 MiB）
-sha256 = f4fe38364e2f0a7d8c53e35010c1521e2ab73896d09cf6aa0aa4ba0e6832de19
-（2026-10-11 第 11 轮修复后重建，已用 --clobber 覆盖 Release 上的附件；上一版 185,975,690 B /
-  sha256 4a3449268ae84c5e1c8864cccb9f02f9ab4e3f8c2559838fcaef73a88742566e，
-  再上一版 185,970,496 B / sha256 cb8a1899e622deec12c2c635e54806155968531f9321a4dd22c7e4773e46d44f）
+design/windows/app/dist/Polaris-portable-1.9.0.zip   185,993,043 B（≈ 177 MiB）
+sha256 = 6427af345965b07a7a11a0ac80b40f7f3a20fb27928affa12416421c71887e4e
+（2026-10-11 第 12 轮修复后重建，**尚未上传** —— 用户要求「都弄完了没问题了先不要上传等我安排」；
+  Release 上现存的仍是第 11 轮那版 185,985,363 B /
+  sha256 f4fe38364e2f0a7d8c53e35010c1521e2ab73896d09cf6aa0aa4ba0e6832de19）
 ```
 
 已发布：<https://github.com/ipevel/polaris/releases/tag/v1.9.0>（与安卓的 `Polaris-1.9.0.apk` 同一个 Release，
 Windows 侧源码在 `windows-portable` 分支）。
 
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。**成品包实测**（直接跑 `dist/win-unpacked/Polaris.exe`）：
-`Polaris.exe --uitest` → **170 通过 / 0 失败**，日志首行
-`Polaris 1.9.0 start | packaged=true portable=true`，12 段全 PASS（真面板登录、真内核连接、
-节点/分流/流量/我的/二级页/设置、端口被占用时优雅关掉占用程序）。
+`Polaris.exe --uitest` → **174 通过 / 0 失败**，日志首行
+`Polaris 1.9.0 start | packaged=true portable=true`，13 段全 PASS（真面板登录、真内核连接、
+节点/分流/流量/我的/二级页/设置、端口被占用时优雅关掉占用程序、更新红点三态）。
+
+**第 12 轮的成品包三跑**（都跑在 `dist/win-unpacked`）：
+
+1. 删掉整个 `data/` 与 `%LOCALAPPDATA%\Polaris\backup\win-unpacked-778a108a` 后跑 `--uitest` →
+   174 / 0；跑完 `data/credentials.dat`（177 B）与 `data/settings.json` 都在，**备份目录里也各有一份**。
+2. 只删 `data/credentials.dat` 与 `data/settings.json`（备份保留）后**不带参数正常启动** → 日志依次
+   `restored settings.json, credentials.dat from backup (…)`、`panel session restored: …`、
+   `存储的登录态复核通过`，**没有** `登录已失效` → 这正是用户第 12 轮第 1 条要的场景
+   （数据文件丢了重启仍是登录态，面板地址也在）。
+3. 有会话时再跑 `--uitest` → 174 / 0。
+
+> 跑成品包自检前必须**剥掉 `HTTP_PROXY` / `HTTPS_PROXY`**：本机 harness 会给子进程注入
+> `HTTP_PROXY=http://127.0.0.1:7890`，而新版 Node 的裸 `https.get` 会照走这个环境代理（实测
+> `node -e "require('https').get('https://app.pinxiaoche.top/')"` → `connect ECONNREFUSED 127.0.0.1:7890`），
+> 于是面板请求全被送去一个没在监听的端口、自检卡在登录重试（一跑就是 93 条该类错误）。
+> 用户从资源管理器双击启动没有这些环境变量，所以这是自检环境的产物（同 E-16）。
 
 包内审计（用户要求「测试账号/密码/网址/测试数据一律不进包」）：132 个 zip 条目里没有 `data/`，
 没有 `settings.json` / `credentials.dat` / `*.log` / 自检报告；`app.asar` 里搜 `pinxiaoche`、
@@ -234,9 +250,9 @@ Windows 侧源码在 `windows-portable` 分支）。
 
 | | |
 | --- | --- |
-| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` `00846cc` `265e057` `8648c8d` `6c72762` `6c0896a` `4c1e1db` `7b8e7bd` `5ce7010` `14f0816` `33d1fc0` … `9867731`（`chore(windows): 同步 1.9.0 版本号、清理仓库内凭据与过期说明`，9 文件 +58/−49）+ 本条文档提交（哈希见 `git log -1`） |
-| 相对基线 | +121,154 / −940 行，103 文件 |
-| 应用代码 | 主进程 6,026 行 JS（含 core/ 2,986 与 net/），渲染层 2,406 行 JS，样式 492 行 CSS；自检脚本 2,159 行（`real-test.js` 1,238 + `ui-test.js` 905） |
+| 提交 | `3d8eb6a` `ce71ad7` `8e578fd` `8f04c18` `77650f8` `621186d` `ba97f42` `b6105f1` `3c0d1ad` `00846cc` `265e057` `8648c8d` `6c72762` `6c0896a` `4c1e1db` `7b8e7bd` `5ce7010` `14f0816` `33d1fc0` … `9867731`（`chore(windows): 同步 1.9.0 版本号、清理仓库内凭据与过期说明`，9 文件 +58/−49）、`1396035`（分组内外一致 / 手风琴 / 流量本地切片 / 登录不等面板数据，7 文件 +645/−161）、`4e7b483`（预生成 `build/icon.ico` 绕开 icon-tool 的 WASM 内存失败）、`43ee2a9`（**登录态不再被一次 401 清掉 + 救命备份 + 更新红点**，13 文件 +608/−28，含新增 `electron/backup.js`）+ 本条文档提交（哈希见 `git log -1`） |
+| 相对基线 | 32 个提交；`design/windows/app` 全部源码 + 资源（不含内核二进制与 `dist/`）见 `git diff --shortstat 5328b55 HEAD` |
+| 应用代码 | 主进程 5,972 行 JS（`core/` 2,763 + `panel/` 1,146 + `net/` 445 + `util/` 31 + 顶层 1,587），渲染层 2,463 行 JS，样式 485 行 CSS；自检脚本 2,354 行（`real-test.js` 1,327 + `ui-test.js` 1,014） |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
 | 内置分流 | 47 个本地规则集 + 25 个分流组，1.42 MB（`resources/rules/`，随包预播种；运行时由内核按 `type: http` + 24h 在线更新） |
@@ -257,7 +273,7 @@ Windows 侧源码在 `windows-portable` 分支）。
 > 它们的实现与踩坑记录仍留在 §三（E-1~E-10、A-6~A-19），因为**教训是有效的**，
 > 只是这些"自动化绿灯"不再被当作验收依据。
 
-当前状态：真面板数据层 **206 / 0**、真面板界面层 **174 / 0**（2026-10-11；测试账号与面板地址属私有凭据，不入库）。成品包（解压后）的界面线数字见上面「产物」一节。
+当前状态：真面板数据层 **206 / 0**、真面板界面层 **174 / 0**、**成品包（解压后）界面层 174 / 0**（2026-10-11；测试账号与面板地址属私有凭据，不入库）。成品包（解压后）的界面线数字见上面「产物」一节。
 
 ### 已实测通过
 
