@@ -2402,6 +2402,8 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
 - 发版：版本号与安卓同步走 `version_gate.py`（有 `feat` 就必须升 MINOR）；Windows zip 与
   APK 放在**同一个 Release**，`gh release upload … --clobber` 覆盖后要用
   `gh release edit --notes-file` 把 SHA-256 块和附件体积一起更新，别让正文留着旧摘要。
+  附件里的 `SHA256SUMS.txt` 是安卓 CI 生成的、**默认只有 APK 一行**，换过 zip 之后要把它
+  下载下来补一行 Windows 的摘要再 `--clobber` 传回去（否则校验文件和正文对不上）。
 - 远端现只有三个分支：`main`、`windows-portable`、`android--portable`（用户自己的安卓分支，别碰）。
 
 ---
