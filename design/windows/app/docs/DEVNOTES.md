@@ -188,18 +188,19 @@ A-22（建工单发 `content` 而面板只认 `message`）在假面板上永远�
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.9.0.zip   185,975,690 B（≈ 177 MiB）
-sha256 = 4a3449268ae84c5e1c8864cccb9f02f9ab4e3f8c2559838fcaef73a88742566e
-（2026-10-11 第 10 轮修复后重建；上一版 185,970,496 B /
- sha256 cb8a1899e622deec12c2c635e54806155968531f9321a4dd22c7e4773e46d44f）
+design/windows/app/dist/Polaris-portable-1.9.0.zip   185,985,363 B（≈ 177 MiB）
+sha256 = f4fe38364e2f0a7d8c53e35010c1521e2ab73896d09cf6aa0aa4ba0e6832de19
+（2026-10-11 第 11 轮修复后重建，已用 --clobber 覆盖 Release 上的附件；上一版 185,975,690 B /
+  sha256 4a3449268ae84c5e1c8864cccb9f02f9ab4e3f8c2559838fcaef73a88742566e，
+  再上一版 185,970,496 B / sha256 cb8a1899e622deec12c2c635e54806155968531f9321a4dd22c7e4773e46d44f）
 ```
 
 已发布：<https://github.com/ipevel/polaris/releases/tag/v1.9.0>（与安卓的 `Polaris-1.9.0.apk` 同一个 Release，
 Windows 侧源码在 `windows-portable` 分支）。
 
-解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。**成品包实测**（把 zip 解到干净目录
-`E:\AI\_pkg110` 直接跑）：`Polaris.exe --uitest` → **165 通过 / 0 失败**，日志首行
-`Polaris 1.9.0 start | packaged=true portable=true`，11 段全 PASS（真面板登录、真内核连接、
+解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。**成品包实测**（直接跑 `dist/win-unpacked/Polaris.exe`）：
+`Polaris.exe --uitest` → **170 通过 / 0 失败**，日志首行
+`Polaris 1.9.0 start | packaged=true portable=true`，12 段全 PASS（真面板登录、真内核连接、
 节点/分流/流量/我的/二级页/设置、端口被占用时优雅关掉占用程序）。
 
 包内审计（用户要求「测试账号/密码/网址/测试数据一律不进包」）：132 个 zip 条目里没有 `data/`，
