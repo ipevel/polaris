@@ -17,11 +17,6 @@
 
 Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核的代理客户端，支持 XiaoV2b / Xboard 面板，登录时自动识别，无需换包。Android 为主客户端；另附 **Windows 便携版**（源码在 `windows-portable` 分支的 `design/windows/app/`，免安装、解压即用、共用同一套面板账号与分流方案）。
 
-- **界面**：iOS 极简风，深色 / 浅色 / 跟随系统，简中 / 繁中 / English
-- **功能**：一键连接与实时速率、节点与分流、流量统计、套餐与订单、应用内更新
-- **保活**：VPN 服务跑在独立进程，连接前引导关闭电池优化
-- **安全**：面板地址不内置、仅接受 HTTPS，凭据仅发往白名单域名
-- **Windows 便携版**：单个 zip 解压即用，不写注册表、不落 `%APPDATA%`；内置内核与规则库，带系统代理与 TUN 模式
 
 ## 下载与安装
 
