@@ -56,6 +56,10 @@ function buildTray() {
   tray.on('click', () => require('./main').showMain());
   tray.on('right-click', () => tray.popUpContextMenu());
   refreshTray();
+  // 状态变化时重建菜单与 tooltip。原先只有 buildTray() 调一次 refreshTray()，
+  // 之后托盘永远停留在启动时的状态——启动时没连接，连上之后菜单里还是「未连接」，
+  // 与主界面状态不一致（用户 2026-10-11 反馈）。
+  core.onStatus(() => { refreshTray(); });
   return tray;
 }
 

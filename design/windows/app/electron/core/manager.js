@@ -362,22 +362,42 @@ async function stopKernel() {
 
 function startTrafficStream() {
   if (!S.controller) return Promise.resolve();
+  // 内核重启后累计值会清零，旧的 lastUpTotal 必须一起清掉，
+  // 否则第一帧的增量会被算成 0，丢掉内核重启前那段流量。
+  S.lastUpTotal = 0;
+  S.lastDownTotal = 0;
   return S.controller.connectWS('/traffic').then((ws) => {
     S.trafficWs = ws;
     ws.on('message', (raw) => {
       let d;
       try { d = JSON.parse(raw.toString()); } catch (_) { return; }
       const now = Date.now();
-      const up = Number(d.up) || 0;
-      const down = Number(d.down) || 0;
-      S.upTotal += up;
-      S.downTotal += down;
-      traffic.add(up, down);
+      // mihomo /traffic 每帧推 {up, down, upTotal, downTotal}：
+      //   up / down      = 最近 1 秒的字节数（速率，不是增量）
+      //   upTotal/downTotal = 内核启动至今的累计字节数
+      // 旧实现把 up/down 直接累加进总量，还把它们当作这一 tick 的增量喂给
+      // traffic.add()，于是总流量、今日/本周/本月、速率全部偏高。
+      // 正确做法：用累计值与上一帧的差值当增量。
+      const upRate = Number(d.up) || 0;
+      const downRate = Number(d.down) || 0;
+      const upTotal = Number(d.upTotal);
+      const downTotal = Number(d.downTotal);
+      const upDelta = Number.isFinite(upTotal)
+        ? Math.max(0, upTotal - (S.lastUpTotal || 0))
+        : upRate;
+      const downDelta = Number.isFinite(downTotal)
+        ? Math.max(0, downTotal - (S.lastDownTotal || 0))
+        : downRate;
+      if (Number.isFinite(upTotal)) S.lastUpTotal = upTotal;
+      if (Number.isFinite(downTotal)) S.lastDownTotal = downTotal;
+      S.upTotal += upDelta;
+      S.downTotal += downDelta;
+      traffic.add(upDelta, downDelta);
       const dt = S.lastTick ? now - S.lastTick : TRAFFIC_TICK_MS;
       S.lastTick = now;
       // 非对称 EMA：下行重攻击升、缓降，上行相反（与 Android 端一致）
-      S.downSpeed = ema(S.downSpeed, (down * 1000) / dt, 0.45, 0.08);
-      S.upSpeed = ema(S.upSpeed, (up * 1000) / dt, 0.45, 0.08);
+      S.downSpeed = ema(S.downSpeed, (downDelta * 1000) / dt, 0.45, 0.08);
+      S.upSpeed = ema(S.upSpeed, (upDelta * 1000) / dt, 0.45, 0.08);
       emit();
     });
     ws.on('error', () => {});

@@ -3,7 +3,10 @@
     python scripts/fetch-geo.py
 
 优先从本仓库的 Android assets 直接拷（快、离线、版本一致）；
-拷不到再从 MetaCubeX/meta-rules-dat 发布页下载。
+拷不到再从 appshubcc/bett-rules 下载。
+
+来源与安卓端 `app/src/main/java/com/slte/app/data/geo/GeoResources.kt` 的清单一致
+（也就是面板「资源」页那一套），两端不会漂移。
 
 为什么要随包分发：不这么做，mihomo 首次连接会自己去 GitHub 下 GeoIP.dat，
 实测 19 秒，且没网就直接起不来。
@@ -28,10 +31,38 @@ REPO_ASSETS_CANDIDATES = [
 FILES = ['geoip.metadb', 'geosite.dat', 'ASN.mmdb']
 
 REMOTE = {
-    'geoip.metadb': 'https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb',
-    'geosite.dat': 'https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat',
-    'ASN.mmdb': 'https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb',
+    'geoip.metadb': 'https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@release/geoip.metadb',
+    'geosite.dat': 'https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@release/geosite.dat',
+    'ASN.mmdb': 'https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@release/GeoLite2-ASN.mmdb',
 }
+
+# MRS 规则集打包：mihomo 的 .mrs 二进制格式。内核当前用的是远程 RULE-SET providers
+# （kernel-core/.../routing_table.go 的 Providers），不消费 .mrs，所以默认不下载。
+# 机器上有 7z 时可解包备用（python fetch-geo.py --with-mrs）。
+MRS_BUNDLE = 'https://github.com/appshubcc/bett-rules/releases/download/latest/BundleMRS.7z'
+
+
+def fetch_mrs():
+    """下载并解包 BundleMRS.7z。没有 7z 就跳过——它是可选增强，不是硬依赖。"""
+    import shutil as _sh
+    import subprocess
+
+    seven = next((p for p in ('7z', '7za', '7zr') if _sh.which(p)), None)
+    if not seven:
+        print('跳过 MRS：机器上没有 7z / 7za / 7zr，无法解包。')
+        return
+    import requests
+
+    archive = os.path.join(GEO, 'BundleMRS.7z')
+    print('  fetch %s' % MRS_BUNDLE)
+    r = requests.get(MRS_BUNDLE, timeout=300, stream=True)
+    r.raise_for_status()
+    with open(archive, 'wb') as fh:
+        for chunk in r.iter_content(1 << 20):
+            fh.write(chunk)
+    subprocess.check_call([seven, 'x', '-y', '-o' + GEO, archive])
+    os.remove(archive)
+    print('  MRS 已解包到 %s' % GEO)
 
 
 def local_copy():
@@ -81,6 +112,9 @@ def remote_copy(missing):
 
 
 def main():
+    if '--with-mrs' in sys.argv:
+        fetch_mrs()
+        return
     os.makedirs(GEO, exist_ok=True)
     print('目标目录:', GEO)
     got = local_copy()

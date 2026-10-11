@@ -227,8 +227,8 @@
     const site = t.site || null;
     const acct = t.account || null;
     const sess = t.session || {};
-    const rangeLabel = r === "today" ? "今日" : r === "week" ? "本周" : "本月";
-    return head("流量", "", seg("today", "今日") + seg("week", "本周") + seg("month", "本月")) + `
+    const rangeLabel = r === "today" ? "今日" : r === "week" ? "本周" : r === "month" ? "本月" : "全部";
+    return head("流量", "", seg("today", "今日") + seg("week", "本周") + seg("month", "本月") + seg("all", "全部")) + `
     <div class="section-label">站点用量 · ${rangeLabel}${site && site.days ? ` · ${site.days} 天有记录` : ""}</div>
     <div class="card" style="margin-bottom:14px">
       ${site ? `<div class="speed-row" style="margin:0 0 4px">
@@ -246,7 +246,7 @@
           : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细")))}
     </div>
     <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时用量 · ${r === "today" ? "24 小时" : r === "week" ? "7 天" : "30 天"}</b>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时用量 · ${r === "today" ? "24 小时" : r === "week" ? "本周" : r === "month" ? "本月" : "全部记录"}</b>
       <span style="font-size:13px;color:var(--text2)"><span style="color:var(--blue)">●</span> 下载　<span style="color:var(--orange)">●</span> 上传</span></div>
       <div class="chart-wrap">
       ${pts.length ? `<svg id="traffic-chart" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" data-pad="${PAD}" data-h="${H}" data-max="${max}" data-unit="${h(series.unit || "MB")}">

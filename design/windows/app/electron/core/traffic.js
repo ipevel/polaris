@@ -31,6 +31,44 @@ function minuteKey(d = new Date()) {
   return `${todayKey(d)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function dayKeyOf(d) { return todayKey(d); }
+
+/** 本周一 00:00（周一为一周起点，与面板口径一致） */
+function startOfWeek(d = new Date()) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = (x.getDay() + 6) % 7;   // 周一 = 0
+  x.setDate(x.getDate() - dow);
+  return x;
+}
+
+/** 本月 1 日 00:00 */
+function startOfMonth(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function addDays(d, n) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+/** 'YYYY-MM-DD' → Date（本地时区零点） */
+function parseDay(key) {
+  const [y, m, dd] = String(key).split('-').map((s) => parseInt(s, 10));
+  return new Date(y || 1970, (m || 1) - 1, dd || 1);
+}
+
+/** 枚举 [from, today] 之间的每一天（含两端），最多 DAY_KEEP 天 */
+function dayRange(from) {
+  const out = [];
+  const last = new Date();
+  const guard = DAY_KEEP + 2;
+  for (let t = from, i = 0; dayKeyOf(t) <= dayKeyOf(last) && i < guard; t = addDays(t, 1), i += 1) {
+    out.push(new Date(t.getFullYear(), t.getMonth(), t.getDate()));
+  }
+  return out;
+}
+
 function load() {
   if (data) return data;
   try {
@@ -92,26 +130,35 @@ function prune() {
 
 /**
  * 曲线数据。
- * @param {'today'|'week'|'month'} range
+ * @param {'today'|'week'|'month'|'all'} range
+ *   today = 今日 24 小时；week = 本周一至今；month = 本月 1 日至今；
+ *   all   = 最早有记录的那天至今（天桶保留 DAY_KEEP=400 天，够看一年多）
  * @returns {{points: {label: string, up: number, down: number}[], unit: string}}
  */
 function series(range) {
   prune();
   const d = load();
   const MB = 1024 * 1024;
-  if (range === 'week' || range === 'month') {
-    const n = range === 'week' ? 7 : 30;
-    const points = [];
-    for (let i = n - 1; i >= 0; i -= 1) {
-      const day = new Date(Date.now() - i * 86400e3);
-      const k = todayKey(day);
+  if (range === 'week' || range === 'month' || range === 'all') {
+    let from = null;
+    if (range === 'week') from = startOfWeek();
+    else if (range === 'month') from = startOfMonth();
+    else {
+      // 'all'：从最早有记录的那天开始，而不是「最近 30 天」——
+      // 旧实现把「本月」做成最近 30 天，用户看不到更早的用量。
+      const keys = Object.keys(d.days).sort();
+      if (!keys.length) return { points: [], unit: 'MB' };
+      from = parseDay(keys[0]);
+    }
+    const points = dayRange(from).map((day) => {
+      const k = dayKeyOf(day);
       const v = d.days[k] || { up: 0, down: 0 };
-      points.push({
+      return {
         label: `${day.getMonth() + 1}/${day.getDate()}`,
         up: Math.round(v.up / MB * 100) / 100,
         down: Math.round(v.down / MB * 100) / 100,
-      });
-    }
+      };
+    });
     return { points, unit: 'MB' };
   }
   // 今日：按小时聚合，24 个点
