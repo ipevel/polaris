@@ -15,7 +15,7 @@ name: Polaris Build
 #   - 重复运行同一标签（releaseTag 相同）会更新既有 Release 的资产与说明，不会失败。
 #   - versionName 必须填本次发布的版本号，且严格大于上一已发布版本：构建前会跑
 #     .scripts/version_gate.py 校验版本号/versionCode/tag 三者自洽，并检查区间内的
-#     feat / 破坏性变更是否递增了对应位（规则见 VERSIONING.md）。门禁不通过即中止，
+#     feat / 破坏性变更是否递增了对应位（规则见 .scripts/version_gate.py 的文档字符串）。
 #     可用 gateMode=warn 降级为告警、gateMode=off 跳过（仅限紧急回滚场景）。
 
 on:
@@ -92,7 +92,7 @@ on:
         description: |
           版本门禁模式。strict=不一致即中止（默认）；warn=只告警；off=跳过。
           门禁内容：版本号合法、tag 与版本号一致、版本号与 versionCode 相对上一版严格递增、
-          区间内有 feat 却只升 PATCH 则拦截。规则见 VERSIONING.md。
+          区间内有 feat 却只升 PATCH 则拦截（规则见 .scripts/version_gate.py 的文档字符串）。
         type: choice
         options:
           - strict
@@ -120,10 +120,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # 版本解析与门禁是所有产物的共同前置：安卓 APK 与 Windows 便携版必须用同一个
+  # versionName / versionCode / tag，而且都必须先过同一道门禁。抽成独立 job 输出，
+  # 下游用 needs 取用——否则同一段逻辑要在两个 runner 上各写一份，日后必然走偏。
+  version:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      versionName: ${{ steps.version.outputs.versionName }}
+      versionCode: ${{ steps.version.outputs.versionCode }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: 检出代码
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -150,8 +157,8 @@ jobs:
           TAG_INPUT: ${{ inputs.releaseTag }}
         run: |
           set -e
-          # versionName / versionCode / tag 的单一来源：后续所有步骤都从 $GITHUB_ENV 读取，
-          # 避免「构建用 A、发布挂 B」的分叉。
+          # versionName / versionCode / tag 的单一来源：安卓构建、Windows 打包、发布
+          # 都从这里取，避免「构建用 A、发布挂 B」的分叉。
           if [ -z "$VERSION_INPUT" ]; then
             echo "::error::versionName 为空，请填写本次发布的版本号（形如 1.5.18）"
             exit 1
@@ -173,11 +180,9 @@ jobs:
             echo "::error::releaseTag '${TAG}' 必须等于 v${VERSION_INPUT}（SemVer 要求 tag 与版本号一一对应）"
             exit 1
           fi
-          {
-            echo "POLARIS_RELEASE_VERSION=${VERSION_INPUT}"
-            echo "POLARIS_RELEASE_CODE=${VC}"
-            echo "POLARIS_RELEASE_TAG=${TAG}"
-          } >> "$GITHUB_ENV"
+          echo "versionName=${VERSION_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "versionCode=${VC}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "版本 ${VERSION_INPUT} / versionCode ${VC} / tag ${TAG}"
 
       - name: 门禁自测
@@ -195,10 +200,10 @@ jobs:
         run: |
           set -e
           python3 .scripts/version_gate.py \
-            --tag "$POLARIS_RELEASE_TAG" \
+            --tag "${{ steps.version.outputs.tag }}" \
             --android-gradle app/build.gradle.kts \
-            --version-name "$POLARIS_RELEASE_VERSION" \
-            --version-code "$POLARIS_RELEASE_CODE" \
+            --version-name "${{ steps.version.outputs.versionName }}" \
+            --version-code "${{ steps.version.outputs.versionCode }}" \
             --check-commits \
             --mode "$GATE_MODE"
 
@@ -211,6 +216,17 @@ jobs:
           python3 .scripts/version_gate.py \
             --audit-history app/build.gradle.kts:POLARIS_VERSION_NAME
 
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # 版本三件套只解析一次（version job），这里原样取用。
+      POLARIS_RELEASE_VERSION: ${{ needs.version.outputs.versionName }}
+      POLARIS_RELEASE_CODE: ${{ needs.version.outputs.versionCode }}
+      POLARIS_RELEASE_TAG: ${{ needs.version.outputs.tag }}
+    steps:
       - name: 安装 JDK 17
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -432,8 +448,69 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # Windows 便携版：与安卓 APK 共用同一个 versionName / tag / Release。
+  # 版本号只从 version job 取，不在这里重新解析，避免两个产物版本号分叉。
+  windows:
+    needs: version
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      POLARIS_RELEASE_VERSION: ${{ needs.version.outputs.versionName }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 便携版只需要 design/windows/app 与根级构建配置。checkout 没有「只取子目录」
+          # 的选项，这里取全量（仓库 .git 约 290MB，可接受）。
+          fetch-depth: 1
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@39370e39f041040c2bc1b81326845a465ff9143 # v5.0.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: design/windows/app/package-lock.json
+
+      - name: 安装依赖
+        working-directory: design/windows/app
+        run: npm ci
+
+      - name: 安装 Python 依赖
+        run: python -m pip install requests
+
+      - name: 拉取内核与 GeoIP 数据
+        working-directory: design/windows/app
+        run: |
+          set -e
+          # mihomo 内核、wintun 与 GeoIP 规则库都不入库（core.lock.json 锁版本），
+          # 每次构建现拉，保证产物里的内核是确定版本。失败即失败，不静默跳过。
+          python scripts/fetch-core.py
+          python scripts/fetch-geo.py
+
+      - name: 对齐版本号
+        working-directory: design/windows/app
+        run: |
+          set -e
+          # 便携版文件名 Polaris-portable-<version>.zip 由 package.json 的 version 决定，
+          # 必须与安卓 APK 的 versionName 逐字一致，否则同一个 Release 里两个产物版本号不同。
+          npm version --no-git-tag-version "$POLARIS_RELEASE_VERSION"
+          node -e "const p=require('./package.json');console.log('便携版版本号：'+p.version)"
+
+      - name: 打包便携版
+        working-directory: design/windows/app
+        run: npm run dist
+
+      - name: 上传产物
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Polaris-portable-${{ inputs.versionName }}
+          path: design/windows/app/dist/Polaris-portable-*.zip
+          if-no-files-found: error
+          retention-days: 90
+
   release:
-    needs: build
+    needs: [build, windows]
     if: inputs.buildType == 'release' && inputs.publishRelease == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -444,6 +521,12 @@ jobs:
         with:
           name: Polaris-${{ inputs.versionName }}
           path: incoming
+
+      - name: 下载便携版产物
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Polaris-portable-${{ inputs.versionName }}
+          path: incoming-win
 
       - name: 整理发布资产
         run: |
@@ -456,6 +539,18 @@ jobs:
           done
           ls -la out
           ls out/*.apk >/dev/null 2>&1 || { echo "::error::未从产物中取到 APK"; exit 1; }
+
+          # 便携版 zip 与 APK 同属一个 Release，摘要必须一起进 SHA256SUMS.txt，
+          # 否则用户校验便携版时无从核对。
+          ZIP=$(find incoming-win -name 'Polaris-portable-*.zip' -print -quit)
+          if [ -z "$ZIP" ]; then
+            echo "::error::未从产物中取到便携版 zip"
+            exit 1
+          fi
+          cp -v "$ZIP" out/
+          (cd out && sha256sum "$(basename "$ZIP")") >> out/SHA256SUMS.txt
+          echo "--- SHA256SUMS.txt ---"
+          cat out/SHA256SUMS.txt
 
       - name: 组装 Release 说明
         env:
@@ -482,6 +577,17 @@ jobs:
               echo ""
               echo '> 见 git log'
             fi
+            echo ""
+            echo "### Windows 便携版"
+            echo ""
+            echo "同一个 Release 里同时提供 Windows 便携版，与安卓 APK 共用版本号。"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| 文件 | \`Polaris-portable-${VERSION}.zip\` |"
+            echo "| 平台 | Windows 10/11 x64，解压即用（不写注册表、不落 %APPDATA%） |"
+            echo ""
+            echo "包内 mihomo 内核与 GeoIP 规则库在构建时按 \`core.lock.json\` 锁定的版本拉取。"
             echo ""
             echo "### 文件校验（SHA-256）"
             echo ""
