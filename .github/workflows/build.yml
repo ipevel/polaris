@@ -462,6 +462,10 @@ jobs:
       contents: read
     env:
       POLARIS_RELEASE_VERSION: ${{ needs.version.outputs.versionName }}
+      # windows-latest 的 Python 3.12 默认 stdout 编码是 cp1252，
+      # 打印中文会 UnicodeEncodeError: 'charmap' codec can't encode characters。
+      # 显式开 UTF-8 模式（fetch-core.py / fetch-geo.py 会打印「core/ 内容：」）。
+      PYTHONUTF8: '1'
     steps:
       - name: 检出代码
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

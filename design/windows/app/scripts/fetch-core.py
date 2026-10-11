@@ -15,6 +15,13 @@ import os
 import shutil
 import subprocess
 import sys
+
+# Windows 上 Python 3.12 的默认 stdout 编码是 cp1252（不是 UTF-8），打印中文会
+# UnicodeEncodeError: 'charmap' codec can't encode characters。本脚本后面要打印
+# 「core/ 内容：」这类中文，不重配就直接崩在最后一步，下载其实早就成功了。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+import sys
 import zipfile
 
 try:

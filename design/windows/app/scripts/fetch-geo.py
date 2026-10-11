@@ -17,6 +17,11 @@ import os
 import shutil
 import sys
 
+# Windows 上 Python 3.12 的默认 stdout 编码是 cp1252（不是 UTF-8），打印中文会
+# UnicodeEncodeError。本脚本后面要打印「已拷贝 geosite.dat」这类中文。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 E = 'E:/'
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.dirname(HERE)
