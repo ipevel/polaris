@@ -466,7 +466,7 @@ jobs:
           fetch-depth: 1
 
       - name: 安装 Node.js
-        uses: actions/setup-node@39370e39f041040c2bc1b81326845a465ff9143 # v5.0.0
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: '20'
           cache: npm
