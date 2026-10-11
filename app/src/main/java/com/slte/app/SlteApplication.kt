@@ -5,6 +5,7 @@ package com.slte.app
 
 import android.app.Application
 import com.github.kr328.clash.common.Global
+import com.slte.app.data.geo.GeoResources
 import com.slte.app.data.local.LocaleStore
 import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.kernel.KernelManager
@@ -61,5 +62,7 @@ class SlteApplication : Application() {
                 }
             }
         }
+        // assets 里没有的（解压失败、被清理工具删掉）按清单从远端补齐，失败不影响启动。
+        GeoResources.syncMissing(this)
     }
 }
