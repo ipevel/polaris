@@ -878,7 +878,10 @@ async function run(win, opts) {
             rawMarks:o.querySelectorAll('.md').length ? /(^|\\s)#{1,6}\\s|\\*\\*|\\|---/.test(md.textContent) : true};})()`);
         check('公告正文渲染出块级标签（标题/列表/表格）', mi.md && mi.blocks > 0, JSON.stringify(mi));
         check('公告正文里没有残留的 Markdown 记号（# 标题 / ** / |---）', mi.rawMarks === false, JSON.stringify(mi));
-        await realClick(win, '.overlay [data-overlay-close]', { label:'关掉公告' });
+        // 面板数据是懒加载的，随时可能来一次重绘把 overlay 整个换掉（弹窗还在，
+        // 但上一次查到的那个 DOM 节点已经不是同一个了）→ 用带重试的点击（E-21）。
+        await clickUntil(win, '.overlay [data-overlay-close]', '!document.querySelector(".overlay")',
+          { tries: 5, timeout: 8000, label:'关掉公告' });
         await sleep(250);
       }
 

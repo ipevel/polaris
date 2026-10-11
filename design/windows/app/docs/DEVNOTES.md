@@ -2049,7 +2049,8 @@ FAIL  所有组都不再 include-all
 | `cmd` 用 `&&` 串多条命令有时整条返回空 | 关键命令分开执行 |
 | `git commit -F -` 在 cmd 里拿不到 stdin | 先把消息写成文件，再 `-F <路径>` |
 | `git rm -r --cached` 之后再 `git rm -r` 会报 pathspec 不匹配 | 索引与工作区两步走，或直接删目录再 `git add -A` |
-| 仓库根 `.gitignore` 忽略 `build/` | `git add -f` |
+| 仓库根 `.gitignore` 忽略 `build/` | `git add -f`（`icon.png` / `portable-readme.txt` 本来就是这样进去的，新增的 `icon.ico` 同样要 `-f`） |
+| 打包时 `icons@1.1.0/icon-tool.js` 报 `Error: WebAssembly.Memory(): could not allocate memory`（`failedTask=build`，`dist/*.zip` 不更新） | 本机可用内存常年只有 3~6 GB，icon-tool 那个 WASM 堆申请不到；`gradlew --stop` 放内存有时够、有时不够。**根治：用 Pillow 把 `build/icon.png` 预生成 `build/icon.ico`（7 个尺寸）并把 `package.json` 的 `win.icon` 指到 `.ico`** —— electron-builder 见到 `.ico` 直接拿来用，不再调 icon-tool |
 | 开发 harness 给每个子进程注入 `HTTP_PROXY=HTTPS_PROXY=http://127.0.0.1:7890`，Electron 主进程的 Node `https` 会照走，代理没开就整层 `ECONNREFUSED` | 用 `_run_clean.ps1` / `_launch_ui.ps1` 启动（`ProcessStartInfo` 里 `EnvironmentVariables.Remove`），详见 E-16 |
 | `.ps1` 里写中文会报奇怪的语法错 | PS 5.1 按 ANSI 读无 BOM 文件，临时脚本保持纯 ASCII |
 | `$psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = ''` 不生效 | 只能 `Remove`，见 E-16 |

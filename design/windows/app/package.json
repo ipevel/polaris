@@ -72,7 +72,7 @@
         }
       ],
       "artifactName": "Polaris-portable-${version}.zip",
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "compression": "maximum"
   }
