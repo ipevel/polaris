@@ -49,7 +49,7 @@ import org.robolectric.annotation.GraphicsMode
  *   是给人看的评审证据；
  * - 这里把**组件级**渲染结果与入库基线逐像素比对，是能拦住回归的门禁。
  *
- * 用法（CI 与 `.scripts/precheck.ps1` 都不接，见仓库 .gitignore 的例外说明）：
+ * 用法（CI 不接，见仓库 .gitignore 的例外说明）：
  * - 比对：`.\gradlew.bat :app:verifyRoborazziDebug`
  * - 界面有意改动后重录：`.\gradlew.bat :app:recordRoborazziDebug`
  * 基线目录：`app/src/test/snapshots/images/`。

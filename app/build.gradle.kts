@@ -10,7 +10,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ktlint)
     // 截图回归基线（组件级）。插件只注册 record/verify/compare 三个显式任务，
-    // 不挂进 assemble / test 的默认任务图，所以 CI 与 .scripts/precheck.ps1 的行为不变。
+    // 不挂进 assemble / test 的默认任务图，所以 CI 的行为不变。
     alias(libs.plugins.roborazzi)
 }
 
@@ -367,7 +367,7 @@ val verifyKernelBinary =
         dependsOn(":kernel-core:verifyNativeLibraries")
     }
 
-// R8 存活校验此前只 register 未接线：CI 与 .scripts/precheck.ps1 里都是显式调用，
+// R8 存活校验此前只 register 未接线：CI 里是显式调用，
 // 于是裸跑 assembleRelease（README 的发布命令、打包机脚本）会绕过它。
 // 挂到 assembleRelease 上后，任何 release 出包都先核对 mapping。
 tasks.matching { it.name == "assembleRelease" }.configureEach {

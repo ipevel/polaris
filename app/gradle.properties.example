@@ -27,7 +27,7 @@ POLARIS_SUBSCRIBE_PATH=/api/v1/client/subscribe
 
 # ---------------- 远程配置（运行时下发，推荐部署）----------------
 # 远程配置源 URL（逗号分隔多个，https）：多源并发竞速、单源失效自动切换；
-# 内容为 JSON，支持多 API 地址自动优选与 Base64 编码混用
+# 内容为 JSON，支持多 API 地址自动优选与 Base64 编码混用（详见 CONFIG.md）
 POLARIS_REMOTE_CONFIG_URLS=
 
 # ---------------- 域名白名单 ----------------

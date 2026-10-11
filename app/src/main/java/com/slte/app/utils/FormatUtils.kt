@@ -56,12 +56,11 @@ object FormatUtils {
     /**
      * 首页速率卡的数值文本（不含单位，单位 `MB/s` 由 UI 单独排版）。
      *
-     * 口径与 Windows 应用逐字对齐（`design/windows/app/src/js/format.js` 的 `F.speed`）：
-     * 字节数 ÷ 1024²，小于 100 保留 1 位小数，100 及以上取整。于是整数部分最多 4 位，
+     * 口径：字节数 ÷ 1024²，小于 100 保留 1 位小数，100 及以上取整。于是整数部分最多 4 位，
      * 现实速率下整串最长 5 个字符（`1024`），速率卡的宽度绰绰有余。
      *
      * 与 [traffic] 的关键区别是**固定以 MB 为单位**，不做 KB/GB 进位。
-     * 代价：51 KB/s 以下一律显示 `0.0`（Windows 端也是这个行为，"统一口径"就得接受它）。
+     * 代价：51 KB/s 以下一律显示 `0.0`。
      */
     fun speedMbps(bytesPerSecond: Long): String {
         val mb = bytesPerSecond.coerceAtLeast(0L).toDouble() / (1024.0 * 1024.0)

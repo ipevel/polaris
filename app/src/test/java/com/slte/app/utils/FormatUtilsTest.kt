@@ -86,10 +86,10 @@ class FormatUtilsTest {
     }
 
     @Test
-    fun `速率按Windows口径固定MB单位`() {
+    fun `速率固定MB单位`() {
         assertEquals("0.0", FormatUtils.speedMbps(0L))
         assertEquals("0.0", FormatUtils.speedMbps(-1L))
-        // 固定 MB 单位的已知代价：51 KB/s 以下四舍五入成 0.0（Windows 端同样如此）
+        // 固定 MB 单位的已知代价：51 KB/s 以下四舍五入成 0.0
         assertEquals("0.0", FormatUtils.speedMbps(52_000L))
         assertEquals("0.1", FormatUtils.speedMbps(52_429L))
         assertEquals("1.0", FormatUtils.speedMbps(1024L * 1024))
