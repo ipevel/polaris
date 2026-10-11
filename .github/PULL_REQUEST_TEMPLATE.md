@@ -65,7 +65,6 @@ Please review the following before submitting your PR.
 - [ ] 相应的文档已更新（如需要）/ Documentation has been updated accordingly (if needed)
 - [ ] 我的变更没有引入新的警告 / My changes introduce no new warnings
 - [ ] 我已确认变更不会破坏现有功能 / I have confirmed that existing functionality is not broken
-- [ ] 我已阅读 [CONTRIBUTING.md](CONTRIBUTING.md) / I have read [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 截图 / Screenshots
 

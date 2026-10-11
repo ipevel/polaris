@@ -5,7 +5,6 @@
 | Bug 反馈 / 功能建议 | [GitHub Issues](https://github.com/ipevel/polaris/issues) |
 | 稳定版下载 | [Releases](https://github.com/ipevel/polaris/releases)（每版附 SHA-256 校验与签名证书指纹） |
 | 安全漏洞 | 走[安全政策](SECURITY.md)的私有渠道，**勿开公开 Issue** |
-| 贡献代码 | 见[贡献指南](CONTRIBUTING.md) |
 | 面板 / 机场账号问题 | 联系你的服务提供方——App 不内置任何面板地址，面板网址由用户自行填写 |
 
 ## 提问前

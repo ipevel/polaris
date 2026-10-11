@@ -37,7 +37,7 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 4. TUN 模式需要管理员权限（设置页里点开关会引导重启为管理员）；仅用系统代理时不需要。
 5. 卸载 = 直接删掉整个目录；`data/` 是唯一会产生写入的地方。
 
-> 包内**不含任何面板地址与账号**，首次启动在登录页填自己的面板网址。源码与开发/打包细节见 `windows-portable` 分支的 `design/windows/app/README.md`、`design/windows/app/docs/DEVNOTES.md`。
+> 包内**不含任何面板地址与账号**，首次启动在登录页填自己的面板网址。源码与开发/打包细节见 `windows-portable` 分支的 `design/windows/app/README.md`。
 
 ## 上游仓库
 
@@ -48,11 +48,11 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
 | Android | 1.10.0 | 29861537 |
-| Windows 便携版 | 1.9.0 | — |
+| Windows 便携版 | 1.10.0 | — |
 
 > 两个平台共用同一版本号与同一个 [Release](https://github.com/ipevel/polaris/releases/latest)（Android 为 `Polaris-<版本>.apk`，Windows 为 `Polaris-portable-<版本>.zip`）。
 
-> 内核：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。版本以 [Releases](https://github.com/ipevel/polaris/releases) 为准；版本号规则、发布流程与自动门禁见 [VERSIONING.md](VERSIONING.md)。
+> 内核：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。版本以 [Releases](https://github.com/ipevel/polaris/releases) 为准。
 
 ## 开发环境
 
@@ -91,30 +91,13 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ./gradlew :app:assembleRelease
 ```
 
-> **推送即出包**：每次推送到 main，CI 会把调试包作为 artifact 上传（Actions → run → Artifacts，保留 7 天）。它是 **debug 签名**，无法覆盖已装的正式版；正式分发走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`，发布前须跑完本地门禁，见 [CONTRIBUTING.md](CONTRIBUTING.md)）。
+> **推送即出包**：每次推送到 main，CI 会把调试包作为 artifact 上传（Actions → run → Artifacts，保留 7 天）。它是 **debug 签名**，无法覆盖已装的正式版；正式分发走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`）。
 
 ### Windows 便携版
 
-源码在 `windows-portable` 分支的 `design/windows/app/`（Electron 工程，与 Android 侧构建互不影响）。两条门禁都在该目录下跑，**都必须真跑**（真面板、真账号、真节点）：
+源码在 `windows-portable` 分支的 `design/windows/app/`（Electron 工程，与 Android 侧构建互不影响）。
 
-```bash
-cd design/windows/app
-
-# 数据层门禁：真面板登录 → 拉订阅 → 起内核 → 经代理访问外网 → 面板业务接口
-node_modules/electron/dist/electron.exe scripts/real-test.js \
-  --panel=<你的面板地址> --email=<测试账号> --password=<口令>
-
-# 界面层门禁：开真窗口真点击走完所有页面（用独立 data 目录，不动日常那份）
-node_modules/electron/dist/electron.exe . --uitest \
-  --panel=<面板地址> --email=<测试账号> --password=<口令> --uitest-data=<临时目录>
-
-# 打包（出 dist/Polaris-portable-<版本>.zip；打包前两条门禁必须全绿）
-node node_modules/electron-builder/cli.js --win --x64
-```
-
-> 跑 Electron 前若环境里设了 `ELECTRON_RUN_AS_NODE`（某些 IDE / agent 会设），必须先清掉，否则 Electron 退化成纯 Node。
 > Windows 端的版本号唯一来源是 `design/windows/app/package.json` 的 `version`，发布时必须与 Android 的 `versionName` 一致（同一个 Release、同一个 tag）。
-> 内核与地理库/规则库已随仓库与成品包分发；仅在升级内核或改内核补丁链时才需要重跑 `scripts/fetch-core.py` / `scripts/fetch-geo.py`。
 
 ## 配置
 
@@ -141,7 +124,7 @@ node node_modules/electron-builder/cli.js --win --x64
 
 > 发版签名走 `POLARIS_RELEASE_STORE_*` 四件套（见[编译](#编译)）。
 
-> **安全白名单**：API 地址与远程配置中的直连域名只允许在白名单内切换（白名单 = `POLARIS_ALLOWED_DOMAINS` + API 地址域名 + 远程配置源域名，构建期自动并入，详见 [CONFIG.md](CONFIG.md)）。仓库内置占位符 `example.com`，部署前请注入你的域名。
+> **安全白名单**：API 地址与远程配置中的直连域名只允许在白名单内切换（白名单 = `POLARIS_ALLOWED_DOMAINS` + API 地址域名 + 远程配置源域名，构建期自动并入）。仓库内置占位符 `example.com`，部署前请注入你的域名。
 >
 > **内核直连兜底**：内核侧补丁链（`kernel-core/src/main/golang/native/config/process.go`）含独立直连域名占位，自持域名需同步，并在修改后重建 `libclash.so`。交叉编译命令以 `kernel-core/src/main/jniLibs/arm64-v8a/VERSION.md` 的构建记录为准，形如
 > `GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=<NDK>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android28-clang.cmd go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
@@ -158,7 +141,7 @@ node node_modules/electron-builder/cli.js --win --x64
 ## 社区
 
 - [安全政策](SECURITY.md)（漏洞请走私渠道报告，勿开公开 Issue）
-- [贡献指南](CONTRIBUTING.md) ｜ [说明规范](docs/writing-guide.md) ｜ [版本策略](VERSIONING.md) ｜ [行为准则](CODE_OF_CONDUCT.md) ｜ [支持与求助](SUPPORT.md)
+- [行为准则](CODE_OF_CONDUCT.md) ｜ [支持与求助](SUPPORT.md)
 
 ## 许可证
 
