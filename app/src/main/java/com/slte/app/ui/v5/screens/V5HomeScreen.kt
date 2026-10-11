@@ -100,10 +100,11 @@ import com.slte.app.utils.FormatUtils
  * - **数值层**：`MainViewModel` 的非对称指数滑动平均压掉秒级采样的毛刺；
  * - **排版层**：等宽字体 + 数值占满剩余宽度并右对齐，压掉位数变化带来的横向位移。
  *
- * 字号定在 [V5Type.sp26]：`MacaronTile` 在 360dp 屏上卡内可用宽 126dp，
- * 扣掉 `/s` 后数值能分到约 114dp；[FormatUtils.speedValue] 最长 7 个字符
- * （`999.9KB`），等宽字体每字符 0.6em → 7 × 26 × 0.6 ≈ 109dp，放得下；
- * 再往上（28sp ≈ 118dp）就会把末位数字顶出卡片，所以上限就是 26sp。
+ * **单位固定 MB/s**（与 Windows 应用同一口径，见 [FormatUtils.speedMbps]），不再做
+ * KB/MB/GB 自动进位——两端读数必须能直接对照，代价是 51 KB/s 以下显示 `0.0`。
+ * 排版用"数值大 + 单位小"：数值 [V5Type.sp26] 等宽、单位 [V5Type.sp12]。
+ * `MacaronTile` 在 360dp 屏上卡内可用宽 126dp，数值最长 5 个字符（`1024`）
+ * → 5 × 26 × 0.6 ≈ 78dp，加单位约 26dp，仍有余量。
  */
 @Composable
 private fun SpeedTile(
@@ -117,7 +118,7 @@ private fun SpeedTile(
     val c = V5ThemeColors.current
     MacaronTile(tone, label, modifier, icon = icon, live = active) {
         if (!active) {
-            // 未连接时不显示 "0B/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
+            // 未连接时不显示 "0.0 MB/s"：容易被读成"已连接但没流量"，用 "--" 明确表达"暂无速率"。
             Text(
                 "--",
                 fontSize = V5Type.sp26,
@@ -127,9 +128,8 @@ private fun SpeedTile(
         } else {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    // FormatUtils.speedValue() 自带 KB/MB/GB 量纲，所以单位行只补 "/s"，
-                    // 拼成 "bps" 会变成 "17.5MB bps"（量纲与文字都错）。
-                    text = FormatUtils.speedValue(bps),
+                    // 数值不带量纲（FormatUtils.speedMbps），单位由右边的小号文本补全。
+                    text = FormatUtils.speedMbps(bps),
                     fontSize = V5Type.sp26,
                     fontWeight = FontWeight.Bold,
                     // 等宽字体：数字等宽，位数变化不产生横向位移（与 V5Type.value 同一字体族）。
@@ -139,13 +139,13 @@ private fun SpeedTile(
                     maxLines = 1,
                     softWrap = false,
                     color = c.text,
-                    // 占满剩余宽度再右对齐：末位数字与 `/s` 钉在同一像素，只有左侧字符增减。
+                    // 占满剩余宽度再右对齐：末位数字与单位钉在同一像素，只有左侧字符增减。
                     // 用 weight 而不是固定槽宽，是为了把卡片能给的宽度全部用上——
                     // 固定槽宽一旦小于实际字宽就会把数字裁掉。
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    text = "/s",
+                    text = "MB/s",
                     fontSize = V5Type.sp12,
                     fontWeight = FontWeight.SemiBold,
                     color = c.text2,

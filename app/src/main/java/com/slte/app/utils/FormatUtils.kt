@@ -53,32 +53,27 @@ object FormatUtils {
         return String.format(Locale.US, "%.2f", v).trimEnd('0').trimEnd('.') + "KB"
     }
 
-    fun speed(bytesPerSecond: Long): String = "${speedValue(bytesPerSecond)}/s"
-
     /**
-     * 首页速率卡的数值文本（不含 `/s`，单位由 UI 单独排版）。
+     * 首页速率卡的数值文本（不含单位，单位 `MB/s` 由 UI 单独排版）。
      *
-     * 和 [traffic] 的唯一区别是**单位提升阈值取 `999.95` 而不是 `1024`**，小数固定 1 位。
-     * 于是整数部分最多 3 位，现实速率（< 1 PB/s）下整串最长 7 个字符（`999.9KB`）。
+     * 口径与 Windows 应用逐字对齐（`design/windows/app/src/js/format.js` 的 `F.speed`）：
+     * 字节数 ÷ 1024²，小于 100 保留 1 位小数，100 及以上取整。于是整数部分最多 4 位，
+     * 现实速率下整串最长 5 个字符（`1024`），速率卡的宽度绰绰有余。
      *
-     * 速率卡把数值和 `/s` 排在同一行，能用的宽度是定死的，字号 × 字符数必须放得下。
-     * 走 [traffic] 的话，`1024KB` 有 8 个字符、`8388608TB` 有 9 个，会被截成错误读数。
+     * 与 [traffic] 的关键区别是**固定以 MB 为单位**，不做 KB/GB 进位。
+     * 代价：51 KB/s 以下一律显示 `0.0`（Windows 端也是这个行为，"统一口径"就得接受它）。
      */
-    fun speedValue(bytesPerSecond: Long): String {
-        if (bytesPerSecond <= 0L) return "0B"
-        if (bytesPerSecond < 1024L) return "${bytesPerSecond}B"
-        val units = arrayOf("KB", "MB", "GB", "TB")
-        var v = bytesPerSecond.toDouble() / 1024.0
-        var i = 0
-        while (v >= UNIT_PROMOTE_AT && i < units.size - 1) {
-            v /= 1024.0
-            i++
+    fun speedMbps(bytesPerSecond: Long): String {
+        val mb = bytesPerSecond.coerceAtLeast(0L).toDouble() / (1024.0 * 1024.0)
+        return if (mb >= MBPS_INTEGER_AT) {
+            String.format(Locale.US, "%.0f", mb)
+        } else {
+            String.format(Locale.US, "%.1f", mb)
         }
-        return String.format(Locale.US, "%.1f", v).trimEnd('0').trimEnd('.') + units[i]
     }
 
-    /** 1 位小数下四舍五入到 1000 的边界；取 999.95 保证提升后整数部分永远 ≤ 3 位。 */
-    private const val UNIT_PROMOTE_AT = 999.95
+    /** 速率取整阈值，对应 Windows 端的 `v >= 100 ? toFixed(0) : toFixed(1)`。 */
+    private const val MBPS_INTEGER_AT = 100.0
 
     /**
      * 连接时长：毫秒 → `H:MM:SS`（不足 1 小时给 `MM:SS`）。

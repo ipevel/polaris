@@ -86,45 +86,31 @@ class FormatUtilsTest {
     }
 
     @Test
-    fun `速率读数保留一位小数且最多七个字符`() {
-        assertEquals("0B", FormatUtils.speedValue(0L))
-        assertEquals("0B", FormatUtils.speedValue(-1L))
-        assertEquals("1B", FormatUtils.speedValue(1L))
-        assertEquals("1023B", FormatUtils.speedValue(1023L))
-        assertEquals("1KB", FormatUtils.speedValue(1024L))
-        assertEquals("48.6KB", FormatUtils.speedValue((48.62 * 1024).toLong()))
-        assertEquals("1.5KB", FormatUtils.speedValue(1536L))
-        // 999.9KB 是提升阈值以下能画出的最长读数
-        assertEquals("999.9KB", FormatUtils.speedValue(1023_897L))
-        // 再往上就进位成 MB，整数部分永远不超过 3 位
-        assertEquals("1MB", FormatUtils.speedValue(1024L * 1024 - 1))
-        assertEquals("1GB", FormatUtils.speedValue(1024L * 1024 * 1024 - 1))
-        assertEquals("1TB", FormatUtils.speedValue(1024L * 1024 * 1024 * 1024 - 1))
-        assertEquals("8388608TB", FormatUtils.speedValue(Long.MAX_VALUE))
+    fun `速率按Windows口径固定MB单位`() {
+        assertEquals("0.0", FormatUtils.speedMbps(0L))
+        assertEquals("0.0", FormatUtils.speedMbps(-1L))
+        // 固定 MB 单位的已知代价：51 KB/s 以下四舍五入成 0.0（Windows 端同样如此）
+        assertEquals("0.0", FormatUtils.speedMbps(52_000L))
+        assertEquals("0.1", FormatUtils.speedMbps(52_429L))
+        assertEquals("1.0", FormatUtils.speedMbps(1024L * 1024))
+        assertEquals("12.4", FormatUtils.speedMbps((12.44 * 1024 * 1024).toLong()))
+        // 100 及以上取整，不再保留小数位
+        assertEquals("99.9", FormatUtils.speedMbps((99.94 * 1024 * 1024).toLong()))
+        assertEquals("100", FormatUtils.speedMbps(100L * 1024 * 1024))
+        assertEquals("1024", FormatUtils.speedMbps(1024L * 1024 * 1024))
     }
 
     @Test
     fun `速率读数不超过速率卡能容纳的字符数`() {
-        // 速率卡按 7 个字符定字号（V5HomeScreen.SpeedTile），超长会把末位数字裁掉。
-        // 只覆盖现实速率（≤ 999 TB/s）；再往上（约 1 PB/s）才会因为 TB 数量级本身变长而超 7 字符。
+        // 速率卡按 5 个字符定字号（V5HomeScreen.SpeedTile 的 26sp 等宽），
+        // 最长形态是四位整数（40960 MB/s = 40 GB/s）。
         val samples =
-            listOf(
-                0L,
-                1L,
-                1023L,
-                1024L,
-                1024L * 1024 - 1,
-                1024L * 1024,
-                1024L * 1024 * 1024 - 1,
-                1024L * 1024 * 1024 * 999,
-                1024L * 1024 * 1024 * 1024 - 1,
-                1024L * 1024 * 1024 * 1024 * 999,
-            ) +
-                (1..40).map { 1024L * it * 37 } +
-                (1..40).map { 1024L * 1024 * it * 53 }
+            listOf(0L, 1L, 52_000L, 1024L, 1024L * 1024) +
+                (1..40).map { 1024L * 1024 * it * 53 } +
+                (1..40).map { 1024L * 1024 * 1024 * it }
         samples.forEach { bytes ->
-            val text = FormatUtils.speedValue(bytes)
-            assertTrue("speedValue($bytes) = $text 超过 7 个字符", text.length <= 7)
+            val text = FormatUtils.speedMbps(bytes)
+            assertTrue("speedMbps($bytes) = $text 超过 5 个字符", text.length <= 5)
         }
     }
 
