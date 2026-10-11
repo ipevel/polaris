@@ -16,6 +16,7 @@ const store = require('./store');
 const paths = require('./paths');
 const core = require('./core/manager');
 const remote = require('./core/remote');
+const release = require('./core/release');
 const updater = require('./core/updater');
 const traffic = require('./core/traffic');
 const panel = require('./panel/client');
@@ -36,16 +37,31 @@ function needAuth() {
  * 版本号比较（只认点分数字，够用了）。a > b 返回 1，相等 0，a < b 返回 -1。
  * 用来把「上次查到的线上最新版」与当前版本比出"该不该亮红点"——
  * 存的是版本号而不是布尔值，用户装完新版本红点会自己消失。
+ * 实现放在 util/format.js，core/release.js 与这里共用同一份。
  */
-function cmpVersion(a, b) {
-  const pa = String(a || '').split('.').map((x) => parseInt(x, 10) || 0);
-  const pb = String(b || '').split('.').map((x) => parseInt(x, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const x = pa[i] || 0;
-    const y = pb[i] || 0;
-    if (x !== y) return x > y ? 1 : -1;
-  }
-  return 0;
+const cmpVersion = fmt.cmpVersion;
+
+/**
+ * 更新信息择优（远程配置 vs GitHub Releases）。
+ * 优先"既说有新版、又给得出下载地址"的那一个；远程配置排在前面，所以它可以覆盖
+ * GitHub 的地址（指向镜像 / 自建 CDN）。两边都没新版就返回一个"没更新"的空壳。
+ * 返回值带上 source —— 注意这里**一定**是新对象，所以调用方不能再用 `u === cfg` 判断来源
+ * （2026-10-11 实测踩到：source 永远算成 github）。
+ */
+function pickUpdateInfo(cfg, gh) {
+  const cands = [{ info: cfg, source: 'remote' }, { info: gh, source: 'github' }].filter((c) => c.info);
+  const withUrl = cands.find((c) => c.info.has_update && c.info.url);
+  const newer = cands.find((c) => c.info.has_update);
+  const chosen = withUrl || newer || cands[0]
+    || { info: { has_update: false, version: '', size: '', notes: '', url: '' }, source: 'remote' };
+  const anyUrl = cands.find((c) => c.info.url);
+  return {
+    info: Object.assign({}, chosen.info, {
+      has_update: !!chosen.info.has_update,
+      url: chosen.info.url || (anyUrl ? anyUrl.info.url : ''),
+    }),
+    source: chosen.source,
+  };
 }
 
 /**
@@ -418,8 +434,9 @@ const commands = {
       const r = await panel.login(email, password, panelInput);
       clearSiteLog();          // 换账号了，别把上一个账号的流量明细端出来
       warmSiteLog();           // 登录后立刻预热站点明细：用户点进流量页时它已经在了
-      await remote.load(true).catch(() => {});
-      core.setDirectDomains(remote.directDomains());
+      // 远程配置**不挡登录**（用户第 14 轮第 6 条）：直连域名与更新源在后台补上。
+      // 它自带 8 秒超时，而这台机器上 raw.githubusercontent.com 是被墙的（D-12 / D-16）。
+      remote.load(true).then(() => core.setDirectDomains(remote.directDomains())).catch(() => {});
       return ok({ email: r.email });
     } catch (e) {
       return fail(friendly(e));
@@ -687,17 +704,30 @@ const commands = {
 
   /* ================= 更新 / 诊断 ================= */
   check_update: async () => {
-    await remote.load(true).catch(() => {});
-    const u = remote.updateInfo();
+    // 两个来源**并发**：远程配置（可选，可以指向镜像）与 GitHub Releases（与安卓端同一套口径）。
+    // 以前只有远程配置，而它的 update_version 一直是空的 —— 红点永远不会亮（第 13 轮发现）。
+    // 并发是为了不让"远程配置那台机器连不上"拖慢"检查更新"（它自己带 8 秒超时）。
+    const cfgP = remote.load(true).catch(() => {}).then(() => remote.updateInfo());
+    const ghP = release.checkLatest(String(store.get('version') || '')).catch((e) => {
+      // GitHub 连不上不该把"检查更新"整个弄失败：留着远程配置的结果，最差就是"没更新"
+      log.warn('release check failed: ' + (e && e.message));
+      return null;
+    });
+    const [cfg, gh] = await Promise.all([cfgP, ghP]);
+    const picked = pickUpdateInfo(cfg, gh);
+    const u = picked.info;
     const st = updater.info();
     // 把"线上最新版"落盘：设置页那个红点要在**重启之后**还在（用户第 13 轮第 2 条），
     // 不能只活在这一次会话的内存里。没更新时写空串，红点随之消失。
     store.patch({
       update_latest: u.has_update ? String(u.version || '') : '',
+      // 地址也要落盘：红点跨重启还在，重启后点「前往下载」时 check_update 的返回值已经没了
+      update_url: u.has_update ? String(u.url || '') : '',
       update_checked_at: Date.now(),
     });
     return {
       has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
+      source: picked.source,
       // 便携版能不能自己装：打包 + 安装目录可写才允许，否则退回「前往下载」
       can_apply: paths.isPackaged && paths.isPortable(),
       apply_blocked: paths.isPackaged && paths.isPortable() ? '' : updater.applyBlockedReason(),
@@ -710,8 +740,8 @@ const commands = {
 
   download_update: async ({ url, version } = {}) => {
     const u = remote.updateInfo();
-    const target = String(url || u.url || store.get('download_url') || '');
-    return updater.download(target, version || u.version);
+    const target = String(url || u.url || store.get('update_url') || store.get('download_url') || '');
+    return updater.download(target, version || u.version || store.get('update_latest') || '');
   },
 
   apply_update: async () => {
@@ -725,7 +755,7 @@ const commands = {
 
   open_download: async () => {
     const u = remote.updateInfo();
-    const url = u.url || store.get('download_url') || '';
+    const url = u.url || store.get('update_url') || store.get('download_url') || '';
     if (!url) return fail('未配置更新地址');
     await shell.openExternal(url);
     return ok({ url });

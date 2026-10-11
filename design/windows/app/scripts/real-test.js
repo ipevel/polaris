@@ -122,6 +122,11 @@ const builder = require('../electron/core/builder');
 
   paths.ensureAll();
   console.log(`data = ${paths.data()}`);
+  // 生产环境里 main.js 会把 package.json 的版本号写进 store（electron/main.js:206），
+  // 而数据层门禁是直接跑 scripts/real-test.js、不经过 main.js —— 不补这一行的话
+  // `store.get('version')` 就是空串，任何"版本号比较"（更新红点、更新检查）都失去意义
+  // （2026-10-11 实测：`release check: latest=1.10.0 current= has_update=true`）。
+  store.set('version', require('../package.json').version);
   const portBefore = store.get('mixed_port');
 
   try {
@@ -1389,6 +1394,133 @@ const builder = require('../electron/core/builder');
       const s3 = await commands.get_settings();
       check('还原后红点状态跟着回去', s3.update_available === (cmp(s3.update_version, s3.version) > 0),
         JSON.stringify({ latest: s3.update_version, avail: s3.update_available }));
+    }
+
+    /* -------- 更新来源：远程配置 + GitHub Releases 双通道（2026-10-11） -------- */
+    section('应用内更新源（远程配置 + GitHub Releases，与安卓端同一套口径）');
+    {
+      const st = require('../electron/store');
+      const release = require('../electron/core/release');
+      const cmpV = require('../electron/util/format').cmpVersion;
+      const DEFAULT_REMOTE = 'https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json';
+
+      check('默认就有远程配置来源（以前没人写这个键，红点永远不会亮）',
+        String(st.get('remote_config_urls') || '') === DEFAULT_REMOTE,
+        String(st.get('remote_config_urls')));
+
+      // 真网查一次线上最新版：这是"发完版用户能不能看到红点"的真实依据
+      let real = null;
+      try { real = await release.checkLatest(String(st.get('version') || '')); } catch (e) {
+        console.log(`  （真网 GitHub 查不到：${e.message} —— 跳过这一组真网断言）`);
+      }
+      if (real) {
+        check('真网查到线上最新版（GitHub Releases API）',
+          /^\d+\.\d+\.\d+$/.test(real.version) && cmpV(real.version, st.get('version')) >= 0,
+          JSON.stringify({ latest: real.version, current: st.get('version') }));
+        check('更新包地址指向 Windows 便携包，不是安卓 APK',
+          /Polaris-portable-.*\.zip$/i.test(String(real.url)), String(real.url));
+        check('线上版本与当前一致时 has_update=false',
+          cmpV(real.version, st.get('version')) !== 0 || real.has_update === false,
+          JSON.stringify({ latest: real.version, has_update: real.has_update }));
+      }
+
+      // 本地假源：把"远程配置"与"GitHub"都换成本机 http，把整条链路（拉取→解析→择优→落盘→红点）走一遍
+      const ghState = { tag: 'v99.9.9' };
+      const srv = http.createServer((req, res) => {
+        const base = `http://127.0.0.1:${srv.address().port}`;
+        const send = (o) => {
+          const b = Buffer.from(JSON.stringify(o));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(b);
+        };
+        const ver = ghState.tag.replace(/^v/, '');
+        if (req.url.startsWith('/repos/')) {
+          send({
+            tag_name: ghState.tag,
+            name: `Polaris ${ver}`,
+            body: '来自 GitHub 的更新说明',
+            html_url: `${base}/release-page`,
+            assets: [
+              { name: `Polaris-${ver}.apk`, size: 1234, browser_download_url: `${base}/fake.apk` },
+              { name: `Polaris-portable-${ver}.zip`, size: 5678, browser_download_url: `${base}/fake-gh.zip` },
+            ],
+          });
+          return;
+        }
+        if (req.url.startsWith('/remote-upd.json')) {
+          send({
+            config_version: 9,
+            update_version: '9.9.9',
+            update_windows_url: `${base}/fake-remote.zip`,
+            update_windows_size: '4321',
+            update_windows_changelog: '远程配置里写的新版本',
+          });
+          return;
+        }
+        if (req.url.startsWith('/remote-ok.json')) { send({ config_version: 1 }); return; }
+        res.writeHead(404); res.end('no');
+      });
+      await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+      const base = `http://127.0.0.1:${srv.address().port}`;
+      const keepBase = st.get('release_api_base');
+      const keepRemote = st.get('remote_config_urls');
+      const keepLatest = st.get('update_latest');
+      const keepUrl = st.get('update_url');
+      try {
+        st.set('release_api_base', base);
+
+        // 1) 远程配置没写更新信息 → 用 GitHub 的结果，并且挑便携包而不是 APK
+        st.set('remote_config_urls', `${base}/remote-ok.json`);
+        const u1 = await commands.check_update();
+        check('GitHub 通道：查到 v99.9.9 有更新（source=github）',
+          u1.has_update === true && u1.version === '99.9.9' && u1.source === 'github',
+          JSON.stringify({
+            has_update: u1.has_update, version: u1.version, source: u1.source,
+            types: [typeof u1.has_update, typeof u1.version, typeof u1.source].join(','),
+          }));
+        check('GitHub 通道：下载地址挑的是便携包 zip（不是安卓 APK）',
+          /fake-gh\.zip$/.test(String(u1.url)), String(u1.url));
+        check('GitHub 通道：更新说明也带回来了', /来自 GitHub/.test(String(u1.notes)),
+          String(u1.notes).slice(0, 40));
+        check('查到更新后红点立刻亮（update_available=true）',
+          (await commands.get_settings()).update_available === true, String(st.get('update_latest')));
+        check('更新包地址也落盘了（重启后点「前往下载」还能用）',
+          /fake-gh\.zip$/.test(String(st.get('update_url'))), String(st.get('update_url')));
+
+        // 2) 线上没有更高版本 → 红点灭（"存版本号不存布尔值"的另一半）
+        ghState.tag = 'v1.0.0';
+        const u2 = await commands.check_update();
+        check('线上没有更高版本时 has_update=false 且红点灭',
+          u2.has_update === false && (await commands.get_settings()).update_available === false,
+          JSON.stringify({ has_update: u2.has_update, latest: st.get('update_latest') }));
+        check('没有更新时落盘的地址也清掉', String(st.get('update_url')) === '', String(st.get('update_url')));
+
+        // 3) 远程配置明确给了 Windows 更新地址 → 以它为准（可以指向镜像 / 自建 CDN）
+        ghState.tag = 'v99.9.9';
+        st.set('remote_config_urls', `${base}/remote-upd.json`);
+        const u3 = await commands.check_update();
+        check('远程配置里有 Windows 更新地址时以它为准（source=remote）',
+          u3.source === 'remote' && /fake-remote\.zip$/.test(String(u3.url)),
+          JSON.stringify({ source: u3.source, url: u3.url }));
+        check('远程配置的更新说明优先展示', /远程配置里写的/.test(String(u3.notes)),
+          String(u3.notes).slice(0, 40));
+
+        // 4) 发布接口连不上时不能把"检查更新"整个弄失败
+        st.set('release_api_base', 'http://127.0.0.1:9');
+        st.set('remote_config_urls', `${base}/remote-ok.json`);
+        const u4 = await commands.check_update();
+        check('发布接口连不上时不抛错，只是"没更新"',
+          !!u4 && u4.has_update === false,
+          JSON.stringify({ has_update: u4 && u4.has_update, version: u4 && u4.version }));
+      } finally {
+        ghState.tag = 'v99.9.9';
+        st.set('release_api_base', keepBase || '');
+        st.set('remote_config_urls', keepRemote || DEFAULT_REMOTE);
+        st.patch({ update_latest: keepLatest || '', update_url: keepUrl || '' });
+        await new Promise((r) => srv.close(r));
+      }
+      check('还原后发布接口基址回到官方 api.github.com',
+        release.apiBase() === release.DEFAULT_API, release.apiBase());
     }
 
     /* ---------------- 收尾 ---------------- */

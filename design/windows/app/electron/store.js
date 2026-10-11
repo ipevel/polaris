@@ -26,6 +26,16 @@ const DEFAULTS = {
   // 当前 version 现算，存版本号而不是布尔值，装完新版本红点自己消失（用户第 13 轮第 2 条）。
   update_latest: '',
   update_checked_at: 0,
+  // 上次查到的更新包地址。**必须落盘**：红点是跨重启的，重启后点「前往下载」/「下载更新」
+  // 时 check_update 的返回值已经不在内存里了，只能从这儿取（否则 GitHub 通道查到的地址会丢）。
+  update_url: '',
+  // —— 更新来源 ——
+  // 远程配置（可选的**覆盖**来源，可以指向镜像 / 自建 CDN）。安卓端在构建期注入同一份地址
+  // （.github/workflows/build.yml 的 REMOTE_CONFIG_URLS）；Windows 端以前没人写这个键，
+  // 于是 remote.load() 永远拿到空配置 —— 红点永远不会亮（2026-10-11 第 13 轮发现）。
+  remote_config_urls: 'https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json',
+  // GitHub Releases 接口基址。空串 = https://api.github.com（与安卓端 AppUpdateChecker 同一套口径）。
+  release_api_base: '',
   // —— 内核 / 网络 ——
   proxy_mode: 'rule',         // rule | global | direct
   sys_proxy: true,            // 连接时是否设置系统代理

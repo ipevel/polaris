@@ -33,4 +33,20 @@ function modeKey(label) {
   return found || label;
 }
 
-module.exports = { bytes, speed, duration, modeLabel, modeKey };
+/**
+ * 版本号比较（只认点分数字，够用了）。a > b 返回 1，相等 0，a < b 返回 -1。
+ * 用来把「线上最新版」与当前版本比出"该不该亮红点" —— 存版本号而不是布尔值，
+ * 用户装完新版本红点会自己消失。
+ */
+function cmpVersion(a, b) {
+  const pa = String(a || '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || '').split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+module.exports = { bytes, speed, duration, modeLabel, modeKey, cmpVersion };

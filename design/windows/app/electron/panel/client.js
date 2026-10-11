@@ -447,12 +447,19 @@ async function login(email, password, panelInput) {
 
   session.token = String(token);
   session.email = String(pick(data, ['email'], email));
-  session.backend = await detectBackend(panelUrl, { force: true });
 
   store.set('panel_url', panelUrl);
   store.set('last_email', session.email);
   persist();
   log.info(`panel login ok: ${panelUrl} as ${session.email}`);
+
+  // 后端识别**不挡登录**（用户第 14 轮第 6 条：先让人进去，其余懒加载）：
+  // 先用缓存/默认值，识别放后台跑，回来自己落 store 与 session。
+  // 以前这里是 `await detectBackend(..., { force: true })`，而它自带 8 秒超时 ——
+  // 面板这个接口慢/超时的时候，用户就要在登录按钮上多等整整 8 秒（实测 19.3s 里 8.0s 是它）。
+  session.backend = store.get('panel_backend') || 'xboard';
+  detectBackend(panelUrl, { force: true }).catch(() => {});
+
   return { email: session.email };
 }
 

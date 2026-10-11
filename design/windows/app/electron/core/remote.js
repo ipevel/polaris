@@ -9,6 +9,7 @@ const http = require('http');
 const { URL } = require('url');
 const log = require('../logger');
 const store = require('../store');
+const fmt = require('../util/format');
 
 let cache = null;
 let lastFetch = 0;
@@ -143,7 +144,8 @@ function updateInfo() {
   ).trim();
   const fallback = String(store.get('download_url') || '').trim();
   return {
-    has_update: !!version && version !== store.get('version'),
+    // 必须比当前版本**新**才算更新（以前只判"不相等"，配置里写了旧版本号也会亮红点）
+    has_update: !!version && fmt.cmpVersion(version, store.get('version')) > 0,
     version: version || store.get('version'),
     size: String(cfg.update_windows_size || cfg.update_size || ''),
     url: winUrl || fallback,
