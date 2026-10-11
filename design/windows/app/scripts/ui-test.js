@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /**
  * 真面板 · 真窗口 · 真鼠标点击 的界面自检。
  *
@@ -79,18 +79,23 @@ async function realClick(win, sel, { nth = 0, label = '' } = {}) {
 }
 
 /**
- * 真的用鼠标拖：按住 fromSel 的中心，分几步移到 toSel 的中心，再松手。
+ * 真的用鼠标拖：按住 fromSel 的中心，分几步移到 toSel 的 yFrac 高度处，再松手。
  * 中途必须**多步移动**——一步到位的 mouseMove 在 Chromium 里只算一次
  * pointermove，界面的拖动逻辑靠"移动过"来判定是否真的在拖。
+ *
+ * yFrac 是落点在目标行里的纵向比例（0.5 = 正中）。界面的落点算法是"光标在哪一行
+ * 的中线之上就插到它前面"，所以**往下挪一格时落点必须越过目标行的中线**，正好落在
+ * 中线上会被 Math.round 的亚像素取整决定成"没挪"或"挪了"，成品包里实测过一轮红一次
+ * 绿一次（行高是分数时 by 偶尔比 mid 小 0.5px）。往下拖要挪就传 0.8。
  */
-async function realDrag(win, fromSel, toSel, { label = '' } = {}) {
+async function realDrag(win, fromSel, toSel, { label = '', yFrac = 0.5 } = {}) {
   const q = (s) => JSON.stringify(s);
   const pt = await ev(win, `(()=>{const a=document.querySelector(${q(fromSel)}),b=document.querySelector(${q(toSel)});
     if(!a||!b) return {ok:false,why:(a?'':'起点没找到 ')+(b?'':'终点没找到')};
     a.scrollIntoView({block:'center',inline:'center'});
     const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect();
     return {ok:true,ax:Math.round(ra.left+ra.width/2),ay:Math.round(ra.top+ra.height/2),
-      bx:Math.round(rb.left+rb.width/2),by:Math.round(rb.top+rb.height/2)};})()`);
+      bx:Math.round(rb.left+rb.width/2),by:Math.round(rb.top+rb.height*${yFrac})};})()`);
   if (!pt || !pt.ok) throw new Error(`拖不动 ${fromSel} → ${toSel} ${label}（${pt && pt.why}）`);
   win.webContents.sendInputEvent({ type: 'mouseMove', x: pt.ax, y: pt.ay });
   win.webContents.sendInputEvent({ type: 'mouseDown', x: pt.ax, y: pt.ay, button: 'left', clickCount: 1 });
@@ -669,9 +674,15 @@ async function run(win, opts) {
     check('原地拖一下不会弹出「指定出口」遮罩', Number(stuck) === 0, `overlay=${stuck}`);
 
     // 真正拖回原位：现在第一行是它自己，原位 = 原来第一行那一行
-    await realDrag(win, `[data-ruleset-grip="${moving}"]`, `[data-ruleset-row="${order0[0]}"]`, { label: `拖回 ${moving}` });
-    await sleep(900);
-    const order2 = await ev(win, orderExpr);
+    // 落点取目标行的 0.8 高度（不是正中）：往下挪一格要越过中线才算挪，
+    // 正好压在中线上会被取整决定成"没挪"（成品包实测过一轮红一次绿一次）
+    let order2 = [];
+    for (let i = 1; i <= 3; i++) {
+      await realDrag(win, `[data-ruleset-grip="${moving}"]`, `[data-ruleset-row="${order0[0]}"]`, { label: `拖回 ${moving}（第 ${i} 次）`, yFrac: 0.8 });
+      await sleep(900);
+      order2 = await ev(win, orderExpr);
+      if (order2[0] === order0[0]) break;
+    }
     check('拖回原位后顺序还原', order2[0] === order0[0], `${order1.slice(0, 3).join(' | ')} → ${order2.slice(0, 3).join(' | ')}`);
     const stuck2 = await ev(win, 'document.querySelectorAll(".overlay").length');
     check('拖回原位之后也没有残留遮罩', Number(stuck2) === 0, `overlay=${stuck2}`);

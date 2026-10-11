@@ -17,7 +17,7 @@ app/
 ├── src/                    # 前端：HTML/CSS/JS（= 设计稿，可直接在浏览器预览）
 │   ├── index.html          # 应用骨架：自绘标题栏 + 侧边栏 + 路由容器
 │   ├── css/design.css      # 设计系统（与 design/windows/css 同源）
-│   ├── js/api.js           # 数据层：window.polaris.invoke；浏览器下自动降级为 mock
+│   ├── js/api.js           # 数据层：window.polaris.invoke（只走真实主进程，没有 mock 降级）
 │   ├── js/views.js         # 16 个页面视图（纯函数）
 │   └── js/app.js           # 路由、状态、事件、自绘标题栏、实时状态订阅
 ├── electron/               # 主进程（后端）
@@ -72,7 +72,7 @@ app/
 # 依赖与内核
 npm install
 npm run core     # 拉 mihomo.exe + wintun.dll 到 core/
-npm run geo      # 规则库到 resources/geo/（优先用同仓库 Android assets）
+npm run geo      # 规则库到 resources/geo/（同仓库有 Android assets 时直接拷，否则从 MetaCubeX 发布页下载）
 
 # 运行（唯一方式：真实模式，需要已登录面板）
 npm start
@@ -95,8 +95,8 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 
 | 方式 | 覆盖 | 不覆盖 |
 | --- | --- | --- |
-| `scripts/real-test.js`（真账号真面板，182 项） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 → 拖动排序 → 本地方案接管 → 三个特殊出口各自真出网 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
-| `scripts/ui-test.js`（`--uitest`，真窗口真鼠标，162 项） | 自己从登录页用真账号登进去，再逐页真点：外壳/登录/首页/连接/节点页/分流页/流量页/我的页/6 个二级页/设置页/断开 | 托盘菜单、多屏 DPI、TUN 下的走查、自定义分流组拖动 |
+| `scripts/real-test.js`（真账号真面板，221 项） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 → 拖动排序 → 本地方案接管 → 三个特殊出口各自真出网 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
+| `scripts/ui-test.js`（`--uitest`，真窗口真鼠标，174 项） | 自己从登录页用真账号登进去，再逐页真点：外壳/登录/首页/连接/节点页/分流页/流量页/我的页/6 个二级页/设置页/断开 | 托盘菜单、多屏 DPI、TUN 下的走查、自定义分流组拖动 |
 | 人工手测 | 界面交互、手感、观感、布局与主题 | — |
 
 > 2026-10-10 起**不再有任何离线自检线与假数据**：原 `scripts/mock-panel.js`（假面板）、

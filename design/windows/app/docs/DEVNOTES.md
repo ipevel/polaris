@@ -229,16 +229,18 @@ A-22（建工单发 `content` 而面板只认 `message`）在假面板上永远�
 ### 产物
 
 ```
-design/windows/app/dist/Polaris-portable-1.10.0.zip   185,993,055 B（≈ 177 MiB）
-sha256 = 136771fb1186d73fcb0e83a2f0867777dd43bb78bd0d4f2eeb23900e899739b8
-（2026-10-11 随安卓 1.10.0 一起发：Windows 端版本号从 1.9.0 跟进到 1.10.0（用户要求两端版号同步），
-  两次构建之间只有 `package.json` / `package-lock.json` 的版本串不同，包体积差 12 字节。
+design/windows/app/dist/Polaris-portable-1.10.0.zip   185,998,452 B（≈ 177 MiB）
+sha256 = 1f795db75832fe89ece66f0cbab7574ea4baf7eaaa2e40853c32ae89b751caad
+（2026-10-11 随安卓 1.10.0 一起发：Windows 端版本号从 1.9.0 跟进到 1.10.0（用户要求两端版号同步）。
+  同一个版本号下打过三次，**最终上传的是这一次**：
+  第一次 185,993,055 B / 136771fb…（只有版本号跟进）、第二次 185,997,861 B / cb1bc5c0…（加了
+  应用内更新源与登录不再被拖住）、第三次 185,998,452 B / 1f795db7…（再加拖动断言的修复）。
   上一版 1.9.0：185,993,043 B /
   sha256 6427af345965b07a7a11a0ac80b40f7f3a20fb27928affa12416421c71887e4e）
 ```
 
 已发布：<https://github.com/ipevel/polaris/releases/tag/v1.10.0>（与安卓的 `Polaris-1.10.0.apk` 同一个 Release，
-Windows 侧源码在 `windows-portable` 分支）。
+Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）。
 
 解压即用：不装运行时、不写注册表、不写 `%APPDATA%`。**成品包实测**（直接跑 `dist/win-unpacked/Polaris.exe`）：
 `Polaris.exe --uitest` → **174 通过 / 0 失败**，日志首行
@@ -256,6 +258,12 @@ Windows 侧源码在 `windows-portable` 分支）。
 3. 有会话时再跑 `--uitest` → 174 / 0。
 
 > 1.10.0 这版复跑了第 1、3 两条，都是 **174 / 0**；第 3 条的日志里有 `panel session restored at boot`。
+
+> 最终包（`1f795db7…`）另外做了**解压即用**验证：解到干净目录 `E:\AI\_pkg110d`（127 个文件、**没有 `data/`**），
+> 第 1 跑（干净 data）**174 / 0**、第 2 跑（复用会话）**174 / 0**，两次 exit=0，日志首行
+> `Polaris 1.10.0 start | packaged=true portable=true`。
+> 前一次构建（`cb1bc5c0…`）在同一位置跑出过 173/1 —— 唯一那条红是 `拖回原位后顺序还原`，
+> 是自检把落点压在中线上导致的取整摇摆（见 E-24），修完两次都是 174/0。
 
 > 跑成品包自检前必须**剥掉 `HTTP_PROXY` / `HTTPS_PROXY`**：本机 harness 会给子进程注入
 > `HTTP_PROXY=http://127.0.0.1:7890`，而新版 Node 的裸 `https.get` 会照走这个环境代理（实测
@@ -2265,6 +2273,25 @@ FAIL  二级页 公告通知 :: 点不到元素 .overlay [data-overlay-close] �
 `store.set('version', require('../package.json').version)`（与 `main.js` 对齐）。
 教训：门禁脚本与真实启动路径的**差异**要主动对齐，尤其是"启动时注入的全局状态"这一类。
 
+**E-24 拖动类断言落在目标行正中心，结果被 `Math.round` 的亚像素决定**
+
+1.10.0 成品包第一跑（干净 data）只有一条红：`拖回原位后顺序还原`，
+但同一份代码的第二次跑（复用会话）就绿了 —— 一个只在"某些输入下"出现的红，
+先当产品 bug 查，读完落点算法才发现是**断言自己站在边界上**：
+
+界面的落点是"光标在哪一行的**中线之上**就插到它前面"
+（`src/js/app.js` 的 `if (y < r.top + r.height / 2) idx = Math.max(0, i - 1)`），
+而自检的 `realDrag` 把落点取成**目标行的正中心** `Math.round(rb.top + rb.height / 2)`。
+往下挪一格时这个点正好压在中线上：行高是分数（57.5 之类）时，取整结果偶尔比
+`mid` 小 0.5px → 判定成"插到自己前面" → `to === from` → 界面按设计不动。
+也就是说这个断言是**掷硬币**，行高/内容一变就翻面。
+
+产品侧没有缺陷（`reorderRuleset` 是标准 splice，`drop-after` 指示线也会照实
+告诉用户"落在这儿等于没动"），修的是自检：`realDrag` 加 `yFrac` 参数，
+**往下拖传 0.8**（明确越过中线），"拖回原位"再套 3 次重试（同 645 行那次一样）。
+教训：凡是"靠坐标驱动的交互断言"，落点要选在**判定区间的内部**，
+不要选在刚好压在判据上的那条线；否则它测的是取整，不是功能。
+
 ### F. 本机环境 / 工具链
 
 | 坑 | 处理 |
@@ -2354,6 +2381,28 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
 > 会照走，代理没开就整层 `ECONNREFUSED`（见 E-16）。现成脚本：
 > `powershell -File E:\AI\_run_clean.ps1 -Exe <electron.exe> -ArgLine '<脚本与参数>' -Out <日志> -WorkDir <app 目录>`
 > （`real-test.js` 用这个），界面自检用 `E:\AI\_launch_ui.ps1`（自带停旧实例、删旧报告、跑完打印 FAIL 行）。
+
+### 分支与发版纪律（用户 2026-10-11 定的规矩）
+
+- 仓库里有两个活分支：`main`（安卓 + 主仓库门面）和 `windows-portable`（**只放 Windows**：
+  根目录只有 `.gitignore / LICENSE / README.md / THIRD-PARTY-NOTICES.md / design/`，
+  145 个文件；`design/windows/app/README.md` 里有 Windows 侧完整说明）。
+- **提交顺序固定为：先在 `windows-portable` 上改 → 跑通三条门禁 → 再同步到 `main`**。
+  同步**只能用路径限定的取件**，绝不整分支合并：
+  ```bash
+  # 在 main 的工作区里
+  git checkout windows-portable -- design/windows
+  git add design/windows && git commit -m "sync(windows): …"
+  ```
+  理由（别再试别的）：`windows-portable` 上有一批"删掉安卓树"的提交
+  （`153e72d` 起），`merge` 会把它们当成删除盖到 `main` 的 `app/ kernel-*/ gradle/` 上。
+- 推 `main` 前如果 push-guard 报 `[push-guard] 已拦截`，在
+  `git rev-parse --git-dir` 指向的目录里建一个空的 `push-guard-off`（钩子自述的放行路径，
+  链接工作区里它解析成 `…/.git/worktrees/<名字>`，不是 `…/.git`）。
+- 发版：版本号与安卓同步走 `version_gate.py`（有 `feat` 就必须升 MINOR）；Windows zip 与
+  APK 放在**同一个 Release**，`gh release upload … --clobber` 覆盖后要用
+  `gh release edit --notes-file` 把 SHA-256 块和附件体积一起更新，别让正文留着旧摘要。
+- 远端现只有三个分支：`main`、`windows-portable`、`android--portable`（用户自己的安卓分支，别碰）。
 
 ---
 
