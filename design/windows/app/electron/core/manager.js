@@ -137,10 +137,11 @@ function prepareConfig(opts = {}) {
 /**
  * 内置分流规则种子：**只补缺失**，绝不覆盖已存在的文件。
  *
- * rule-provider 现在是 type:http + path 指向本目录（rulesets.CACHE_DIR），mihomo 会把
- * 下载到的新版规则**写回同一个文件**（mihomo 的 HTTPVehicle 用 path 当缓存）。如果这里
- * 每次启动都按体积差异重拷，用户联网更新过的规则集会被随包种子反复打回旧版
- * —— 那就等于"在线更新"永远不生效。所以种子只负责"冷启动/断网时也有文件可用"。
+ * rule-provider 现在是 type:file（rulesets.providerConfig），path 指向本目录
+ * （rulesets.CACHE_DIR），内核只读这个文件、没有任何"下载新版本写回这里"的逻辑。
+ * 所以"只补缺失"的理由不再是怕覆盖在线更新，而是简单的事实：文件已经有了就是
+ * 已经有了，重拷一遍只会让 mihomo 的 mtime 判定（time.Since > interval）失真、
+ * 并白白多一次 IO。文件缺失/损坏时内核加载失败，那是真需要补的场景。
  *
  * 必须落在 data/ 内：mihomo 只允许读取 -d 目录（或 SAFE_PATHS）下的规则集文件，
  * 直接引用安装目录会被 IsSafePath 拒掉（path is not subpath of home directory）。
@@ -148,8 +149,9 @@ function prepareConfig(opts = {}) {
 function ensureRuleSeeds() {
   const src = paths.rules();
   const dst = paths.polarisRules();
-  // 旧版本把种子铺在 data/rules/（type:file 时代）。改成 http 之后那个目录没人读了，
-  // 留着只会占 1.5 MB 并让人以为"规则还在这儿"——顺手清掉（只清我们自己建的目录名）。
+  // 旧版本把种子铺在 data/rules/（最早的 type:file 时代用过这个目录名）。
+  // 现在 path 一律指向 data/polaris-rules/，那个目录没人读了，留着只占 1.5 MB
+  // 并让人以为"规则还在这儿"——顺手清掉（只清我们自己建的目录名）。
   const legacy = path.join(paths.data(), 'rules');
   if (legacy !== dst && fs.existsSync(legacy)) {
     try { fs.rmSync(legacy, { recursive: true, force: true }); log.info('已清理旧规则集目录 data/rules'); } catch (_) {}
@@ -824,7 +826,8 @@ async function resetRoutingGroups() {
 
 /**
  * 分流页需要的全部数据：总开关 + 内置表的每一组 + 当前开关 + 运行中内核里的实际出口。
- * 规则集由内核按 type:http 在线更新（24h），随包种子只负责离线可用（见 ensureRuleSeeds）。
+ * 规则集全部是 type:file 的本地种子（见 ensureRuleSeeds），内核不再联网拉规则；
+ * 每 24 小时联网刷新的只有 geosite.dat / geoip.metadb（geosync.js）。
  */
 async function rulesetState() {
   const enabled = new Set(rulesets.normalizeEnabled(store.get('routing_rules')));

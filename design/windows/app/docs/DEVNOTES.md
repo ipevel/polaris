@@ -287,7 +287,7 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 应用代码 | 主进程 5,972 行 JS（`core/` 2,763 + `panel/` 1,146 + `net/` 445 + `util/` 31 + 顶层 1,587），渲染层 2,463 行 JS，样式 485 行 CSS；自检脚本 2,354 行（`real-test.js` 1,327 + `ui-test.js` 1,014） |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
-| 内置分流 | 47 个本地规则集 + 25 个分流组，1.42 MB（`resources/rules/`，随包预播种；运行时由内核按 `type: http` + 24h 在线更新） |
+| 内置分流 | **10 个本地清单 + 25 个分流组**，61 KB（`resources/rules/` 只留 `acl_*`，随包预播种到 `data/polaris-rules/`；**无任何远程 rule-provider**，规则全读内置 `geosite.dat`/`geoip.metadb`） |
 | 自定义分流 | 用户自己写规则的分流组（最多 20 组 / 每组 200 条），**拖动排序**，存 `settings.json` 的 `custom_rulesets` |
 
 ### 测试入口（2026-10-10 起）
@@ -300,6 +300,7 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | `npm run test:updater`（`scripts/updater-self-test.js`） | 21 项 | **自我替换 helper 的纯 Node 自检**：假安装目录 + 假 exe + 拦截 spawn，钉死四个场景 —— 正常路径（文件全换 / 同名旧文件被覆盖 / 新增文件落位 / **`data/` 用户数据原样保留** / 旧 exe 改名 `.old` / 包与 staging 全清 / 重新拉起参数对）、父进程不退（等满 120 秒、退出码 2、**安装目录一个字节没动**）、**staging 里没有 exe**（退出码 2、安装目录未动 —— 这条是 2026-10-12 单元测试当场抓出来的，见 A-50 第 5 节）、启动时清理残留 `.old`。路径故意含中文 |
 | `npm run test:traffic`（`scripts/traffic-view-test.js`） | 17 项 | **流量页视图的纯 Node 自检**（不需要 Electron、不需要网络、不碰面板）：用 `vm` 加载 `format.js` + `views.js`，直接调 `Views.traffic(state)`，数渲染出来的 HTML —— 每天一根柱（零用量日也是 3px 短桩，`<rect>` 根数 = 当月天数）、`<line>` 只有 1 条基线、没有虚线网格、`data-range` 按钮 0 个、悬停读数已删、**合计 = 面板逐日之和（故意造"第 4 天面板没记录"的坑，那天补 0 且不进合计）**、柱宽被限在 44 以内（月初第一天只有一根柱时不能撑爆）、面板没数据时退回本机统计并改写来源、空态文案。见 A-51 |
 | `npm run test:geosync`（`scripts/geosync-test.js`） | 11 项 | **geodata 24 小时自动刷新的纯 Node 自检**（本地 HTTP 服务器 + `POLARIS_GEO_BASE` 覆盖，不碰外网）：`isFresh` 四态（空目录 / 缺标记 / 未过期 / 超过 24 小时 / 文件缺失）、正常刷新三份文件落地 + 写标记、未过期时二次刷新直接返回空且请求数不增加、**sha256 不匹配时挡住该份并原样保留旧文件（另外两份照常更新）**、上游 404 不抛异常也不覆盖。见 A-52 |
+| `npm run test:routing-sync`（`scripts/routing-sync-test.js`） | 逐条 | **两端分流表一致性的纯 Node 自检**：把 JS `TABLE`/`PROVIDERS` 与 Go `routing_table.go` 的表**逐条比对**（组数/顺序/组名/`defaultOn`/`defaultOut`/`providers`/`inlineRules`，provider 键集合与 `url`/`behavior`/`format`/`noResolve`），并断言 `providerConfig` 一律 `type: file` 且不带 `url`/`interval`。`kernel-core/` 不在本 worktree 时打印「跳过不是失败」并 `exit 0`；`POLARIS_GO_TABLE` 可显式指定 Go 源文件。见 A-53 |
 | `set POLARIS_UPDTEST_URL=<zip 地址> && Polaris.exe` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份**（旧写法 `--updtest <zip>` 在成品包上进不去，见 A-50） |
 
 > 已删除（2026-10-10，见上「测试方式」）：`npm test` 253 项、旧的 `--uitest` 110 项（配假面板）、
@@ -317,9 +318,12 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 - 断开后系统代理 4 个注册表值逐项还原到进入前的状态
 - 最大化/还原布局无横向溢出；设置页可滚到底
 - 便携性：删掉 `%APPDATA%\Polaris` 后跑成品，不再重建
-- 内置分流：19 个默认规则集被内核**真正加载**（`/providers/rules` 逐个 `ruleCount > 0`，合计 **56,077 条**），
-  运行中开关分流组能热重载并让内核加载新规则集；面板下发的 `proxy-groups` / `rules` / `rule-providers`
-  在开启本地分流后**一个都不剩**（实测配置里只剩 4 个结构组 + 19 个启用组 + 47 个 `type: http` 的 provider）
+- 内置分流：**规则全本地** —— 配置里只剩 4 个结构组 + 25 个分流组、**10 个 `type: file` 的 provider，一个都不带 `url`**；
+  面板下发的 `proxy-groups` / `rules` / `rule-providers` 在开启本地分流后**一个都不剩**。
+  落点正确性由内核侧 `routing_decision_test`（23 例，含用户点名的抖音/快手/小红书/番茄/两条国内 IP）与
+  `test:routing-sync`（JS 表 vs Go 表逐条一致）双向钉死。
+  （更早的跑法见 §三 A-50 之前各节：当时是 47 个 `type: http` 的 provider、合计 56,077 条规则，
+  规则重心从 RULE-SET 挪到 GEOSITE/GEOIP 之后，「按 rule-provider 数规则条数」这条断言口径本身已失效）
 - 自动更新：下载（含 302）→ 校验 zip → 解压 → 写替换脚本 → 覆盖安装目录 → 重启，全程在成品包的**拷贝**上真跑过一遍；
   点「丢弃更新包」后下载的 zip、解压目录、`staged.json` 一起清掉（不留 186 MB 在磁盘上）
 - （历史，该自检线已删）运行时功能测试（`--rttest`，真界面驱动 + 内核回读）：点界面连接 → `/configs` 的 `mixed-port` 与
@@ -333,10 +337,10 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
   （登录后 `/user/comm/config` 的 `telegram_discuss_link`）、32 个真节点、
   流量页三个区间与账号合计对得上；经活节点访问 `gstatic.com/generate_204` 返回 204；
   跑完真流量后面板明细真的涨了（**站点统计闭环**）；拖动排序真的改了匹配顺序并还原；
-  **本地方案**：配置里面板的组/规则/rule-provider 全被替换掉、只剩 4 个结构组 + 6 个启用组 +
-  16 个 `type: http`（`interval: 86400`、`path` 在 `data/polaris-rules/`、url 指向 jsDelivr）、
-  末条 `MATCH,🐟 漏网之鱼`、`sub-rules` 已删、内核真加载 **56,077 条**规则，
-  且**内核下载到的新版规则不会被随包种子打回旧版**（种子只补缺失）。
+  **本地方案**：配置里面板的组/规则/rule-provider 全被替换掉、只剩 4 个结构组 + 25 个分流组 +
+  10 个 `type: file` 的本地清单（`path` 在 `data/polaris-rules/`、**不带 `url` 与 `interval`**）、
+  末条 `MATCH,🐟 漏网之鱼`、`sub-rules` 已删。远程 rule-provider 全部退场后，「内核下载的新版规则不会被随包种子打回旧版」这条风险**一并消失**。
+  （更早的跑法：16 个 `type: http` + 47 个预播种 yaml，见 §三 A-50 之前各节）
 - **三个特殊出口真的生效**（`real-test.js` 新增段，内核回读 + 真出网）：`自动选择` 在内核里是
   `URLTest`、`故障转移` 是 `Fallback`、`DIRECT` 是 `Direct`；把它们分别切到主组当前出口，内核回读都认；
   经「自动选择」和「故障转移」各访问一次 `generate_204` 都返回 204（`自动选择` 当时挑的是
@@ -390,9 +394,10 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
 | 真实面板联调 | ✅ | `scripts/real-test.js` 拿真账号真面板真节点跑通 **221 项全绿**：登录/复用会话 → 套餐 → 订单 → 工单 → 邀请 → 公告 → Telegram → 今天/本周/本月流量明细（与账号合计交叉验算）→ 拉真订阅（32 节点）→ 连真节点 → 逐组延迟 → 经活节点 204 → 跑真流量后面板明细真的涨了 → 拖动排序生效并还原 → **本地方案接管**（面板组/规则全丢、`type: http` + 24h、种子只补缺失、内核加载 5.6 万条）→ **三个特殊出口各自真出网一次** → **节点顺序按网站下发** → **端口被占/端口保存** → **规则库 24h 到点真的强制刷新**（拨 mtime 实锤）→ **19 个分流组逐组发真请求核对落点** → **其余 32 个命令逐条真调用**（破坏性操作明确跳过）。**过程中修掉 10 个只有真面板/真界面才暴露的问题**（见 A-22、A-29、A-31、A-32、A-34~A-38、D-6、E-9） |
-| 与安卓端同一套分流模型 | ✅ | 面板下发的 `rules` / `proxy-groups` / `rule-providers` 整体丢弃，改用与安卓端**逐字一致**的 25 组本地表（默认开 19 组；第 8 轮按用户要求删掉「📢 Google FCM」与「📢 苹果推送通知」两个会被前置组遮蔽的组，见 A-39/D-11）+ 4 个结构组（`🚀 节点选择` / `自动选择` / `故障转移` / `🐟 漏网之鱼`）+ 14 条内网直连 + 12 条苹果推送内联（并进「🍎 苹果服务」）；`rule-provider` 改成 `type: http` + `interval: 86400` + 随包种子预播种（冷启动断网也能立刻生效）；节点名与保留名冲突时整体降级回面板配置（与安卓端同款兜底） |
+| 与安卓端同一套分流模型 | ✅ | 面板下发的 `rules` / `proxy-groups` / `rule-providers` 整体丢弃，改用与安卓端**逐字一致**的 25 组本地表（默认开 23 组；第 8 轮按用户要求删掉「📢 Google FCM」与「📢 苹果推送通知」两个会被前置组遮蔽的组，见 A-39/D-11；`APPLE_PUSH_RULES` 也已在两端一起删掉）+ 4 个结构组（`🚀 节点选择` / `自动选择` / `故障转移` / `🐟 漏网之鱼`）+ 14 条内网直连 + 12 条苹果推送内联（并进「🍎 苹果服务」）；`rule-provider` 改成 `type: http` + `interval: 86400` + 随包种子预播种（冷启动断网也能立刻生效）；节点名与保留名冲突时整体降级回面板配置（与安卓端同款兜底） |
 | 面板后端自动识别 | ✅ | 照安卓端 `LoginViewModel.detectBackendType`：`/guest/comm/config` 里出现验证码相关字段 → xboard，否则 xiaov2b；结果落 `store.panel_backend` 并回显。两端差异只有礼品卡路径与"流量明细接口只有 xboard 有"两处（见 D-10） |
-| 规则库 24 小时在线更新 | ✅ | 47 个 `rule-provider` 全是 `type: http` + `interval: 86400` + jsDelivr 规则 CDN，缓存落在 `data/polaris-rules/`；把缓存 mtime 拨到 25 小时前再重载，内核**立刻**打 `[Provider] X not updated for a long time, force refresh` 并真的拉回新内容（`updatedAt` 前进、mtime 变现在、规则仍有效、在线版不被打回种子）。计时锚点是文件 mtime，**重启不重置**（见 §二.4） |
+| 分流规则全本地、无远程 provider | ✅ | 配置里 **0 个 `type: http`**、10 个 `type: file`（只 `path`，不带 `url` / `interval`）；规则本体读内置 `geosite.dat`（1541 个分类，`cn` 111,873 条）+ `geoip.metadb`（mmdb 按 `geoip.metadb` 命名能被 `C.Path.MMDB()` 命中）。落点正确性由 `test:routing-sync` + 安卓内核 `routing_decision_test` 钉死。见 A-53。
+| geodata 24 小时自动刷新 | ✅ | `electron/core/geosync.js`：三件套（`geosite.dat` / `geoip.metadb` / `GeoLite2-ASN.mmdb`）按 mtime marker 判 24h 新鲜度，过期才逐份下载 → 校验 sha256 → 原子替换；只写 `resources/geo/`，由 `ensureGeodata()` 在下一次起内核前拷进 `data/`（不碰正在被内核占用的 `data/` 文件）。脚本 `scripts/fetch-geo.py --refresh <dir>` 同策略。计时锚点是 marker 文件 mtime，**重启不重置**。见 A-52。 |
 | 分流落点正确性 | ✅ | 19 个启用组各挑规则集里的真域名真发一次请求，从内核日志核对落点：18 个落自己组，1 个被**同出口**的组先命中（只是归类不同）；**没有任何"该直连却走了代理"的组**。写断言的判据是**出口语义**而不是组名（见 D-11） |
 | TUN 模式实机 | ❌ | 代码路径完整（含 UAC 提权、网卡收尾、残留清理），但会临时接管网络栈，未在真机跑 |
 | 面板活跃会话管理（踢设备） | ❌ | 需要新功能：**两端都没有这个接口**（面板侧也没有），不是「UI 未做」 |
@@ -447,15 +452,18 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 
 数据目录解析：`<exe 同级>/data` → 不可写时回退 `%LOCALAPPDATA%/Polaris` → 开发态 `<app>/.devdata`。
 
-### 4. 分流方案与安卓端同一套模型：屏蔽面板下发，`type: http` + 24h + 随包种子
+### 4. 分流方案与安卓端同一套模型：屏蔽面板下发，规则全本地（`type: file`）
 
 2026-10-10 用户要求「跟 polaris 安卓 app 一样，屏蔽网址下发的，只用本地的策略，策略更新也照安卓端」，
 于是把早期那套「面板规则 + 我的规则插队」的**合并模型**整体换成安卓端
 `kernel-core/.../native/config/routing/` 的**替换模型**：
 
 - **整体替换**：面板给的 `proxy-groups` / `rules` / `rule-providers` 全部丢弃（`sub-rules` 也删掉），
-  用与安卓端**逐字一致**的 25 组本地表（默认开 19 组，第 5 轮按用户截图口径排的顺序：电报消息 / GitHub / 油管视频 /
-  国内直连 / 国外穿墙）+ 4 个结构组 + 14 条内网直连 + 12 条苹果推送内联，末条 `MATCH,🐟 漏网之鱼`。
+  用与安卓端**逐字一致**的 25 组本地表（默认开 23 组，第 5 轮按用户截图口径排的顺序）+ 4 个结构组 + 14 条内网直连，
+  末条 `MATCH,🐟 漏网之鱼`。
+  2026-10-12 起规则重心从 `RULE-SET` 挪到 `GEOSITE`/`GEOIP`，`providers` 只剩 10 个 `acl_*`，且全部 `type: file`
+  （无 `url`、无 `interval`）；`APPLE_PUSH_RULES`（12 条）已删 —— 它被 `🍎 苹果服务` 的 `+.apple.com` 完全遮蔽，
+  安卓侧 `64d5697` 早就删了，这份是陈旧遗留。跨语言一致性由 `npm run test:routing-sync` 逐条比对 Go 表保证（见 A-53）。
   节点本身照旧用面板下发的 `proxies`（只换分流，不换节点）。
 - **结构组**（`🚀 节点选择` select `[自动选择,故障转移,DIRECT]` / `自动选择` url-test /
   `故障转移` fallback / `🐟 漏网之鱼` select `[节点选择,DIRECT]`）都是 `include-all` 语义 ——
@@ -464,15 +472,16 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 - **重名兜底**：面板节点名或 proxy-provider 键撞上保留名（27 表组 + 4 结构组 + 8 个 mihomo 预注册名）
   时，整体**降级回面板配置**并在分流页顶部说明原因 —— 与安卓端 `checkNameCollisions` 同款行为。
   硬来会让 mihomo 直接拒绝加载整份配置（组名重复），用户看到的是"连不上"。
-- **规则数据**：`type: http` + `interval: 86400` + `path: polaris-rules/<key>.yaml`（相对 `-d`），
-  47 个 yaml 进 `extraResources`（`resources/rules/`，1.42 MB）当**预播种缓存**：
-  启动时铺到 `data/polaris-rules/`，但**只补缺失、不覆盖** —— 内核下载过的新版规则不会被随包种子打回旧版。
-  mihomo 的 `Fetcher.Initial()` 先 `os.Stat(vehicle.Path())` 读本地文件、`time.Since(modTime) > interval`
-  才起后台拉取，所以冷启动断网也立刻有规则，联网后按 24 小时自动更新。
+- **规则数据**：`type: file` + `path: polaris-rules/<key>.yaml`（相对 `-d`），**不带 `url`、不带 `interval`**。
+  种子只保留 10 个 `acl_*.yaml`（`resources/rules/`，约 61 KB），启动时铺到 `data/polaris-rules/`、
+  **只补缺失、不覆盖**。没有 `interval` 就没有「内核按 24h 拉远程」这条路径 —— 规则本体来自
+  内置 `geosite.dat` / `geoip.metadb`（由 §二.4 的 geodata 24h 刷新机制更新，见 A-52）。
+  原先那 47 个 yaml 里的 37 个已确认无人引用并删除（38 个在安卓侧），合计省下约 3.5 MB APK 体积。
 - `path` 必须是相对 `-d` 的路径：mihomo 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Path))`，
   只放行 homeDir 下的子路径，写绝对路径或直接指向 `resources/rules/` 一律被拒（见坑 C-7）。
-- 目录名 `polaris-rules` 与安卓端 `providerSubPath` 一致；旧的 `data/rules/`（`type: file` 时代）
-  在启动时顺手清掉，不留 1.5 MB 死文件。
+- 目录名 `polaris-rules` 与安卓端 `providerSubPath` 一致。种子铺到 `data/polaris-rules/`（内核的 `-d` 目录内），
+  2026-10-12 起只剩 10 个 `acl_*.yaml`（约 61 KB）；早先用 `type: file` 直读清单那个年代的 `data/rules/`
+  仍在启动时顺手清掉，不留死文件。
 
 其余语义沿用安卓端：本地规则插在订阅规则**之前**、内网地址始终直连、
 每个启用组一个同名 select 组（首位成员表达默认出口）、`orderedTable` 保证排序不丢组。
@@ -2512,6 +2521,59 @@ FAIL  二级页 公告通知 :: 点不到元素 .overlay [data-overlay-close] �
 | `$psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = ''` 不生效 | 只能 `Remove`，见 E-16 |
 | `Start-Process` 直接报「已添加项。字典中的关键字:"NO_PROXY"所添加的关键字:"no_proxy"」，`Get-ChildItem Env:` 也报同样的错 | 这个 harness 的环境块里有**仅大小写不同的重复键**，PowerShell 拼子进程环境字典时就炸了。别再用 `Start-Process`，改用 `cmd /c "set X=&& …"`（cmd 自己按大小写不敏感清理），或 `[System.Diagnostics.Process]::Start($psi)`（不重建字典） |
 | `$psi.ArgumentList = @('scripts/real-test.js', …)` 后子进程**一个参数都没收到**（Electron 变成跑默认 app、开个窗口挂着不退，命令行里只有 `electron.exe`） | PS 5.1 是 .NET Framework，没有 `ArgumentList` 这个属性；PowerShell 允许往 .NET 对象上挂 NoteProperty，所以**赋值不报错、`Start()` 直接忽略**。必须写 `$psi.Arguments = '…'` 字符串，并且启动后 3 秒用 `Get-CimInstance Win32_Process -Filter "ProcessId=<pid>"` 把子进程命令行打出来自证参数真的进去了 |
+
+## A-53 分流规则全本地：Windows 侧端口、跨语言一致性测试、死种子清理
+
+**2026-10-12** —— 背景是「两端的应用都得改」。前面几轮把 Go 内核与安卓端的 `GeoResources.kt` 都改完了，
+但 **Windows 端的 `electron/core/rulesets.js` 是分流表的第二份真源（JS 镜像）**，一直没动，
+于是 Windows 仍在用 `type: http` 远程 provider —— 同一份改动在两端表现不一样。
+
+### 端口前后的差别
+
+| | 端口前 | 端口后 |
+| --- | --- | --- |
+| `PROVIDERS` | 46 条（19 `gs_*` + 6 `gp_*` + 约 21 `acl_*`），全部带 `url` | **10 条 `acl_*`，全部 `url: ''`** |
+| `TABLE` | 25 组，顺序与 `defaultOn` 都跟 Go 不一致（`gs_*` 驱动） | **25 组，与 Go 逐条一致**（组名/顺序/defaultOn/defaultOut/providers/inlineRules） |
+| 规则本体 | 远程 `RULE-SET` | `GEOSITE,<分类>,{t}` + `GEOIP,CN,{t},no-resolve`（读内置 geodata） |
+| `providerConfig(key)` | 恒返回 `type:'http'` + `url` + `interval` | 只返回 `{type:'file', behavior, format, path}` |
+| 苹果推送 | `APPLE_PUSH_RULES` 13 条内联（陈旧遗留） | **删除**（被 `🍎 苹果服务` 的 `+.apple.com` 遮蔽） |
+
+### 为什么必须补这个测试
+
+JS 表与 Go 表是两份手写镜像，没有任何机制保证它们一致 —— 事实上**漂移了不止一次**
+（Windows 的组顺序、`defaultOn`、`providers` 字段用法全都跟 Go 不同）。
+新增 `scripts/routing-sync-test.js`（`npm run test:routing-sync`）：
+
+- 从 `__dirname` 向上找 `kernel-core/.../routing/routing_table.go`；找不到就打印「跳过不是失败」并 `exit 0`
+  （windows-portable 分支本来就没有 `kernel-core/`）。
+- **支持 `POLARIS_GO_TABLE` 环境变量显式指定 Go 源文件** —— 单平台 worktree 里校验另一分支用的。
+- 解析 Go 的 `Providers` 与 `Table`（按 `
+	{ Name: ` 分块；内联规则用「带引号且含逗号」的
+  启发式捞取，天然保留顺序，因为组名与 provider 键都不含逗号）。
+- 断言：组数 / 顺序 / 组名 / `defaultOn` / `defaultOut` / `providers` / `inlineRules` **逐条相等**，
+  JS 不能多出 Go 没有的组；provider 键集合与 `url` / `behavior` / `format` / `noResolve` 相等；
+  `providerConfig` 必须 `type === 'file'` 且**不带 `url`、不带 `interval`**。
+
+**实测能抓漂移**：`POLARIS_GO_TABLE=E:\...\slte\...\routing_table.go node scripts/routing-sync-test.js`
+→ `[routing-sync] Go 表 25 组 / 10 个 provider / 100 条内联规则` + `PASS — 两端逐条一致`，exit 0。
+故意把 JS 的 `Ⓜ️ 微软云盘` 改成 `Ⓜ️ 微软云盘X` → 报 `· [15] 组名 Go: "Ⓜ️ 微软云盘"`，exit 1；还原后 PASS。
+
+### 顺带清理的死种子
+
+`resources/rules/` 从 47 个删到 10 个（37 个确认无人引用），安卓 `assets/routing/providers/`
+从 48 个删到 10 个（38 个）。判据：`seedRoutingProviders` 是 `assets.list()` 全量复制、
+`allProviderKeys()` 只从 `TABLE` 动态收集 —— **不引用就等于不存在**。两边剩下的都是那 10 个 `acl_*.yaml`。
+⚠️ 删除前必须全仓搜引用（含 `.gitmessage` / 文档），并把「带引号的精确 key」与「子串」区分开 ——
+`acl_steam` 会命中 `acl_steamcn`、`gp_cn` 会命中 `gp_cn.yaml`，都是假阳性。
+
+### 踩到的工具坑
+
+- **PS 5.1 里 `Set-Location` 之后紧跟的多条语句有时没落到新目录**（相对路径解析回 `E:\AI`）→ 一律用绝对路径。
+- Python 过滤导出行时写 `x.strip() != '  PROVIDER_INTERVAL,'` —— `strip()` 把缩进一起去掉，**永远为真**，
+  结果漏删两行导出 → `module.exports` 引用已删常量 → ReferenceError 崩。必须写 `x.strip() != 'PROVIDER_INTERVAL,'`。
+- Go 的 `Provider` 是**位置结构体** `{Key, URL, Behavior, Format, NoResolve}`，解析它的正则要多跳一格
+  （`const [, key, , url, behavior, format, noResolve] = m`）。
+- **PS 5.1 的 `Set-Content -Encoding UTF8` 会写 BOM**，改带中文的文本别用它；用 `io.open(..., newline='')` 保住原行尾。
 
 ---
 

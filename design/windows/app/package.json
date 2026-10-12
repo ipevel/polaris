@@ -13,6 +13,7 @@
     "test:updater": "node scripts/updater-self-test.js",
     "test:traffic": "node scripts/traffic-view-test.js",
     "test:geosync": "node scripts/geosync-test.js",
+    "test:routing-sync": "node scripts/routing-sync-test.js",
     "core": "python scripts/fetch-core.py",
     "geo": "python scripts/fetch-geo.py",
     "pack": "electron-builder --win --x64 --dir",

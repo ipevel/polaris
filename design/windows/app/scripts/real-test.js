@@ -580,20 +580,19 @@ const builder = require('../electron/core/builder');
           JSON.stringify([rulesets.GROUP_SELECTOR, 'DIRECT']),
         JSON.stringify((cfg['proxy-groups'].find((g) => g.name === rulesets.GROUP_FINAL) || {}).proxies));
 
-      // ② rule-provider 全部改成 http + 24h 在线更新，路径落在 data/polaris-rules/
+      // ② rule-provider 全部是本地文件（type:file），路径落在 data/polaris-rules/，
+      //    一条 url / interval 都没有 —— 内核启动与运行期都不联网拉规则。
       const rp = cfg['rule-providers'] || {};
       const rpKeys = Object.keys(rp);
-      console.log(`  rule-provider ${rpKeys.length} 个，全部 type:http？${rpKeys.every((k) => rp[k].type === 'http')}`);
-      check('rule-provider 全部是 type:http（在线更新，不再是随包 file）', rpKeys.length > 0 && rpKeys.every((k) => rp[k].type === 'http'),
+      console.log(`  rule-provider ${rpKeys.length} 个，全部 type:file？${rpKeys.every((k) => rp[k].type === 'file')}`);
+      check('rule-provider 全部是 type:file（本地文件，内核不联网拉规则）', rpKeys.length > 0 && rpKeys.every((k) => rp[k].type === 'file'),
         JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].type])));
-      check('rule-provider 的 interval 都是 86400（24 小时，与安卓端同值）', rpKeys.every((k) => Number(rp[k].interval) === rulesets.PROVIDER_INTERVAL),
-        JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].interval])));
+      check('rule-provider 一个都不带 url / interval（规则数据源无远程地址）',
+        rpKeys.every((k) => !('url' in rp[k]) && !('interval' in rp[k])),
+        JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].url, rp[k].interval])));
       check('rule-provider 的 path 落在 polaris-rules/ 下（内核按 -d 解析）',
         rpKeys.every((k) => String(rp[k].path || '').startsWith(`${rulesets.CACHE_DIR}/`)),
         JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, rp[k].path])));
-      check('rule-provider 的 url 是 jsDelivr 上的 https 规则库',
-        rpKeys.every((k) => /^https:\/\//.test(String(rp[k].url || '')) && String(rp[k].url).includes('jsdelivr')),
-        JSON.stringify(rpKeys.slice(0, 2).map((k) => rp[k].url)));
       check('rule-provider 的键与启用组的规则集一一对应',
         rpKeys.length === (rsState.groups || []).filter((g) => g.enabled).reduce((n, g) => n + g.count, 0),
         `${rpKeys.length} vs ${(rsState.groups || []).filter((g) => g.enabled).reduce((n, g) => n + g.count, 0)}`);
@@ -644,10 +643,22 @@ const builder = require('../electron/core/builder');
       const total = prov ? rpKeys.reduce((n, k) => n + Number((prov[k] || {}).ruleCount || 0), 0) : 0;
       console.log(`  内核已加载规则数合计 ${total}${zero.length ? `（未就绪: ${zero.slice(0, 4).join(',')}）` : ''}`);
       check('内核把每个 rule-provider 都加载了（ruleCount 全 > 0）', zero.length === 0, zero.slice(0, 6).join(','));
-      check('规则总数超过 1 万条（真的是一整套分流表，不是空壳）', total > 10000, String(total));
-      check('rule-provider 是内核在线拉取的（vehicleType=HTTP）',
-        !prov || rpKeys.every((k) => !prov[k] || prov[k].vehicleType === 'HTTP'),
+      // 规则总量的重心已经从 RULE-SET 挪到 GEOSITE/GEOIP（它们不是 rule-provider，
+      // /providers/rules 看不到），所以这里只钉住「本地清单确实加载到了内容」。
+      const totalText = rpKeys.reduce((n, k) => n + ((prov && prov[k]) ? String(prov[k].ruleText || '').split('\n').filter((x) => x.trim()).length : 0), 0);
+      check('本地 ACL4SSR 清单都加载到了非空内容（ruleCount 全 > 0）', zero.length === 0,
+        `${zero.slice(0, 6).join(',')}（ruleText 行数合计 ${totalText}）`);
+      check('rule-provider 是内核从本地文件读的（vehicleType=Local，不是 HTTP）',
+        !prov || rpKeys.every((k) => !prov[k] || prov[k].vehicleType === 'Local'),
         JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
+      check('生成的规则里有 GEOSITE,cn 与 GEOIP,CN（国内覆盖靠它们，不是靠远程清单）',
+        ['GEOSITE,cn,🎯 国内直连', 'GEOIP,CN,🎯 国内直连,no-resolve']
+          .every((r) => (cfg.rules || []).includes(r)),
+        JSON.stringify((cfg.rules || []).filter((r) => /^(GEOSITE,GEOIP)/.test(String(r))).slice(0, 4)));
+      check('生成的规则里有 geolocation-!cn 与兜底 MATCH（国外穿墙 + 漏网之鱼）',
+        (cfg.rules || []).some((r) => String(r).startsWith('GEOSITE,geolocation-!cn,'))
+        && (cfg.rules || []).includes(`MATCH,${rulesets.GROUP_FINAL}`),
+        JSON.stringify((cfg.rules || []).filter((r) => /^GEOSITE,geolocation|^MATCH/.test(String(r))).slice(0, 4)));
     }
 
     /* ---------------- 三个特殊出口（用户第 2 条） ---------------- */
@@ -799,99 +810,59 @@ const builder = require('../electron/core/builder');
       await commands.set_setting({ key: 'mixed_port', value: Number(portBefore) || 0 });
     }
 
-    /* ---------------- 规则库 24 小时自动更新（用户第 1 条） ---------------- */
-    // 用户问「本地规则会不会按设计好的 24 小时更新」。配置里写着 interval=86400 不等于
-    // 内核真的会去拉，这里做两件事：
-    //   ① 把缓存文件 mtime 拨到 25 小时前，再重载配置 —— 内核的 Initial() 见到
-    //      time.Since(mtime) > interval 就会立刻强制刷新（日志有 "not updated for a
-    //      long time, force refresh"），这同时证明了「规则 CDN 真的能连上」；
-    //   ② 刷新成功后 updatedAt 前进、文件 mtime 变成现在 —— 下一个 24 小时从这一刻算，
-    //      不是从进程启动算，所以重启不会打断计时。
-    section('规则库 24 小时自动更新（计时锚点 + 真拉一次）');
+    /* ---------------- 分流规则全本地（用户 2026-10-12：规则必须本地 + 每 24 小时自动更新） ---------------- */
+    // 内核不再联网拉任何 rule-provider：内置规则全是 type:file，只读随包种子。
+    // 真正需要联网更新的只有 geosite.dat / geoip.metadb / ASN.mmdb（geosync.js，
+    // 启动时 + 每 24 小时，校验 sha256 后替换）。这里真跑一次内核，确认：
+    // ① 配置里一条 url / interval 都没有；② 每个 provider 都被加载；
+    // ③ 种子文件都已播种到 data/polaris-rules/；④ geodata 三件套在位且不超 24 小时。
+    section('分流规则全本地（无远程 rule-provider + geodata 24h 新鲜度）');
     {
       const rulesets = require('../electron/core/rulesets');
+      const geosync = require('../electron/core/geosync');
       const yaml2 = require('js-yaml');
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       // 下面要真重载内核配置，先确保内核在跑
       if (!(await commands.get_status()).connected) { await commands.connect(); await sleep(2500); }
-      check('内核在跑（下面要真重载配置、真拉规则）', (await commands.get_status()).connected);
+      check('内核在跑（下面要真读内核里的 provider 状态）', (await commands.get_status()).connected);
       const cacheDir = paths.polarisRules();
       const cfg2 = yaml2.load(nodeFs.readFileSync(paths.file('config.yaml'), 'utf8')) || {};
       const rp = cfg2['rule-providers'] || {};
       const keys2 = Object.keys(rp);
 
-      check('config 里每个 rule-provider 都是 http + 24 小时',
-        keys2.length > 0 && keys2.every((k) => rp[k].type === 'http' && Number(rp[k].interval) === rulesets.PROVIDER_INTERVAL),
-        `${keys2.length} 个，interval=${rulesets.PROVIDER_INTERVAL}`);
-      check('每个 provider 的缓存路径都在 data/polaris-rules/ 里（随包种子就铺在这里）',
+      check('config 里每个 rule-provider 都是 type:file（内核永不联网拉规则）',
+        keys2.length > 0 && keys2.every((k) => rp[k].type === 'file'),
+        `${keys2.length} 个，type=${keys2.map((k) => rp[k].type).join(',')}`);
+      check('rule-provider 一个都不带 url（规则数据源无远程地址）',
+        keys2.every((k) => !('url' in rp[k])),
+        keys2.slice(0, 3).map((k) => rp[k].url).join(' , '));
+      check('rule-provider 一个都不带 interval（type:file 没有刷新概念）',
+        keys2.every((k) => !('interval' in rp[k])),
+        keys2.slice(0, 3).map((k) => rp[k].interval).join(' , '));
+      check('每个 provider 的路径都在 data/polaris-rules/ 里（随包种子就铺在这里）',
         keys2.every((k) => String(rp[k].path || '').startsWith(`${rulesets.CACHE_DIR}/`)),
         keys2.slice(0, 2).map((k) => rp[k].path).join(' , '));
-      check('所有 provider 的 url 都是 https 的规则 CDN',
-        keys2.every((k) => /^https:\/\//.test(String(rp[k].url || ''))),
-        keys2.slice(0, 2).map((k) => rp[k].url).join(' , '));
+      check('种子文件都已播种到 data/polaris-rules/（每个 provider 一个都在）',
+        keys2.every((k) => nodeFs.existsSync(nodePath.join(cacheDir, rulesets.seedFile(k)))),
+        keys2.filter((k) => !nodeFs.existsSync(nodePath.join(cacheDir, rulesets.seedFile(k)))).join(' , ') || '全部就位');
 
-      // 日志读取：只看这一段之后新增的内容
-      const logFile = nodePath.join(paths.logs(), 'polaris.log');
-      const logSize = () => { try { return nodeFs.statSync(logFile).size; } catch (_) { return 0; } };
-      const logFrom = (off) => {
-        try {
-          const st = nodeFs.statSync(logFile);
-          if (st.size <= off) return '';
-          const fd = nodeFs.openSync(logFile, 'r');
-          const buf = Buffer.alloc(st.size - off);
-          nodeFs.readSync(fd, buf, 0, buf.length, off);
-          nodeFs.closeSync(fd);
-          return buf.toString('utf8');
-        } catch (_) { return ''; }
-      };
-      const provNow = async () => {
-        try {
-          const raw = await core.S.controller.get('/providers/rules');
-          return (raw && raw.providers && typeof raw.providers === 'object') ? raw.providers : raw;
-        } catch (_) { return null; }
-      };
-
-      const probeKeys = keys2.slice(0, 3);
-      const old = (Date.now() - 25 * 3600 * 1000) / 1000;
-      const probeFiles = probeKeys.map((k) => nodePath.join(cacheDir, rulesets.seedFile(k)));
-      for (const f of probeFiles) { if (nodeFs.existsSync(f)) nodeFs.utimesSync(f, old, old); }
-      const p0 = await provNow();
-      const at0 = probeKeys.map((k) => String((p0 && p0[k] && p0[k].updatedAt) || ''));
-
-      const mark = logSize();
-      await core.reloadConfig();
-      await sleep(8000);
-      const text = logFrom(mark);
-      const forced = /not updated for a long time, force refresh/.test(text);
-      check('缓存超过 24 小时 → 内核立刻强制刷新（日志为证）', forced,
-        forced ? (text.split('\n').find((l) => l.includes('force refresh')) || '').slice(0, 160)
-          : `日志里没有 force refresh（可能是规则 CDN 连不上）: ${text.split('\n').filter((l) => l.includes('[Provider]')).slice(0, 3).join(' | ').slice(0, 200)}`);
-      const pullErr = text.split('\n').filter((l) => l.includes('[Provider]') && l.includes('pull error'));
-      check('这次强制刷新没有报拉取失败（规则 CDN 可达）', pullErr.length === 0,
-        pullErr.slice(0, 2).map((l) => l.slice(0, 160)).join(' | '));
-
-      const p1 = await provNow();
-      const at1 = probeKeys.map((k) => String((p1 && p1[k] && p1[k].updatedAt) || ''));
-      check('刷新后 updatedAt 前进到最近（说明真的走了一次在线拉取）',
-        probeKeys.every((k, i) => at1[i] && Date.parse(at1[i]) > Date.parse(at0[i] || 0)),
-        `${at0.join(' , ')} → ${at1.join(' , ')}`);
-      check('刷新后缓存文件 mtime 是现在（下一个 24 小时从这一刻起算）',
-        probeFiles.every((f) => nodeFs.existsSync(f) && Date.now() - nodeFs.statSync(f).mtimeMs < 180000),
-        probeFiles.map((f) => (nodeFs.existsSync(f) ? `${nodeFs.statSync(f).mtimeMs.toFixed(0)}` : 'missing')).join(' , '));
-      check('拉回来之后规则集仍然有效（ruleCount > 0）',
-        probeKeys.every((k) => p1 && p1[k] && Number(p1[k].ruleCount) > 0),
-        JSON.stringify(probeKeys.map((k) => [k, p1 && p1[k] && p1[k].ruleCount])));
-
-      // 随包种子只补缺失：内核拉回来的新版不会被我们下次启动覆盖
-      const oneKey = probeKeys[0];
-      const oneFile = nodePath.join(cacheDir, rulesets.seedFile(oneKey));
-      const seedFile = nodePath.join(paths.rules(), rulesets.seedFile(oneKey));
-      if (nodeFs.existsSync(oneFile) && nodeFs.existsSync(seedFile)) {
-        const a = nodeFs.readFileSync(oneFile);
-        const b = nodeFs.readFileSync(seedFile);
-        console.log(`  ${oneKey}: 在线版 ${a.length} 字节 / 随包种子 ${b.length} 字节${a.equals(b) ? '（内容相同）' : '（在线版已覆盖种子）'}`);
-        check('在线拉回来的文件和随包种子都在，且内核用的是缓存目录那份', a.length > 0 && b.length > 0);
-      }
+      let prov = null;
+      try {
+        const rawP = await core.S.controller.get('/providers/rules');
+        prov = (rawP && rawP.providers && typeof rawP.providers === 'object') ? rawP.providers : rawP;
+      } catch (_) { prov = null; }
+      check('内核把每个 rule-provider 都加载了（ruleCount 全 > 0）',
+        !prov || keys2.every((k) => !prov[k] || Number(prov[k].ruleCount) > 0),
+        keys2.filter((k) => prov && prov[k] && Number(prov[k].ruleCount) <= 0).join(','));
+      check('rule-provider 是内核从本地文件读的（vehicleType=Local，不是 HTTP）',
+        !prov || keys2.every((k) => !prov[k] || prov[k].vehicleType === 'Local'),
+        JSON.stringify(keys2.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
+      check('geodata 三件套都已就位（内核的 GEOSITE / GEOIP 规则要读它们）',
+        Object.keys(geosync.FILES).every((f) => nodeFs.existsSync(nodePath.join(paths.geo(), f))),
+        Object.keys(geosync.FILES).map((f) => `${f}:${nodeFs.existsSync(nodePath.join(paths.geo(), f))}`).join(' '));
+      check(`geodata 24 小时同步标记存在（INTERVAL_MS=${geosync.INTERVAL_MS}）`,
+        geosync.isFresh(paths.geo()) || nodeFs.existsSync(nodePath.join(paths.geo(), geosync.MARKER)),
+        `fresh=${geosync.isFresh(paths.geo())}`);
     }
 
     /* ---------------- 分流落点实测（用户第 1 条：分流能不能正确地分） ---------------- */
