@@ -501,7 +501,16 @@ fun MacaronTile(
             Text(label, fontSize = V5Type.sp13, color = c.text2)
             if (live) LiveDot()
         }
-        Box(Modifier.padding(top = V5Spacing.dp6)) { value() }
+        // 值区与上方标签共用同一条左边缘。
+        // 标签行的文字前面有 14dp 图标 + 6dp 间距，值区必须补上同样的缩进，否则读数会挂在图标左边，
+        // 与标签错开一截，看着就是「数字位置不对」。Windows 端的 speed-tile 就是标签与读数上下对齐、
+        // 一起缩在图标右侧，两端观感一致。
+        Box(
+            Modifier.padding(
+                top = V5Spacing.dp6,
+                start = if (icon != null) V5Spacing.dp14 + V5Spacing.dp6 else 0.dp,
+            ),
+        ) { value() }
     }
 }
 

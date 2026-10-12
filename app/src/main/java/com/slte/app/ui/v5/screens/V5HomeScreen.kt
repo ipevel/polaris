@@ -98,7 +98,9 @@ import com.slte.app.utils.FormatUtils
  *
  * 读数稳定性改由另外两层保证，都不涉及逐帧插值：
  * - **数值层**：`MainViewModel` 的非对称指数滑动平均压掉秒级采样的毛刺；
- * - **排版层**：等宽字体 + 数值占满剩余宽度并右对齐，压掉位数变化带来的横向位移。
+ * - **排版层**：等宽字体 + 数值按自身宽度左对齐，紧跟小号单位；再由 `MacaronTile`
+ *   给值区补上与标签相同的缩进，使读数正好落在标签文字的正下方（与 Windows 端一致）。
+ *   不用右对齐——右对齐会把数值推到卡片另一侧，与标签错开一大截。
  *
  * **单位固定 MB/s**（与 Windows 应用同一口径，见 [FormatUtils.speedMbps]），不再做
  * KB/MB/GB 自动进位——两端读数必须能直接对照，代价是 51 KB/s 以下显示 `0.0`。
@@ -135,14 +137,19 @@ private fun SpeedTile(
                     // 等宽字体：数字等宽，位数变化不产生横向位移（与 V5Type.value 同一字体族）。
                     // 无需 fontFeatureSettings = "tnum"：那是 TextStyle 的字段，且等宽字体下数字本来就等宽。
                     fontFamily = FontFamily.Monospace,
-                    textAlign = TextAlign.End,
                     maxLines = 1,
                     softWrap = false,
                     color = c.text,
-                    // 占满剩余宽度再右对齐：末位数字与单位钉在同一像素，只有左侧字符增减。
-                    // 用 weight 而不是固定槽宽，是为了把卡片能给的宽度全部用上——
-                    // 固定槽宽一旦小于实际字宽就会把数字裁掉。
-                    modifier = Modifier.weight(1f),
+                    // 靠 weight 把「数值 + 单位」这一整组顶到卡片内容区左边缘，和上面的标签对齐。
+                    //
+                    // 这里踩过一次坑：早先给数值加 textAlign = End 想让末位数字与单位钉在同一像素，
+                    // 结果数值被推到卡片最右侧，而标签「↓ 下行速率」在最左、中间的「--」也在最左——
+                    // 同一个位置在三种状态下出现在三个地方，一眼看过去就是「数字位置不合理」。
+                    //
+                    // fill = false 是关键：数值按自身内容宽度占位（不把单位挤到卡片右边缘），
+                    // 但上限仍是可用宽度，所以大字号/大字体缩放下不会被裁掉——不能退回固定槽宽，
+                    // 固定槽宽一旦小于实际字宽就会切掉数字。
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 Text(
                     text = "MB/s",
