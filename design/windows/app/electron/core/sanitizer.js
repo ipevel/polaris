@@ -21,6 +21,11 @@ const RESERVED_NAMES = new Set([
 
 const DROPPED_TOP_LEVEL_KEYS = [
   'hosts', 'script', 'scripting', 'web', 'listeners', 'geox-url', 'ntp',
+  // mihomo v1.19 起 `global-client-fingerprint` 已被移除：内核会打一条
+  // error（"The `global-client-fingerprint` configuration is removed, please set
+  // `client-fingerprint` directly on the proxy instead"）然后忽略它。面板还在下发，
+  // 整块丢在这里，日志就不会每次加载配置都刷一条 error。
+  'global-client-fingerprint',
 ];
 
 const NEUTRALIZED_KEYS = [

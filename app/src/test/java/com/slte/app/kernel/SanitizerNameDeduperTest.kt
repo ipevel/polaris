@@ -165,7 +165,7 @@ class SanitizerNameDeduperTest {
     }
 
     @Test
-    fun `flow 风格条目安全跳过而不抛异常`() {
+    fun `flow 风格条目能取出名字并去重`() {
         val src =
             """
             |proxies:
@@ -174,8 +174,58 @@ class SanitizerNameDeduperTest {
             |
             """.trimMargin()
         val (count, out) = dedupe(src)
-        assertEquals(0, count)
-        assertEquals(src.trimMargin(), out)
+        assertEquals(1, count)
+        assertEquals(listOf("A", "A (2)"), proxyNames(out))
+    }
+
+    @Test
+    fun `flow 风格带引号的名字保留引号`() {
+        val src =
+            """
+            |proxies:
+            |  - { name: '香港 01', type: ss, server: 1.2.3.4, port: 8388 }
+            |  - { name: '香港 01', type: ss, server: 5.6.7.8, port: 8388 }
+            |
+            """.trimMargin()
+        val (count, out) = dedupe(src)
+        assertEquals(1, count)
+        assertTrue("单引号应保留", out.contains("name: '香港 01 (2)'"))
+        assertEquals(listOf("香港 01", "香港 01 (2)"), proxyNames(out))
+    }
+
+    @Test
+    fun `flow 风格名字不在首键时也能取出`() {
+        val src =
+            """
+            |proxies:
+            |  - {type: ss, name: B, server: 1.2.3.4, port: 8388}
+            |
+            """.trimMargin()
+        assertEquals(listOf("B"), SanitizerNameDeduper.proxyNames(src))
+    }
+
+    @Test
+    fun `flow 风格的订阅能通过写盘闸门`() {
+        val src =
+            """
+            |proxies:
+            |  - { name: 'US', type: vless, server: a.example, port: 443 }
+            |  - { name: 'JP', type: vless, server: b.example, port: 443 }
+            |
+            """.trimMargin()
+        assertTrue("面板下发的 flow 订阅不该被判成「没有节点」", SubscriptionSanitizer.isKernelLoadable(src))
+    }
+
+    @Test
+    fun `flow 风格重名订阅过不了闸门`() {
+        val src =
+            """
+            |proxies:
+            |  - { name: 'A', type: ss, server: 1.2.3.4, port: 8388 }
+            |  - { name: 'A', type: ss, server: 5.6.7.8, port: 8388 }
+            |
+            """.trimMargin()
+        assertFalse("重名会让内核拒绝加载整份配置", SubscriptionSanitizer.isKernelLoadable(src))
     }
 
     // --- 名字空间冲突 ---

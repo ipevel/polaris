@@ -250,10 +250,13 @@ constructor(
 
     /**
      * 把 APK 内置的分流规则种子（assets/routing/providers）复制到内核的
-     * provider 缓存目录（imported/<uuid>/providers/polaris-rules/，与 Go 侧
-     * patchProviders 改写后的路径一致）。只补缺失文件，不覆盖内核已按
-     * interval 刷新的缓存。失败仅记录日志——provider 缺失时内核会自行联网
-     * 下载，初始下载失败也不阻断配置加载。
+     * provider 目录（imported/<uuid>/providers/polaris-rules/，与 Go 侧
+     * patchProviders 改写后的路径一致）。
+     *
+     * 每次都覆盖：这些清单现在是 `type: file` 的本地 provider，内核只读不写。早先它们是
+     * `type: http` + interval 远程缓存，才需要「只补缺失」以免把内核下载的新版打回旧版；
+     * 规则已全面本地化后这条顾虑不再成立，覆盖写才能让随包修正过的清单立刻生效，
+     * 旧版本残留的用户不必清应用数据。失败仅记录日志。
      */
     private fun seedRoutingProviders(uuid: UUID) {
         runCatching {
@@ -265,7 +268,6 @@ constructor(
             targetDir.mkdirs()
             for (name in names) {
                 val target = targetDir.resolve(name)
-                if (target.exists()) continue
                 context.assets
                     .open("${RoutingStateStore.ASSETS_PROVIDERS_DIR}/$name")
                     .use { input -> target.outputStream().use { output -> input.copyTo(output) } }

@@ -47,9 +47,12 @@ internal object SanitizerRules {
      * 置空，遇到嵌套写法（锚点/多行块）会整条漏过清洗层。
      *
      * `ntp`：订阅可以指定时间服务器做时间源劫持，且内核侧没有对应兜底，只能靠这里丢。
+     *
+     * `global-client-fingerprint`：mihomo 已移除该顶层键（内核打 error 级日志后忽略它），
+     * 面板却还在下发，留着只会每次加载配置都刷一条 error。
      */
     val DROPPED_TOP_LEVEL_KEYS =
-        setOf("hosts", "script", "scripting", "web", "listeners", "geox-url", "ntp", "<<")
+        setOf("hosts", "script", "scripting", "web", "listeners", "geox-url", "ntp", "<<", "global-client-fingerprint")
 
     val FORCED_OFF_TOP_LEVEL_KEYS = setOf("tun")
 

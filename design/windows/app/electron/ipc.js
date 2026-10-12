@@ -125,6 +125,10 @@ function hasSubscribeFile() {
 const SITE_TTL_MS = 5 * 60 * 1000;
 let siteCache = { at: 0, days: [] };
 let siteInflight = null;
+// 最近一次刷新失败的原因（刷新成功即清空）。渲染层拿它显示
+// 「面板流量明细拉取失败：…」，而不是像以前那样悄悄换成「本机统计」——
+// 本机转发量和面板账号用量根本不是一回事，混着显示就是驴唇不对马嘴。
+let siteLastError = null;
 
 function loadSiteLog() {
   try {
@@ -149,11 +153,13 @@ function refreshSiteLog() {
     .then(() => panel.trafficLog())
     .then((days) => {
       siteCache = { at: Date.now(), days: Array.isArray(days) ? days : [] };
+      siteLastError = null;          // 刷新成功，上一次的错误不再作数
       if (siteCache.days.length) saveSiteLog();
       return siteCache.days;
     })
     .catch((e) => {
-      log.warn('site traffic log failed:', e && e.message);
+      siteLastError = (e && e.message) || '面板请求失败';
+      log.warn('site traffic log failed:', siteLastError);
       return siteCache.days;   // 失败保留旧值
     })
     .then((days) => { siteInflight = null; return days; });
@@ -175,6 +181,7 @@ function siteDays() {
 function clearSiteLog() {
   siteCache = { at: 0, days: [] };
   siteInflight = null;
+  siteLastError = null;
   // 换账号了：磁盘上那份是上一个账号的用量，必须一起删掉，否则下次启动会先显示别人的数字
   try { fs.rmSync(paths.file('site-log.json'), { force: true }); } catch (_) {}
 }
@@ -406,6 +413,11 @@ const commands = {
       range: range || 'today',
       site,
       site_log: siteLog,
+      // 面板明细的新鲜度与失败原因：渲染层据此显示「数据截至 HH:MM」或
+      // 「面板流量明细拉取失败：…」，不再把本机统计冒充成面板用量。
+      site_at: siteCache.at,
+      site_stale: !!siteCache.at && Date.now() - siteCache.at >= SITE_TTL_MS,
+      site_error: siteLastError,
       backend,
       account,
       session: { up: session.up, down: session.down, up_text: fmt.bytes(session.up), down_text: fmt.bytes(session.down) },

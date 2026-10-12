@@ -87,14 +87,22 @@
   const Views = {};
 
   /* ---------------- 首页 ---------------- */
-  Views.home = (s) => `
+  Views.home = (s) => {
+    // 没有节点时不能点连接：点了只会弹「还没有节点数据，请先在「节点」页点「刷新订阅」」
+    // （用户日志里连着出现好几次）。直接把按钮禁掉并把原因写在状态行上，比让用户去撞错误更好。
+    const noNodes = !(s.nodes && s.nodes.length);
+    const stText = s.busy ? "连接中…" : noNodes ? "还没有节点" : s.connected ? "已连接" : "未连接";
+    const stHint = !s.busy && noNodes
+      ? '<div class="node-line">先在「节点」页点「刷新订阅」拉取节点</div>'
+      : s.connected ? '<div class="node-line">' + h(s.node || "未选择节点") + (s.latency ? " · " + s.latency + "ms" : "") + "</div>" : "";
+    return `
   <div class="col-narrow">
     <div class="hero">
-      <button class="power-btn${s.busy ? " busy" : ""}" id="power" title="${s.connected ? "断开" : "连接"}"${s.busy ? " disabled" : ""}>
+      <button class="power-btn${s.busy ? " busy" : ""}" id="power" title="${noNodes ? "还没有节点，请先刷新订阅" : s.connected ? "断开" : "连接"}"${s.busy || noNodes ? " disabled" : ""}>
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>
       </button>
-      <div class="status-line">${s.connected ? '<span class="dot"></span>' : ""}<span class="t">${s.busy ? "连接中…" : s.connected ? "已连接" : "未连接"}</span></div>
-      ${s.connected ? '<div class="node-line">' + h(s.node || "未选择节点") + (s.latency ? " · " + s.latency + "ms" : "") + "</div>" : ""}
+      <div class="status-line">${s.connected ? '<span class="dot"></span>' : ""}<span class="t">${stText}</span></div>
+      ${stHint}
     </div>
     <div class="speed-row">
       <div class="speed-tile up"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2.4" stroke-linecap="round"><path d="M12 4v14"/><path d="M6 12l6 6 6-6"/></svg></span><span><div class="lb">下载</div><div class="vl" id="down-speed">${fmt.speed(s.down_speed)}</div></span></div>
@@ -118,6 +126,7 @@
       ${!s.plan.name && s.panelError ? `<div style="font-size:13px;color:var(--orange);margin-top:6px">${h(s.panelError)}</div>` : ""}
     </div>
   </div>`;
+  };
 
   /* ---------------- 节点 ---------------- */
   // 主组里的前几个成员不是节点，而是内核的特殊出口：自动选择（url-test，内核每 300s
@@ -231,22 +240,51 @@
       const locPts = ((s.trafficSeries || {}).points) || [];
       const locByLabel = new Map(locPts.map((p) => [String(p.label), p]));
       const useSite = recByDate.size > 0;      // 面板明细优先
+      // 面板明细的新鲜度 / 失败原因（ipc.js get_traffic 带回来）
+      const tInfo = s.traffic || {};
+      const siteAt = Number(tInfo.site_at) || 0;
+      const siteErr = String(tInfo.site_error || "");
+      const siteStale = !!tInfo.site_stale;
+      const hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+      const authed = !!(s.settings && s.settings.authed);
+      // 面板明细接口存在（xboard）且已登录 → 本机统计**不能**顶替面板数字。
+      // 旧版在这里静默退回本机统计，于是页面是「本机当天 6.03 MB」、标题却是
+      // 「10 月 1 日起 · 共 12 天」，用户看到的就是驴唇不对马嘴（2026-10-12 截图）。
+      const localOk = !(tInfo.site_log !== false && authed);
+      const panelDead = !localOk && !useSite;
       // 1 号到今天逐天建轴，面板没给的那天补 0 —— 少了这天，整根柱子就凭空消失
       const days = [];
       for (let i = 1; i <= dom; i += 1) {
         const rec = recByDate.get(key0(i));
         const loc = locByLabel.get(`${mo + 1}/${i}`);
         const down = useSite ? Number((rec && rec.download) || 0)
-          : Math.round(Number((loc && loc.down) || 0) * 1048576);
+          : (localOk ? Math.round(Number((loc && loc.down) || 0) * 1048576) : 0);
         const up = useSite ? Number((rec && rec.upload) || 0)
-          : Math.round(Number((loc && loc.up) || 0) * 1048576);
+          : (localOk ? Math.round(Number((loc && loc.up) || 0) * 1048576) : 0);
         days.push({ key: key0(i), label: `${mo + 1}/${i}`, down, up, total: down + up });
       }
       const totDown = days.reduce((a, x) => a + x.down, 0);
       const totUp = days.reduce((a, x) => a + x.up, 0);
       const totAll = totDown + totUp;
       const hasAny = totAll > 0;
-      const srcLabel = useSite ? "面板明细" : (locPts.length ? "本机统计" : "");
+      // 来源标签必须带天数：本月只有两天有明细时，「面板明细」看着像加载失败，
+      // 标成「面板明细（2 天）」一眼就知道是数据本身就只有两天，不是程序没取到。
+      const siteFrom = [...recByDate.keys()].sort()[0] || "";
+      const siteTo = [...recByDate.keys()].sort().pop() || "";
+      const srcLabel = useSite ? `面板明细（${recByDate.size} 天）`
+        : (localOk && locPts.length ? "本机统计" : "");
+      // ① 面板失败且连缓存都没有 → 明确报错，不给数字
+      const deadCard = `<div class="card" style="margin-bottom:14px;border-left:3px solid var(--orange)">`
+        + `<div style="font-size:14px;color:var(--text)">面板流量明细拉取失败</div>`
+        + `<div style="font-size:13px;color:var(--text3);margin-top:4px">${h(siteErr || "面板请求超时或网络不通")}</div>`
+        + `<div style="font-size:13px;color:var(--text3);margin-top:4px">本机统计的口径是"本机转发量"，和面板账号用量不是一回事，所以不拿它顶替。稍后重试即可。</div>`
+        + `</div>`;
+      // ② 有缓存但刷新失败 / 已过期 → 照常显示旧数据，但必须标明是什么时候的
+      const notice = (useSite && (siteErr || siteStale))
+        ? `<div class="card" style="margin-bottom:14px;border-left:3px solid var(--orange)">`
+          + `<div style="font-size:13px;color:var(--text2)">${siteErr ? "面板流量明细刷新失败：" + h(siteErr) : "面板流量明细已超过 5 分钟未刷新"}`
+          + `，下面是 ${siteAt ? hhmm(siteAt) : "上次"} 缓存下来的数据。</div></div>`
+        : "";
 
       // —— 柱状图：纯色柱 + 峰值标注 + 零值短桩，不画虚线网格（安卓端 BarsChart 同款）——
       const W = 620, CH = 190, PX0 = 8, PX1 = W - 8;
@@ -272,7 +310,7 @@
       const peakSvg = peak > 0
         ? `<text x="${PX1}" y="${TOP - 9}" text-anchor="end">${h(fmt.bytes(peak))}</text>` : "";
 
-      const chart = hasAny
+      const chart = panelDead ? deadCard : hasAny
         ? `<svg id="traffic-chart" viewBox="0 0 ${W} ${CH}" width="100%" height="${CH}" font-size="11" fill="#aeaeb2">
           ${peakSvg}
           <line x1="${PX0}" y1="${BASE}" x2="${PX1}" y2="${BASE}" stroke="#aeaeb2" stroke-width="1"/>
@@ -288,7 +326,9 @@
         row(h(x.key), `${fmt.bytes(x.down)} ↓　${fmt.bytes(x.up)} ↑`, { chev: false })).join("");
 
       return head("流量", "") + `
+      ${notice}
       <div class="section-label">${mo + 1} 月 1 日起 · 共 ${n} 天${srcLabel ? ` · ${h(srcLabel)}` : ""}</div>
+      ${useSite ? `<div class="section-label" style="margin-top:-8px;color:var(--text3)">面板区间 ${h(siteFrom)} ~ ${h(siteTo)}${siteFrom !== key0(1) ? ` · ${h(key0(1))} 起无明细` : ""}</div>` : ""}
       <div class="card" style="margin-bottom:14px">
         <div class="speed-row" style="margin:0 0 4px">
           <div class="speed-tile dn"><span><div class="lb">下载</div><div class="vl">${h(fmt.bytes(totDown))}</div></span></div>

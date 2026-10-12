@@ -14,8 +14,12 @@ import com.slte.app.utils.sanitizeLog
  * 这里在清洗阶段把重名改成唯一名：首个保留原名，后续按出现顺序追加 ` (2)`、` (3)`…；
  * 策略组与规则里的引用不动 —— 它们本来就只能绑定首个同名节点，改名后语义不变。
  *
- * 覆盖范围：顶层 `proxies:` 的块状条目。flow 写法（`- {name: x, …}`）与
- * `proxy-providers` 内联 payload 不在范围内（前者极罕见；后者内核按切片保存、不校验重名）。
+ * 覆盖范围：顶层 `proxies:` 的两种书写形式 —— 块状（`- name: x`）与 flow 映射
+ * （`- {name: x, …}`）。flow 形式是面板下发订阅的默认写法，早先只认块状会让整段被当成
+ * "没有节点"，写盘前的闸门因此永远判不通过，日志里表现为「订阅存在重名等致命问题，
+ * 拒绝写入」反复出现、节点与流量永远不刷新。
+ *
+ * `proxy-providers` 内联 payload 不在范围内（内核按切片保存、不校验重名）。
  */
 internal object SanitizerNameDeduper {
 
@@ -27,6 +31,13 @@ internal object SanitizerNameDeduper {
 
     /** `- name:` 形式的条目起始（值可能是引号包起来的，这里只看键） */
     private val ITEM_NAME_KEY = Regex("^-\\s*name\\s*:")
+
+    /**
+     * flow 映射里的 `name` 键（`{ name: …` 或 `, name: …`）。
+     *
+     * 只认紧跟 `{` 或 `,` 的 `name:`，避免把值里出现的 "name:" 当成键。
+     */
+    private val FLOW_NAME_KEY = Regex("[{,]\\s*name\\s*:\\s*")
 
     /** 未加引号的值以「空白 + #」结束，之后是注释 */
     private val COMMENT_START = Regex("\\s#")
@@ -171,9 +182,12 @@ internal object SanitizerNameDeduper {
     ): ItemSpan? {
         if (SanitizerYamlLines.leadingIndent(line) != itemIndent) return null
         val trimmed = line.trimStart()
+        // flow 写法（面板订阅的默认形式）：名字在 `{` 之后的映射里，没有独立的 name 行
+        if (SanitizerRules.LIST_ITEM.containsMatchIn(trimmed) && trimmed.contains('{')) {
+            return flowNameSpan(line, lineIndex)
+        }
         if (!ITEM_NAME_KEY.containsMatchIn(trimmed)) return null
-        // flow 写法没有独立的 name 行，跳过（不破坏原文）
-        if (trimmed.contains('{') || trimmed.contains('[')) return null
+        if (trimmed.contains('[')) return null
 
         val colon = SanitizerYamlLines.unquotedColonIndex(line)
         if (colon <= 0) return null
@@ -194,6 +208,36 @@ internal object SanitizerNameDeduper {
             if (value.isBlank()) return null
             ItemSpan(lineIndex, start, start + value.length, value, null)
         }
+    }
+
+    /**
+     * flow 写法条目（`- {name: x, type: …}`）里的名字区间。
+     *
+     * 值的终止位置随块状写法不同：带引号时取引号的闭合位置，不带引号时取下一个顶层
+     * `,` 或 `}`。整条订阅都是单行的 flow 映射，不存在跨行的情况。
+     */
+    private fun flowNameSpan(
+        line: String,
+        lineIndex: Int,
+    ): ItemSpan? {
+        val brace = line.indexOf('{')
+        if (brace < 0) return null
+        val key = FLOW_NAME_KEY.find(line, brace) ?: return null
+        val start = key.range.last + 1
+        if (start >= line.length) return null
+
+        val rest = line.substring(start)
+        val quote = rest.first().takeIf { it == '"' || it == '\'' }
+        if (quote != null) {
+            val close = findClosingQuote(rest, quote) ?: return null
+            val value = SanitizerYamlLines.unwrapQuotes(rest.substring(0, close + 1))
+            if (value.isBlank()) return null
+            return ItemSpan(lineIndex, start, start + close + 1, value, quote)
+        }
+        val stop = rest.indexOfFirst { it == ',' || it == '}' }
+        val value = rest.substring(0, if (stop < 0) rest.length else stop).trimEnd()
+        if (value.isBlank()) return null
+        return ItemSpan(lineIndex, start, start + value.length, value, null)
     }
 
     private fun findClosingQuote(

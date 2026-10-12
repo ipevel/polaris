@@ -135,13 +135,14 @@ function prepareConfig(opts = {}) {
 }
 
 /**
- * 内置分流规则种子：**只补缺失**，绝不覆盖已存在的文件。
+ * 内置分流规则种子：**每次启动都覆盖**。
  *
  * rule-provider 现在是 type:file（rulesets.providerConfig），path 指向本目录
  * （rulesets.CACHE_DIR），内核只读这个文件、没有任何"下载新版本写回这里"的逻辑。
- * 所以"只补缺失"的理由不再是怕覆盖在线更新，而是简单的事实：文件已经有了就是
- * 已经有了，重拷一遍只会让 mihomo 的 mtime 判定（time.Since > interval）失真、
- * 并白白多一次 IO。文件缺失/损坏时内核加载失败，那是真需要补的场景。
+ * 覆盖写是安全的，而且必须覆盖：内核只读这个文件、没有任何"下载新版本写回这里"的
+ * 逻辑（早先的"只补缺失"理由已经不成立）。随包修正过的清单（例如删掉 mihomo 不认识的
+ * URL-REGEX 行）只有覆盖才能立刻生效，否则旧版本残留的用户要重装才能拿到修正。
+ * 只有大小不同才计入 copied，日志里能看出这次启动到底改了几个文件。
  *
  * 必须落在 data/ 内：mihomo 只允许读取 -d 目录（或 SAFE_PATHS）下的规则集文件，
  * 直接引用安装目录会被 IsSafePath 拒掉（path is not subpath of home directory）。
@@ -169,19 +170,22 @@ function ensureRuleSeeds() {
     const name = rulesets.seedFile(f);
     const from = path.join(src, name);
     const to = path.join(dst, name);
-    if (fs.existsSync(to)) continue;          // 已有（可能是内核下载的新版）→ 不动
     if (!fs.existsSync(from)) {
       log.warn(`规则集种子缺失: ${name}`);
       continue;
     }
     try {
+      // 每次启动都覆盖。早先这里是「只补缺失」，理由是怕打回内核按 interval 下载的新版；
+      // 规则全面本地化（type:file）之后内核只读不写，这条顾虑已经不存在了。
+      // 覆盖写才能让随包修正过的清单立刻生效，旧版本残留的用户不必重装。
+      // 10 个清单合计约 300 KB，每次启动多一次 IO 可以忽略。
+      if (!fs.existsSync(to) || fs.statSync(to).size !== fs.statSync(from).size) copied += 1;
       fs.copyFileSync(from, to);
-      copied += 1;
     } catch (e) {
       log.warn(`拷贝规则集 ${name} 失败:`, e && e.message);
     }
   }
-  if (copied) log.info(`内置分流规则种子已预播种（${copied} 个文件）`);
+  if (copied) log.info(`内置分流规则种子已更新（${copied} 个文件）`);
   return true;
 }
 
@@ -307,7 +311,10 @@ async function startKernel() {
       S.phase = 'idle';
       S.proc = null;
       S.controller = null;
-      sysproxy.disable(S.proxySnapshot);
+      // 只有真的改过系统代理才还原。disconnect() 已经还原并把快照清成 null，
+      // 内核退出时再调一次就会打一条「no snapshot to restore」的假 WARN
+      // （用户日志里每次内核重启都出现，看着像故障，其实只是重复调用）。
+      if (S.proxySnapshot) sysproxy.disable(S.proxySnapshot);
       S.proxySnapshot = null;
       emit();
     }
@@ -331,7 +338,7 @@ async function startKernel() {
   // 扫一遍启动日志：mixed 监听 bind 失败就当启动失败，别让用户对着"已连接"空等。
   if (/Start Mixed\(http\+socks\) server error/i.test(ring.join(''))) {
     try { proc.kill(); } catch (_) {}
-    try { sysproxy.disable(S.proxySnapshot); } catch (_) {}
+    try { if (S.proxySnapshot) sysproxy.disable(S.proxySnapshot); } catch (_) {}
     S.proxySnapshot = null;
     S.proc = null;
     S.controller = null;
