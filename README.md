@@ -47,8 +47,8 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.11.1 | 29863040 |
-| Windows 便携版 | 1.11.0 | — |
+| Android | 1.11.2 | 29863525 |
+| Windows 便携版 | 1.11.2 | — |
 
 > 两个平台共用同一版本号与同一个 [Release](https://github.com/ipevel/polaris/releases/latest)（Android 为 `Polaris-<版本>.apk`，Windows 为 `Polaris-portable-<版本>.zip`）。
 
