@@ -12,10 +12,12 @@
 实测 19 秒，且没网就直接起不来。
 """
 
+import hashlib
 import io
 import os
 import shutil
 import sys
+import time
 
 # Windows 上 Python 3.12 的默认 stdout 编码是 cp1252（不是 UTF-8），打印中文会
 # UnicodeEncodeError。本脚本后面要打印「已拷贝 geosite.dat」这类中文。
@@ -116,9 +118,94 @@ def remote_copy(missing):
         print('  saved %-16s (%d bytes)' % (f, os.path.getsize(os.path.join(GEO, f))))
 
 
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def refresh(geo_dir):
+    """按 24 小时周期刷新运行期规则库（data/geo/）。
+
+    与安卓端 `GeoResources.sync()` 同一套策略：三份文件随包内置、内核只读本地，
+    这里只负责让本地这份跟上上游；距上次成功更新不足 24 小时就一个请求都不发。
+
+    失败只打印，不删旧文件——旧规则能正常分流，坏文件才会让内核起不来。
+    """
+    os.makedirs(geo_dir, exist_ok=True)
+    marker = os.path.join(geo_dir, 'geo_last_sync')
+    if os.path.exists(marker):
+        age = time.time() - os.path.getmtime(marker)
+        if age < 24 * 3600:
+            print('geo 规则库 %.1f 小时前刚更新过，跳过。' % (age / 3600))
+            return
+
+    try:
+        import requests
+    except ImportError:
+        print('缺少 requests，跳过 geo 刷新。')
+        return
+    proxy = None
+    if os.environ.get('HTTPS_PROXY'):
+        proxy = {'https': os.environ['HTTPS_PROXY'], 'http': os.environ.get('HTTP_PROXY', os.environ['HTTPS_PROXY'])}
+
+    updated = []
+    for name in FILES:
+        url = REMOTE.get(name)
+        if not url:
+            continue
+        tmp = os.path.join(geo_dir, name + '.part')
+        try:
+            print('  fetch %s' % url)
+            r = requests.get(url, proxies=proxy, timeout=300, stream=True)
+            r.raise_for_status()
+            with open(tmp, 'wb') as fh:
+                for chunk in r.iter_content(1 << 20):
+                    fh.write(chunk)
+            if os.path.getsize(tmp) <= 0:
+                raise RuntimeError('下载到 0 字节')
+
+            # 上游为每个资产发布 <name>.sha256sum；校验不过绝不覆盖旧文件。
+            try:
+                sr = requests.get(url + '.sha256sum', proxies=proxy, timeout=60)
+                sr.raise_for_status()
+                expected = sr.text.strip().split()[0]
+            except Exception:
+                expected = None
+            if expected:
+                actual = sha256_of(tmp)
+                if actual.lower() != expected.lower():
+                    raise RuntimeError('sha256 不匹配：期望 %s，实际 %s' % (expected, actual))
+
+            os.replace(tmp, os.path.join(geo_dir, name))
+            updated.append(name)
+            print('  saved %-16s (%d bytes)' % (name, os.path.getsize(os.path.join(geo_dir, name))))
+        except Exception as e:
+            print('  失败 %s: %s' % (name, e))
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+
+    if updated:
+        with open(marker, 'w') as fh:
+            fh.write(str(int(time.time())))
+        print('geo 规则库已更新：%s' % ', '.join(updated))
+    else:
+        print('geo 规则库本次没有更新成功，继续使用本地这份。')
+
+
 def main():
     if '--with-mrs' in sys.argv:
         fetch_mrs()
+        return
+    if '--refresh' in sys.argv:
+        i = sys.argv.index('--refresh')
+        target = sys.argv[i + 1] if len(sys.argv) > i + 1 else GEO
+        refresh(os.path.abspath(target))
         return
     os.makedirs(GEO, exist_ok=True)
     print('目标目录:', GEO)

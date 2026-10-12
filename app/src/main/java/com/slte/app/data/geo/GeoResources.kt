@@ -8,6 +8,7 @@ import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,13 +24,22 @@ data class GeoResource(
  *
  * 三份 geodata 已经随 APK 分发（`app/src/main/assets/`），打包脚本
  * `design/windows/app/scripts/fetch-geo.py` 也用同一份清单，两端不会漂移。
- * 清单在这里还承担第二个职责：某份文件缺失或损坏时（解压失败、被清理工具删掉、
- * 换机迁移丢文件）能按地址补齐，不必等发版。
  *
- * 体积合计约 24 MB，所以只在「本地没有」时才下载，绝不每次启动都拉一遍。
+ * 更新策略（用户 2026-10-12 要求）：规则必须内置本地、不依赖远程规则源，
+ * 但本地这份要能跟上上游。所以：
+ * - 三份文件随包内置，内核只读本地，**启动与连接都不需要网络**；
+ * - 每次打开 App 检查一次时间戳，距上次成功更新超过 [REFRESH_INTERVAL_MS]
+ *   才拉一遍（约 24 MB，不能每次启动都拉）；
+ * - 拉取带 SHA-256 校验，校验不过就保留旧文件，绝不用坏文件覆盖好文件。
  */
 object GeoResources {
     const val SOURCE = "appshubcc/bett-rules"
+
+    /** 本地规则刷新周期：24 小时。 */
+    const val REFRESH_INTERVAL_MS = 24L * 60 * 60 * 1000
+
+    /** 上次成功更新的时间戳标记文件。 */
+    const val MARKER = "geo_last_sync"
 
     val ALL: List<GeoResource> =
         listOf(
@@ -41,9 +51,9 @@ object GeoResources {
     /**
      * MRS 规则集打包（mihomo 的 `.mrs` 二进制格式）。
      *
-     * 只登记不下载：内核当前用的是远程 RULE-SET providers（`routing_table.go`
-     * 的 `Providers`），不消费 `.mrs`；而且这是 7z 包，App 里没有解包器。
-     * 等内核真的切到 MRS 规则集时，这里再接上下载与解压。
+     * 只登记不下载：内核现在读的是本地 `geosite.dat` / `geoip.metadb`
+     * （`routing_table.go` 的 `GEOSITE` / `GEOIP` 规则），不消费 `.mrs`；
+     * 而且这是 7z 包，App 里没有解包器。
      */
     const val MRS_BUNDLE_URL =
         "https://github.com/appshubcc/bett-rules/releases/download/latest/BundleMRS.7z"
@@ -58,42 +68,84 @@ object GeoResources {
     }
 
     /**
-     * 把缺失的规则库补齐。
+     * 按 24 小时周期刷新本地规则库。
      *
-     * 已有文件一律不碰：geodata 是内核启动的硬依赖，覆盖正在使用的文件会让
-     * 下一次连接直接起不来。失败只记日志，不抛——离线时应当照常启动。
+     * 三份文件都在、且距上次成功更新不足 [REFRESH_INTERVAL_MS] 时直接返回，
+     * 不发任何请求——这是绝大多数启动的路径。
      *
-     * @return 实际补齐的文件名
+     * 失败只记日志，不抛：离线或上游抖动时应当照常启动，继续用内置那份。
+     *
+     * @return 本次实际更新的文件名
      */
-    fun syncMissing(context: Context): List<String> {
+    fun sync(context: Context): List<String> {
         val dir = File(context.filesDir, "clash").apply { mkdirs() }
-        val fixed = mutableListOf<String>()
+        if (isFresh(dir)) return emptyList()
+
+        val updated = mutableListOf<String>()
         for (res in ALL) {
             val target = File(dir, res.name)
-            if (target.exists() && target.length() > 0) continue
             val tmp = File(dir, "${res.name}.part")
             try {
                 download(res, tmp)
                 if (!tmp.renameTo(target)) throw IllegalStateException("rename failed")
-                AppLog.i(TAG, "geo sync: restored ${res.name} (${target.length()} bytes)")
-                fixed += res.name
+                AppLog.i(TAG, "geo sync: updated ${res.name} (${target.length()} bytes)")
+                updated += res.name
             } catch (e: Exception) {
                 AppLog.w(TAG, "geo sync failed: ${res.name}: ${sanitizeLog(e.message ?: e.javaClass.simpleName)}")
                 tmp.delete()
             }
         }
-        return fixed
+        // 只有至少有一份成功更新才推进时间戳；全部失败时下次启动会再试。
+        if (updated.isNotEmpty()) File(dir, MARKER).setLastModified(System.currentTimeMillis())
+        return updated
+    }
+
+    /** 三份文件齐全且未过期 → 不需要联网。 */
+    private fun isFresh(dir: File): Boolean {
+        if (ALL.any { !File(dir, it.name).let { f -> f.exists() && f.length() > 0 } }) return false
+        val marker = File(dir, MARKER)
+        if (!marker.exists()) return false
+        return System.currentTimeMillis() - marker.lastModified() < REFRESH_INTERVAL_MS
     }
 
     private fun download(res: GeoResource, tmp: File) {
-        val request = Request.Builder().url(res.url).build()
-        client.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
-            val body = resp.body ?: throw IllegalStateException("empty body")
-            body.byteStream().use { input ->
-                FileOutputStream(tmp).use { output -> input.copyTo(output) }
+        val body = fetch(res.url) ?: throw IllegalStateException("empty body")
+        FileOutputStream(tmp).use { it.write(body) }
+        if (tmp.length() <= 0) throw IllegalStateException("downloaded 0 bytes")
+
+        // 上游为每个资产发布 <name>.sha256sum，校验通过才允许覆盖本地文件。
+        val expected = fetch("${res.url}.sha256sum")
+            ?.toString(Charsets.UTF_8)
+            ?.trim()
+            ?.split(Regex("\\s+"))
+            ?.firstOrNull()
+            ?.takeIf { it.isNotEmpty() }
+        if (expected != null) {
+            val actual = sha256Hex(tmp)
+            if (!actual.equals(expected, ignoreCase = true)) {
+                throw IllegalStateException("sha256 mismatch: expected $expected, got $actual")
             }
         }
-        if (tmp.length() <= 0) throw IllegalStateException("downloaded 0 bytes")
+    }
+
+    private fun fetch(url: String): ByteArray? {
+        val request = Request.Builder().url(url).build()
+        client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) return null
+            return resp.body?.bytes()
+        }
+    }
+
+    private fun sha256Hex(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }

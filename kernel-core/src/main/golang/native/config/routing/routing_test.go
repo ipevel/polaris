@@ -125,7 +125,7 @@ func TestDefaultOnGroups(t *testing.T) {
 	}
 
 	// 默认开启的组必须生成规则；默认关闭的组不生成
-	expectRule := "RULE-SET,gs_apple,🍎 苹果服务"
+	expectRule := "GEOSITE,apple,🍎 苹果服务"
 	if !containsRule(cfg.Rule, expectRule) {
 		t.Fatalf("missing rule %q", expectRule)
 	}
@@ -135,8 +135,17 @@ func TestDefaultOnGroups(t *testing.T) {
 	if _, ok := cfg.RuleProvider["acl_banad"]; ok {
 		t.Fatal("disabled group provider must not be declared")
 	}
-	if _, ok := cfg.RuleProvider["gs_apple"]; !ok {
+	if _, ok := cfg.RuleProvider["acl_chinadomain"]; !ok {
 		t.Fatal("enabled group provider missing")
+	}
+	// 内置规则不再有任何远程 provider：全部 type:file 本地清单
+	for key, raw := range cfg.RuleProvider {
+		if raw["type"] != "file" {
+			t.Fatalf("provider %q must be local file provider, got %v", key, raw["type"])
+		}
+		if _, ok := raw["url"]; ok {
+			t.Fatalf("local provider %q must not carry url", key)
+		}
 	}
 	// 组数 = 3 个结构组 + 默认开启分流组 + 漏网之鱼
 	defaultOn := 0
@@ -163,14 +172,16 @@ func TestGroupStateOverride(t *testing.T) {
 	if err := Build(cfg, state, nil); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if containsRule(cfg.Rule, "acl_bilibili") {
+	if containsRule(cfg.Rule, "GEOSITE,bilibili,") {
 		t.Fatal("explicitly disabled group must not generate rules")
 	}
-	if !containsRule(cfg.Rule, "RULE-SET,gs_telegram,📲 电报消息") {
+	if !containsRule(cfg.Rule, "GEOSITE,telegram,📲 电报消息") {
 		t.Fatal("explicitly enabled group rules missing")
 	}
-	if !containsRule(cfg.Rule, "RULE-SET,gp_telegram,📲 电报消息,no-resolve") {
-		t.Fatal("ipcidr provider rule must carry no-resolve")
+	// 国内直连组必须同时有域名（GEOSITE,cn）与 IP（GEOIP,CN）两层覆盖，
+	// 并给 IP 层加 no-resolve，否则 HTTPDNS/直连 IP 的国内流量漏到代理
+	if !containsRule(cfg.Rule, "GEOIP,CN,🎯 国内直连,no-resolve") {
+		t.Fatal("direct group must carry no-resolve GEOIP,CN rule")
 	}
 }
 
@@ -299,8 +310,11 @@ func TestTableIntegrity(t *testing.T) {
 			if !ok {
 				t.Fatalf("group %q references unknown provider %q", item.Name, key)
 			}
-			if !strings.HasPrefix(p.URL, "https://") {
-				t.Fatalf("provider %q url not https", key)
+			// 内置规则集必须全部是本地文件 provider（URL 为空）：任何非空 URL
+			// 都会让内核重新变回 type:http 的远程规则，拉取失败即静默失效
+			//（用户 2026-10-12 要求：规则内置本地，不读远程）。
+			if p.URL != "" {
+				t.Fatalf("builtin provider %q must be local (URL empty), got %q", key, p.URL)
 			}
 			if seenProviders[key] {
 				t.Fatalf("provider %q declared twice", key)

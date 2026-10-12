@@ -62,7 +62,7 @@ class SlteApplication : Application() {
                 }
             }
         }
-        // assets 里没有的（解压失败、被清理工具删掉）按清单从远端补齐，失败不影响启动。
-        GeoResources.syncMissing(this)
+        // 缺失的先从 assets 补齐，再按 24 小时周期从上游刷新；失败都不影响启动。
+        GeoResources.sync(this)
     }
 }

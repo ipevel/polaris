@@ -299,6 +299,7 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 人工手测 | — | `npm start` / 成品包 `Polaris.exe`，由人点 |
 | `npm run test:updater`（`scripts/updater-self-test.js`） | 21 项 | **自我替换 helper 的纯 Node 自检**：假安装目录 + 假 exe + 拦截 spawn，钉死四个场景 —— 正常路径（文件全换 / 同名旧文件被覆盖 / 新增文件落位 / **`data/` 用户数据原样保留** / 旧 exe 改名 `.old` / 包与 staging 全清 / 重新拉起参数对）、父进程不退（等满 120 秒、退出码 2、**安装目录一个字节没动**）、**staging 里没有 exe**（退出码 2、安装目录未动 —— 这条是 2026-10-12 单元测试当场抓出来的，见 A-50 第 5 节）、启动时清理残留 `.old`。路径故意含中文 |
 | `npm run test:traffic`（`scripts/traffic-view-test.js`） | 17 项 | **流量页视图的纯 Node 自检**（不需要 Electron、不需要网络、不碰面板）：用 `vm` 加载 `format.js` + `views.js`，直接调 `Views.traffic(state)`，数渲染出来的 HTML —— 每天一根柱（零用量日也是 3px 短桩，`<rect>` 根数 = 当月天数）、`<line>` 只有 1 条基线、没有虚线网格、`data-range` 按钮 0 个、悬停读数已删、**合计 = 面板逐日之和（故意造"第 4 天面板没记录"的坑，那天补 0 且不进合计）**、柱宽被限在 44 以内（月初第一天只有一根柱时不能撑爆）、面板没数据时退回本机统计并改写来源、空态文案。见 A-51 |
+| `npm run test:geosync`（`scripts/geosync-test.js`） | 11 项 | **geodata 24 小时自动刷新的纯 Node 自检**（本地 HTTP 服务器 + `POLARIS_GEO_BASE` 覆盖，不碰外网）：`isFresh` 四态（空目录 / 缺标记 / 未过期 / 超过 24 小时 / 文件缺失）、正常刷新三份文件落地 + 写标记、未过期时二次刷新直接返回空且请求数不增加、**sha256 不匹配时挡住该份并原样保留旧文件（另外两份照常更新）**、上游 404 不抛异常也不覆盖。见 A-52 |
 | `set POLARIS_UPDTEST_URL=<zip 地址> && Polaris.exe` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份**（旧写法 `--updtest <zip>` 在成品包上进不去，见 A-50） |
 
 > 已删除（2026-10-10，见上「测试方式」）：`npm test` 253 项、旧的 `--uitest` 110 项（配假面板）、
@@ -1610,6 +1611,44 @@ if (e && e.kind === 'auth' && cmd !== 'login') {
 
 教训：**「以前的数据没在图表里」这类问题，先分清哪个是真源**。本机统计天生从装上那刻起，
 面板明细才有历史；不看数据源就改图，改出来的还是没历史。
+
+---
+
+**A-52 分流规则本地化：内置 geosite/geoip 每 24 小时自动刷新**（2026-10-12）
+
+用户报障：两端「分流不准确，经常性的抖音 番茄小说 小红书 快手 等等这些国内 app 会连不上网，
+断开连接之后才能正常使用」，要求「把规则弄在本地，分流分组就读本地规则，本地规则的更新方式是
+每次打开或每隔 24 小时自动拉取更新」，并且「拉取的也别指向我自己建的仓库了，就直接弄原始的规则仓库」。
+
+**为什么远程规则会漏**：内核的分流表原先全靠 `type: http` 的 `RULE-SET` provider（47 个，
+`interval: 86400`）。远程拉取一旦失败或还没拉完，规则就是空的，域名全部漏到兜底组走代理 ——
+表现正是「连上 VPN 就断网，断开就好」。
+
+**改法（内核侧）**：`routing_table.go` 的 `Providers` 从 47 条缩到 19 条、**全部 `URL: ""`**
+（`type: file`，只给 `path` 不给 `url`），平台分组改用 `InlineRules` 的 `GEOSITE,<分类>,{t}`；
+`🎯 国内直连` 额外加 `GEOIP,CN,{t},no-resolve` 兜住 HTTPDNS / 直连 IP。
+`routing_build.go` 的 `ProviderRawMap` 在 `p.URL == ""` 时发 `{"type":"file", …}`。
+**组名一律不改** —— 改名会丢用户已保存的顺序与开关。
+
+**改法（两端 App 侧）**：
+
+- 安卓 `data/geo/GeoResources.kt`：`sync(context)` 先判 `isFresh()`（三份齐全 + 标记未过 24 小时）
+  就直接返回、**一个请求都不发**；否则逐份下到 `.part`、**校验 `<url>.sha256sum` 后才 rename 覆盖**，
+  至少一份成功才写标记。失败只 `AppLog.w`，不抛 —— 离线也应照常启动。
+- Windows `electron/core/geosync.js`：同一套策略，`refresh(geoDir, log)` 返回更新成功的文件名列表。
+  **只写 `resources/geo/`，不碰 `data/`** —— 内核可能正开着 `data/geosite.dat`，Windows 上替换会
+  EBUSY；由 `manager.ensureGeodata()` 在下次起内核前拷进去。
+- 拉取源 `https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@release`（`POLARIS_GEO_BASE` 可覆盖），
+  三份：`geosite.dat` / `geoip.metadb` / `GeoLite2-ASN.mmdb`。
+
+**测试**：`scripts/geosync-test.js`（`npm run test:geosync`，11 项）用本地 HTTP 服务器 +
+`POLARIS_GEO_BASE` 覆盖，钉死：isFresh 四态、正常刷新三份落地 + 标记、未过期二次刷新返回空、
+**sha256 不匹配时挡住该份且旧文件原样保留（其余两份照常更新）**、上游 404 不抛不覆盖、
+未过期时连续三次刷新请求数不增加。
+
+**踩坑**：`POLARIS_GEO_BASE` 是模块加载时读的常量，测试里必须**先设环境变量、
+`delete require.cache[require.resolve(...)]`、再重新 require**，否则改不动。
+上游文件名与本地名不一致（`ASN.mmdb` ↔ `GeoLite2-ASN.mmdb`），测试夹具要按远端名供数。
 
 ---
 

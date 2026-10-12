@@ -53,6 +53,11 @@ try {
 // 只能由新进程启动时删（见 updater.js 的 applyWorker 第 2 步）。
 try { require('./core/updater').cleanStaleRename(); } catch (_) { /* 删不掉也不影响启动 */ }
 
+// 按 24 小时周期刷新本地规则库（geosite.dat / geoip.metadb / ASN.mmdb）。
+// 三份都随包内置，所以这一步只是「跟上上游」，失败也不影响启动与连接。
+// 不 await：启动路径不能等网络。
+try { require('./core/manager').refreshGeo(); } catch (_) { /* 离线照常启动 */ }
+
 /* ---------- 自更新 helper ---------- */
 // 第二个 Polaris.exe 实例：负责覆盖安装目录然后重新拉起（架构见 updater.js 文件头，
 // 照 2dust/v2rayN 的 AmazTool）。**这个分支必须在单实例锁之前**：

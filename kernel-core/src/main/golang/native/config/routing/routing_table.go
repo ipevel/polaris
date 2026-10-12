@@ -3,19 +3,28 @@
 
 package routing
 
-// 内置分流表：组名、顺序、默认开关与出站语义全部对齐 Karing 预设
-// （KaringX/karing assets/datas/preset/cn.json），规则数据源沿用其数据谱系：
-//   - geosite/geoip 类别 → MetaCubeX/meta-rules-dat@meta（karing-ruleset 的 geo
-//     数据同源上游，KaringX/meta-rules-dat README 指定的 mihomo 格式获取渠道）
-//   - ACL4SSR 清单 → ACL4SSR/ACL4SSR@master Clash 目录（karing-ruleset workflow
-//     每日转换 srs 的同一来源）
-// karing-ruleset 本体仅发布 sing-box .srs 格式，mihomo 无法读取，因此按数据谱系
-// 而非仓库本体引用；两路上游均每日自动更新，provider interval 与其对齐（24h）。
+// 内置分流表：组名、顺序、默认开关与默认出站全部沿用既有实机预设（顺序即规则
+// 匹配优先级），**规则数据源全部本地，启动与运行期不拉任何远程规则**：
+//
+//   - GEOSITE,<分类> → 读 app 内置的 geosite.dat（v2fly 全量分类）
+//   - GEOIP,CN        → 读 app 内置的 geoip.metadb
+//   - RULE-SET        → 只允许 type:file 的本地清单（种子已随包内置）
+//
+// 为什么彻底抛弃远程 provider：每个 RULE-SET 都是 type:http，启动后 24h 内必定拉一次；
+// 拉取失败、被中间盒改写、上游每日变更都会让规则**静默失效**。用户 2026-10-12 反馈
+// 「抖音/快手/小红书/番茄小说连上 VPN 就断网、断开才好」正是这种依赖的代价——旧方案里
+// 国内域名只有 ACL4SSR ChinaDomain.list 的 700 多条，主流 App 域名一旦缺失就落到
+// 「🐟 漏网之鱼」走代理。现在 GEOSITE,cn 有 111,873 条、geolocation-!cn 有 27,037 条，
+// 并额外给「🎯 国内直连」补 GEOIP,CN，兜住 HTTPDNS/直连 IP 的场景。
+//
+// 已用内置 geosite.dat 实跑核对（见 zz_geodata_probe_test.go）：
+// cn 111,873 条且覆盖 douyin/kuaishou/xiaohongshu/fanqienovel 等全部用户点名域名；
+// 平台分类 telegram/youtube/netflix/x/tiktok/instagram/facebook/whatsapp/openai/github/
+// google/google-play/google-gemini/bing/onedrive/microsoft/apple/steam/epicgames/sony/
+// nintendo/bilibili/netease/anthropic 全部存在。
 
 const (
-	providerBaseGeo  = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/"
-	providerBaseACL  = "https://fastly.jsdelivr.net/gh/ACL4SSR/ACL4SSR@master/Clash/"
-	providerInterval = 86400 // 秒；与 karing-ruleset 每日构建节奏一致
+	providerInterval = 86400 // 秒；仅用于用户自定义组的刷新节奏，内置规则不联网
 	providerSubPath  = "polaris-rules"
 )
 
@@ -47,77 +56,42 @@ const (
 )
 
 // Provider 一个规则集数据源。
+//
+// 只有两种取值：URL 非空 = 远程 http provider（仅用户自定义组使用）；
+// URL 为空 = 本地文件 provider（种子随包内置，内核只读本地、永不联网）。
 type Provider struct {
 	Key       string // 稳定 ASCII 键：RULE-SET 引用名 + 预播种文件名
-	URL       string
+	URL       string // 空串表示本地文件 provider
 	Behavior  string // domain | ipcidr | classical
 	Format    string // yaml | text
 	NoResolve bool   // IP 类规则集附加 no-resolve
 }
 
-// RuleGroup 一条内置分流规则组（组名与规则集沿用 Karing 预设）。
+// RuleGroup 一条内置分流规则组（组名与规则集沿用实机预设）。
 type RuleGroup struct {
-	Name        string   // 组名（与 Karing 预设一致）
+	Name        string   // 组名（与实机预设一致；改名会丢用户已保存的顺序与开关）
 	DefaultOn   bool     // 默认开关；用户改过则以 routing.json 的 groups 为准
 	DefaultOut  string   // 默认 outbound：proxy | direct | block
-	Providers   []string // 规则集键（按 Karing 预设的 rule_set_build_in 顺序）
+	Providers   []string // 本地文件 provider 键；为空表示纯 GEOSITE/GEOIP 规则
 	InlineRules []string // 内联规则，{t} 替换为本组组名
 }
 
 // Providers 全部内置规则集。种子文件按 <Key> 打包进 APK assets，
-// 命名 = Key + (text 格式 ? ".list" : ".yaml")。
+// 命名 = Key + (text 格式 ? ".list" : ".yaml")，全部为本地文件 provider。
 var Providers = map[string]Provider{
-	// --- geosite（meta-rules-dat，payload 裸域名 → behavior: domain）---
-	"gs_category_ads_all": {"gs_category_ads_all", providerBaseGeo + "geosite/category-ads-all.yaml", "domain", "yaml", false},
-	"gs_cn":               {"gs_cn", providerBaseGeo + "geosite/cn.yaml", "domain", "yaml", false},
-	"gs_apple":            {"gs_apple", providerBaseGeo + "geosite/apple.yaml", "domain", "yaml", false},
-	"gs_youtube":          {"gs_youtube", providerBaseGeo + "geosite/youtube.yaml", "domain", "yaml", false},
-	"gs_google_play":      {"gs_google_play", providerBaseGeo + "geosite/google-play.yaml", "domain", "yaml", false},
-	"gs_google":           {"gs_google", providerBaseGeo + "geosite/google.yaml", "domain", "yaml", false},
-	"gs_facebook":         {"gs_facebook", providerBaseGeo + "geosite/facebook.yaml", "domain", "yaml", false},
-	"gs_x":                {"gs_x", providerBaseGeo + "geosite/x.yaml", "domain", "yaml", false},
-	"gs_tiktok":           {"gs_tiktok", providerBaseGeo + "geosite/tiktok.yaml", "domain", "yaml", false},
-	"gs_instagram":        {"gs_instagram", providerBaseGeo + "geosite/instagram.yaml", "domain", "yaml", false},
-	"gs_netflix":          {"gs_netflix", providerBaseGeo + "geosite/netflix.yaml", "domain", "yaml", false},
-	"gs_whatsapp":         {"gs_whatsapp", providerBaseGeo + "geosite/whatsapp.yaml", "domain", "yaml", false},
-	"gs_telegram":         {"gs_telegram", providerBaseGeo + "geosite/telegram.yaml", "domain", "yaml", false},
-	"gs_openai":           {"gs_openai", providerBaseGeo + "geosite/openai.yaml", "domain", "yaml", false},
-	"gs_github":           {"gs_github", providerBaseGeo + "geosite/github.yaml", "domain", "yaml", false},
-	"gs_bing":             {"gs_bing", providerBaseGeo + "geosite/bing.yaml", "domain", "yaml", false},
-	"gs_onedrive":         {"gs_onedrive", providerBaseGeo + "geosite/onedrive.yaml", "domain", "yaml", false},
-	"gs_microsoft":        {"gs_microsoft", providerBaseGeo + "geosite/microsoft.yaml", "domain", "yaml", false},
-	"gs_geolocation_ncn":  {"gs_geolocation_ncn", providerBaseGeo + "geosite/geolocation-%21cn.yaml", "domain", "yaml", false},
-	// --- geoip（payload 裸 CIDR → behavior: ipcidr，全部 no-resolve）---
-	"gp_google":   {"gp_google", providerBaseGeo + "geoip/google.yaml", "ipcidr", "yaml", true},
-	"gp_facebook": {"gp_facebook", providerBaseGeo + "geoip/facebook.yaml", "ipcidr", "yaml", true},
-	"gp_twitter":  {"gp_twitter", providerBaseGeo + "geoip/twitter.yaml", "ipcidr", "yaml", true},
-	"gp_netflix":  {"gp_netflix", providerBaseGeo + "geoip/netflix.yaml", "ipcidr", "yaml", true},
-	"gp_telegram": {"gp_telegram", providerBaseGeo + "geoip/telegram.yaml", "ipcidr", "yaml", true},
-	"gp_cn":       {"gp_cn", providerBaseGeo + "geoip/cn.yaml", "ipcidr", "yaml", true},
-	// --- ACL4SSR（Clash 文本规则 → behavior: classical, format: text）---
-	"acl_banad":          {"acl_banad", providerBaseACL + "BanAD.list", "classical", "text", false},
-	"acl_banprogramad":   {"acl_banprogramad", providerBaseACL + "BanProgramAD.list", "classical", "text", false},
-	"acl_gemini":         {"acl_gemini", providerBaseACL + "Ruleset/Gemini.list", "classical", "text", false},
-	"acl_facebook":       {"acl_facebook", providerBaseACL + "Ruleset/Facebook.list", "classical", "text", false},
-	"acl_twitter":        {"acl_twitter", providerBaseACL + "Ruleset/Twitter.list", "classical", "text", false},
-	"acl_whatsapp":       {"acl_whatsapp", providerBaseACL + "Ruleset/Whatsapp.list", "classical", "text", false},
-	"acl_claude":         {"acl_claude", providerBaseACL + "Ruleset/Claude.list", "classical", "text", false},
-	"acl_steam":          {"acl_steam", providerBaseACL + "Ruleset/Steam.list", "classical", "text", false},
-	"acl_epic":           {"acl_epic", providerBaseACL + "Ruleset/Epic.list", "classical", "text", false},
-	"acl_origin":         {"acl_origin", providerBaseACL + "Ruleset/Origin.list", "classical", "text", false},
-	"acl_sony":           {"acl_sony", providerBaseACL + "Ruleset/Sony.list", "classical", "text", false},
-	"acl_nintendo":       {"acl_nintendo", providerBaseACL + "Ruleset/Nintendo.list", "classical", "text", false},
-	"acl_bilibili":       {"acl_bilibili", providerBaseACL + "Ruleset/Bilibili.list", "classical", "text", false},
-	"acl_bilibilihmt":    {"acl_bilibilihmt", providerBaseACL + "Ruleset/BilibiliHMT.list", "classical", "text", false},
-	"acl_neteasemusic":   {"acl_neteasemusic", providerBaseACL + "Ruleset/NetEaseMusic.list", "classical", "text", false},
-	"acl_chinadomain":    {"acl_chinadomain", providerBaseACL + "ChinaDomain.list", "classical", "text", false},
-	"acl_chinacompanyip": {"acl_chinacompanyip", providerBaseACL + "ChinaCompanyIp.list", "classical", "text", true},
-	"acl_unban":          {"acl_unban", providerBaseACL + "UnBan.list", "classical", "text", false},
-	"acl_steamcn":        {"acl_steamcn", providerBaseACL + "Ruleset/SteamCN.list", "classical", "text", false},
-	"acl_download":       {"acl_download", providerBaseACL + "Download.list", "classical", "text", false},
-	"acl_chinamedia":     {"acl_chinamedia", providerBaseACL + "ChinaMedia.list", "classical", "text", false},
-	"acl_proxygfwlist":   {"acl_proxygfwlist", providerBaseACL + "ProxyGFWlist.list", "classical", "text", false},
-	"acl_proxymedia":     {"acl_proxymedia", providerBaseACL + "ProxyMedia.list", "classical", "text", false},
+	// --- ACL4SSR 文本清单（种子随包内置，type:file 只读本地）---
+	"acl_banad":          {"acl_banad", "", "classical", "text", false},
+	"acl_banprogramad":   {"acl_banprogramad", "", "classical", "text", false},
+	
+	
+	"acl_chinadomain":    {"acl_chinadomain", "", "classical", "text", false},
+	"acl_chinacompanyip": {"acl_chinacompanyip", "", "classical", "text", true},
+	"acl_unban":          {"acl_unban", "", "classical", "text", false},
+	"acl_steamcn":        {"acl_steamcn", "", "classical", "text", false},
+	"acl_download":       {"acl_download", "", "classical", "text", false},
+	"acl_chinamedia":     {"acl_chinamedia", "", "classical", "text", false},
+	"acl_proxygfwlist":   {"acl_proxygfwlist", "", "classical", "text", false},
+	"acl_proxymedia":     {"acl_proxymedia", "", "classical", "text", false},
 }
 
 // 本地网络/私有地址直连（固定 DIRECT，不占用分流组）。
@@ -149,58 +123,62 @@ var lanDirectRules = []string{
 // 苹果统一走「🍎 苹果服务」，不再单列。
 var Table = []RuleGroup{
 	{Name: "📲 电报消息", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_telegram", "gp_telegram"}},
+		InlineRules: []string{"GEOSITE,telegram,{t}"}},
 	{Name: "📹 油管视频", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_youtube"}},
+		InlineRules: []string{"GEOSITE,youtube,{t}"}},
 	{Name: "🎥 奈飞视频", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_netflix", "gp_netflix"}},
+		InlineRules: []string{"GEOSITE,netflix,{t}"}},
 	{Name: "📲 X", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_x", "gp_twitter", "acl_twitter"}},
+		InlineRules: []string{"GEOSITE,x,{t}"}},
 	{Name: "🎧 TikTok", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_tiktok"}},
+		InlineRules: []string{"GEOSITE,tiktok,{t}"}},
 	{Name: "📸 Instagram", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_instagram"}},
-	{Name: "📲 Facebook", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_facebook", "gp_facebook", "acl_facebook"}},
-	{Name: "📲 WhatsApp", DefaultOn: false, DefaultOut: "proxy",
-		Providers: []string{"gs_whatsapp", "acl_whatsapp"}},
+		InlineRules: []string{"GEOSITE,instagram,{t}"}},
+	{Name: "📲 Facebook", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{"GEOSITE,facebook,{t}"}},
+	{Name: "📲 WhatsApp", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{"GEOSITE,whatsapp,{t}"}},
 	{Name: "♊️ Google Gemini", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"acl_gemini"}},
+		InlineRules: []string{"GEOSITE,google-gemini,{t}", "GEOSITE,google,{t}", "GEOSITE,google-play,{t}"}},
 	{Name: "💬 Claude", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"acl_claude"}},
+		InlineRules: []string{"GEOSITE,anthropic,{t}"}},
 	{Name: "💬 OpenAI", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_openai"}},
+		InlineRules: []string{"GEOSITE,openai,{t}"}},
 	{Name: "🐱 GitHub", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_github"}},
+		InlineRules: []string{"GEOSITE,github,{t}"}},
 	{Name: "🌏 Google", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_google", "gp_google"}},
+		InlineRules: []string{"GEOSITE,google,{t}"}},
 	{Name: "🌏 Google Play", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_google_play"}},
+		InlineRules: []string{"GEOSITE,google-play,{t}"}},
 	{Name: "Ⓜ️ 微软Bing", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_bing"}},
+		InlineRules: []string{"GEOSITE,bing,{t}"}},
 	{Name: "Ⓜ️ 微软云盘", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"gs_onedrive"}},
+		InlineRules: []string{"GEOSITE,onedrive,{t}"}},
 	{Name: "Ⓜ️ 微软服务", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_microsoft"}},
+		InlineRules: []string{"GEOSITE,microsoft,{t}"}},
 	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"gs_apple"}},
+		InlineRules: []string{"GEOSITE,apple,{t}"}},
 	{Name: "🎮 游戏平台", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"acl_steam", "acl_epic", "acl_origin", "acl_sony", "acl_nintendo"}},
-	{Name: "📺 哔哩哔哩", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"acl_bilibilihmt", "acl_bilibili"}},
-	{Name: "🎶 网易音乐", DefaultOn: true, DefaultOut: "direct",
-		Providers: []string{"acl_neteasemusic"}},
-	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
-		// 国内域名覆盖分两层，缺一不可：
-		// 1) gs_cn = MetaCubeX geosite/cn（11 万+ 条国内域名，聚合 v2fly/ACL4SSR/Loyalsoldier
-		//    等来源），是长尾覆盖的主力。原先这个组只有 gp_cn（geoip/cn，纯 IP 段）加
-		//    ACL4SSR 的 ChinaDomain.list（700 多条），**完全没有成规模的国内域名表**，
-		//    所以抖音/快手/小红书/番茄小说这类主流 App 一旦不在 ChinaDomain.list 里就漏到
-		//    「🐟 漏网之鱼」走代理，表现为「连上 VPN 就断网、断开就好」（用户 2026-10-11 反馈）。
-		// 2) 内联规则兜底：geosite/cn 是第三方每日更新的远程规则集，可能缺条目、也可能被
-		//    CDN 抖动影响拉取，所以把用户点名的主流 App 域名再内联一遍，保证不依赖远程也能命中。
-		Providers: []string{"gs_cn", "gp_cn", "acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"},
 		InlineRules: []string{
+			"GEOSITE,steam,{t}", "GEOSITE,epicgames,{t}", "GEOSITE,sony,{t}",
+			"GEOSITE,nintendo,{t}", "GEOSITE,category-games,{t}"}},
+	{Name: "📺 哔哩哔哩", DefaultOn: true, DefaultOut: "direct",
+		InlineRules: []string{"GEOSITE,bilibili,{t}"}},
+	{Name: "🎶 网易音乐", DefaultOn: true, DefaultOut: "direct",
+		InlineRules: []string{"GEOSITE,netease,{t}"}},
+	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
+		// 国内覆盖分两层，缺一不可：
+		// 1) GEOSITE,cn 读内置 geosite.dat 的 cn 分类（111,873 条，聚合 v2fly/ACL4SSR/
+		//    Loyalsoldier 等来源），是长尾覆盖的主力。原先这个组只有 gp_cn（geoip/cn，
+		//    纯 IP 段）加 ACL4SSR 的 ChinaDomain.list（700 多条），**完全没有成规模的国内
+		//    域名表**，所以抖音/快手/小红书/番茄小说这类主流 App 一旦不在
+		//    ChinaDomain.list 里就漏到「🐟 漏网之鱼」走代理，表现为「连上 VPN 就断网、
+		//    断开就好」（用户 2026-10-11 反馈）。
+		// 2) GEOIP,CN 读内置 geoip.metadb：国内 App 普遍用 HTTPDNS/直连 IP，纯域名规则
+		//    命中不了它们，必须按 IP 兜一层。
+		// 3) 内联规则兜底：geosite.dat 虽已内置，但文件缺失/损坏时 GEOSITE 规则会直接
+		//    让 profile 加载失败，所以把用户点名的主流 App 域名再内联一遍。
+		InlineRules: append(append([]string{
 			// 抖音 / 字节跳动
 			"DOMAIN-SUFFIX,douyin.com,{t}",
 			"DOMAIN-SUFFIX,iesdouyin.com,{t}",
@@ -281,13 +259,16 @@ var Table = []RuleGroup{
 			"DOMAIN-SUFFIX,tencentcs.com,{t}",
 			"DOMAIN-SUFFIX,zhipin.com,{t}",
 			"DOMAIN-SUFFIX,zhihu.com.cn,{t}",
-		}},
+		}, "GEOSITE,cn,{t}"), "GEOIP,CN,{t},no-resolve"),
+		Providers: []string{"acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"}},
 	{Name: "🌏 国外穿墙", DefaultOn: true, DefaultOut: "proxy",
-		Providers: []string{"gs_geolocation_ncn", "acl_proxygfwlist", "acl_proxymedia"}},
+		InlineRules: []string{"GEOSITE,geolocation-!cn,{t}"},
+		Providers:   []string{"acl_proxygfwlist", "acl_proxymedia"}},
 	{Name: "🍃 应用净化", DefaultOn: false, DefaultOut: "block",
 		Providers: []string{"acl_banprogramad"}},
 	{Name: "🛑 广告拦截", DefaultOn: false, DefaultOut: "block",
-		Providers: []string{"gs_category_ads_all", "acl_banad"}},
+		InlineRules: []string{"GEOSITE,category-ads-all,{t}"},
+		Providers:   []string{"acl_banad"}},
 }
 
 // OrderedTable 按用户自定义顺序返回内置分流表。

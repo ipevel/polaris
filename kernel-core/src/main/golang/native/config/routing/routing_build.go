@@ -141,20 +141,33 @@ func Build(cfg *config.RawConfig, state *State, directDomains []string) error {
 
 // ProviderRawMap 生成 mihomo rule-provider 原始配置。path 相对内核 profileDir，
 // patchProviders 会改写为 <profileDir>/providers/<path>，App 侧按同路径预播种。
+//
+// URL 为空表示本地文件 provider：type:file 只读 <profileDir>/providers/<path>，
+// 没有 url 也没有 interval，内核不会发起任何网络请求（用户 2026-10-12 要求：
+// 规则内置本地，不读远程规则）。
 func ProviderRawMap(p Provider) map[string]any {
+	if p.URL == "" {
+		return map[string]any{
+			"type":     "file",
+			"behavior": p.Behavior,
+			"format":   p.Format,
+			"path":     providerSubPath + "/" + p.Key + FileExt(p),
+		}
+	}
 	return map[string]any{
 		"type":     "http",
 		"behavior": p.Behavior,
 		"format":   p.Format,
 		"url":      p.URL,
-		"path":     providerSubPath + "/" + p.Key + ".yaml",
+		"path":     providerSubPath + "/" + p.Key + FileExt(p),
 		"interval": providerInterval,
 	}
 }
 
-// FileExt 预播种文件扩展名。统一为 .yaml：mihomo 按声明的 format（yaml/text）
-// 解析内容，扩展名仅用于与 App 侧种子文件名对齐，不参与解析。
-func FileExt(_ Provider) string {
+// FileExt 预播种文件扩展名。App 侧 assets/routing/providers 里所有种子
+// 一律用 .yaml（ACL4SSR 文本清单也是 .yaml），扩展名仅用于与种子文件名对齐，
+// 不参与解析——mihomo 按声明的 format 解析内容。
+func FileExt(p Provider) string {
 	return ".yaml"
 }
 

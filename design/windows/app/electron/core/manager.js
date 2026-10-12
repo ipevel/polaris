@@ -23,6 +23,7 @@ const builder = require('./builder');
 const rulesets = require('./rulesets');
 const region = require('./region');
 const traffic = require('./traffic');
+const geosync = require('./geosync');
 const fmt = require('../util/format');
 
 const MAIN_GROUP = builder.DIRECT_GROUP;      // 🚀 节点选择（节点页那张主卡）
@@ -188,6 +189,10 @@ function ensureRuleSeeds() {
  * 实测要 19 秒，而且没网就直接失败。
  */
 function ensureGeodata() {
+  // 顺便按 24 小时周期刷新本地规则库。刷新只写 resources/geo/（源），
+  // 由下一次 ensureGeodata() 拷进 data/ —— 内核可能正开着 data/ 里的文件，
+  // Windows 上直接替换会 EBUSY。绝不 await，不能拖慢起内核。
+  refreshGeo();
   const src = paths.geo();
   if (!fs.existsSync(src)) {
     log.warn('规则库目录不存在，首次连接可能需要联网下载:', src);
@@ -208,6 +213,22 @@ function ensureGeodata() {
   }
   if (copied) log.info(`规则库已就位（${copied} 个文件）`);
   return true;
+}
+
+/**
+ * 按 24 小时周期刷新本地规则库（用户 2026-10-12 要求：规则内置本地，
+ * 但本地这份要跟上上游）。
+ *
+ * 三份 geodata 随包内置，内核只读本地 —— 所以「不联网也能分流」不受影响；
+ * 这里只是隔一天拉一次。失败只记日志：旧规则照样能用，坏规则才会让内核起不来。
+ *
+ * @returns {Promise<string[]>} 本次真正更新的文件名
+ */
+function refreshGeo() {
+  return geosync.refresh(paths.geo(), log).catch((e) => {
+    log.warn('geo 刷新失败（不影响启动）：', e && e.message);
+    return [];
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1052,7 +1073,7 @@ module.exports = {
   rulesetState, setRuleset, resetRulesets, reloadConfig, setLocalRouting,
   reorderRuleset, saveCustomRuleset, deleteCustomRuleset,
   requireCore, setDirectDomains, mixedPort: () => S.mixedPort,
-  wantedMixedPort, assertPortFree,
+  wantedMixedPort, assertPortFree, refreshGeo,
   MAIN_GROUP, STRUCTURAL_GROUPS,
   S,
 };
