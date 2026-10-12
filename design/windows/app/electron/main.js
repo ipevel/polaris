@@ -49,6 +49,24 @@ try {
   log.warn('backup restore skipped:', e && e.message);
 }
 
+// 上一次自我替换留下的 Polaris.exe.old：改名那一刻它还被 helper 进程占着，
+// 只能由新进程启动时删（见 updater.js 的 applyWorker 第 2 步）。
+try { require('./core/updater').cleanStaleRename(); } catch (_) { /* 删不掉也不影响启动 */ }
+
+/* ---------- 自更新 helper ---------- */
+// 第二个 Polaris.exe 实例：负责覆盖安装目录然后重新拉起（架构见 updater.js 文件头，
+// 照 2dust/v2rayN 的 AmazTool）。**这个分支必须在单实例锁之前**：
+// 主进程还在跑，它持有锁，helper 会被 `requestSingleInstanceLock()` 判成「第二实例」直接退出。
+// 也不碰任何窗口/托盘/IPC —— 它只做替换这一件事，做完 process.exit。
+if (process.env.POLARIS_APPLY_STAGE) {
+  const updater = require('./core/updater');
+  updater.applyWorker().then(
+    (code) => process.exit(code),
+    (e) => { try { log.error('apply worker 崩溃：' + (e && e.message)); } catch (_) {} process.exit(1); },
+  );
+  return;
+}
+
 const { register: registerCommands } = require('./ipc');
 const { buildTray, updateTray } = require('./tray');
 
@@ -65,27 +83,30 @@ let quitting = false;
 
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 
-// 自我替换演练：`Polaris.exe --updtest <zip 地址>`。
-// 下载 → 解压 → 写替换脚本 → 退出，由脚本覆盖安装目录并重启。
+// 自我替换演练：`set POLARIS_UPDTEST_URL=<zip 地址> && Polaris.exe`。
+// 下载 → 解压 → 起一个自己的副本当 helper → 退出，由 helper 覆盖安装目录并重启。
 // 这条路径平时只能在真实发版时走一次，坏了就是把用户的安装目录搞坏，
 // 所以留一个能在成品包上直接演练的开关（跑之前请先把整个目录拷一份）。
 // 注意 1：这个分支在模块顶层 return，后面还有函数声明与事件注册不会执行。
 //         模块级状态（`quitting` 等）已提到本分支之前声明，所以这里碰它们不会 TDZ；
 //         但**不要再往后加新的模块级 `let`**，否则同样的崩会回来（DEVNOTES A-10）。
-// 注意 2：**开关要写在 URL 前面，或者用 `--updtest-version=9.9.9` 这种等号形式**。
-//         位置参数（那个 URL）之后再跟 `--switch value`，Electron 会在主进程起来之前就退出，
-//         实测 exit code -1、日志一个字都不写，排查起来极像"应用崩了"。
-if (process.argv.includes('--updtest')) {
-  const url = argOf('--updtest');
-  const version = argOf('--updtest-version') || 'updtest';
+// 注意 2：**必须走环境变量，不能写成 `--updtest <url>`**。Electron 的 SEA 单可执行里
+//         argv 全被 Node 自己的解析器接管（`node::InitializeNodeWithArgsInternal`），
+//         未知 `--` 开关在主进程起来之前就被拒掉 —— 实测三种传法分别报
+//         `bad option: --updtest=...`、`bad option: --updtest`、
+//         `Cannot find module '--updtest=...'`，日志一个字都不写，
+//         排查起来极像"应用崩了"。环境变量不经过 argv 解析，可以可靠到达。
+const updtestUrl = process.env.POLARIS_UPDTEST_URL;
+if (updtestUrl) {
+  const version = process.env.POLARIS_UPDTEST_VERSION || 'updtest';
   app.whenReady().then(async () => {
     const updater = require('./core/updater');
     try {
-      log.info(`更新演练：${url} → ${paths.root()}`);
-      const st = await updater.download(url, version);
+      log.info(`更新演练：${updtestUrl} → ${paths.root()}`);
+      const st = await updater.download(updtestUrl, version);
       log.info(`更新演练：解压完成 phase=${st.phase}`);
       const r = updater.apply();
-      log.info(`更新演练：替换脚本 ${r.script}，安装目录 ${r.install_dir}，退出中`);
+      log.info(`更新演练：helper pid=${r.helper_pid}，安装目录 ${r.install_dir}，退出中`);
       setTimeout(() => app.quit(), 500);
     } catch (e) {
       log.error('更新演练失败：' + (e && e.message));

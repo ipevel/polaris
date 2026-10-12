@@ -10,6 +10,7 @@
   "scripts": {
     "start": "electron .",
     "uitest": "electron . --uitest",
+    "test:updater": "node scripts/updater-self-test.js",
     "core": "python scripts/fetch-core.py",
     "geo": "python scripts/fetch-geo.py",
     "pack": "electron-builder --win --x64 --dir",

@@ -1,17 +1,34 @@
 'use strict';
 /**
- * 自动更新：下载 → 校验 → 解压到 staging → 生成替换脚本 → 退出并重启。
+ * 自更新：下载 → 校验 → 解压到 staging → 起 helper → 退出 → 覆盖安装目录 → 重启。
  *
  * 便携版没法在进程内自我替换：`Polaris.exe`、`*.dll`、`resources/` 在运行时被锁，
- * 覆盖只会拿到 EBUSY/EPERM。所以真正的替换交给一个脱离父进程的批处理：
+ * 覆盖只会拿到 EBUSY/EPERM。所以真正的替换交给一个**独立的 helper 进程**。
  *
- *   1. 下载新包到 `data/update/Polaris-<版本>.zip`
- *   2. 解压到 `data/update/staging/`，确认里面有 `Polaris.exe`（解压不对就不敢动安装目录）
- *   3. 写 `data/update/apply-update.cmd`：等本进程退出 → robocopy 覆盖安装目录 → 重新拉起 → 记日志
- *   4. `app.quit()`，脚本接手
+ * 架构照 2dust/v2rayN 的 AmazTool 来的（`v2rayN/AmazTool/UpgradeApp.cs`），
+ * 逐条对齐，不再用 cmd + robocopy：
  *
- * 安装目录里的 `data/` 是用户数据（配置、订阅、凭据、流量记录），脚本只覆盖不删除，
- * 所以更新后账号与设置都还在。
+ *   1. 主进程把新包下好、解压到 `data/update/staging/`，确认里面有 `Polaris.exe`
+ *   2. 起一个 helper（就是第二个 Polaris.exe 实例，靠环境变量切到 worker 分支），
+ *      环境变量带上「父进程 pid + staging 根 + 安装目录 + 更新目录」
+ *   3. 主进程退出（`will-quit` 里已经把内核停了，`resources/core/mihomo.exe` 不再被占）
+ *   4. helper 等父进程真的退出 → **自我改名** `Polaris.exe` → `Polaris.exe.old`
+ *      （Windows 允许改名运行中的 exe，但**不允许覆盖**，这一步是关键）
+ *   5. 用纯 Node API 把 staging 里的文件逐个复制进安装目录，带退避重试
+ *   6. 校验 → 清理包和 staging → 重新拉起 Polaris.exe
+ *
+ * 为什么必须是这个架构（实测踩过的坑，别再绕回去）：
+ *   - 不起 cmd：cmd.exe 读 .cmd 文件用的编码**取决于进程有没有控制台**（有控制台按 UTF-8，
+ *     脱离控制台按 OEM 代码页）。同一个文件在两种模式下要求互相矛盾的编码，
+ *     只要安装路径里有一个非 ASCII 字符（`软件`、中文用户名），脚本第一步就废，
+ *     表现为 cmd 挂死、日志一个字都不写。Node 的文件 API 一律走 Unicode 路径，没有这问题。
+ *   - 不用 robocopy：errorlevel 语义、`/IS /IT` 的增量语义、以及"半新半旧"的失败模式
+ *     都要人肉兜底；Node 里一个 for 循环 + 重试就够了，失败原因直接是可读的异常。
+ *   - 不调 PowerShell 探测进程：无控制台的脱离进程里 `tasklist` 一个字都不输出，
+ *     `Get-Process` 又会被命令行编码再坑一次。Node 的 `process.kill(pid, 0)` 最直接。
+ *   - 不走命令行开关：Electron 的 SEA 单可执行里 argv 全被 Node 自己的解析器接管，
+ *     未知 `--` 开关在主进程起来之前就被拒（实测 `bad option: --updtest`），
+ *     所以 helper 的触发与传参**一律走环境变量**。
  *
  * 本模块不 require electron（除了真正要退出那一下），这样纯 Node 的自检也能覆盖它。
  */
@@ -354,64 +371,143 @@ async function download(url, version) {
   return info();
 }
 
-/**
- * 生成替换脚本。脚本内容刻意全用 ASCII：cmd.exe 默认代码页读中文会乱码，
- * 而这个脚本是无人值守跑的，任何乱码都可能变成一条错命令。
- */
-function scriptFor(stageRoot, appDir, pid) {
-  const src = String(stageRoot).replace(/"/g, '');
-  const app = String(appDir).replace(/"/g, '');
-  const upd = updateDir().replace(/"/g, '');
-  const logFile = path.join(updateDir(), 'apply-update.log').replace(/"/g, '');
-  return [
-    '@echo off',
-    'setlocal',
-    `set "SRC=${src}"`,
-    `set "APP=${app}"`,
-    `set "UPD=${upd}"`,
-    `set "LOG=${logFile}"`,
-    'echo [%date% %time%] waiting for pid ' + Number(pid) + ' > "%LOG%"',
-    'set /a N=0',
-    // 为什么不用 tasklist：脚本是"无控制台"的脱离进程（GUI 应用 spawn 出来的 cmd），
-    // 这种环境下 tasklist 一个字都不输出 —— 管道版会卡死在 find 上（永远等不到 EOF），
-    // 重定向到文件的版本则每次都判定"进程已退出"，于是应用还活着就开始覆盖。
-    // PowerShell 的 Get-Process 在无控制台环境里工作正常，实测过。
-    ':wait',
-    `powershell -NoProfile -NonInteractive -Command "if (Get-Process -Id ${Number(pid)} -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >nul 2>nul`,
-    'if errorlevel 2 goto tick',
-    'if errorlevel 1 goto copy',
-    ':tick',
-    'set /a N+=1',
-    'if %N% GEQ 120 goto stuck',
-    'ping -n 2 127.0.0.1 >nul',
-    'goto wait',
-    ':copy',
-    'ping -n 2 127.0.0.1 >nul',
-    'echo [%date% %time%] copying >> "%LOG%"',
-    'robocopy "%SRC%" "%APP%" /E /IS /IT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1',
-    'if errorlevel 8 goto fail',
-    // 装完就把包清掉：不清的话下次启动 restoreStaged() 会把 staging 又认成「已就绪」，
-    // 用户再点一次「重启并安装」就等于拿旧包把自己降级回去
-    'del "%UPD%\\staged.json" 2>nul',
-    'del "%UPD%\\Polaris-*.zip" 2>nul',
-    'rd /s /q "%SRC%" 2>nul',
-    'echo [%date% %time%] done, restarting >> "%LOG%"',
-    'start "" "%APP%\\Polaris.exe"',
-    'exit /b 0',
-    // 主进程没退就绝不覆盖：文件被占着，抄到一半只会留下半新半旧的安装目录
-    ':stuck',
-    'echo [%date% %time%] pid ' + Number(pid) + ' still alive after 120s, aborted >> "%LOG%"',
-    'exit /b 2',
-    ':fail',
-    'echo [%date% %time%] robocopy failed >> "%LOG%"',
-    'exit /b 1',
-    '',
-  ].join('\r\n');
+/* ---------------- 自更新 helper（v2rayN 式自我替换） ---------------- */
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 进程是否还活着。`kill(pid, 0)` 不发信号，只探活；权限不足也算活着（宁可多等） */
+function pidAlive(pid) {
+  if (!pid) return false;
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; }
+}
+
+/** 带退避重试：杀软/索引器会短暂占住文件，立刻重试基本都能过 */
+async function withRetry(fn, say, what) {
+  let last;
+  for (let i = 0; i < 5; i++) {
+    try { return fn(); } catch (e) {
+      last = e;
+      say(`重试 ${what}（第 ${i + 1}/5 次）：${e && e.message}`);
+      await sleep(1000 * (i + 1));
+    }
+  }
+  throw last;
 }
 
 /**
- * 退出并安装。写完脚本就 spawn 一个脱离父进程的 cmd，然后让调用方退出应用。
- * 返回 {script, pid, stage_root, install_dir}，自检就靠这个断言脚本内容。
+ * 把 src 整棵树复制进 dest，同名文件覆盖。
+ * 只复制不删除：旧版本里有、新版本里没有的文件留着（v2rayN 也是这个策略），
+ * 这样万一新包少带一个文件，用户至少还能启动。
+ */
+function copyTree(src, dest, say) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, ent.name);
+    const d = path.join(dest, ent.name);
+    if (ent.isDirectory()) { copyTree(s, d, say); continue; }
+    if (!ent.isFile()) continue;   // 符号链接、设备文件等一律不碰
+    withRetry(() => fs.copyFileSync(s, d), say, path.relative(src, s));
+  }
+}
+
+/**
+ * 自更新 worker 的主流程，由「第二个 Polaris.exe 实例」执行。
+ * 所有参数都从环境变量读（原因见文件头注释：SEA 下 argv 不可靠）。
+ *
+ * 返回退出码：0 成功 / 1 失败 / 2 放弃（父进程没退或 staging 不对）。
+ * 任何失败都**只记日志、不动安装目录** —— 装一半比不装糟得多。
+ */
+async function applyWorker() {
+  const stageRoot = process.env.POLARIS_APPLY_ROOT;
+  const appDir = process.env.POLARIS_APPLY_TARGET;
+  const updDir = process.env.POLARIS_APPLY_UPDATEDIR;
+  const pid = Number(process.env.POLARIS_APPLY_PID || 0);
+  const logFile = path.join(updDir || updateDir(), 'apply.log');
+  const say = (s) => {
+    try { fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${s}\r\n`); } catch (_) { /* 写不了日志也不能中断 */ }
+  };
+
+  try {
+    if (!stageRoot || !appDir || !updDir) throw new Error('helper 参数不全，放弃');
+    say(`helper 启动：父进程 pid=${pid}，staging=${stageRoot}，目标=${appDir}`);
+
+    // 0) 先验 staging。主进程退出到 helper 真正干活之间有空档，用户可能在这期间
+    //    点了「丢弃更新包」、或者清理软件把目录删了。**这种情况下没验就动手是最危险的**：
+    //    会先把唯一的 Polaris.exe 改名，再发现新包里没有，最后安装目录里什么都不剩。
+    //    所以这一条必须在任何写操作之前，且失败时只 return、绝不动安装目录。
+    if (!fs.existsSync(path.join(stageRoot, 'Polaris.exe'))) {
+      say('staging 里没有 Polaris.exe，放弃（安装目录未改动）');
+      return 2;
+    }
+
+    // 1) 等主进程真的退出。它退出前会先停内核（main.js 的 will-quit → shutdown），
+    //    所以走到这里 resources/core/mihomo.exe 已经不被占了
+    const deadline = Date.now() + 120000;
+    while (pidAlive(pid)) {
+      if (Date.now() > deadline) { say('父进程 120 秒还没退出，放弃（安装目录未改动）'); return 2; }
+      await sleep(1000);
+    }
+    say('父进程已退出');
+
+    // 2) 自我改名。Windows 不允许覆盖运行中的 exe，但允许改名 ——
+    //    改名之后安装目录里就没有 Polaris.exe 了，新包才能落进去。
+    //    旧 exe 此刻还被本进程占着，删不掉，交给新进程启动时删（见 cleanStaleRename）。
+    const self = process.execPath;
+    const oldName = self + '.old';
+    await withRetry(() => {
+      fs.rmSync(oldName, { force: true });
+      fs.renameSync(self, oldName);
+    }, say, '改名自身 exe');
+    say(`已把自身改名成 ${oldName}`);
+
+    // 3) 覆盖安装目录（只复制不删除，data/ 是用户数据，staging 里本来就没有它）
+    copyTree(stageRoot, appDir, say);
+    say('复制完成');
+
+    // 4) 校验：新 exe 必须在，否则后面拉起的就是空气
+    if (!fs.existsSync(path.join(appDir, 'Polaris.exe'))) {
+      throw new Error('复制完成但安装目录里没有 Polaris.exe');
+    }
+
+    // 5) 清理。**只删环境变量指过来的那个目录**，不用 stateFile()/zipPath()/stagingDir()
+    //    重新推导 —— helper 算出的 root 可能和主进程不一样（安装目录中途变得不可写就会变），
+    //    重新推导会删错地方，或者干脆漏删。漏删的后果是下次启动 restoreStaged() 把 staging
+    //    认成「已就绪」，用户再点一次「重启并安装」就等于拿旧包把自己降级回去。
+    try { fs.rmSync(path.join(updDir, 'staged.json'), { force: true }); } catch (_) {}
+    try {
+      for (const f of fs.readdirSync(updDir)) {
+        if (/^Polaris-.*\.zip$/i.test(f)) fs.rmSync(path.join(updDir, f), { force: true });
+      }
+    } catch (_) {}
+    try { fs.rmSync(stageRoot, { recursive: true, force: true }); } catch (_) {}
+    say('清理完成');
+
+    // 6) 重新拉起
+    require('child_process').spawn(path.join(appDir, 'Polaris.exe'), [], {
+      detached: true, stdio: 'ignore', windowsHide: true, cwd: appDir,
+    }).unref();
+    say('已重新拉起');
+    return 0;
+  } catch (e) {
+    say('失败：' + (e && e.message));
+    return 1;
+  }
+}
+
+/**
+ * 删掉上一次更新留下的 `Polaris.exe.old`。
+ * 改名那一刻它还被 helper 进程占着，只能由新进程启动时删。
+ */
+function cleanStaleRename() {
+  try {
+    const old = process.execPath + '.old';
+    if (fs.existsSync(old)) { fs.rmSync(old, { force: true }); log.info('清理了上次更新残留的 ' + old); }
+  } catch (e) { log.warn('清理残留 exe 失败：' + (e && e.message)); }
+}
+
+/**
+ * 退出并安装。起一个「自己」当 helper，然后让调用方退出应用。
+ * 返回 {helper_pid, stage_root, install_dir}。
  */
 function apply() {
   const blocked = applyBlockedReason();
@@ -421,16 +517,26 @@ function apply() {
   if (!stageRoot) throw new Error('staging 目录里没有 Polaris.exe，已放弃（安装目录未改动）');
 
   const appDir = installDir();
-  const pid = process.pid;
-  const script = path.join(updateDir(), 'apply-update.cmd');
-  fs.writeFileSync(script, scriptFor(stageRoot, appDir, pid), 'utf8');
-  log.info(`写好了替换脚本 ${script}，即将退出并重启`);
-
-  const child = spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true });
+  // helper 就是同一个 exe 的第二个实例，靠环境变量 POLARIS_APPLY_STAGE 切到 worker 分支。
+  // 参数全走环境变量：SEA 单可执行里 argv 被 Node 解析器接管，命令行开关进不去（见文件头注释）。
+  const child = spawn(process.execPath, [], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      POLARIS_APPLY_STAGE: '1',
+      POLARIS_APPLY_PID: String(process.pid),
+      POLARIS_APPLY_ROOT: String(stageRoot),
+      POLARIS_APPLY_TARGET: String(appDir),
+      POLARIS_APPLY_UPDATEDIR: updateDir(),
+    },
+  });
   child.unref();
+  log.info(`起了自更新 helper（pid=${child.pid}），本进程即将退出`);
 
   set({ phase: 'applying' });
-  return { script, pid, stage_root: stageRoot, install_dir: appDir };
+  return { helper_pid: child.pid, stage_root: stageRoot, install_dir: appDir };
 }
 
 /** apply() 之后由 ipc 层调用：让进程真的退出，把舞台交给脚本 */
@@ -443,7 +549,7 @@ function quit() {
 }
 
 module.exports = {
-  S, info, onChange, download, apply, quit, reset, restoreStaged,
+  S, info, onChange, download, apply, applyWorker, cleanStaleRename, quit, reset, restoreStaged,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
-  safeName, zipPath, isZipFile, resolveStageRoot, scriptFor, extract,
+  safeName, zipPath, isZipFile, resolveStageRoot, extract, pidAlive,
 };
