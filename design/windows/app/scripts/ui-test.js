@@ -704,85 +704,64 @@ async function run(win, opts) {
       `页面 ${nodesBack.got.slice(0, 5).join(' | ')} ←→ 分流 ${nodesBack.want.slice(0, 5).join(' | ')}`);
   });
 
-  /* ---- 6. 流量页（用户第 5 条） ---- */
-  section('6. 流量页（今天/本周/本月取面板明细）');
+/* ---- 6. 流量页（只剩本月：合计 → 每日柱状图 → 逐日明细） ---- */
+  section('6. 流量页（本月合计 / 每日柱状图 / 逐日明细）');
   await step('流量页', async () => {
     await realClick(win, '.nav-item[data-route="traffic"]', { label:'侧边栏·流量' });
     await waitFor(win, 'window.__polarisRoute === "traffic"', { label:'进流量页' });
-    const read = async (range) => {
-      const before = await ev(win, `(()=>({route:window.__polarisRoute,segs:document.querySelectorAll('[data-range]').length}))()`);
-      // 分两步等，别混在一起：①按钮高亮（点下去立刻就有，没有就说明这一下被重绘吞了 → 再点）
-      // ②数据真的换成了这个区间（state.traffic.range 由 get_traffic 回显，面板明细慢，给足时间）。
-      // 混在一起等会分不清"点没点中"和"数据慢"——实测有一次 month 等了 90 秒，
-      // 事后查日志那一下根本没发出 get_traffic，是点被吞了。
-      const tries = await clickUntil(win, `[data-range="${range}"]`,
-        `(()=>{const el=document.querySelector('[data-range="${range}"]');return !!el&&el.classList.contains('btn-primary');})()`,
-        { tries: 3, timeout: 4000, label: `区间 ${range} 按钮高亮` });
-      check(`点「${range}」按钮真的生效了`, true, tries > 1 ? `第 ${tries} 次才点中（前一次被重绘吞了）` : '');
-      try {
-        await waitFor(win, `(()=>{const el=document.querySelector('[data-range="${range}"]');
-          const t=window.__polarisState.traffic||{};
-          return !!el&&el.classList.contains('btn-primary')&&t.range==='${range}';})()`,
-          { timeout: 60000, label:`切到 ${range} 的数据` });
-      } catch (e) {
-        const after = await ev(win, `(()=>({route:window.__polarisRoute,segs:document.querySelectorAll('[data-range]').length,
-          title:document.querySelector('.page-title')?.textContent.trim()||'',bodyLen:document.body.innerHTML.length,
-          tr:window.__polarisState.traffic&&window.__polarisState.traffic.range,
-          nav:(window.__navLog||[]).slice(-6).map(x=>x.from+'→'+x.to+' by '+x.by)}))()`);
-        throw new Error(`${e.message} | 点前 ${JSON.stringify(before)} 点后 ${JSON.stringify(after)}`);
-      }
-      return ev(win, `(()=>{const st=window.__polarisState;const t=st.traffic||{};const site=t.site||null;
-        const labels=[...document.querySelectorAll('.section-label')].map(e=>e.textContent.trim());
-        return {site, label:labels[0]||'', notLogged:t.site?0:1};})()`);
-    };
-    for (const r of ['today', 'week', 'month']) {
-      const d = await read(r);
-      check(`${r} 区间的数据来自面板（站点用量）`, !d.notLogged && /站点用量/.test(d.label), d.label);
-      check(`${r} 区间有合计值`, !!(d.site && d.site.total_text), d.site ? `${d.site.total_text} / ${d.site.days} 天` : '无');
+    try {
+      await waitFor(win, '(()=>{const t=window.__polarisState.traffic||{};return !!t.range;})()',
+        { timeout: 60000, label:'面板流量回来' });
+    } catch (e) {
+      const dump = await ev(win, `(()=>({route:window.__polarisRoute,bodyLen:document.body.innerHTML.length,
+        tr:window.__polarisState.traffic&&window.__polarisState.traffic.range,
+        nav:(window.__navLog||[]).slice(-6).map(x=>x.from+'→'+x.to+' by '+x.by)}))()`);
+      throw new Error(`${e.message} | ${JSON.stringify(dump)}`);
     }
-    // 用户第 8 轮第 3 条：后端是自动识别出来的，流量明细接口只有 xboard 有；
-    // 识别成 xiaov2b 时要显示"这个面板没有明细接口"而不是空白/假数据。
-    const beInfo = await ev(win, `(()=>{const t=window.__polarisState.traffic||{};
-      return {backend:t.backend||'', siteLog:t.site_log,
-        hasEmpty:!!document.querySelector('.empty'),
-        emptyTxt:(document.querySelector('.empty')?.innerText||'').replace(/\\s+/g,' ').trim()};})()`);
-    check('流量页拿到了识别出来的后端名', /^(xboard|xiaov2b)$/.test(beInfo.backend), `backend=${beInfo.backend}`);
-    check('xboard 面板（有明细接口）不显示"没有明细接口"的提示',
-      beInfo.siteLog !== false || !/没有站点流量明细接口/.test(beInfo.emptyTxt),
-      `site_log=${beInfo.siteLog} 空态=${beInfo.emptyTxt || '无'}`);
-    // 用户第 6 轮第 4 条：曲线画的是"用量"，标题不能叫"实时速度"
-    const chartTitle = await ev(win, `[...document.querySelectorAll('.card b')].map(e=>e.textContent.trim()).find(t=>/本机实时/.test(t))||''`);
-    check('曲线标题写的是「本机实时用量」（不是"实时速度"）', /本机实时用量/.test(chartTitle), `实际「${chartTitle}」`);
-    // 用户第 6 轮第 6 条：面板累计的已用流量/套餐要真的调对
-    const acc = await ev(win, `(()=>{const t=window.__polarisState.traffic||{};const a=t.account||null;
+
+    const info = await ev(win, `(()=>{const st=window.__polarisState;const t=st.traffic||{};
+      const labels=[...document.querySelectorAll('.section-label')].map(e=>e.textContent.trim());
       const rows=[...document.querySelectorAll('.card .row')].map(r=>({k:(r.querySelector('.k')?.textContent||'').trim(),v:(r.querySelector('.v')?.textContent||'').trim()}));
       const pick=k=>{const x=rows.find(r=>r.k.indexOf(k)>=0);return x?x.v:''};
-      return {account:a, used:pick('已用流量'), plan:pick('套餐'), peak:pick('本次峰值'), online:pick('在线节点')};})()`);
-    check('流量页的已用流量不是 0 B（面板累计调对了）', !!acc.used && !/^0\s*B/.test(acc.used.trim()), `「${acc.used}」`);
-    check('流量页的套餐名不是「未订阅」', !!acc.plan && acc.plan !== '未订阅' && acc.plan !== '—', `「${acc.plan}」`);
-    check('流量页与「我的」页读的是同一份套餐数据',
-      !!acc.account && acc.plan === (await ev(win, 'window.__polarisState.plan.name')), `流量「${acc.plan}」`);
-    check('「本次峰值」这行已经删掉（用户第 6 条）', acc.peak === '', acc.peak ? `还有「${acc.peak}」` : '');
-    check('「在线节点」这行已经删掉（用户第 6 条）', acc.online === '', acc.online ? `还有「${acc.online}」` : '');
-    // 用户第 6 轮第 5 条：鼠标划过曲线要显示那个位置的用量
-    const hit = await ev(win, `(()=>{const r=document.querySelector('[data-chart-i="1"]')||document.querySelector('[data-chart-i]');
-      if(!r) return {noChart:true};
-      const b=r.getBoundingClientRect();
-      r.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:b.left+2,clientY:b.top+6}));
-      const tip=document.getElementById('traffic-tip');
-      return {hidden:tip?tip.hidden:null, text:tip?tip.textContent:'', dots:document.querySelectorAll('#chart-hover circle').length};})()`);
-    if (hit.noChart) {
-      out('  （本机还没采样出流量点，曲线没画出来，跳过悬停读数断言）');
+      const svg=document.querySelector('#traffic-chart');
+      return {segs:document.querySelectorAll('[data-range]').length,
+        range:t.range, labels,
+        total:pick('本月合计'), from:pick('区间'),
+        bars:svg?svg.querySelectorAll('rect').length:0,
+        svgTexts:svg?[...svg.querySelectorAll('text')].map(e=>e.textContent.trim()):[],
+        tip:document.getElementById('traffic-tip')?1:0,
+        detailRows:rows.filter(r=>r.k.length===10&&r.k.charAt(4)==='-').length,
+        emptyTxt:(document.querySelector('.empty')?.innerText||'').replace(/\\s+/g,' ').trim(),
+        used:pick('已用流量'), plan:pick('套餐'), peak:pick('本次峰值'), online:pick('在线节点'),
+        account:t.account||null};})()`);
+
+    const dom = new Date().getDate();
+    const tickTexts = info.svgTexts.filter((s) => /^\d+\/\d+$/.test(s));
+    const peakTexts = info.svgTexts.filter((s) => s !== '' && !/^\d+\/\d+$/.test(s));
+    check('流量页不再有区间切换按钮（只保留本月）', info.segs === 0, `还剩 ${info.segs} 个`);
+    check('后端按本月口径取数', info.range === 'month', `range=${info.range}`);
+    check('标题写明「本月 1 日起 · 共 N 天」',
+      /月 1 日起/.test(info.labels[0] || '') && info.labels[0].indexOf('共 ' + dom + ' 天') >= 0,
+      info.labels[0] || '(空)');
+    check('「本月合计」有值', !!info.total, `「${info.total}」`);
+    check('「区间」从本月 1 号起', /-\d{2}-01 ~ /.test(info.from || ''), `「${info.from}」`);
+    if (info.bars) {
+      check('柱状图：每天一根柱', info.bars === dom, `${info.bars} 根 / 当月 ${dom} 天`);
+      check('柱状图只在首/中/末标日期', tickTexts.length === 3, tickTexts.join(' | '));
+      check('柱状图标了峰值', peakTexts.length === 1, peakTexts.join(' | '));
+      check('逐日明细列出整月每一天', info.detailRows === dom, `${info.detailRows} 行 / ${dom} 天`);
     } else {
-      check('鼠标划过曲线弹出读数', hit.hidden === false && hit.text.length > 0, `「${hit.text}」`);
-      check('读数里有下载/上传两个值', /↓/.test(hit.text) && /↑/.test(hit.text), hit.text);
-      check('读数时曲线上有两个定位点', hit.dots === 2, `${hit.dots} 个`);
-      const gone = await ev(win, `(()=>{const s=document.getElementById('traffic-chart');
-        s.dispatchEvent(new MouseEvent('mouseleave',{bubbles:false}));
-        const tip=document.getElementById('traffic-tip');
-        return {hidden:tip.hidden, marks:document.querySelectorAll('#chart-hover circle').length};})()`);
-      check('鼠标移开读数收起来', gone.hidden === true && gone.marks === 0, JSON.stringify(gone));
+      out('  （本月还没有用量记录，柱状图走的是空态，跳过柱子数量断言）');
+      check('没有记录时给出的是本月空态，不是旧的「没有明细接口」文案',
+        info.emptyTxt.indexOf('本月还没有用量记录') >= 0, info.emptyTxt || '(空)');
     }
+    check('折线悬停读数已经删掉（页面只剩柱状图）', info.tip === 0, info.tip ? '还有 #traffic-tip' : '');
+    check('流量页的已用流量不是 0 B（面板累计调对了）', !!info.used && !/^0\s*B/.test(info.used.trim()), `「${info.used}」`);
+    check('流量页的套餐名不是「未订阅」', !!info.plan && info.plan !== '未订阅' && info.plan !== '—', `「${info.plan}」`);
+    check('流量页与「我的」页读的是同一份套餐数据',
+      !!info.account && info.plan === (await ev(win, 'window.__polarisState.plan.name')), `流量「${info.plan}」`);
+    check('「本次峰值」这行已经删掉（用户第 6 条）', info.peak === '', info.peak ? `还有「${info.peak}」` : '');
+    check('「在线节点」这行已经删掉（用户第 6 条）', info.online === '', info.online ? `还有「${info.online}」` : '');
   });
 
   /* ---- 7. 我的页（用户第 6、7 条） ---- */

@@ -46,7 +46,9 @@
     traffic: {},
     trafficSeries: { points: [], unit: "MB" },
     trafficLog: [],
-    trafficRange: "today",
+    // 流量页只剩「本月」一种口径（用户反馈：四个切换给的数据几乎一样），
+    // 这里固定住，loadTraffic 拿它去切面板明细和本机曲线。
+    trafficRange: "month",
     plans: [],
     orders: [],
     tickets: [],
@@ -157,7 +159,7 @@
         nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
         orders: bindOrders, tickets: bindTickets, invite: bindInvite,
         giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting,
-        traffic: bindTraffic, home: bindHome,
+        home: bindHome,
       }[state.route] || (() => {}))();
     });
   }
@@ -259,14 +261,6 @@
   function bindCommon() {
     $$("[data-nav]").forEach((el) => el.addEventListener("click", (e) => { e.stopPropagation(); nav(el.dataset.nav); }));
     $$("[data-click]").forEach((el) => el.addEventListener("click", () => handleClick(el.dataset.click, el)));
-    $$("[data-range]").forEach((el) => el.addEventListener("click", async () => {
-      state.trafficRange = el.dataset.range;
-      // 先立刻重绘：按钮高亮要马上跟着手指走，不能等面板那十几秒的明细回来
-      // （用户点了"本周"没反应，看起来像按钮坏了）。
-      render();
-      await loadTraffic();
-      render();
-    }));
     $$("[data-group]").forEach((el) => el.addEventListener("click", () => {
       const g = state.groups.find((x) => x.name === el.dataset.group);
       if (g) openDialog("groupPick", g);
@@ -875,47 +869,6 @@
     else if (lastMsg) toast("延迟测试失败：" + lastMsg);
   }
 
-  /**
-   * 流量图悬停：鼠标划过就报出那个时间点的下载/上传用量。
-   * 不用 SVG 坐标换算 —— views.js 已经把每个点切成一块透明热区 rect[data-chart-i]，
-   * 命中哪块就是第几个点，指哪画哪，不会因为缩放/边距算出错的点。
-   */
-  function bindTraffic() {
-    const svg = $("#traffic-chart");
-    const tip = $("#traffic-tip");
-    const hover = $("#chart-hover");
-    const pts = (state.trafficSeries && state.trafficSeries.points) || [];
-    if (!svg || !tip || !hover || !pts.length) return;
-    const W = 620, PAD = Number(svg.dataset.pad) || 34;
-    const H = Number(svg.dataset.h) || 170;
-    const max = Number(svg.dataset.max) || 1;
-    const unit = svg.dataset.unit || "MB";
-    const px = (i) => PAD + (i / Math.max(1, pts.length - 1)) * (W - PAD - 10);
-    const py = (v) => H - 20 - (v / max) * (H - 44);
-    const mib = (mb) => fmt.bytes(Math.round(Number(mb || 0) * 1048576));
-    const hide = () => { tip.hidden = true; hover.textContent = ""; };
-    svg.addEventListener("mouseleave", hide);
-    svg.addEventListener("mousemove", (ev) => {
-      const raw = ev.target && ev.target.getAttribute ? ev.target.getAttribute("data-chart-i") : null;
-      if (raw === null || raw === undefined) return hide();
-      const i = Number(raw);
-      const p = pts[i];
-      if (!p) return hide();
-      const cx = px(i).toFixed(1);
-      hover.innerHTML =
-        `<line x1="${cx}" y1="18" x2="${cx}" y2="${H - 20}" stroke="#c7c7cc" stroke-width="1"/>` +
-        `<circle cx="${cx}" cy="${py(p.down).toFixed(1)}" r="4" fill="#1a73e8" stroke="#fff" stroke-width="1.5"/>` +
-        `<circle cx="${cx}" cy="${py(p.up).toFixed(1)}" r="4" fill="#ff9500" stroke="#fff" stroke-width="1.5"/>`;
-      tip.textContent = `${p.label}　↓ ${mib(p.down)}　↑ ${mib(p.up)}（${unit}）`;
-      tip.hidden = false;
-      // 贴着指针，但别飘出卡片
-      const box = svg.getBoundingClientRect();
-      const tipBox = tip.getBoundingClientRect();
-      const left = Math.max(4, Math.min(box.width - tipBox.width - 4, ev.clientX - box.left - tipBox.width / 2));
-      tip.style.left = left + "px";
-      tip.style.top = Math.max(0, ev.clientY - box.top - tipBox.height - 10) + "px";
-    });
-  }
 
   function bindRouting() {
     const b = $("#btn-routing-reset");

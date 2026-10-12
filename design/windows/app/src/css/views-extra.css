@@ -159,16 +159,8 @@
 :root[data-theme="dark"] img.app-icon { filter: none; }
 :root[data-theme="dark"] .toast { background: rgba(240, 240, 245, .96); color: #16171a; }
 
-/* 流量图悬停读数（views.js 画 SVG，app.js 的 bindTraffic 填内容） */
-.chart-wrap { position: relative; }
-.chart-tip {
-  position: absolute; z-index: 5; pointer-events: none;
-  background: rgba(28, 28, 30, .93); color: #fff;
-  font-size: 12px; line-height: 1.5; padding: 5px 9px; border-radius: 8px;
-  white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
-}
-:root[data-theme="dark"] .chart-tip { background: rgba(58, 58, 62, .96); }
-.chart-hit rect { cursor: crosshair; }
+/* 流量页原来的折线图悬停读数（.chart-wrap / .chart-tip / .chart-hit）随折线一起删了：
+   流量页改成安卓端那样的每日柱状图，逐日数值在下面的「每日明细」里列全，悬停没有意义。 */
 
 /* ---- 应用内更新的红点（用户第 13 轮第 2 条）----
    有更新时：侧边栏「设置」右上角一个红点，设置页「检查更新」那一行也一个；

@@ -207,81 +207,107 @@
   };
 
   /* ---------------- 流量 ---------------- */
-  Views.traffic = (s) => {
-    const t = s.traffic || {};
-    const r = s.trafficRange;
-    const seg = (k, label) => `<button class="btn ${r === k ? "btn-primary" : "btn-ghost"} btn-sm" style="height:40px" data-range="${k}">${label}</button>`;
-    // 字段名必须是 state.trafficSeries —— 旧代码读 s.series（不存在），
-    // 导致曲线区永远走 empty()，用户永远看不到任何流量图。
-    const series = s.trafficSeries || {};
-    const pts = series.points || [];
-    const max = Math.max(1, ...pts.map((p) => Math.max(p.down, p.up)));
-    const W = 620, H = 170, PAD = 34;
-    const x = (i) => PAD + (i / Math.max(1, pts.length - 1)) * (W - PAD - 10);
-    const y = (v) => H - 20 - (v / max) * (H - 44);
-    const slot = (W - PAD - 10) / Math.max(1, pts.length - 1);   // 每个点的悬停热区宽度
-    const line = (key) => pts.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(p[key]).toFixed(1)).join(" ");
-    const area = pts.length ? `${line("down")} L${x(pts.length - 1).toFixed(1)},${H - 20} L${x(0).toFixed(1)},${H - 20} Z` : "";
-    const ticks = pts.filter((_, i) => pts.length <= 8 || i % Math.ceil(pts.length / 6) === 0);
+    /**
+     * 流量页：只保留「本月」一种口径，结构照安卓端（V5TrafficScreen）：合计 → 每日柱状图 → 每日明细。
+     *
+     * 为什么砍掉 今日 / 本周 / 本月 / 全部 四个切换（用户反馈）：
+     *  · 站点明细本来就是按天聚合的，一天就一根柱，切「今日 / 本周」并不能多出信息；
+     *  · 记录只跨一两周时四个按钮给出来的数字完全一样（用户截图里「今日」和「本周」
+     *    都是 3.62 GB / 5.71 GB，「本月」和「全部」都是 121 GB / 55.3 GB），看着像按钮坏了；
+     *  · 旧折线图纵轴只有「0」和一个单位、没有任何刻度，线全程贴着底走，末端一个尖峰。
+     *
+     * 数据来源：面板的站点流量明细优先（能看到装软件之前的历史，正是用户要的）；
+     * 面板没有明细接口（xiaov2b）或没登录时退回本机每日统计，并在标题上写明用的是哪个来源。
+     */
+    Views.traffic = (s) => {
+      const t = s.traffic || {};
+      const acct = t.account || null;
 
-    const site = t.site || null;
-    const acct = t.account || null;
-    const sess = t.session || {};
-    const rangeLabel = r === "today" ? "今日" : r === "week" ? "本周" : r === "month" ? "本月" : "全部";
-    return head("流量", "", seg("today", "今日") + seg("week", "本周") + seg("month", "本月") + seg("all", "全部")) + `
-    <div class="section-label">站点用量 · ${rangeLabel}${site && site.days ? ` · ${site.days} 天有记录` : ""}</div>
-    <div class="card" style="margin-bottom:14px">
-      ${site ? `<div class="speed-row" style="margin:0 0 4px">
-        <div class="speed-tile dn"><span><div class="lb">下载</div><div class="vl">${h(site.down_text)}</div></span></div>
-        <div class="speed-tile up"><span><div class="lb">上传</div><div class="vl">${h(site.up_text)}</div></span></div>
+      const now = new Date();
+      const mo = now.getMonth();
+      const dom = now.getDate();
+      const key0 = (d) => `${now.getFullYear()}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const recByDate = new Map((s.trafficLog || []).map((r) => [String(r.date), r]));
+      const locPts = ((s.trafficSeries || {}).points) || [];
+      const locByLabel = new Map(locPts.map((p) => [String(p.label), p]));
+      const useSite = recByDate.size > 0;      // 面板明细优先
+      // 1 号到今天逐天建轴，面板没给的那天补 0 —— 少了这天，整根柱子就凭空消失
+      const days = [];
+      for (let i = 1; i <= dom; i += 1) {
+        const rec = recByDate.get(key0(i));
+        const loc = locByLabel.get(`${mo + 1}/${i}`);
+        const down = useSite ? Number((rec && rec.download) || 0)
+          : Math.round(Number((loc && loc.down) || 0) * 1048576);
+        const up = useSite ? Number((rec && rec.upload) || 0)
+          : Math.round(Number((loc && loc.up) || 0) * 1048576);
+        days.push({ key: key0(i), label: `${mo + 1}/${i}`, down, up, total: down + up });
+      }
+      const totDown = days.reduce((a, x) => a + x.down, 0);
+      const totUp = days.reduce((a, x) => a + x.up, 0);
+      const totAll = totDown + totUp;
+      const hasAny = totAll > 0;
+      const srcLabel = useSite ? "面板明细" : (locPts.length ? "本机统计" : "");
+
+      // —— 柱状图：纯色柱 + 峰值标注 + 零值短桩，不画虚线网格（安卓端 BarsChart 同款）——
+      const W = 620, CH = 190, PX0 = 8, PX1 = W - 8;
+      const BASE = CH - 26, TOP = 26;
+      const n = days.length;
+      const peak = days.reduce((a, x) => (x.total > a ? x.total : a), 0);
+      const peakIdx = peak > 0 ? days.findIndex((x) => x.total === peak) : -1;
+      const GAP = 3;
+      const bw = Math.min(44, (PX1 - PX0 - GAP * (n - 1)) / n);
+      const bx0 = PX0 + ((PX1 - PX0) - (bw * n + GAP * (n - 1))) / 2;   // 整组居中
+      const bars = days.map((x, i) => {
+        const bx = bx0 + i * (bw + GAP);
+        if (x.total <= 0) {
+          const st = 3;
+          return `<rect x="${bx.toFixed(1)}" y="${BASE - st}" width="${bw.toFixed(1)}" height="${st}" rx="1.5" fill="#aeaeb2"/>`;
+        }
+        const hgt = Math.max(2, (x.total / peak) * (BASE - TOP));
+        return `<rect x="${bx.toFixed(1)}" y="${(BASE - hgt).toFixed(1)}" width="${bw.toFixed(1)}" height="${hgt.toFixed(1)}" rx="3" fill="#1a73e8"/>`;
+      }).join("");
+      const ticks = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
+      const tickSvg = ticks.map((i) =>
+        `<text x="${(bx0 + i * (bw + GAP) + bw / 2).toFixed(1)}" y="${CH - 8}" text-anchor="middle">${h(days[i].label)}</text>`).join("");
+      const peakSvg = peak > 0
+        ? `<text x="${PX1}" y="${TOP - 9}" text-anchor="end">${h(fmt.bytes(peak))}</text>` : "";
+
+      const chart = hasAny
+        ? `<svg id="traffic-chart" viewBox="0 0 ${W} ${CH}" width="100%" height="${CH}" font-size="11" fill="#aeaeb2">
+          ${peakSvg}
+          <line x1="${PX0}" y1="${BASE}" x2="${PX1}" y2="${BASE}" stroke="#aeaeb2" stroke-width="1"/>
+          ${bars}
+          ${tickSvg}
+        </svg>
+        <div style="font-size:12.5px;color:var(--text3);margin-top:2px">柱高 = 当天下载 + 上传合计；零用量日留短桩</div>`
+        : empty("本月还没有用量记录", s.settings.authed
+          ? "面板还没返回这个月的明细，或本机刚装上、还没跑过流量"
+          : "登录面板后这里显示面板记录的逐日明细");
+
+      const list = days.slice().reverse().map((x) =>
+        row(h(x.key), `${fmt.bytes(x.down)} ↓　${fmt.bytes(x.up)} ↑`, { chev: false })).join("");
+
+      return head("流量", "") + `
+      <div class="section-label">${mo + 1} 月 1 日起 · 共 ${n} 天${srcLabel ? ` · ${h(srcLabel)}` : ""}</div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="speed-row" style="margin:0 0 4px">
+          <div class="speed-tile dn"><span><div class="lb">下载</div><div class="vl">${h(fmt.bytes(totDown))}</div></span></div>
+          <div class="speed-tile up"><span><div class="lb">上传</div><div class="vl">${h(fmt.bytes(totUp))}</div></span></div>
+        </div>
+        ${row("本月合计", h(fmt.bytes(totAll)), { chev: false, vcls: "strong" })}
+        ${row("区间", `${key0(1)} ~ ${key0(dom)}`, { chev: false })}
       </div>
-      ${row("区间合计", h(site.total_text), { chev: false, vcls: "strong" })}
-      ${site.from ? row("区间", `${h(site.from)} ~ ${h(site.to)}`, { chev: false }) : ""}` 
-      : (t.site_log === false
-        ? empty("这个面板没有站点流量明细接口", `识别到的后端是 ${h(t.backend || "xiaov2b")}，只提供账号累计用量`)
-        // 登录态和"面板请求失败"是两件事：面板超时时如果写"未登录面板"，
-        // 用户会以为掉登录了（用户第 11 轮第 3 条）。这里分开说。
-        : (s.settings.authed
-          ? empty("面板暂时读不到流量明细", "面板请求超时或失败，稍后重试；本机用量在下面照常统计")
-          : empty("未登录面板，读不到站点用量", "登录后这里显示面板记录的流量明细")))}
-    </div>
-    <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">本机实时用量 · ${r === "today" ? "24 小时" : r === "week" ? "本周" : r === "month" ? "本月" : "全部记录"}</b>
-      <span style="font-size:13px;color:var(--text2)"><span style="color:var(--blue)">●</span> 下载　<span style="color:var(--orange)">●</span> 上传</span></div>
-      <div class="chart-wrap">
-      ${pts.length ? `<svg id="traffic-chart" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" data-pad="${PAD}" data-h="${H}" data-max="${max}" data-unit="${h(series.unit || "MB")}">
-        <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a73e8" stop-opacity=".32"/><stop offset="1" stop-color="#1a73e8" stop-opacity=".03"/></linearGradient></defs>
-        <g stroke="#ececf0"><line x1="${PAD}" y1="20" x2="${PAD}" y2="${H - 20}"/><line x1="${PAD}" y1="${H - 20}" x2="${W - 6}" y2="${H - 20}"/></g>
-        <path d="${area}" fill="url(#g1)"/>
-        <path d="${line("down")}" fill="none" stroke="#1a73e8" stroke-width="2.5" stroke-linejoin="round"/>
-        <path d="${line("up")}" fill="none" stroke="#ff9500" stroke-width="2.2" stroke-linejoin="round"/>
-        <g font-size="11" fill="#8e8e93">${ticks.map((p) => {
-          const i = pts.indexOf(p);
-          return `<text x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="middle">${h(p.label)}</text>`;
-        }).join("")}</g>
-        <g font-size="11" fill="#8e8e93"><text x="4" y="26">${h(series.unit || "MB")}</text><text x="4" y="${H - 22}">0</text></g>
-        <g id="chart-hover"></g>
-        <g class="chart-hit">${pts.map((p, i) => `<rect data-chart-i="${i}" x="${Math.max(0, x(i) - slot / 2).toFixed(1)}" y="14" width="${slot.toFixed(1)}" height="${H - 34}" fill="transparent"/>`).join("")}</g>
-      </svg>
-      <div class="chart-tip" id="traffic-tip" hidden></div>` : empty("暂无流量记录", "连接后开始统计")}
-      </div>
-      <div style="font-size:13px;color:var(--text2);margin-top:4px">当前下载 <span id="down-speed">${fmt.speed(s.down_speed)}</span> · 当前上传 <span id="up-speed">${fmt.speed(s.up_speed)}</span></div>
-    </div>
-    <div class="speed-row" style="margin:0 0 4px">
-      <div class="speed-tile dn"><span><div class="lb">本次下载</div><div class="vl">${h(sess.down_text || "0 B")}</div></span></div>
-      <div class="speed-tile up"><span><div class="lb">本次上传</div><div class="vl">${h(sess.up_text || "0 B")}</div></span></div>
-    </div>
-    <div class="section-label">面板累计</div>
-    <div class="card">
-      ${acct ? row("已用流量", `${h(acct.used_text || "—")} / ${h(acct.quota_text || "—")}`, { chev: false, vcls: "strong" })
-        : row("总下载", h(t.total_down || "—"), { chev: false, vcls: "strong" })}
-      ${acct ? row("套餐", h(acct.plan_name || "—"), { chev: false }) : row("总上传", h(t.total_up || "—"), { chev: false, vcls: "strong" })}
-      ${acct && acct.expire ? row("到期", h(acct.expire), { chev: false }) : ""}
-    </div>
-    ${s.trafficLog && s.trafficLog.length ? `<div class="section-label">站点流量明细</div><div class="card">` +
-      s.trafficLog.map((r2) => row(h(r2.date),
-        `${fmt.bytes(r2.download || 0)} ↓ / ${fmt.bytes(r2.upload || 0)} ↑`, { chev: false })).join("") + `</div>` : ""}`;
-  };
+      <div class="section-label">每日用量</div>
+      <div class="card" style="margin-bottom:14px">${chart}</div>
+      ${hasAny ? `<div class="section-label">每日明细（整月逐天）</div><div class="card" style="margin-bottom:14px">${list}</div>` : ""}
+      <div class="section-label">面板累计</div>
+      <div class="card">
+        ${acct ? row("已用流量", `${h(acct.used_text || "—")} / ${h(acct.quota_text || "—")}`, { chev: false, vcls: "strong" })
+          : row("总下载", h(t.total_down || "—"), { chev: false, vcls: "strong" })}
+        ${acct ? row("套餐", h(acct.plan_name || "—"), { chev: false }) : row("总上传", h(t.total_up || "—"), { chev: false, vcls: "strong" })}
+        ${acct && acct.expire ? row("到期", h(acct.expire), { chev: false }) : ""}
+      </div>`;
+    };
 
   /* ---------------- 分流规则 ---------------- */
   const OUT_LABEL = { direct: "直连", block: "拦截", proxy: "节点选择" };
