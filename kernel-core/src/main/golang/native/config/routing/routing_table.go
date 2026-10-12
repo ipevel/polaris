@@ -152,8 +152,19 @@ var Table = []RuleGroup{
 		InlineRules: []string{"GEOSITE,google-play,{t}"}},
 	{Name: "Ⓜ️ 微软Bing", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,bing,{t}"}},
+	// 微软云盘放在微软服务之前（顺序即优先级），但 geosite 的 onedrive 分类只有 19 条，
+	// 真正传文件字节的内容主机 docs.live.net / content.live.net 不在里面，会漏到下一组
+	// 「Ⓜ️ 微软服务」。那一组默认走代理，于是「微软云盘选直连」对这几个域名无效 ——
+	// 实测（routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）确认过。
+	// 所以这里补四条内联域名兜底，保证云盘相关流量不会跑到别的组去。
 	{Name: "Ⓜ️ 微软云盘", DefaultOn: true, DefaultOut: "direct",
-		InlineRules: []string{"GEOSITE,onedrive,{t}"}},
+		InlineRules: []string{
+			"GEOSITE,onedrive,{t}",
+			"DOMAIN-SUFFIX,docs.live.net,{t}",
+			"DOMAIN-SUFFIX,content.live.net,{t}",
+			"DOMAIN-SUFFIX,odc.officeapps.live.com,{t}",
+			"DOMAIN-SUFFIX,officeapps.live.com,{t}",
+		}},
 	{Name: "Ⓜ️ 微软服务", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,microsoft,{t}"}},
 	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",

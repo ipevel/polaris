@@ -176,6 +176,14 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		// 系统服务
 		{host: "www.apple.com", want: "🍎 苹果服务", why: "苹果"},
 		{host: "onedrive.live.com", want: "Ⓜ️ 微软云盘", why: "OneDrive"},
+		// OneDrive 真正传文件字节的内容主机。geosite 的 onedrive 分类里没有，
+		// 漏到下一组「Ⓜ️ 微软服务」的话，「微软云盘选直连」对它们就是失效的。
+		{host: "docs.live.net", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容主机"},
+		{host: "xyz.docs.live.net", want: "Ⓜ️ 微软云盘", why: "OneDrive 租户内容主机"},
+		{host: "contoso-my.sharepoint.com", want: "Ⓜ️ 微软云盘", why: "OneDrive/SharePoint 内容主机"},
+		{host: "contoso.livefilestore.com", want: "Ⓜ️ 微软云盘", why: "OneDrive for Business 内容主机"},
+		{host: "files.1drv.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容分发"},
+		{host: "cdn.odc.officeapps.live.com", want: "Ⓜ️ 微软云盘", why: "Office 网页版 CDN"},
 		{host: "www.google.com", want: "♊️ Google Gemini", why: "Google 统一走 Gemini 组（表内顺序在前）"},
 		// 兜底
 		{host: "unknown-site.example", want: "🐟 漏网之鱼", why: "未命中一律兜底"},
@@ -186,6 +194,42 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s（%s）命中分流组 = %q，期望 %q",
 				c.why, cmpHost(c.host, c.ip), got, c.want)
+		}
+	}
+}
+
+// TestSplitMicrosoftGroupsKeepTheirOwnDomains 锁死「同一家的两个分组不会互相吞掉」。
+//
+// 用户 2026-10-12 问：微软云盘选直连，会不会被别的规则接管走代理？答案是结构性的 ——
+// 表的顺序就是优先级，「Ⓜ️ 微软云盘」必须排在「Ⓜ️ 微软服务」和「🌏 国外穿墙」之前，
+// 否则 onedrive 分类里的域名会先被 microsoft / geolocation-!cn 命中，用户在节点页
+// 给云盘组选什么出站都白搭。这里把顺序本身钉死，以后有人调表顺序会立刻红。
+func TestSplitMicrosoftGroupsKeepTheirOwnDomains(t *testing.T) {
+	idx := func(name string) int {
+		for i, g := range Table {
+			if g.Name == name {
+				return i
+			}
+		}
+		return -1
+	}
+	cloud, service, abroad := idx("Ⓜ️ 微软云盘"), idx("Ⓜ️ 微软服务"), idx("🌏 国外穿墙")
+	if cloud < 0 || service < 0 || abroad < 0 {
+		t.Fatalf("微软两组或国外穿墙组不见了：cloud=%d service=%d abroad=%d", cloud, service, abroad)
+	}
+	if !(cloud < service && cloud < abroad) {
+		t.Errorf("「Ⓜ️ 微软云盘」必须排在「Ⓜ️ 微软服务」(%d) 和「🌏 国外穿墙」(%d) 之前，实际 cloud=%d",
+			service, abroad, cloud)
+	}
+
+	// 三组默认出站本来就不同，钉住：云盘直连、服务与国外穿墙走代理
+	for name, want := range map[string]string{"Ⓜ️ 微软云盘": "direct", "Ⓜ️ 微软服务": "proxy", "🌏 国外穿墙": "proxy"} {
+		for _, g := range Table {
+			if g.Name == name {
+				if g.DefaultOut != want {
+					t.Errorf("%s 的默认出站 = %q，期望 %q", name, g.DefaultOut, want)
+				}
+			}
 		}
 	}
 }
