@@ -610,7 +610,17 @@ const builder = require('../electron/core/builder');
       check('自有域名直连排在规则最前面', !dd.length || rules.slice(0, dd.length).every((r) => String(r).startsWith('DOMAIN-SUFFIX,')),
         rules.slice(0, 3).join(' | '));
 
-      // ④ 种子只补缺失：改过的缓存文件绝不能被随包种子覆盖回去
+      // ④ 种子播种：**每次启动都覆盖**（这是有意行为，不是"只补缺失"）
+      //
+      // 这条断言原来叫「内核下载到的新版规则不会被随包种子打回旧版（种子只补缺失）」，
+      // 验的是"只补缺失"。2026-10-12「规则全本地」之后那个前提**已经不存在**：
+      //   - provider 一律 type:file，内核只读不写 —— grep 过 clash/rules/provider/*.go，
+      //     没有任何 WriteFile / os.Create / Save，所以根本不存在"内核下载的新版规则"；
+      //   - 而 ensureRuleSeeds() 是**有意**无条件覆盖的，理由见 manager.js:138 与 :178-181
+      //     （随包修正过的清单必须立刻生效，旧版本残留的用户不必重装）。
+      // 所以这里改成验**当前的有意行为**：被改脏的缓存文件，在下次 prepareConfig 时
+      // 会被随包种子**覆盖回随包版本**。守卫没有丢，只是守的东西从"防止打回"变成
+      // "确认有意覆盖" —— 将来谁把 ensureRuleSeeds() 改回"只补缺失"，这条会红。
       const seedDir = paths.polarisRules();
       const seedFiles = rulesets.allProviderKeys().map((k) => rulesets.seedFile(k));
       const missing = seedFiles.filter((f) => !nodeFs.existsSync(nodePath.join(seedDir, f)));
@@ -620,14 +630,22 @@ const builder = require('../electron/core/builder');
       // （现在只剩 acl_* 十个种子），于是下面 readFileSync 直接抛 ENOENT，整条数据层门禁
       // 从这里断掉。改成从当前 provider 表里动态挑一个真的在磁盘上的种子文件。
       if (!probeKey) throw new Error(`探测用种子文件一个都不存在（${seedDir}）—— 规则集缓存没播种成功`);
-      const probeFile = nodePath.join(seedDir, rulesets.seedFile(probeKey));
+      const probeName = rulesets.seedFile(probeKey);
+      const probeFile = nodePath.join(seedDir, probeName);
+      const packaged = nodeFs.readFileSync(nodePath.join(paths.rules(), probeName)); // 随包种子
       const original = nodeFs.readFileSync(probeFile);
       try {
-        nodeFs.writeFileSync(probeFile, Buffer.concat([original, Buffer.from('\n# polaris-online-update-marker\n')]));
+        // 故意把缓存改脏，模拟"被改动过的缓存文件"
+        nodeFs.writeFileSync(probeFile, Buffer.concat([original, Buffer.from('\n# polaris-dirty-cache-marker\n')]));
+        const dirty = nodeFs.readFileSync(probeFile);
+        check('探测前缓存确实被改脏了（构造有效）', dirty.length > packaged.length,
+          `dirty=${dirty.length} packaged=${packaged.length}`);
         core.prepareConfig({ reuse: true });          // 等价于下次启动/重拉订阅时的播种
-        const after = nodeFs.readFileSync(probeFile, 'utf8');
-        check('内核下载到的新版规则不会被随包种子打回旧版（种子只补缺失）', after.includes('polaris-online-update-marker'),
-          `size=${after.length} vs seed=${original.length}`);
+        const after = nodeFs.readFileSync(probeFile);
+        check('启动时随包种子覆盖缓存（manager.js:183 有意无条件覆盖，不是"只补缺失"）',
+          after.equals(packaged), `after=${after.length} packaged=${packaged.length}`);
+        check('被改脏的内容没有残留（marker 已消失）',
+          !after.toString('utf8').includes('polaris-dirty-cache-marker'));
       } finally {
         nodeFs.writeFileSync(probeFile, original);    // 原样还回去
       }
