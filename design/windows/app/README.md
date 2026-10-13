@@ -35,7 +35,7 @@ app/
 │   │   ├── builder.js      # 最终 config.yaml 组装
 │   │   ├── region.js       # 节点名 → 地区
 │   │   ├── traffic.js      # 流量 WebSocket 与速率聚合
-│   │   ├── rulesets.js     # 内置分流规则集（25 组 / 47 个规则集）
+│   │   ├── rulesets.js     # 内置分流规则集（main 上仍是 25 组 / 47 个规则集；windows-portable 已到 23 组，见 DEVNOTES §五 1.9）
 │   │   ├── updater.js      # 更新下载、解压、替换脚本（自替换）
 │   │   └── remote.js       # 远程配置（多源择优、Base64 混用）
 │   ├── panel/
@@ -95,6 +95,11 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > `test:real` / `test:ui` 缺 `--panel/--email/--password` 会**立刻打印用法并以退出码 2 退出**
 > （由 `scripts/preflight-creds.js` 在启动 Electron 之前挡一道），不会让你等一整个启动才发现少参数。
 > 参数是**追加**在 `--` 之后的；`test:real` 还支持 `--restore --data=<数据根目录>` 复用已登录会话。
+>
+> ⚠️ **跑 `test:real` 会改动工作树**：它的 geodata 24 小时同步会写 `resources/geo/`
+> （那是仓库跟踪目录）。跑完请还原：
+> `git checkout -- design/windows/app/resources/geo/ && rm -f design/windows/app/resources/geo/geo_last_sync`
+> 详见 `docs/DEVNOTES.md` §三 A-58。
 
 ### CI 门禁
 
@@ -118,9 +123,13 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > `exit 0` —— 在 CI 里那等于一个永远绿的假通过。而这条测试要防的正是「main 改了分流表、
 > Windows 镜像没跟上」这种静默分叉（2026-10-12 就这么分叉过一次）。
 >
-> ⚠️ **这条现在红着，是知情的**：它抓到 main 的 Go 表与 Windows 的 JS 表双向分叉
-> （25 组 vs 23 组，AI 组一边分三组、一边已合并成「🤖 AI」）。
-> 用户已决定先放着、等安卓收尾后一起排；移植清单见 `docs/DEVNOTES.md` §五 的 1.9。
+> ⚠️ **这条抓到的是真的，且仍未修完**：`main` 的 Go 表落后 ——
+> `main` 是 25 组 / 100 条内联，而 `android-portable`（`f65ffcd`）与 Windows 的 JS 表
+> 早已对齐在 23 组 / 246 条内联（本机实测 PASS）。**方向是「main 追平 android-portable」，
+> 不是改 Windows。** 注意 `f65ffcd` 目前还是**本地提交**，所以准确状态是
+> 「**本地已对齐，待推送**」。
+> 先放着、等安卓收尾后再一起排 —— 这个序是 **Eric 排的**（不是用户的决定）；
+> 真正要不要执行等**用户的 go-ahead**。对齐清单见 `docs/DEVNOTES.md` §五 的 1.9。
 
 ### 出问题怎么查
 

@@ -2,8 +2,11 @@
 
 > 最后更新：2026-10-13（**第 15 轮：Windows 端门禁（A-57）**）
 > 用户批了门禁这一摊：真面板两条自检挂进 npm、补 `.editorconfig`、把 5 条离线自检接进 CI。
-> 见 §三 A-57 —— 注意里面那条 ⚠️：**新门禁现在会红，因为它抓到 main 与 Windows 的
-> 分流表双向分叉是真的**，要变绿得反向移植 Go 表（跨端语义变更，未做）。
+> 见 §三 A-57 —— 注意里面那条：**门禁抓到 `main` 的 Go 分流表落后了**
+> （`main` 25 组 / 100 条内联；`android-portable` 的 `f65ffcd` 与 Windows 的 JS 表早已对齐在
+> 23 组 / 246 条内联，本机实测 PASS）。**方向是「main 追平 android-portable」，不是改 Windows**；
+> 属跨端语义变更，**等用户 go-ahead**，未做。`f65ffcd` 目前还是本地提交，所以准确状态是
+> 「**本地已对齐，待推送**」。对齐清单 + 导出 Go 表的避坑法见 §五 1.9。
 >
 > 同一日更早：**第 14 轮：运行日志里的更新超时 + 日志时间戳（A-56）**
 > 用户第 15 轮给了一份 5005 行的运行日志，点名 A+B：A 修应用内更新下载的超时/重试，
@@ -387,7 +390,7 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
   重启不重置；超过 `interval` 就 `forceUpdate` 一次；内容相同只 `Chtimes`；失败按 2 倍退避重试。
 - **分流落点逐组实测**（同一段）：19 个启用的分流组各挑规则集里的真域名发一次请求，
   从内核日志逐条核对落点 —— `github-api.arkoselabs.com → RuleSet(gs_github) → 🐱 GitHub`、
-  `ai.google.dev → RuleSet(acl_gemini) → ♊️ Google Gemini`、`periscope.tv → RuleSet(gs_x) → 📲 X`、
+  `ai.google.dev → RuleSet(acl_gemini) → 🤖 AI`、`periscope.tv → RuleSet(gs_x) → 📲 X`、
   `steambroadcast.akamaized.net → RuleSet(acl_steam) → 🎮 游戏平台`、
   `api.iplay.163.com → RuleSet(acl_neteasemusic) → 🎶 网易音乐`、
   `www.baidu.com → RuleSet(acl_chinadomain) → 🎯 国内直连` …… 18 个落自己组，
@@ -2896,33 +2899,43 @@ version-gate / go / quality 三个 job）。这个文件最初也叫 `ci.yml`，
 `routing-sync-test.js` 在找不到表时 `exit 1` 而不是跳过。同时脚本里也补了
 「显式指了路径却不存在 → 失败」这条（以前会抛 `ENOENT` 崩掉，看起来像脚本坏了）。
 
-### 4. ⚠️ 这条门禁现在会**红**，因为它抓到的是真的（未解决）
+### 4. 这条门禁抓到的是真的：`main` 的 Go 表落后（本地已对齐，待推送）
 
-把 main 的真表指过去跑，报的是**双向分叉**，不是「main 落后」：
+**结论：Go↔JS 两端早已对齐，唯一落后者是 `main`；而 `main` 的追平**还没做**。**
 
-| | Go（main，25 组） | JS（windows-portable，23 组） |
-|---|---|---|
-| AI 组 | `♊️ Google Gemini` / `💬 Claude` / `💬 OpenAI` 三组 | `🤖 AI` 一组（`2487d05` 合并） |
-| 净化/广告 | 有 `🍃 应用净化`、`🛑 广告拦截` | **没有**（`33d1fc0` 删的，说会互相遮蔽） |
-| Google Play / 游戏平台 | `defaultOut: proxy` | `defaultOut: direct` |
+这一节最初写成了「双向分叉、要把 Windows 的 23 组反向移植进 main」，**那是错的** ——
+当时只比了「main 的 Go 表」与「Windows 的 JS 表」，漏了去比 **android-portable** 那一端，
+就凭两个失败者之间的差异推出了方向。补验 android-portable 后（2026-10-13）真相是：
 
-根因是两边各自改了、都没同步：
+| 表 | 组数 | provider | 内联规则 | 对 Windows JS 表 |
+|---|---|---|---|---|
+| `android-portable` 的 `f65ffcd` Go 表 | **23** | 10 | **246** | **PASS 逐条一致** ✅ |
+| `main` 的 Go 表 | 25 | 10 | 100 | FAIL |
+| `windows-portable` 的 JS 表（基准） | 23 | 10 | — | — |
 
-- Windows 侧 `2487d05`（本分支，未同步）把三组 AI 合并成 `🤖 AI`，删掉旧 Gemini 组里的
-  `GEOSITE,google` / `GEOSITE,google-play`（这两条排在「🌏 Google」「🌏 Google Play」前面，
-  把两个组整体吃掉、开关设成什么都不生效），并补了 151 条规则。
-- main 侧 `47f4a62` 同步的还是**更早**的 Windows 布局，另外还有安卓自己的
-  `a309aaa` / `e173125`（国内直连补规则）等。
+所以要做的是「**main 采用 android-portable 已经落下的那份表**」，不是新造一份变更。
+安卓侧分两步做完：`da64ca5`（`fix(routing): AI 分流组三合一（含旧组名设置迁移）并重建内核产物`）
+合并三组 AI，`f65ffcd`（`fix(routing): 「🌏 Google Play」挪到「🌏 Google」之前，修掉第二个死开关`）
+再修顺序。`da64ca5` 自带 `RoutingTableParityTest`（3 例）与 `RoutingGroupsMigrationTest`（12 例）
+两道门禁且已绿。
 
-`2487d05` 的提交说明里其实已经写明：「routing-sync-test PASS：与**按规格构造的 Go 表副本**
-逐条一致（**安卓端那份真实表提交后需再指过去复核一次**）」—— 这一步还没做。
+为什么 main 会落后：Windows 侧 `2487d05` 把三组 AI 合并成 `🤖 AI`（并删掉旧 Gemini 组里
+排在「🌏 Google」「🌏 Google Play」前面、会把两个组整体吃掉的 `GEOSITE,google` /
+`GEOSITE,google-play`）；安卓侧随后在 `da64ca5` + `f65ffcd` 把同一件事做到了 Go 表上。
+`2487d05` 的提交说明里已经写明「安卓端那份真实表提交后需再指过去复核一次」—— 那个复核做了。
 
-**所以现在不是「门禁坏了」，是门禁第一次把话说清楚了。** 要它变绿，得把 Windows 这版
-23 组布局（含 `🤖 AI` 合并、去掉 `🍃 应用净化`/`🛑 广告拦截`、`LEGACY_GROUP_ALIASES` 迁移）
-**反向移植进 main 的 `routing_table.go`** —— 那会改变安卓端的分流行为，属于跨端语义变更。
+**所以不是「门禁坏了」，是门禁第一次把话说清楚了 —— 而且它指对了两端中的哪一端落后。**
 
-> **用户已决定（2026-10-13）：先放着，等安卓收尾后一起排。** 所以这个红是知情的、刻意的。
-> 完整的移植步骤写在 §五 的 **1.9**，谁接手照那份清单做即可。
+> ⚠️ **`f65ffcd` 目前还是本地提交、没推**（`origin/android-portable` 停在 `b5ac086`，
+> 那份 Go 表**仍是 25 组**）。所以准确说法是「**本地已对齐，待 `f65ffcd` 推送**」，
+> 别写成「已对齐」。
+>
+> **先放着、等安卓收尾后再一起排（2026-10-13）。** 这个序是 **Eric 排的**，不是用户的决定；
+> 真正要不要执行等**用户的 go-ahead**。完整的对齐步骤写在 §五 的 **1.9**
+> （含「别从 `origin/android-portable` 取表」这个坑），谁接手照那份清单做即可。
+
+**教训**：只有两份样本不一致时，别急着断定"谁落后" —— 先去找**第三份**（这里是
+android-portable）当参照。这次我拿两个都过时的表互相比，就推出了一个反向的结论。
 
 ### 验收（本机 windows-portable 实测）
 
@@ -2985,6 +2998,185 @@ sparse-checkout 从 main 取 `kernel-core` 这条路是通的（日志里打印�
 
 **教训**：门禁第一次跑红的时候，先别改门禁 —— 先看它是不是对的。这次它对（两次都对：
 一次是 runner 平台选错，一次是真的分流表漂移）。
+
+---
+
+## A-58 第一次真跑真面板两条门禁：real-test 200/7，并且它会改工作树（2026-10-13）
+
+用户批了账号与密码后，第一次真跑 `test:real`（真面板 `https://app.pinxiaoche.top`、
+真账号 `lark.so@hotmail.com`）。结果 **200 通过 / 7 失败**（去重后 **5 类**）。
+
+### ⚠️ 先说一件会影响所有后续跑测的事：`real-test` 会改仓库工作树
+
+跑完 `git status` 多出：
+
+```
+ M design/windows/app/resources/geo/ASN.mmdb
+ M design/windows/app/resources/geo/geoip.metadb
+ M design/windows/app/resources/geo/geosite.dat
+?? design/windows/app/resources/geo/geo_last_sync
+```
+
+这不是 bug，是设计使然：`electron/core/geosync.js` 的注释明写「刷新只写 `resources/geo/`
+（源）」，而 `resources/geo/` 是**仓库跟踪目录**（随包分发 geodata，见 README「性能注意」）。
+所以：
+
+- **跑真面板门禁前先记下 `resources/geo` 的状态，跑完 `git checkout --` 还原、删掉
+  `geo_last_sync`**，否则会把 9–12 MB 的二进制漂移混进提交。
+- 更稳的做法是让 geosync 尊重一个「测试模式」目录（本轮没做，记在待办）。
+
+### 5 类失败（已逐条查证，不再是"倾向"）
+
+| # | 失败项 | 定性 | 依据 |
+|---|---|---|---|
+| 1 | `连接后本机本次流量有计数` :: `{"up":0,"down":0}` | **待定**（需复跑） | 测的是本机代理端口流量计数，测试只发了几次探测请求，可能是采样窗口没覆盖。没查到根因，不写结论。 |
+| 2 | `内核下载到的新版规则不会被随包种子打回旧版（种子只补缺失）` :: `size=17843 vs seed=17977` | **测试问题**（断言基于已废弃的前提） | 见下面「② 的查证」。产品行为是**有意覆盖**。 |
+| 3 | `rule-provider 是内核从本地文件读的（vehicleType=Local）` :: 实际 `File` | **测试断言写错**（确证） | 内核枚举只有 `File`/`HTTP`/`Compatible`/`Inline`，**没有 `Local`**。 |
+| 4 | `geodata 24 小时同步标记存在（INTERVAL_MS=86400000）` :: `fresh=false` | **#5 的连带** | 同步本身失败（ENOENT），标记不推进。 |
+| 5 | `苹果推送的 12 条内联规则挂在「🍎 苹果服务」组下` | **#4 的连带** | geodata 没同步成功 → `GeoSite(apple)` 解析不到 → 落点实测失败（日志 `dns resolve failed: couldn't find ip`）。 |
+
+**#3 的证据**：`kernel-core/src/foss/golang/clash/constant/provider/interface.go:12-17`
+
+```go
+const ( File VehicleType = iota; HTTP; Compatible; Inline )
+```
+
+`String()`（同文件 :22-34）只可能返回 `File` / `HTTP` / `Compatible` / `Inline` / `Unknown`。
+`real-test.js` 却断言 `prov[k].vehicleType === 'Local'` → **字面量写错，产品行为正确**。
+
+这条断言在 `real-test.js` 里有**两处**（原 `:655` 与 `:861`，两个阶段各一份）—— 改的时候只改
+一处会漏。**已修**（commit `c74b3bf`），两处都改成 `'File'`，并加了枚举说明与源码行号注释。
+
+**脱离真面板的验证**（起一个最小 mihomo，直接问内核，不用真账号）：
+
+```bash
+# 1) 建一个只有单个 type:file rule-provider 的最小配置，起内核
+mihomo.exe -d <tmpdir> -f <tmpdir>/config.yaml     # external-controller: 127.0.0.1:19099
+# 2) 问它
+curl http://127.0.0.1:19099/providers/rules
+```
+
+实测返回：
+
+```json
+{"myrules": {"vehicleType":"File","ruleCount":2,"behavior":"Classical","format":"YamlRule"}}
+```
+
+→ 改后的断言 `=== 'File'` 为 **true**、改前的 `=== 'Local'` 为 **false**，即**从红变绿**。
+这条不需要真面板也能钉死，以后有人再怀疑枚举取值，跑这两条命令即可。
+
+### ⚠️ 独立确认的产品 bug：`geo sync` 并发、缺互斥
+
+**不是"三个同步"而是"四个"** —— 日志形态是「1 次成功 + 3 次 ENOENT」：
+
+```
+13:58:45.717 INFO  geo sync: updated geosite.dat (4380933 bytes)
+13:58:45.721 WARN  geo sync failed: geosite.dat: ENOENT: rename '…\geosite.dat.part' -> '…\geosite.dat'
+13:58:45.727 WARN  （同上）
+13:58:45.730 WARN  （同上）
+```
+
+`geoip.metadb`（13:59:00.014 + .018/.021/.024）与 `ASN.mmdb`（13:59:16.291 + .300/.308/.318）
+同样各复现一次。四方写出的字节数完全相同，说明同一来源、同一时刻。
+
+**调用链（并发从哪来）**：
+
+- `manager.js:201` `refreshGeo()` —— 在 `ensureGeodata()` 里，注释明写「**绝不 await**」
+- `manager.js:274` `ensureGeodata()` —— 在 `startKernel()` 里
+- `main.js:59` `refreshGeo()` —— 启动路径**又独立调了一次**，同样不 await
+- `manager.js:234` → `geosync.js:103 refresh()`
+
+**为什么互斥不存在**：`geosync.js:103 refresh()` 无 in-flight 标志、无队列、无锁；
+开头的 `geosync.js:105 if (isFresh(geoDir)) return []` 挡不住并发，因为标记
+`geo_last_sync` 要等这次刷新跑完才写 → 并发调用全部通过 fresh 检查。
+加上 `geosync.js:114` 用**固定的** `${name}.part`，并发必然互踩。
+
+**定性：产品 bug（缺单飞/互斥）**，不是测试问题。
+
+> ⚠️ **一处更正**（本段初稿写错过）：`geosync.js:146` 是 `if (updated.length)` ——
+> **任一路成功就推进标记**，不是"全部成功才写"。所以后果是**重复下载（浪费带宽）+
+> 大量 ENOENT 告警**，**没有**"标记永远不推进"。严重级别因此是**中低**（功能不受影响），
+> 不是"同步坏掉"。代码注释（`geosync.js:145`）原文也写着"至少一份成功才推进时间戳"。
+
+**已修**（commit `ce3e713`）：`refresh()` 改成单飞壳，同一目录已有刷新在跑就复用同一个
+promise，真正的逻辑搬进 `doRefresh()`。**A/B 实测**（本地 HTTP 服务器数请求次数，
+两路并发 `Promise.all`）：
+
+| | 请求次数 | 日志行数 | 两路是否同一结果 |
+|---|---|---|---|
+| **有单飞** | **6**（= 一次刷新的量） | **3** | **true** |
+| **无单飞**（`git stash` 对照） | **12** | **6** | false |
+
+### ② 「种子覆盖新版规则」的查证结论
+
+**调用链**：`manager.js:93 prepareConfig()` → `manager.js:97 ensureRuleSeeds()` →
+`manager.js:150` 定义 → `manager.js:183 fs.copyFileSync(from, to)` **无条件覆盖**。
+**没有任何"要不要铺"的判定**（`manager.js:182` 只是"大小不同才计 copied"用于日志）。
+`manager.js:138` 的函数注释直接写着「内置分流规则种子：**每次启动都覆盖**」。
+
+**"内核下载的新版"这个前提在产品里已不存在**，两条硬证据：
+
+1. `rulesets.js` 里 provider 是 `type: file`，注释明说「只读随包种子、启动与运行期都不联网」。
+2. 内核 `clash/rules/provider/*.go` 里**没有任何 `WriteFile`/`os.Create`/`Save`**（grep 为空）
+   → 内核不会把下载内容写回文件。
+
+而 `real-test.js:613-634` 是**自己手动**往种子文件追加 `# polaris-online-update-marker`
+再调 `prepareConfig({reuse:true})`，然后断言 marker 还在 —— 它验的是一个**已废弃的不变量**。
+`manager.js:178-181` 的注释专门解释过这次转向：「早先这里是『只补缺失』，理由是怕打回内核按
+interval 下载的新版；规则全面本地化（type:file）之后内核只读不写，这条顾虑已经不存在了。」
+
+**定性：测试问题**（不是产品 bug）。**但边界要写清**：用户**手工改** `data/polaris-rules/`
+里的文件，下次启动**确实会被覆盖回去** —— 这是**有意行为**（随包修正要立刻生效，见
+`manager.js:143-144`），不是缺陷。
+
+**不依赖真面板的复现**（就是测试那段）：
+
+```js
+const f = <data>/polaris-rules/<任一 acl_*.yaml>;
+fs.appendFileSync(f, '\n# marker\n');
+require('./electron/core/manager').prepareConfig({ reuse: true });
+// → marker 消失，文件回到随包大小
+```
+
+> 还有一处观察：还原后仓库里的 geodata 比测试跑完时**更大**（`ASN.mmdb` 12.0 MB vs 9.2 MB、
+> `geoip.metadb` 8.7 MB vs 5.0 MB）。说明那轮同步把随包 geodata 换成了**更小**的一份。
+> 这与 #2 的「种子 vs 内核下载」是同一类问题（版本/来源不一致），但本轮没查到根因，不写结论。
+
+### 本轮结论
+
+**这 5 类失败没有一条是本轮改动引入的**（本轮只改了 CI、文档、`.editorconfig`、preflight 脚本）。
+查到底之后的归类：**#3 确证是测试断言写错、#2 确证是测试在验已废弃前提、#4/#5 是 geo sync
+并发失败的连带、#1 待复跑**。
+
+**已修两条**（用户 2026-10-13 批准）：
+
+- `ce3e713` —— `geosync.js` 加 in-flight 单飞（治 #4/#5 的根因）
+- `c74b3bf` —— `real-test.js` 两处 `vehicleType` 断言改 `File`（治 #3）
+
+**仍未修 / 待复跑**：
+
+- **#2 的断言还没动** —— 它验的是"内核下载的新版规则会被种子打回旧版"，而这个前提在产品里
+  已不存在（provider 一律 `type: file`、内核无写回逻辑）。这条**要么删掉、要么改写成断言
+  当前的真实行为**（种子每次启动都覆盖是**有意**的）。**没擅自改** —— 它涉及"我们到底要不要
+  保留这条守护"，属于产品口径问题。
+- **#1（本机流量计数）仍待复跑**，没有结论。
+
+> 复跑前提（重要）：**`real-test` 必须在干净的 `resources/geo` 上跑**，跑完还原。
+> 本次是在 geodata 已被前一轮弄乱的状态下跑的，所以 #4/#5 的连带效应可能被放大 ——
+> 这个不确定性要如实保留，不能当成「产品必然如此」。
+>
+> 补一句后续：后来把 #2/#3/#5 查到底了（结论见上），**#4/#5 的定性不依赖那次脏状态** ——
+> 它们是 `geo sync` 并发 ENOENT 的直接后果，与 geodata 起始状态无关。**#1 仍未定**。
+
+**教训**：真面板门禁跑一次会**改动仓库**这件事，应该写进 README 的跑测步骤里，
+而不是等第一次跑完看 `git status` 才发现。另外「一次跑出 7 条红」时，先分清哪些是
+**同一个根因的连带**（#4/#5）、哪些是**断言自己写错**（#3）、哪些**待复跑**（#1），
+比逐条去修效率高得多。
+
+**第二条教训（更重要）**：这 5 条里**有 2 条是测试自己在验已废弃的前提**（#2 的"内核会下载规则"、
+#3 的 `vehicleType=Local`）。测试套件长期不跑，就会慢慢和产品脱节成"永远红"或"永远绿" ——
+`real-test.js` 上一次能全绿是什么时候，已经没人记得了。**门禁接进 CI 的价值不只在防回归，
+也在于逼着这些断言跟产品一起更新。**
 
 ---
 
@@ -3139,43 +3331,79 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    用例 5 钉的就是"能立刻重试"）。要不要对 `ECONNRESET`/超时做自动重试（比如退避重试 2 次），
    属于产品取舍，**等用户定**，没擅自加。
 
-1.9 **分流表门禁现在是红的 —— 等安卓收尾后做 Go 表反向移植（第 15 轮，见 A-57）**
+1.9 **分流表门禁：本地已对齐，待推送 —— main 要追平 android-portable（第 15 轮，见 A-57）**
 
-   **用户已决定：先放着，等安卓那边收尾后一起排。** 所以这个红是**知情的、刻意的**，
-   不是忘了修 —— 谁看到 `.github/workflows/ci-windows.yml` 那条「分流表跨语言一致性」红，
-   先来读这一条。
+   **先放着、等安卓那边收尾后再一起排（2026-10-13）。** 这个序是 **Eric 排的**，
+   不是用户的决定；真正要不要执行等**用户的 go-ahead**。
+   谁看到 `.github/workflows/ci-windows.yml` 那条「分流表跨语言一致性」红，先来读这一条。
 
-   现状（2026-10-13 实测）：
+   **当前准确状态：本地已对齐，待 `f65ffcd` 推送。**（别写成「已对齐」—— `f65ffcd`
+   还是本地提交，见下面的 ⚠️。）
 
-   | | 组数 | 第 8-10 组 |
-   |---|---|---|
-   | main 的 Go 表（`routing_table.go`） | 25 | `♊️ Google Gemini` / `💬 Claude` / `💬 OpenAI` |
-   | windows-portable 的 JS 表（`rulesets.js`） | 23 | `🤖 AI`（合并三组） |
+   ⚠️ **方向已更正（2026-10-13，Eric 指出 + 本机复核）**：这条以前写成「把 Windows 的 23 组
+   反向移植进 main」，**方向是反的**，别照旧版做。真实情况是 **Go↔JS 两端早就对齐了，
+   唯一的落后者是 main** —— 所以要做的是「**main 采用 android-portable 已经落下的那份表**」，
+   不是新造一份变更。
 
-   两边都还各有对方没有的东西（main 有 `🍃 应用净化`/`🛑 广告拦截`；Windows 有 151 条 AI 内联规则
-   与 `LEGACY_GROUP_ALIASES` 旧名迁移）。CI 会打印完整差异，不用手工比对。
+   三份表实测（用 `scripts/routing-sync-test.js` 严格模式逐条比对，2026-10-13）：
 
-   **要做的移植**（把 Windows 这版布局落到 main 的 Go 表上，不是反过来）：
+   | 表 | 组数 | provider | 内联规则 | 对 Windows JS 表 |
+   |---|---|---|---|---|
+   | `android-portable` 的 `f65ffcd` Go 表 | **23** | 10 | **246** | **PASS 逐条一致** ✅ |
+   | `main` 的 Go 表 | 25 | 10 | 100 | FAIL |
+   | `windows-portable` 的 JS 表（`rulesets.js`） | 23 | 10 | — | （基准） |
 
-   1. `♊️ Google Gemini` + `💬 Claude` + `💬 OpenAI` 三个 `RuleSet` 合并成一个 `🤖 AI`
+   安卓侧分两步做完：`da64ca5`（`fix(routing): AI 分流组三合一（含旧组名设置迁移）并重建内核产物`）
+   合并三组 AI，`f65ffcd`（`fix(routing): 「🌏 Google Play」挪到「🌏 Google」之前，修掉第二个死开关`）
+   再修顺序 —— 因为 Windows 侧 `f0416fa` 把 Play 挪到了 Google 前面，安卓侧跟着对齐。
+   `da64ca5` 自带两道门禁且已绿：`RoutingTableParityTest`（3 例）、
+   `RoutingGroupsMigrationTest`（12 例）。内核产物摘要 `af293366…` 与 `SHA256SUMS` 相符。
+
+   ⚠️ **但 `f65ffcd` 还没推**（本机实测，2026-10-13）：它是**本地** `android-portable` 的 HEAD，
+   而 `origin/android-portable` 停在 `b5ac086`（比本地少 3 个提交，且 `b5ac086` 的 Go 表
+   **仍是 25 组**）。所以：
+
+   - 谁要照下面这份清单做，**必须用本地那份 `f65ffcd` 的表**（或先让安卓把 `f65ffcd` 推上去）。
+     直接 `git show origin/android-portable:…routing_table.go` 会拿到 **25 组旧表**，照它做等于没做。
+   - 「`f65ffcd` 的 Go 表 = 23 组」这个结论，本机是用 `git show f65ffcd:…` 复现出来的，
+     不是从远端分支读的。
+
+   🕳️ **导出 Go 表的坑（Eric 踩过，别再踩）**：**别用 PowerShell `git show … > file`** ——
+   那会写出 UTF-16（或丢掉换行），解析出来是 **0 组 / 0 provider**，看起来像"表是空的"。
+   要用 Node 按 UTF-8 写、并去掉 BOM：
+
+   ```js
+   const { execFileSync } = require('child_process');
+   const s = execFileSync('git', ['-C', repo, 'show', `${commit}:kernel-core/src/main/golang/native/config/routing/routing_table.go`])
+     .toString('utf8').replace(/^\uFEFF/, '');   // 去 BOM
+   require('fs').writeFileSync(out, s, 'utf8');
+   ```
+
+   **要做的对齐**（让 main 采用 android-portable 的 23 组表）：
+
+   1. 把 main 的 `kernel-core/.../routing/routing_table.go` 换成 `f65ffcd` 那一版：
+      `♊️ Google Gemini` + `💬 Claude` + `💬 OpenAI` 三个 `RuleSet` 合并成 `🤖 AI`
       （位置：`📲 WhatsApp` 之后、`🐱 GitHub` 之前；`DefaultOn: true`、`DefaultOut: proxy`、
-      无 providers）。
-   2. `inlineRules` = `GEOSITE,category-ai-!cn` + `openai` / `anthropic` / `google-gemini`
-      + Windows `rulesets.js` 里那 147 条内联域名兜底（照抄顺序，别漏）。
-   3. **删掉旧 Gemini 组里的 `GEOSITE,google` / `GEOSITE,google-play`** —— 这两条排在
-      「🌏 Google」「🌏 Google Play」前面，会把那两个组整体吃掉、开关设成什么都不生效。
-   4. `📺 哔哩哔哩` 与 `🎯 国内直连` 的 providers / inlineRules 对齐 Windows 版；
-      `🌏 Google Play`、`🎮 游戏平台` 的 `DefaultOut` 由 `proxy` 改 `direct`。
-   5. `🍃 应用净化` / `🛑 广告拦截` 两组按 Windows 侧 `33d1fc0` 的理由处理（"会互相遮蔽"）。
-   6. 移植完在 main 上跑 `node design/windows/app/scripts/routing-sync-test.js` 应变绿
-      （main 有 `kernel-core/`，会自动找到 Go 表，不用设 `POLARIS_GO_TABLE`）。
-   7. **别忘了同步 main 那份 `rulesets.js`**（现在还是 25 组旧版）；README 里
+      无 providers），`inlineRules` 扩到 246 条。
+   2. 连带 `f65ffcd`（含 `da64ca5`）一起改的 `routing.go`、`routing_decision_test.go`、`routing_test.go`
+      也要一并取，否则 Go 测试与决策逻辑对不上。
+   3. **`🍃 应用净化` / `🛑 广告拦截`** 两组按 `da64ca5`/`f65ffcd` 的口径处理（Windows 侧 `33d1fc0`
+      的理由是"会互相遮蔽"）。
+   4. 内核产物（`jniLibs/arm64-v8a/libclash.so` + `SHA256SUMS` + `VERSION.md`）随 `da64ca5`/`f65ffcd`
+      一起重建过了，别只改 Go 源码不换产物。
+   5. **别忘了 main 那份 `rulesets.js`**（现在还是 25 组旧版）；README 里
       `rulesets.js # 内置分流规则集（25 组 / 47 个规则集）` 这行也要改成 23 组。
-   8. 安卓侧 `app/src/main/java/.../KernelConfig.kt` 之类如果也镜像了组名，一起对齐；
-      跑一次安卓的 `Polaris CI`（三个 job）确认没打坏。
+   6. 对齐完在 main 上跑 `node design/windows/app/scripts/routing-sync-test.js` 应变绿
+      （main 有 `kernel-core/`，会自动找到 Go 表，不用设 `POLARIS_GO_TABLE`）。
+   7. 跑一次安卓的 `Polaris CI`（version-gate / go / quality 三个 job）确认没打坏，
+      并确认 `RoutingTableParityTest` / `RoutingGroupsMigrationTest` 在 main 上也绿。
 
    > 提醒：`routing-sync-test.js` 只能验**同一个仓库内**两端一致，验不了跨分支漂移。
-   > 移植完两条分支都绿了，才算真的对齐 —— 别只看 main 绿了就收工。
+   > 对齐完两条分支都绿了，才算真的对齐 —— 别只看 main 绿了就收工。
+
+   > **执行前提**：这一步会改 main 上安卓 App 的分流行为（25→23 组、内联 100→246 条），
+   > 属跨端语义变更。**go-ahead 是用户的，他还没给 —— 在那之前谁都不要动 main 的
+   > `routing_table.go`。** 这份清单只是待办记录。
 
 2. **TUN 模式实机验证**（需要用户同意，会临时接管网络栈）
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。
