@@ -52,7 +52,7 @@ class RoutingRulesViewModelTest {
         assertEquals(true, items.first { it.name == "📲 电报消息" }.enabled) // 覆盖值优先
         assertEquals(false, items.first { it.name == "🍎 苹果服务" }.enabled) // 覆盖值优先
         assertEquals(true, items.first { it.name == "🌏 国外穿墙" }.enabled) // 默认开
-        assertEquals(false, items.first { it.name == "🛑 广告拦截" }.enabled) // 默认关
+        assertEquals(false, items.first { it.name == "🍃 应用净化" }.enabled) // 默认关
     }
 
     @Test
@@ -71,14 +71,14 @@ class RoutingRulesViewModelTest {
 
     @Test
     fun `开关失败回滚到该组内置默认并提示`() = runTest(mainRule.dispatcher) {
-        coEvery { kernelConfig.applyRoutingGroup("🛑 广告拦截", true) } returns false
+        coEvery { kernelConfig.applyRoutingGroup("🍃 应用净化", true) } returns false
         val vm = viewModel()
 
-        vm.setEnabled("🛑 广告拦截", true)
+        vm.setEnabled("🍃 应用净化", true)
         advanceUntilIdle()
 
-        // 广告拦截内置默认为关：写盘失败回滚为关
-        assertTrue(!vm.data.value.items.first { it.name == "🛑 广告拦截" }.enabled)
+        // 应用净化内置默认为关：写盘失败回滚为关
+        assertTrue(!vm.data.value.items.first { it.name == "🍃 应用净化" }.enabled)
         assertEquals(RoutingSync.Idle, vm.data.value.sync)
         assertEquals(R.string.settings_local_routing_failed, vm.data.value.errorMessageRes)
     }
@@ -92,7 +92,7 @@ class RoutingRulesViewModelTest {
         vm.resetDefaults()
         advanceUntilIdle()
 
-        assertTrue(!vm.data.value.items.first { it.name == "🛑 广告拦截" }.enabled)
+        assertTrue(!vm.data.value.items.first { it.name == "🍃 应用净化" }.enabled)
         assertTrue(vm.data.value.items.first { it.name == "🌏 国外穿墙" }.enabled)
         coVerify(exactly = 1) { kernelConfig.resetRoutingGroups() }
     }

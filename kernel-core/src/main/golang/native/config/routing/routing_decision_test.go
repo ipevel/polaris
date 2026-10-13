@@ -156,44 +156,60 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		// HTTPDNS / 直连 IP：域名规则命中不了，必须靠 GEOIP,CN 兜住
 		{ip: "223.5.5.5", want: "🎯 国内直连", why: "阿里 DNS 国内段"},
 		{ip: "119.29.29.29", want: "🎯 国内直连", why: "腾讯 DNS 国内段"},
-		// 平台组
+		// 平台组（2026-10-14 从 23 组简化到 12 组后的落点）
 		{host: "telegram.org", want: "📲 电报消息", why: "电报"},
-		{host: "www.youtube.com", want: "📹 油管视频", why: "YouTube"},
-		{host: "www.netflix.com", want: "🎥 奈飞视频", why: "Netflix"},
-		{host: "x.com", want: "📲 X", why: "X"},
+		{host: "www.youtube.com", want: "📺 流媒体", why: "YouTube（原「📹 油管视频」）"},
+		{host: "www.netflix.com", want: "📺 流媒体", why: "Netflix（原「🎥 奈飞视频」）"},
+		{host: "x.com", want: "📲 社交媒体", why: "X（原「📲 X」）"},
 		{host: "www.tiktok.com", want: "🎧 TikTok", why: "TikTok"},
-		{host: "www.instagram.com", want: "📸 Instagram", why: "Instagram"},
-		{host: "www.facebook.com", want: "📲 Facebook", why: "Facebook"},
-		{host: "www.whatsapp.com", want: "📲 WhatsApp", why: "WhatsApp"},
+		{host: "www.instagram.com", want: "📲 社交媒体", why: "Instagram"},
+		{host: "www.facebook.com", want: "📲 社交媒体", why: "Facebook"},
+		{host: "www.whatsapp.com", want: "📲 社交媒体", why: "WhatsApp"},
 		{host: "gemini.google.com", want: "🤖 AI", why: "Gemini"},
 		{host: "claude.ai", want: "🤖 AI", why: "Claude"},
 		{host: "api.openai.com", want: "🤖 AI", why: "OpenAI"},
-		{host: "github.com", want: "🐱 GitHub", why: "GitHub"},
-		{host: "www.bing.com", want: "Ⓜ️ 微软Bing", why: "Bing"},
-		{host: "music.163.com", want: "🎶 网易音乐", why: "网易音乐"},
-		{host: "www.bilibili.com", want: "📺 哔哩哔哩", why: "哔哩哔哩"},
+		// GitHub 组已取消：它本来就是 proxy，规则已被 geolocation-!cn 覆盖，
+		// 出口行为不变，只是不再有独立开关（与 Google / Google Play 同理）。
+		// ⚠️ 已知偏差（2026-10-14 12 组简化引入，已上报主管待裁定）：
+		// 取消「🐱 GitHub」组后，这些域名并没有像 Table 注释所说落回「🌏 国外穿墙」，
+		// 而是被「Ⓜ️ 微软」的 GEOSITE,microsoft 吃掉（geosite 的 microsoft 分类里
+		// 就含 github.com / githubusercontent.com / github.io），于是 GitHub 从
+		// **proxy 变成 direct** —— 在国内直连等于不可用。
+		// 这里先按当前实测行为断言，把偏差固定成一条看得见的记录；裁定后应改成
+		// 「🌏 国外穿墙」（或在「🎯 国内直连」之前补一组 GitHub → proxy）。
+		{host: "github.com", want: "Ⓜ️ 微软", why: "GitHub（取消 GitHub 组后的实际落点，见上方偏差说明）"},
+		{host: "api.github.com", want: "Ⓜ️ 微软", why: "GitHub API（同上，实测直连）"},
+		{host: "raw.githubusercontent.com", want: "Ⓜ️ 微软", why: "GitHub raw（同上，实测直连）"},
+		{host: "objects.githubusercontent.com", want: "Ⓜ️ 微软", why: "GitHub 对象存储（同上，实测直连）"},
+		{host: "gist.github.com", want: "Ⓜ️ 微软", why: "Gist（同上，实测直连）"},
+		{host: "github.io", want: "Ⓜ️ 微软", why: "GitHub Pages（同上，实测直连）"},
+		// 这几条是「Ⓜ️ 微软」应当接住的自家域名，行为与合并前一致
+		{host: "www.msn.com", want: "Ⓜ️ 微软", why: "MSN"},
+		{host: "live.com", want: "Ⓜ️ 微软", why: "微软账号"},
+		{host: "www.office.com", want: "Ⓜ️ 微软", why: "Office 网页版"},
+		{host: "www.bing.com", want: "Ⓜ️ 微软", why: "Bing（原「Ⓜ️ 微软Bing」）"},
+		{host: "music.163.com", want: "🎯 国内直连", why: "网易音乐（原「🎶 网易音乐」）"},
+		{host: "www.bilibili.com", want: "🎯 国内直连", why: "哔哩哔哩（原「📺 哔哩哔哩」）"},
 		{host: "store.steampowered.com", want: "🎮 游戏平台", why: "Steam"},
 		// 系统服务
 		{host: "www.apple.com", want: "🍎 苹果服务", why: "苹果"},
-		{host: "onedrive.live.com", want: "Ⓜ️ 微软云盘", why: "OneDrive"},
+		{host: "onedrive.live.com", want: "Ⓜ️ 微软", why: "OneDrive"},
 		// OneDrive 真正传文件字节的内容主机。geosite 的 onedrive 分类里没有，
-		// 漏到下一组「Ⓜ️ 微软服务」的话，「微软云盘选直连」对它们就是失效的。
-		{host: "docs.live.net", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容主机"},
-		{host: "xyz.docs.live.net", want: "Ⓜ️ 微软云盘", why: "OneDrive 租户内容主机"},
-		{host: "contoso-my.sharepoint.com", want: "Ⓜ️ 微软云盘", why: "OneDrive/SharePoint 内容主机"},
-		{host: "contoso.livefilestore.com", want: "Ⓜ️ 微软云盘", why: "OneDrive for Business 内容主机"},
-		{host: "files.1drv.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容分发"},
-		{host: "cdn.odc.officeapps.live.com", want: "Ⓜ️ 微软云盘", why: "Office 网页版 CDN"},
-		// Google 相关域名必须落回「🌏 Google」：合并前 Gemini 组带着
-		// GEOSITE,google 排在前面，把这一组整体吃掉（开关设成什么都不生效）。
-		{host: "www.google.com", want: "🌏 Google", why: "Google 组恢复生效（2026-10-13 合并 AI 组）"},
-		{host: "accounts.google.com", want: "🌏 Google", why: "Google 组恢复生效"},
-		{host: "drive.google.com", want: "🌏 Google", why: "Google 组恢复生效"},
-		// Play 域名必须先落「🌏 Google Play」：它排在「🌏 Google」之后时，
-		// google-play 那 10 条里有 8 条会被 google 分类先命中，开关设成什么都不生效。
-		{host: "play.google.com", want: "🌏 Google Play", why: "Google Play 组恢复生效"},
-		{host: "play.googleapis.com", want: "🌏 Google Play", why: "Google Play 组恢复生效"},
-		{host: "play-lh.googleusercontent.com", want: "🌏 Google Play", why: "Google Play 组恢复生效"},
+		// 漏到下一组「🌏 国外穿墙」的话，「Ⓜ️ 微软选直连」对它们就是失效的。
+		{host: "docs.live.net", want: "Ⓜ️ 微软", why: "OneDrive 内容主机"},
+		{host: "xyz.docs.live.net", want: "Ⓜ️ 微软", why: "OneDrive 租户内容主机"},
+		{host: "contoso-my.sharepoint.com", want: "Ⓜ️ 微软", why: "OneDrive/SharePoint 内容主机"},
+		{host: "contoso.livefilestore.com", want: "Ⓜ️ 微软", why: "OneDrive for Business 内容主机"},
+		{host: "files.1drv.com", want: "Ⓜ️ 微软", why: "OneDrive 内容分发"},
+		{host: "cdn.odc.officeapps.live.com", want: "Ⓜ️ 微软", why: "Office 网页版 CDN"},
+		// Google 相关域名落回「🌏 国外穿墙」：Google / Google Play 两个开关已取消，
+		// 它们本来就都是 proxy，出口行为与 geolocation-!cn 完全一致。
+		{host: "www.google.com", want: "🌏 国外穿墙", why: "Google（组已取消）"},
+		{host: "accounts.google.com", want: "🌏 国外穿墙", why: "Google（组已取消）"},
+		{host: "drive.google.com", want: "🌏 国外穿墙", why: "Google（组已取消）"},
+		{host: "play.google.com", want: "🌏 国外穿墙", why: "Google Play（组已取消）"},
+		{host: "play.googleapis.com", want: "🌏 国外穿墙", why: "Google Play（组已取消）"},
+		{host: "play-lh.googleusercontent.com", want: "🌏 国外穿墙", why: "Google Play（组已取消）"},
 		// 兜底
 		{host: "unknown-site.example", want: "🐟 漏网之鱼", why: "未命中一律兜底"},
 	}
@@ -207,13 +223,14 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 	}
 }
 
-// TestSplitMicrosoftGroupsKeepTheirOwnDomains 锁死「同一家的两个分组不会互相吞掉」。
+// TestMicrosoftGroupKeepsDirectOutbound 锁死「微软一整组默认直连、且不被国外穿墙吞掉」。
 //
-// 用户 2026-10-12 问：微软云盘选直连，会不会被别的规则接管走代理？答案是结构性的 ——
-// 表的顺序就是优先级，「Ⓜ️ 微软云盘」必须排在「Ⓜ️ 微软服务」和「🌏 国外穿墙」之前，
-// 否则 onedrive 分类里的域名会先被 microsoft / geolocation-!cn 命中，用户在节点页
-// 给云盘组选什么出站都白搭。这里把顺序本身钉死，以后有人调表顺序会立刻红。
-func TestSplitMicrosoftGroupsKeepTheirOwnDomains(t *testing.T) {
+// 2026-10-13 用户反馈 OneDrive 走代理「要不太费流量了」，2026-10-14 把原来的
+// 「Ⓜ️ 微软云盘 / Ⓜ️ 微软服务 / Ⓜ️ 微软Bing」三组合并为一组「Ⓜ️ 微软」并默认直连。
+// 合并后唯一还会失效的是顺序：它必须排在「🌏 国外穿墙」之前，否则 geolocation-!cn
+// 会先命中 microsoft / bing / onedrive 分类里的域名，用户在节点页给这一组选什么
+// 出站都白搭。这里把顺序与默认出站本身钉死，以后有人调表顺序会立刻红。
+func TestMicrosoftGroupKeepsDirectOutbound(t *testing.T) {
 	idx := func(name string) int {
 		for i, g := range Table {
 			if g.Name == name {
@@ -222,23 +239,40 @@ func TestSplitMicrosoftGroupsKeepTheirOwnDomains(t *testing.T) {
 		}
 		return -1
 	}
-	cloud, service, abroad := idx("Ⓜ️ 微软云盘"), idx("Ⓜ️ 微软服务"), idx("🌏 国外穿墙")
-	if cloud < 0 || service < 0 || abroad < 0 {
-		t.Fatalf("微软两组或国外穿墙组不见了：cloud=%d service=%d abroad=%d", cloud, service, abroad)
+	ms, abroad := idx("Ⓜ️ 微软"), idx("🌏 国外穿墙")
+	if ms < 0 || abroad < 0 {
+		t.Fatalf("「Ⓜ️ 微软」或「🌏 国外穿墙」组不见了：ms=%d abroad=%d", ms, abroad)
 	}
-	if !(cloud < service && cloud < abroad) {
-		t.Errorf("「Ⓜ️ 微软云盘」必须排在「Ⓜ️ 微软服务」(%d) 和「🌏 国外穿墙」(%d) 之前，实际 cloud=%d",
-			service, abroad, cloud)
+	if ms >= abroad {
+		t.Errorf("「Ⓜ️ 微软」必须排在「🌏 国外穿墙」(%d) 之前，实际 ms=%d", abroad, ms)
 	}
 
-	// 三组默认出站本来就不同，钉住：云盘直连、服务与国外穿墙走代理
-	for name, want := range map[string]string{"Ⓜ️ 微软云盘": "direct", "Ⓜ️ 微软服务": "proxy", "🌏 国外穿墙": "proxy"} {
-		for _, g := range Table {
-			if g.Name == name {
-				if g.DefaultOut != want {
-					t.Errorf("%s 的默认出站 = %q，期望 %q", name, g.DefaultOut, want)
-				}
+	// 默认出站钉住：微软整组直连，国外穿墙走代理
+	if Table[ms].DefaultOut != "direct" {
+		t.Errorf("「Ⓜ️ 微软」默认出站 = %q，期望 direct", Table[ms].DefaultOut)
+	}
+	if Table[abroad].DefaultOut != "proxy" {
+		t.Errorf("「🌏 国外穿墙」默认出站 = %q，期望 proxy", Table[abroad].DefaultOut)
+	}
+
+	// OneDrive 真正传文件字节的内容主机必须落在这组的内联规则里（geosite 的
+	// onedrive 分类不含 docs.live.net / officeapps.live.com），否则它们会被
+	// geolocation-!cn 吃掉，「Ⓜ️ 微软选直连」对上传下载就是失效的。
+	for _, want := range []string{
+		"DOMAIN-SUFFIX,docs.live.net,{t}",
+		"DOMAIN-SUFFIX,content.live.net,{t}",
+		"DOMAIN-SUFFIX,odc.officeapps.live.com,{t}",
+		"DOMAIN-SUFFIX,officeapps.live.com,{t}",
+	} {
+		found := false
+		for _, r := range Table[ms].InlineRules {
+			if r == want {
+				found = true
+				break
 			}
+		}
+		if !found {
+			t.Errorf("「Ⓜ️ 微软」内联规则缺少 %q", want)
 		}
 	}
 }

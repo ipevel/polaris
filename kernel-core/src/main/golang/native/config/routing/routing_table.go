@@ -3,23 +3,29 @@
 
 package routing
 
-// 内置分流表：组名、顺序、默认开关与默认出站全部沿用既有实机预设（顺序即规则
-// 匹配优先级），**规则数据源全部本地，启动与运行期不拉任何远程规则**：
+// 内置分流表：组名、顺序、默认开关与默认出站（顺序即规则匹配优先级）。
 //
-//   - GEOSITE,<分类> → 读 app 内置的 geosite.dat（v2fly 全量分类）
-//   - GEOIP,CN        → 读 app 内置的 geoip.metadb
-//   - RULE-SET        → 只允许 type:file 的本地清单（种子已随包内置）
+// 规则数据有两类来源，都在本地被 mihomo 直接读：
 //
-// 为什么彻底抛弃远程 provider：每个 RULE-SET 都是 type:http，启动后 24h 内必定拉一次；
+//   - GEOSITE,<分类> → 读随包的 geosite.dat（v2fly 全量分类）
+//   - GEOIP,CN        → 读随包的 geoip.metadb
+//   - RULE-SET        → 只允许 type:file 的本地清单
+//
+// **规则数据本身是活的**：清单与 geodata 由 ipevel/polaris-rules 每 15 分钟从上游
+// （ACL4SSR/ACL4SSR 与 MetaCubeX/meta-rules-dat）同步、算 SHA-256 后发布；
+// App 每 12 小时比一次版本号，只在真的变了才下载，校验通过后原子替换并热加载。
+// 这里写的 providers 键名 = 仓库 dist/rules/<键>.list 的文件名，改这里必须同步仓库产出。
+//
+// 为什么不再把规则写死在包里：旧方案每个 RULE-SET 都是 type:http、启动后 24h 内必拉一次，
 // 拉取失败、被中间盒改写、上游每日变更都会让规则**静默失效**。用户 2026-10-12 反馈
-// 「抖音/快手/小红书/番茄小说连上 VPN 就断网、断开才好」正是这种依赖的代价——旧方案里
+// 「抖音/快手/小红书/番茄小说连上 VPN 就断网、断开才好」正是这种依赖的代价 —— 旧方案里
 // 国内域名只有 ACL4SSR ChinaDomain.list 的 700 多条，主流 App 域名一旦缺失就落到
 // 「🐟 漏网之鱼」走代理。现在 GEOSITE,cn 有 111,873 条、geolocation-!cn 有 27,037 条，
 // 并额外给「🎯 国内直连」补 GEOIP,CN，兜住 HTTPDNS/直连 IP 的场景。
 //
-// 已用内置 geosite.dat 实跑核对（见 zz_geodata_probe_test.go）：
+// 已用 geosite.dat 实跑核对（见 zz_geodata_probe_test.go）：
 // cn 111,873 条且覆盖 douyin/kuaishou/xiaohongshu/fanqienovel 等全部用户点名域名；
-// 平台分类 telegram/youtube/netflix/x/tiktok/instagram/facebook/whatsapp/openai/github/
+// 平台分类 telegram/youtube/netflix/x/tiktok/instagram/facebook/whatsapp/openai/
 // google/google-play/google-gemini/bing/onedrive/microsoft/apple/steam/epicgames/sony/
 // nintendo/bilibili/netease/anthropic 全部存在。
 
@@ -76,22 +82,30 @@ type RuleGroup struct {
 	InlineRules []string // 内联规则，{t} 替换为本组组名
 }
 
-// Providers 全部内置规则集。种子文件按 <Key> 打包进 APK assets，
-// 命名 = Key + (text 格式 ? ".list" : ".yaml")，全部为本地文件 provider。
+// Providers 全部内置规则集，**全部是本地文件 provider（内核只读本地、永不联网）**。
+//
+// 键名 = ipevel/polaris-rules 仓库 dist/rules/<键>.list 的文件名，也是 RULE-SET 引用名，
+// 三处必须是同一个字符串：这里的键、仓库的产出文件名、随包种子文件名。
+// 改这里必须同时改仓库产出与两端种子，否则规则会整组静默失效。
+//
+// 种子文件按 <键> 打包进 APK assets：运行期由 RuleResources 校验 sha256 后覆盖，
+// 随包那份只是首次启动/断网兜底。
 var Providers = map[string]Provider{
-	// --- ACL4SSR 文本清单（种子随包内置，type:file 只读本地）---
-	"acl_banad":          {"acl_banad", "", "classical", "text", false},
-	"acl_banprogramad":   {"acl_banprogramad", "", "classical", "text", false},
-	
-	
-	"acl_chinadomain":    {"acl_chinadomain", "", "classical", "text", false},
-	"acl_chinacompanyip": {"acl_chinacompanyip", "", "classical", "text", true},
-	"acl_unban":          {"acl_unban", "", "classical", "text", false},
-	"acl_steamcn":        {"acl_steamcn", "", "classical", "text", false},
-	"acl_download":       {"acl_download", "", "classical", "text", false},
-	"acl_chinamedia":     {"acl_chinamedia", "", "classical", "text", false},
-	"acl_proxygfwlist":   {"acl_proxygfwlist", "", "classical", "text", false},
-	"acl_proxymedia":     {"acl_proxymedia", "", "classical", "text", false},
+	"social":        {"social", "", "classical", "text", false},
+	"streaming":     {"streaming", "", "classical", "text", false},
+	"ai":            {"ai", "", "classical", "text", false},
+	"games":         {"games", "", "classical", "text", false},
+	"telegram":      {"telegram", "", "classical", "text", false},
+	"tiktok":        {"tiktok", "", "classical", "text", false},
+	"china-domain":  {"china-domain", "", "classical", "text", false},
+	"china-ip":      {"china-ip", "", "classical", "text", true},
+	"china-media":   {"china-media", "", "classical", "text", false},
+	"onedrive":      {"onedrive", "", "classical", "text", false},
+	"apple":         {"apple", "", "classical", "text", false},
+	"proxy-gfwlist": {"proxy-gfwlist", "", "classical", "text", false},
+	"proxy-media":   {"proxy-media", "", "classical", "text", false},
+	"banad":         {"banad", "", "classical", "text", false},
+	"banprogramad":  {"banprogramad", "", "classical", "text", false},
 }
 
 // 本地网络/私有地址直连（固定 DIRECT，不占用分流组）。
@@ -112,40 +126,37 @@ var lanDirectRules = []string{
 	"IP-CIDR6,fd00::/8,DIRECT,no-resolve",
 }
 
-// Table 内置分流组，顺序与默认开关对齐实机预设（2026-10-10 用户指定的
-// 分组顺序与开启状态）：高频翻墙目标在前，系统服务居中，国内直连类在后，
-// 拦截类垫底。顺序即规则匹配优先级，改动会影响命中结果，非纯展示调整。
-// 「恶意软件」组缺失：其引用的 geosite:malware/phishing 类别仅存在于
-// karing-ruleset 的 Iran 专用源，meta-rules-dat 无对应类别，暂不提供。
-// 「Google FCM」「苹果推送通知」两个组已移除（2026-10-10）：排在 Google 与
-// 苹果服务之后时，它们的域名与 IP 规则 100%/部分被前面的组提前命中，分组开关
-// 设成什么出口都不生效（配置与实际行为不符）。Google 统一走「🌏 Google」，
-// 苹果统一走「🍎 苹果服务」，不再单列。
-// 「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」三个组已合并为「🤖 AI」
-// （2026-10-13），是上面同一类问题的第三例：旧 Gemini 组里带着
-// GEOSITE,google 与 GEOSITE,google-play，排在「🌏 Google」「🌏 Google Play」
-// 之前，把这两个组整体吃掉（那两个开关设成什么都不生效）。合并后只保留
-// GEOSITE,category-ai-!cn + openai/anthropic/google-gemini，Google 相关域名
-// 重新落回「🌏 Google」「🌏 Google Play」，两个开关恢复生效。
-// 旧组名的用户设置由 legacyGroupAliases 迁移，见其注释。
-// 「🌏 Google Play」已挪到「🌏 Google」之前（2026-10-13）：见该组上方的说明。
+// Table 内置分流组，顺序即规则匹配优先级。2026-10-14 按用户要求从 23 组简化到
+// 12 组，原则是「一个开关对应一个用户能说清的东西」：
+//
+//   - 合并：X/Instagram/Facebook/WhatsApp → 「📲 社交媒体」；
+//     油管/奈飞/迪士尼/HBO/Hulu/AppleTV/BBC/Abema/DAZN/Twitch/Spotify/Amazon → 「📺 流媒体」。
+//   - 云盘与服务合并成「Ⓜ️ 微软」并默认直连（用户 2026-10-13：「要不太费流量了」）。
+//   - 取消 GitHub / Google Play / Google / 微软Bing：它们本来就都是 proxy，规则已被
+//     「🌏 国外穿墙」的 geolocation-!cn 覆盖，出口行为不变，却消灭了两个死开关
+//     （Google Play 与微软Bing 的规则会被前面的组提前命中，开关设成什么都不生效）。
+//   - 取消 哔哩哔哩 / 网易音乐：并入「🎯 国内直连」（走直连，不需要单独开关）。
+//   - 保留「🍎 苹果服务」且默认直连（用户已定）；「🛑 广告拦截」默认打开。
+//
+// 「🍎 苹果服务」「Ⓜ️ 微软」两组默认 **direct**：它们和翻墙无关，走代理纯属浪费流量。
+// 用户在分流页仍可整体切到 proxy。
+//
+// 已取消的组名**不做别名映射**：旧开关状态无处安放，硬映射会把「我关掉 Google」变成
+// 「我关掉整个穿墙」。历史改名（三个 AI 组 → 🤖 AI）才由 legacyGroupAliases 迁移。
+// 顺序即优先级，非纯展示调整。
 var Table = []RuleGroup{
 	{Name: "📲 电报消息", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,telegram,{t}"}},
-	{Name: "📹 油管视频", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,youtube,{t}"}},
-	{Name: "🎥 奈飞视频", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,netflix,{t}"}},
-	{Name: "📲 X", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,x,{t}"}},
+		InlineRules: []string{"GEOSITE,telegram,{t}"},
+		Providers:   []string{"telegram"}},
 	{Name: "🎧 TikTok", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,tiktok,{t}"}},
-	{Name: "📸 Instagram", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,instagram,{t}"}},
-	{Name: "📲 Facebook", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,facebook,{t}"}},
-	{Name: "📲 WhatsApp", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,whatsapp,{t}"}},
+		InlineRules: []string{"GEOSITE,tiktok,{t}"},
+		Providers:   []string{"tiktok"}},
+	{Name: "📲 社交媒体", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{"GEOSITE,x,{t}", "GEOSITE,instagram,{t}", "GEOSITE,facebook,{t}", "GEOSITE,whatsapp,{t}"},
+		Providers:   []string{"social"}},
+	{Name: "📺 流媒体", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{"GEOSITE,youtube,{t}", "GEOSITE,netflix,{t}"},
+		Providers:   []string{"streaming"}},
 	{Name: "🤖 AI", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{
 			"GEOSITE,category-ai-!cn,{t}",
@@ -299,60 +310,33 @@ var Table = []RuleGroup{
 			"DOMAIN-SUFFIX,writesonic.com,{t}",
 			"DOMAIN-SUFFIX,gamma.app,{t}",
 			"DOMAIN-SUFFIX,tome.app,{t}",
-		}},
-	{Name: "🐱 GitHub", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,github,{t}"}},
-	// 「🌏 Google Play」必须排在「🌏 Google」之前（顺序即优先级）：geosite 的
-	// google-play 只有 10 条，其中 8 条（play.google.com、play-lh.googleusercontent.com、
-	// play.googleapis.com …）同时也在 google 分类里，排在后面就是死开关——开关设成
-	// 什么都不生效，与 2026-10-10 移除 Google FCM / 苹果推送、2026-10-13 合并 AI 组同因。
-	// 挪到前面只会从 google 分类抢走 4 条 Play 自己的域名，两组 DefaultOut 都是 proxy，
-	// 连通性零影响，只改归类归属（routing_decision_test.go 里钉死了这个顺序）。
-	{Name: "🌏 Google Play", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,google-play,{t}"}},
-	{Name: "🌏 Google", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,google,{t}"}},
-	{Name: "Ⓜ️ 微软Bing", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,bing,{t}"}},
-	// 微软云盘放在微软服务之前（顺序即优先级），但 geosite 的 onedrive 分类只有 19 条，
-	// 真正传文件字节的内容主机 docs.live.net / content.live.net 不在里面，会漏到下一组
-	// 「Ⓜ️ 微软服务」。那一组默认走代理，于是「微软云盘选直连」对这几个域名无效 ——
-	// 实测（routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）确认过。
-	// 所以这里补四条内联域名兜底，保证云盘相关流量不会跑到别的组去。
-	{Name: "Ⓜ️ 微软云盘", DefaultOn: true, DefaultOut: "direct",
+		},
+		Providers: []string{"ai"}},
+	{Name: "🎮 游戏平台", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{
+			"GEOSITE,steam,{t}",
+			"GEOSITE,epicgames,{t}",
+			"GEOSITE,sony,{t}",
+			"GEOSITE,nintendo,{t}",
+			"GEOSITE,category-games,{t}",
+		},
+		Providers: []string{"games"}},
+	{Name: "Ⓜ️ 微软", DefaultOn: true, DefaultOut: "direct",
 		InlineRules: []string{
 			"GEOSITE,onedrive,{t}",
 			"DOMAIN-SUFFIX,docs.live.net,{t}",
 			"DOMAIN-SUFFIX,content.live.net,{t}",
 			"DOMAIN-SUFFIX,odc.officeapps.live.com,{t}",
 			"DOMAIN-SUFFIX,officeapps.live.com,{t}",
-		}},
-	{Name: "Ⓜ️ 微软服务", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,microsoft,{t}"}},
+			"GEOSITE,microsoft,{t}",
+			"GEOSITE,bing,{t}",
+		},
+		Providers: []string{"onedrive"}},
 	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",
-		InlineRules: []string{"GEOSITE,apple,{t}"}},
-	{Name: "🎮 游戏平台", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{
-			"GEOSITE,steam,{t}", "GEOSITE,epicgames,{t}", "GEOSITE,sony,{t}",
-			"GEOSITE,nintendo,{t}", "GEOSITE,category-games,{t}"}},
-	{Name: "📺 哔哩哔哩", DefaultOn: true, DefaultOut: "direct",
-		InlineRules: []string{"GEOSITE,bilibili,{t}"}},
-	{Name: "🎶 网易音乐", DefaultOn: true, DefaultOut: "direct",
-		InlineRules: []string{"GEOSITE,netease,{t}"}},
+		InlineRules: []string{"GEOSITE,apple,{t}"},
+		Providers:   []string{"apple"}},
 	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
-		// 国内覆盖分两层，缺一不可：
-		// 1) GEOSITE,cn 读内置 geosite.dat 的 cn 分类（111,873 条，聚合 v2fly/ACL4SSR/
-		//    Loyalsoldier 等来源），是长尾覆盖的主力。原先这个组只有 gp_cn（geoip/cn，
-		//    纯 IP 段）加 ACL4SSR 的 ChinaDomain.list（700 多条），**完全没有成规模的国内
-		//    域名表**，所以抖音/快手/小红书/番茄小说这类主流 App 一旦不在
-		//    ChinaDomain.list 里就漏到「🐟 漏网之鱼」走代理，表现为「连上 VPN 就断网、
-		//    断开就好」（用户 2026-10-11 反馈）。
-		// 2) GEOIP,CN 读内置 geoip.metadb：国内 App 普遍用 HTTPDNS/直连 IP，纯域名规则
-		//    命中不了它们，必须按 IP 兜一层。
-		// 3) 内联规则兜底：geosite.dat 虽已内置，但文件缺失/损坏时 GEOSITE 规则会直接
-		//    让 profile 加载失败，所以把用户点名的主流 App 域名再内联一遍。
-		InlineRules: append(append([]string{
-			// 抖音 / 字节跳动
+		InlineRules: []string{
 			"DOMAIN-SUFFIX,douyin.com,{t}",
 			"DOMAIN-SUFFIX,iesdouyin.com,{t}",
 			"DOMAIN-SUFFIX,amemv.com,{t}",
@@ -364,64 +348,50 @@ var Table = []RuleGroup{
 			"DOMAIN-SUFFIX,volcengine.com,{t}",
 			"DOMAIN-SUFFIX,volces.com,{t}",
 			"DOMAIN-SUFFIX,zjcdn.com,{t}",
-			// 快手
 			"DOMAIN-SUFFIX,kuaishou.com,{t}",
 			"DOMAIN-SUFFIX,kuaishouzt.cn,{t}",
 			"DOMAIN-SUFFIX,gifshow.com,{t}",
 			"DOMAIN-SUFFIX,kwaicdn.com,{t}",
 			"DOMAIN-SUFFIX,ksapisrv.com,{t}",
-			// 小红书
 			"DOMAIN-SUFFIX,xiaohongshu.com,{t}",
 			"DOMAIN-SUFFIX,xhscdn.com,{t}",
 			"DOMAIN-SUFFIX,xhslink.com,{t}",
-			// 番茄小说
 			"DOMAIN-SUFFIX,fanqienovel.com,{t}",
 			"DOMAIN-SUFFIX,sigfanqie.com,{t}",
-			// 微信 / QQ
 			"DOMAIN-SUFFIX,weixin.qq.com,{t}",
 			"DOMAIN-SUFFIX,qlogo.cn,{t}",
 			"DOMAIN-SUFFIX,qpic.cn,{t}",
 			"DOMAIN-SUFFIX,gtimg.com,{t}",
 			"DOMAIN-SUFFIX,myqcloud.com,{t}",
-			// 淘宝 / 阿里
 			"DOMAIN-SUFFIX,taobaocdn.com,{t}",
 			"DOMAIN-SUFFIX,alipayobjects.com,{t}",
 			"DOMAIN-SUFFIX,aliyuncs.com,{t}",
 			"DOMAIN-SUFFIX,aliyun.com.cn,{t}",
 			"DOMAIN-SUFFIX,dingtalk.com,{t}",
 			"DOMAIN-SUFFIX,alibaba-inc.com,{t}",
-			// 京东
 			"DOMAIN-SUFFIX,jd.hk,{t}",
 			"DOMAIN-SUFFIX,jdcloud.com,{t}",
 			"DOMAIN-SUFFIX,360buyimg.com,{t}",
-			// 百度
 			"DOMAIN-SUFFIX,baidubce.com,{t}",
 			"DOMAIN-SUFFIX,bdimg.com,{t}",
 			"DOMAIN-SUFFIX,baidupcs.com,{t}",
-			// 网易
 			"DOMAIN-SUFFIX,netease.im,{t}",
 			"DOMAIN-SUFFIX,126.com,{t}",
 			"DOMAIN-SUFFIX,126.net,{t}",
-			// 微博 / 新浪
 			"DOMAIN-SUFFIX,sina.com,{t}",
 			"DOMAIN-SUFFIX,sina.cn,{t}",
 			"DOMAIN-SUFFIX,weibo.com.cn,{t}",
 			"DOMAIN-SUFFIX,sinaimg.com,{t}",
 			"DOMAIN-SUFFIX,sinaedge.com,{t}",
-			// 美团 / 点评
 			"DOMAIN-SUFFIX,meituan.com,{t}",
 			"DOMAIN-SUFFIX,dpfile.com,{t}",
-			// 拼多多
 			"DOMAIN-SUFFIX,yangkeduo.com,{t}",
-			// 滴滴
 			"DOMAIN-SUFFIX,didichuxing.com,{t}",
 			"DOMAIN-SUFFIX,didistatic.com,{t}",
-			// 华为 / 小米 / OPPO / vivo
 			"DOMAIN-SUFFIX,vmall.com,{t}",
 			"DOMAIN-SUFFIX,oppo.com,{t}",
 			"DOMAIN-SUFFIX,opposhop.cn,{t}",
 			"DOMAIN-SUFFIX,vivo.com.cn,{t}",
-			// 其他常见国内站点
 			"DOMAIN-SUFFIX,360.cn,{t}",
 			"DOMAIN-SUFFIX,360.com,{t}",
 			"DOMAIN-SUFFIX,sohu.com,{t}",
@@ -432,16 +402,18 @@ var Table = []RuleGroup{
 			"DOMAIN-SUFFIX,tencentcs.com,{t}",
 			"DOMAIN-SUFFIX,zhipin.com,{t}",
 			"DOMAIN-SUFFIX,zhihu.com.cn,{t}",
-		}, "GEOSITE,cn,{t}"), "GEOIP,CN,{t},no-resolve"),
-		Providers: []string{"acl_chinadomain", "acl_chinacompanyip", "acl_unban", "acl_steamcn", "acl_download", "acl_chinamedia"}},
+			"GEOSITE,cn,{t}",
+			"GEOIP,CN,{t},no-resolve",
+		},
+		Providers: []string{"china-domain", "china-ip", "china-media"}},
 	{Name: "🌏 国外穿墙", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,geolocation-!cn,{t}"},
-		Providers:   []string{"acl_proxygfwlist", "acl_proxymedia"}},
+		Providers:   []string{"proxy-gfwlist", "proxy-media"}},
 	{Name: "🍃 应用净化", DefaultOn: false, DefaultOut: "block",
-		Providers: []string{"acl_banprogramad"}},
-	{Name: "🛑 广告拦截", DefaultOn: false, DefaultOut: "block",
+		Providers: []string{"banprogramad"}},
+	{Name: "🛑 广告拦截", DefaultOn: true, DefaultOut: "block",
 		InlineRules: []string{"GEOSITE,category-ads-all,{t}"},
-		Providers:   []string{"acl_banad"}},
+		Providers:   []string{"banad"}},
 }
 
 // AIGroupName 合并后的 AI 组名（唯一真源；App 侧 RoutingGroups.kt 必须逐字一致）。
@@ -450,6 +422,10 @@ const AIGroupName = "🤖 AI"
 // legacyGroupAliases 已改名的历史分流组名 → 当前组名。
 //
 // 2026-10-13 把「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」合并成「🤖 AI」。
+// 2026-10-14 又合并了 X/Instagram/Facebook/WhatsApp → 「📲 社交媒体」、
+// 油管/奈飞 → 「📺 流媒体」、微软云盘/微软服务 → 「Ⓜ️ 微软」、
+// 哔哩哔哩/网易音乐 → 「🎯 国内直连」；已取消的 GitHub / Google Play / Google /
+// 微软Bing **刻意不映射**（理由见 Table 上方注释）。
 // 用户已保存的 routing.json 里 groups / order 仍是旧名：直接当未知名丢弃的话，
 // 用户自己调过的开关会退回表内默认值、拖动顺序会退回内置顺序——静默丢设置。
 // 所以读取侧统一映射：任一旧名为开 → 新组为开；顺序取三者中最靠前的位置。
@@ -457,6 +433,15 @@ var legacyGroupAliases = map[string]string{
 	"♊️ Google Gemini": AIGroupName,
 	"💬 Claude":         AIGroupName,
 	"💬 OpenAI":         AIGroupName,
+	"📲 X":              "📲 社交媒体",
+	"📸 Instagram":      "📲 社交媒体",
+	"📲 Facebook":       "📲 社交媒体",
+	"📲 WhatsApp":       "📲 社交媒体",
+	"📹 油管视频":           "📺 流媒体",
+	"🎥 奈飞视频":           "📺 流媒体",
+	"Ⓜ️ 微软云盘":          "Ⓜ️ 微软",
+	"📺 哔哩哔哩":           "🎯 国内直连",
+	"🎶 网易音乐":           "🎯 国内直连",
 }
 
 // canonicalGroupName 把历史组名映射为当前组名；非历史名原样返回。

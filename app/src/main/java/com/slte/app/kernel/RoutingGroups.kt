@@ -9,14 +9,19 @@ package com.slte.app.kernel
  * 必须逐字一致（含 emoji），否则开关写不进对应组。列表顺序即规则匹配
  * 优先级，也必须与内核表保持一致。
  *
- * 「📢 Google FCM」「📢 苹果推送通知」两个组已移除（2026-10-10）：排在
- * 🌏 Google 与 🍎 苹果服务之后时，它们的规则会被前面的组提前命中，开关设成
- * 什么出口都不生效。Google 统一走「🌏 Google」，苹果统一走「🍎 苹果服务」。
- *
- * 「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」三个组已合并为「🤖 AI」
- * （2026-10-13），同一类问题的第三例：旧 Gemini 组里带着 GEOSITE,google 与
- * GEOSITE,google-play，排在 🌏 Google / 🌏 Google Play 之前，把那两个组整体
- * 吃掉。旧组名的用户设置由 [LegacyGroupAliases] 迁移。
+ * 2026-10-10：「📢 Google FCM」「📢 苹果推送通知」两组移除——排在「🌏 Google」
+ * 与「🍎 苹果服务」之后时规则会被前面的组提前命中，开关设成什么出口都不生效。
+ * 2026-10-13：「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」合并为「🤖 AI」
+ * （同一类问题的第三例：旧 Gemini 组带着 GEOSITE,google / google-play）。
+ * 2026-10-14：按用户要求从 23 组简化到 12 组，原则是「一个开关对应一个用户
+ * 能说清的东西」：
+ *  - X/Instagram/Facebook/WhatsApp → 「📲 社交媒体」；油管/奈飞 → 「📺 流媒体」；
+ *  - 微软三组（云盘/服务/Bing）→ 「Ⓜ️ 微软」并默认 **direct**（用户反馈「太费流量」）；
+ *  - 取消 🐱 GitHub / 🌏 Google Play / 🌏 Google / Ⓜ️ 微软Bing：前三个本来就都是
+ *    proxy，出口行为不变，却消灭了两个死开关；📺 哔哩哔哩 / 🎶 网易音乐 并入
+ *    「🎯 国内直连」（走直连，不需要单独开关）；
+ *  - 「🍃 应用净化」保持默认关闭，「🛑 广告拦截」改为默认开启。
+ * 已取消且**刻意不做别名映射**的旧名见 [LegacyGroupAliases] 的说明。
  */
 data class RoutingGroupInfo(
     val name: String,
@@ -28,17 +33,30 @@ data class RoutingGroupInfo(
 const val AI_GROUP_NAME: String = "🤖 AI"
 
 /**
- * 已改名的历史分流组名 → 当前组名（2026-10-13 把「♊️ Google Gemini」
- * 「💬 Claude」「💬 OpenAI」合并成「🤖 AI」）。
+ * 已改名的历史分流组名 → 当前组名（真源：内核 `routing_table.go` 的
+ * `legacyGroupAliases`，12 条必须逐字一致）。
  *
  * 用户已保存的 `routing.json` 里 `groups` / `order` 仍是旧名，直接当未知名丢弃的话，
  * 用户自己调过的开关会退回内置默认值、拖动顺序会退回内置顺序——静默丢设置。
+ *
+ * **刻意不映射**：`🐱 GitHub` / `🌏 Google Play` / `🌏 Google` / `Ⓜ️ 微软Bing`
+ * 是这次被取消（而非改名）的组，旧开关状态无处安放；硬映射会把「我关掉 Google」
+ * 变成「我关掉整个国外穿墙」，比丢一个开关更糟。
  */
 val LegacyGroupAliases: Map<String, String> =
     mapOf(
         "♊️ Google Gemini" to AI_GROUP_NAME,
         "💬 Claude" to AI_GROUP_NAME,
         "💬 OpenAI" to AI_GROUP_NAME,
+        "📲 X" to "📲 社交媒体",
+        "📸 Instagram" to "📲 社交媒体",
+        "📲 Facebook" to "📲 社交媒体",
+        "📲 WhatsApp" to "📲 社交媒体",
+        "📹 油管视频" to "📺 流媒体",
+        "🎥 奈飞视频" to "📺 流媒体",
+        "Ⓜ️ 微软云盘" to "Ⓜ️ 微软",
+        "📺 哔哩哔哩" to "🎯 国内直连",
+        "🎶 网易音乐" to "🎯 国内直连",
     )
 
 /** 历史组名归一为当前组名；非历史名原样返回（与内核 `canonicalGroupName` 同语义）。 */
@@ -90,31 +108,22 @@ fun migrateLegacyOrder(order: List<String>): List<String> {
 val RoutingGroups: List<RoutingGroupInfo> =
     listOf(
         RoutingGroupInfo("📲 电报消息", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📹 油管视频", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("🎥 奈飞视频", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📲 X", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🎧 TikTok", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📸 Instagram", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📲 Facebook", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📲 WhatsApp", defaultOn = true, defaultOut = "proxy"),
+        RoutingGroupInfo("📲 社交媒体", defaultOn = true, defaultOut = "proxy"),
+        RoutingGroupInfo("📺 流媒体", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo(AI_GROUP_NAME, defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("🐱 GitHub", defaultOn = true, defaultOut = "proxy"),
-        // 🌏 Google Play 必须排在 🌏 Google 之前：geosite 的 google-play 只有 10 条，
-        // 其中 8 条同时也在 google 分类里，排在后面就是死开关（与上面 AI 组合并同因）。
-        // 两组出口都是 proxy，挪序只改归类归属，连通性零影响。
-        RoutingGroupInfo("🌏 Google Play", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("🌏 Google", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("Ⓜ️ 微软Bing", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("Ⓜ️ 微软云盘", defaultOn = true, defaultOut = "direct"),
-        RoutingGroupInfo("Ⓜ️ 微软服务", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("🍎 苹果服务", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🎮 游戏平台", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📺 哔哩哔哩", defaultOn = true, defaultOut = "direct"),
-        RoutingGroupInfo("🎶 网易音乐", defaultOn = true, defaultOut = "direct"),
+        // 「Ⓜ️ 微软」默认 direct：合并前云盘直连、服务走代理、Bing 走代理，本次按
+        // 用户要求（2026-10-13「要不太费流量了」）整组直连。它必须排在「🌏 国外穿墙」
+        // 之前，否则 geolocation-!cn 会先吃掉 microsoft / bing / onedrive 分类。
+        RoutingGroupInfo("Ⓜ️ 微软", defaultOn = true, defaultOut = "direct"),
+        RoutingGroupInfo("🍎 苹果服务", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🎯 国内直连", defaultOn = true, defaultOut = "direct"),
+        // 「🌏 国外穿墙」声明的是 geolocation-!cn 兜底分类，必须排在所有具体平台组
+        // 之后；只有两个 block 组排在它后面。
         RoutingGroupInfo("🌏 国外穿墙", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🍃 应用净化", defaultOn = false, defaultOut = "block"),
-        RoutingGroupInfo("🛑 广告拦截", defaultOn = false, defaultOut = "block"),
+        RoutingGroupInfo("🛑 广告拦截", defaultOn = true, defaultOut = "block"),
     )
 
 /** 主选择组名：唯一真源，必须与内核 GroupNameSelector（routing_table.go）逐字一致。 */

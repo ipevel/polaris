@@ -129,13 +129,14 @@ func TestDefaultOnGroups(t *testing.T) {
 	if !containsRule(cfg.Rule, expectRule) {
 		t.Fatalf("missing rule %q", expectRule)
 	}
-	if containsRule(cfg.Rule, "acl_banad") {
-		t.Fatal("disabled group (广告拦截) rules must not be generated")
+	// 默认关闭的组（唯一一个：🍃 应用净化）不生成规则、不声明 provider
+	if containsRule(cfg.Rule, "banprogramad") {
+		t.Fatal("disabled group (🍃 应用净化) rules must not be generated")
 	}
-	if _, ok := cfg.RuleProvider["acl_banad"]; ok {
+	if _, ok := cfg.RuleProvider["banprogramad"]; ok {
 		t.Fatal("disabled group provider must not be declared")
 	}
-	if _, ok := cfg.RuleProvider["acl_chinadomain"]; !ok {
+	if _, ok := cfg.RuleProvider["china-domain"]; !ok {
 		t.Fatal("enabled group provider missing")
 	}
 	// 内置规则不再有任何远程 provider：全部 type:file 本地清单
@@ -165,14 +166,14 @@ func TestGroupStateOverride(t *testing.T) {
 		Version: 1,
 		Enabled: true,
 		Groups: map[string]bool{
-			"📺 哔哩哔哩": false,
+			"🎧 TikTok": false,
 			"📲 电报消息": true,
 		},
 	}
 	if err := Build(cfg, state, nil); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if containsRule(cfg.Rule, "GEOSITE,bilibili,") {
+	if containsRule(cfg.Rule, "GEOSITE,tiktok,") {
 		t.Fatal("explicitly disabled group must not generate rules")
 	}
 	if !containsRule(cfg.Rule, "GEOSITE,telegram,📲 电报消息") {
@@ -195,7 +196,7 @@ func TestMemberOrder(t *testing.T) {
 	if direct[0] != outboundDirect {
 		t.Fatalf("direct group first member: %v", direct)
 	}
-	proxy := groupByName(cfg, "🌏 Google")["proxies"].([]string)
+	proxy := groupByName(cfg, "🎧 TikTok")["proxies"].([]string)
 	if proxy[0] != GroupNameSelector {
 		t.Fatalf("proxy group first member: %v", proxy)
 	}
@@ -586,7 +587,8 @@ func TestBuildAppliesGroupOrder(t *testing.T) {
 }
 
 // TestAIGroupMerge 锁死 2026-10-13 的「AI 组三合一」结构：组名、位置、默认开关、
-// 内联规则条数与顺序，以及「🌏 Google 不再被前面的组吃掉」这条结构约束。
+// 内联规则条数与顺序，以及「🌏 国外穿墙 排在所有具体平台组之后」这条结构约束
+// （2026-10-14 从 23 组简化到 12 组后，原来的 Google/Google Play 约束随之改写）。
 //
 // 不依赖 geo 资源即可运行（CI 上也会跑），因此它同时守住「两端逐字一致」——
 // 安卓表是唯一真源，Windows 的 routing-sync-test.js 指过来比对的就是这份 Table。
@@ -611,22 +613,22 @@ func TestAIGroupMerge(t *testing.T) {
 	if ai < 0 {
 		t.Fatalf("%q 组缺失", AIGroupName)
 	}
-	// 2) 位置：📲 WhatsApp 之后、🐱 GitHub 之前
-	whatsapp, github := idx("📲 WhatsApp"), idx("🐱 GitHub")
-	if whatsapp < 0 || github < 0 {
-		t.Fatalf("WhatsApp/GitHub 组缺失：whatsapp=%d github=%d", whatsapp, github)
+	// 2) 位置：📺 流媒体 之后、🎮 游戏平台 之前
+	stream, games := idx("📺 流媒体"), idx("🎮 游戏平台")
+	if stream < 0 || games < 0 {
+		t.Fatalf("「📺 流媒体」/「🎮 游戏平台」组缺失：stream=%d games=%d", stream, games)
 	}
-	if whatsapp >= ai || ai >= github {
-		t.Fatalf("%q 位置不对：WhatsApp=%d AI=%d GitHub=%d", AIGroupName, whatsapp, ai, github)
+	if stream >= ai || ai >= games {
+		t.Fatalf("%q 位置不对：流媒体=%d AI=%d 游戏=%d", AIGroupName, stream, ai, games)
 	}
 
-	// 3) 默认开、走代理、纯 GEOSITE + 内联域名（无 provider）
+	// 3) 默认开、走代理、内联 GEOSITE + 兜底域名，并声明本地规则集 ai
 	group := Table[ai]
 	if !group.DefaultOn || group.DefaultOut != "proxy" {
 		t.Fatalf("AI 组默认开关/出口不对：on=%v out=%q", group.DefaultOn, group.DefaultOut)
 	}
-	if len(group.Providers) != 0 {
-		t.Fatalf("AI 组不应声明 provider：%v", group.Providers)
+	if len(group.Providers) != 1 || group.Providers[0] != "ai" {
+		t.Fatalf("AI 组应且只应声明 provider %q：%v", "ai", group.Providers)
 	}
 
 	// 4) 内联规则 4 条 GEOSITE + 147 条兜底域名 = 151，顺序与规格一致
@@ -656,23 +658,25 @@ func TestAIGroupMerge(t *testing.T) {
 		}
 	}
 
-	// 6) 结构约束：🌏 Google 之前不得有任何组声明 google 分类（否则 Google 组
-	// 又会被整体吃掉）。注意「🌏 Google Play」**必须**排在 Google 之前——它声明的是
-	// google-play 分类，不是 google，两者不冲突。
-	google, play := idx("🌏 Google"), idx("🌏 Google Play")
-	if google < 0 || play < 0 {
-		t.Fatalf("「🌏 Google」/「🌏 Google Play」组缺失：google=%d play=%d", google, play)
+	// 6) 结构约束：「🌏 国外穿墙」声明的 geolocation-!cn 是兜底型分类，必须排在所有
+	// 具体平台组之后；否则 AI / 社交媒体 / 流媒体 / 游戏的域名会先被它命中，
+	// 那几个开关设成什么都不生效。只允许两个 block 组排在它后面。
+	abroad := idx("🌏 国外穿墙")
+	if abroad < 0 {
+		t.Fatalf("「🌏 国外穿墙」组缺失")
 	}
-	if play >= google {
-		t.Fatalf("「🌏 Google Play」必须排在「🌏 Google」之前：play=%d google=%d", play, google)
+	if ai >= abroad {
+		t.Fatalf("AI 组必须排在「🌏 国外穿墙」之前：AI=%d abroad=%d", ai, abroad)
 	}
-	if ai >= play {
-		t.Fatalf("AI 组必须排在「🌏 Google Play」之前：AI=%d play=%d", ai, play)
+	for i := abroad + 1; i < len(Table); i++ {
+		if n := Table[i].Name; n != "🍃 应用净化" && n != "🛑 广告拦截" {
+			t.Fatalf("组 %q 排在「🌏 国外穿墙」之后，会被 geolocation-!cn 整体吃掉", n)
+		}
 	}
-	for i := 0; i < google; i++ {
+	for i := 0; i < abroad; i++ {
 		for _, r := range Table[i].InlineRules {
-			if r == "GEOSITE,google,{t}" {
-				t.Fatalf("组 %q 排在「🌏 Google」之前却声明了 %q，Google 组又会被整体吃掉",
+			if r == "GEOSITE,geolocation-!cn,{t}" {
+				t.Fatalf("组 %q 排在「🌏 国外穿墙」之前却声明了 %q，国外穿墙组又会被整体吃掉",
 					Table[i].Name, r)
 			}
 		}
@@ -702,6 +706,37 @@ func TestLegacyAIGroupAliases(t *testing.T) {
 		}
 	}
 
+	// 非 AI 的合并组同样遵循「任一旧名为开 → 新组为开」
+	social := RuleGroup{Name: "📲 社交媒体", DefaultOn: true, DefaultOut: "proxy"}
+	st := &State{Version: 1, Enabled: true, Groups: map[string]bool{"📲 Facebook": false, "📸 Instagram": true}}
+	if !st.GroupEnabled(social) {
+		t.Error("合并组「📲 社交媒体」未继承旧组的开启状态")
+	}
+
+	// 2026-10-14 的合并：旧名一律落到合并后的新组
+	merged := []struct{ legacy, current string }{
+		{"📲 X", "📲 社交媒体"},
+		{"📸 Instagram", "📲 社交媒体"},
+		{"📲 Facebook", "📲 社交媒体"},
+		{"📲 WhatsApp", "📲 社交媒体"},
+		{"📹 油管视频", "📺 流媒体"},
+		{"🎥 奈飞视频", "📺 流媒体"},
+		{"Ⓜ️ 微软云盘", "Ⓜ️ 微软"},
+		{"📺 哔哩哔哩", "🎯 国内直连"},
+		{"🎶 网易音乐", "🎯 国内直连"},
+	}
+	for _, m := range merged {
+		if got := canonicalGroupName(m.legacy); got != m.current {
+			t.Errorf("旧组名 %q 映射到 %q，期望 %q", m.legacy, got, m.current)
+		}
+	}
+	// 已取消但**刻意不映射**的四个组名：硬映射会把「我关掉 Google」变成「我关掉整个穿墙」
+	for _, keep := range []string{"🐱 GitHub", "🌏 Google Play", "🌏 Google", "Ⓜ️ 微软Bing"} {
+		if got := canonicalGroupName(keep); got != keep {
+			t.Errorf("已取消的 %q 不应被映射，实际映射到 %q", keep, got)
+		}
+	}
+
 	// order：三个旧名折叠到同一个组，取最靠前的位置，且绝不丢组
 	got := OrderedTable([]string{"💬 Claude", "📲 电报消息", "♊️ Google Gemini"})
 	if len(got) != len(Table) {
@@ -717,5 +752,15 @@ func TestLegacyAIGroupAliases(t *testing.T) {
 	plain := OrderedTable([]string{AIGroupName})
 	if len(plain) != len(Table) || plain[0].Name != AIGroupName {
 		t.Fatalf("新组名 order 失效：len=%d first=%q", len(plain), plain[0].Name)
+	}
+
+	// 合并组同理：两个旧名指向同一组只占一个位置（取最靠前的），且绝不丢组
+	order := OrderedTable([]string{"📲 X", "📲 Facebook", "🎶 网易音乐", "🎯 国内直连"})
+	if len(order) != len(Table) {
+		t.Fatalf("order 迁移后组数 %d，期望 %d（不得丢组）", len(order), len(Table))
+	}
+	if order[0].Name != "📲 社交媒体" || order[1].Name != "🎯 国内直连" {
+		t.Fatalf("order 前两位 = %q / %q，期望 %q / %q",
+			order[0].Name, order[1].Name, "📲 社交媒体", "🎯 国内直连")
 	}
 }

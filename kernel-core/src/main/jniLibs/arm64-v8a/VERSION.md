@@ -210,6 +210,52 @@
   - `llvm-nm -D --defined-only` 导出符号 156 = 156 与上一版完全一致，`libclash.h` 不替换。
 - 产物摘要：见同目录 `SHA256SUMS`（`b15ad722…ab41c7`）。
 
+## 2026-10-14 重建记录（分流表 23 组精简为 12 组、本地规则集 10 → 15 份）
+
+- 变更：
+  - `native/config/routing/routing_table.go`：`Table` 由 23 组精简为 **12 组**（顺序即优先级）：
+    `📲 电报消息` / `🎧 TikTok` / `📲 社交媒体`（X+Instagram+Facebook+WhatsApp 四合一）/
+    `📺 流媒体`（油管+奈飞二合一）/ `🤖 AI` / `🎮 游戏平台` / `Ⓜ️ 微软`（云盘+微软服务+Bing 三合一，
+    默认 direct）/ `🍎 苹果服务`（direct）/ `🎯 国内直连`（直连组并入 B 站与网易音乐，direct）/
+    `🌏 国外穿墙` / `🍃 应用净化`（默认关、block）/ `🛑 广告拦截`（block）。
+    随表删除的组：`🐱 GitHub`、`🌏 Google Play`、`🌏 Google`、`Ⓜ️ 微软Bing`、`Ⓜ️ 微软服务`、
+    `📺 哔哩哔哩`、`🎶 网易音乐` 等 11 个。
+  - `Providers` 由 10 个 `acl_*` 改为 **15 个**本地 file provider，键名即规则仓库的产出名：
+    `social` `streaming` `ai` `games` `telegram` `tiktok` `china-domain` `china-ip` `china-media`
+    `onedrive` `apple` `proxy-gfwlist` `proxy-media` `banad` `banprogramad`；全部 `URL: ""`
+    （本地 file provider，不再从远端拉）、`Behavior: "classical"`、`Format: "text"`，
+    仅 `china-ip` 带 `NoResolve`。
+  - `legacyGroupAliases` 扩到 **12 条**（三个 AI 旧名 + X/Instagram/Facebook/WhatsApp → 社交媒体 +
+    油管/奈飞 → 流媒体 + 微软云盘 → 微软 + 哔哩哔哩/网易音乐 → 国内直连）。**刻意不映射**已取消的
+    `🐱 GitHub` / `🌏 Google Play` / `🌏 Google` / `Ⓜ️ 微软Bing` / `Ⓜ️ 微软服务`——旧开关状态
+    无处安放，硬映射会把「我关掉 Google」变成「我关掉整个穿墙」。
+  - `app/src/main/assets/routing/providers/`：删掉 10 份 `acl_*.yaml`，换入 15 份 `<键>.yaml`
+    （内容为 `ipevel/polaris-rules` 的 `dist/rules/<键>.list` 字节）。路径契约两端一致：
+    Go 侧 `FileExt() == ".yaml"` + `providerSubPath == "polaris-rules"`，Windows 侧
+    `seedPath == polaris-rules/<键>.yaml`。
+  - `app/src/main/java/com/slte/app/kernel/RoutingGroups.kt`：Kotlin 镜像同步为 12 组、别名表 12 条；
+    `RoutingGroupsMigrationTest.kt` / `RoutingTableParityTest.kt` 跟着改写（后者新增「别名表逐字一致」
+    与「随包种子文件名 == 内核表 provider 键」两条契约）。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=C:\Android\Sdk\ndk\28.2.13676358\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+  （Go 1.23.4 windows/amd64，`GOPROXY=off` 走本地模块缓存；产物 75,190,376 字节）
+- 验证：
+  - `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go vet -tags "android cmfa with_gvisor" ./native/...`
+    EXIT=0；同环境 `go build` EXIT=0 —— 与 CI 的 Go 门禁同款命令。
+  - `go test -v -count=1 ./native/config/routing/...` **24 个用例全 PASS**（1.685s），
+    其中 `TestRoutingDecisionAccuracy` 用真实 geosite 跑，以
+    `POLARIS_GEO_DIR=E:\AI\Github\polaris-rules\geo` +
+    `POLARIS_PROVIDERS_DIR=app/src/main/assets/routing/providers` 打开真跑；
+    含新写的 `TestMicrosoftGroupKeepsDirectOutbound`、`TestNoRemoteRuleSource`。
+  - 逐字节核对产物：`📲 社交媒体` / `📺 流媒体` / `GEOSITE,category-ai-!cn` 存在；
+    `🌏 Google Play` / `🐱 GitHub` / `Ⓜ️ 微软Bing` / `Ⓜ️ 微软服务` **均已消失**，
+    `Ⓜ️ 微软云盘` 仍在（它是别名表里的旧名）。
+  - `llvm-nm -D --defined-only` 比对旧/新产物**导出符号 156 = 156 完全一致**，因此
+    `libclash.h` 不替换（生成版只是少了 cgo 的 C++ 守卫块、`(void)` 写法不同，
+    `_GoStringLen` / `_GoStringPtr` 自 Go 1.23.4 起不再生成，C 侧无调用方）。
+- 产物摘要：见同目录 `SHA256SUMS`（`4dcd946d…4a8fd7`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。

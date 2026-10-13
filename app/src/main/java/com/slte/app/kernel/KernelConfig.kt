@@ -9,6 +9,7 @@ import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.service.util.sendBroadcastSelf
 import com.slte.app.BuildConfig
+import com.slte.app.data.geo.RuleResources
 import com.slte.app.di.IoDispatcher
 import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
@@ -249,9 +250,12 @@ constructor(
     }
 
     /**
-     * 把 APK 内置的分流规则种子（assets/routing/providers）复制到内核的
-     * provider 目录（imported/<uuid>/providers/polaris-rules/，与 Go 侧
-     * patchProviders 改写后的路径一致）。
+     * 把分流规则清单复制到内核的 provider 目录
+     * （imported/<uuid>/providers/polaris-rules/，与 Go 侧 patchProviders 改写后的路径一致）。
+     *
+     * 取件顺序：**优先 [RuleResources] 已经从 `ipevel/polaris-rules` 刷下来的那份**，
+     * 随包种子（assets/routing/providers）只是首次启动 / 断网 / 未到刷新节拍时的兜底。
+     * 两份的键名与内容都出自同一个仓库，只是新旧不同。
      *
      * 每次都覆盖：这些清单现在是 `type: file` 的本地 provider，内核只读不写。早先它们是
      * `type: http` + interval 远程缓存，才需要「只补缺失」以免把内核下载的新版打回旧版；
@@ -268,9 +272,14 @@ constructor(
             targetDir.mkdirs()
             for (name in names) {
                 val target = targetDir.resolve(name)
-                context.assets
-                    .open("${RoutingStateStore.ASSETS_PROVIDERS_DIR}/$name")
-                    .use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+                val cached = RuleResources.cachedRule(context, name)
+                if (cached != null) {
+                    cached.inputStream().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+                } else {
+                    context.assets
+                        .open("${RoutingStateStore.ASSETS_PROVIDERS_DIR}/$name")
+                        .use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+                }
             }
         }.onFailure {
             AppLog.w("Polaris-Kernel", "seedRoutingProviders: ${sanitizeLog(it.message ?: "Unknown")}")

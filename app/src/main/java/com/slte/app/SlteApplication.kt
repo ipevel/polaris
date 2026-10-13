@@ -4,14 +4,16 @@
 package com.slte.app
 
 import android.app.Application
+import android.content.Intent
 import com.github.kr328.clash.common.Global
-import com.slte.app.data.geo.GeoResources
+import com.github.kr328.clash.common.constants.Intents
+import com.github.kr328.clash.service.util.sendBroadcastSelf
+import com.slte.app.data.geo.RuleResources
 import com.slte.app.data.local.LocaleStore
 import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.kernel.KernelManager
 import dagger.hilt.android.HiltAndroidApp
 import java.io.File
-import java.io.FileOutputStream
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,20 +51,19 @@ class SlteApplication : Application() {
     }
 
     private fun extractGeoFiles() {
-        val clashDir = File(filesDir, "clash").apply { mkdirs() }
         val updateDate = packageManager.getPackageInfo(packageName, 0).lastUpdateTime
-        listOf("geoip.metadb", "geosite.dat", "ASN.mmdb").forEach { name ->
-            val target = File(clashDir, name)
-            if (target.exists() && target.lastModified() < updateDate) {
-                target.delete()
-            }
-            if (!target.exists()) {
-                assets.open(name).use { input ->
-                    FileOutputStream(target).use { output -> input.copyTo(output) }
-                }
-            }
+        // 随包 geodata 换了就重铺，并把同步标记一并清掉（文件与标记同生共死）。
+        RuleResources.seedGeoFiles(File(filesDir, "clash"), updateDate) { name ->
+            runCatching { assets.open(name) }.getOrNull()
         }
-        // 缺失的先从 assets 补齐，再按 24 小时周期从上游刷新；失败都不影响启动。
-        GeoResources.sync(this)
+        // 缺失的已从 assets 补齐；这里再按 12 小时节拍从上游刷新规则清单与 geodata，失败不影响启动。
+        val result = RuleResources.refresh(this)
+        // 规则清单变了要热加载（内核会重读本地 provider），不必断线重连；
+        // 只有 geodata 变了则不需要，它的读取路径本身就在下次 load 时生效。
+        if (result.updated.any { it.endsWith(".yaml") }) requestKernelReload()
+    }
+
+    private fun requestKernelReload() {
+        sendBroadcastSelf(Intent(Intents.ACTION_OVERRIDE_CHANGED))
     }
 }
