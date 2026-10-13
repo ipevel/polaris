@@ -94,15 +94,45 @@ function isFresh(dir) {
 }
 
 /**
- * 按 24 小时周期刷新 `geoDir`（打包后是 `resources/geo/`）。
+ * 同一目录的刷新单飞（in-flight 去重）。
  *
- * @param {string} geoDir 目标目录
- * @param {{info:Function,warn:Function}} log 日志器
- * @returns {Promise<string[]>} 本次真正更新的文件名
+ * 为什么必须有：`doRefresh()` 用**固定的** `<name>.part` 当临时文件，而 `refresh()`
+ * 的调用方有三路且**都不 await**（`manager.js:201` 的 `ensureGeodata()`、
+ * `main.js:59` 的启动路径，以及 `startKernel()` → `ensureGeodata()`），`refresh()`
+ * 自己又没有锁 —— 于是多路同时下载、同时 `rename` 同一个 `.part`：
+ * 先到的那路成功，其余全部 `ENOENT`。
+ * 2026-10-13 真面板跑测实测到「1 次成功 + 3 次 ENOENT」×3 份 geodata（见 DEVNOTES A-58）。
+ *
+ * 严重级别（已查准，别夸大）：`doRefresh()` 末尾是 `if (updated.length)` 写标记 ——
+ * **任一路成功就推进时间戳**，所以并发**不会**让标记永远不推进；实际后果是
+ * **重复下载（浪费带宽）+ 大量 ENOENT 告警**。
+ *
+ * 只去重「同一目录」：不同目录互不影响。后到的调用复用先到的 promise，
+ * 因此后到者的 `log` 会被忽略（只用先到者的 logger）—— 它们本来也该是同一个 logger。
  */
+let inflight = null;
+
 async function refresh(geoDir, log) {
   const say = log || { info() {}, warn() {} };
   if (isFresh(geoDir)) return [];
+  if (inflight && inflight.dir === geoDir) return inflight.promise;
+
+  const promise = doRefresh(geoDir, say).finally(() => {
+    // 只清掉自己那一份，别把后来者的记录误清
+    if (inflight && inflight.promise === promise) inflight = null;
+  });
+  inflight = { dir: geoDir, promise };
+  return promise;
+}
+
+/**
+ * 真正的刷新逻辑（由 `refresh()` 单飞包一层后调用）。
+ *
+ * @param {string} geoDir 目标目录
+ * @param {{info:Function,warn:Function}} say 日志器
+ * @returns {Promise<string[]>} 本次真正更新的文件名
+ */
+async function doRefresh(geoDir, say) {
   try {
     fs.mkdirSync(geoDir, { recursive: true });
   } catch (_) {
