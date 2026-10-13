@@ -125,6 +125,16 @@ constructor(
     @Volatile
     private var activeCall: Call? = null
 
+    /**
+     * 用户主动取消的旗标：**必须在 [activeCall] 之前立起来**（见 [cancelDownload]）。
+     *
+     * `Call.cancel()` 会让正在阻塞的 `read()` 抛 IOException，而 `Job.cancel()` 要晚一步
+     * 才生效。只看 `isActive` 的话，这两步之间有一个窗口会让"用户取消"被误判成
+     * "网络故障"并弹错。旗标先立，判定就不再依赖那两次调用的时序。
+     */
+    @Volatile
+    private var cancelled = false
+
     /** 保证"检查是否已有下载 → 占位 → 启动"是原子的，连点两次不会起两个下载。 */
     private val mutex = Mutex()
 
@@ -156,6 +166,9 @@ constructor(
                 // 留着会让 onResume 的 tryInstallPending() 拿一个不存在的包去发起安装。
                 pendingApk = null
                 val destFile = File(destDir, info.apkFileName)
+                // 新一轮开始前清掉上一轮的取消旗标。放在这里而不是 runDownload 开头：
+                // runDownload 是异步起的，若在它开头清，用户在它真正跑起来之前点的取消会被抹掉。
+                cancelled = false
                 // 先把进度置成"已开始"，界面才能立刻切到进度态，不必等第一个网络分片回来；
                 // 总长未知（0）时进度条走不确定态，拿到响应头后再补上真实总长。
                 _progress.value = Progress(0L, 0L)
@@ -174,8 +187,13 @@ constructor(
      */
     fun cancelDownload() {
         val job = running ?: return
-        // 顺序不能反：先断网络，再取消协程。反过来的话协程会先进入取消态，
-        // 卡在 read() 上仍要等超时。
+        // 三步顺序都不能反：
+        // 1) 先立旗标——`Call.cancel()` 会立刻让 read() 抛 IOException，而 `job.cancel()`
+        //    要晚一步才生效；旗标不先立，那个窗口里的 IOException 会被判成网络故障，
+        //    用户就会看到一条莫名其妙的"网络错误"。
+        // 2) 再断网络——反过来的话协程先进入取消态，卡在 read() 上仍要等超时。
+        // 3) 最后取消协程——让分片循环里的 ensureActive() 退出。
+        cancelled = true
         activeCall?.cancel()
         job.cancel()
     }
@@ -216,7 +234,9 @@ constructor(
         } catch (e: IOException) {
             // 取消也会让 OkHttp 抛 IOException（`Call.cancel()` 的表现形式），
             // 那不是网络故障，不能报成"下载失败"让用户以为网络有问题。
-            if (currentCoroutineContext().isActive) {
+            // 两个条件都要看：[cancelled] 覆盖"Call 已断、Job 还没标记取消"的那个窗口，
+            // `isActive` 覆盖协程被别的途径取消（如 scope 结束）的情况。
+            if (!cancelled && currentCoroutineContext().isActive) {
                 AppLog.w("Polaris-Update", "下载失败: ${sanitizeLog(e.message ?: "Unknown")}")
                 report(DownloadResult.Failed(appContext.getString(R.string.update_download_network_error)))
             }
