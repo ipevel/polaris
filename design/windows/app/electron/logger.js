@@ -79,9 +79,26 @@ function rotateIfNeeded(file) {
   try { fs.renameSync(file, `${file}.1`); } catch (_) {}
 }
 
+/**
+ * 日志时间戳：**本地时间** `YYYY-MM-DD HH:mm:ss.SSS±HH:MM`。
+ *
+ * 以前是 `toISOString()`（UTC），在东八区比用户看到的时间早 8 小时，
+ * 同一份导出日志里 mihomo 的行是 `2026-10-13T07:59:18.772630000+08:00`、
+ * 应用的行却是 `2026-10-12 23:59:18.772`，两条时间线对不上，排查时得手算，
+ * 还容易把「更新失败发生在 23:59」看成别的时间（DEVNOTES B-*）。
+ * 带上偏移量，换时区或把日志发给别人也一眼能换算。
+ */
+function stamp(d = new Date()) {
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  const off = -d.getTimezoneOffset();
+  const abs = Math.abs(off);
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`
+    + `${off < 0 ? '-' : '+'}${p(Math.floor(abs / 60))}:${p(abs % 60)}`;
+}
+
 function fmt(level, args) {
-  const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
-  return `${ts} ${level.padEnd(5)} ${interpolate(args)}\n`;
+  return `${stamp()} ${level.padEnd(5)} ${interpolate(args)}\n`;
 }
 
 function safeJson(v) {
@@ -123,6 +140,7 @@ module.exports = {
   error: (...a) => write('ERROR', a),
   debug: (...a) => { if (process.env.POLARIS_DEBUG === '1') write('DEBUG', a); },
   redact,
+  stamp,
   /** 导出最近 N 行日志，供"导出日志"功能使用 */
   tail(lines = 2000) {
     try {

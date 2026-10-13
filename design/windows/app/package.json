@@ -11,6 +11,7 @@
     "start": "electron .",
     "uitest": "electron . --uitest",
     "test:updater": "node scripts/updater-self-test.js",
+    "test:updater-timeout": "node scripts/updater-timeout-test.js",
     "test:traffic": "node scripts/traffic-view-test.js",
     "test:geosync": "node scripts/geosync-test.js",
     "test:routing-sync": "node scripts/routing-sync-test.js",

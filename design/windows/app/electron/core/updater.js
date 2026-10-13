@@ -45,6 +45,28 @@ const log = require('../logger');
 
 const ZIP_MAGIC = [0x50, 0x4b]; // "PK"
 
+/* ---------------- 下载超时（DEVNOTES B-*） ----------------
+ * 这三条以前只有一句 `req.setTimeout(60000, ...)`，结果是**建连超过 5 秒就报
+ * 「下载超时（60s 无数据）」**（日志里 5.02 秒一次，连报四次）。原因见 fetchStream 注释。
+ * 现在分成三层：建连看门狗 / 空闲看门狗 / 整体硬上限，任一层触发都能让
+ * phase 回到 error，不会再有「下载挂死 → 之后所有下载都被『正在更新中』挡住」。
+ */
+const CONNECT_TIMEOUT_MS = 30 * 1000;      // TCP+TLS 建连最多等多久
+const IDLE_TIMEOUT_MS = 60 * 1000;         // 建连后多久没有新数据算卡住
+const TOTAL_TIMEOUT_MS = 15 * 60 * 1000;   // 一次下载的硬上限（186MB 慢速也够）
+
+/** 实际生效的超时（都从 TIMEOUTS 读，别直接读上面的常量）。
+ *  自检脚本 `scripts/updater-timeout-test.js` 会把它改成毫秒级，
+ *  这样三种「卡死」都能在十几秒里验完，不用真等 15 分钟。 */
+const TIMEOUTS = { connect: CONNECT_TIMEOUT_MS, idle: IDLE_TIMEOUT_MS, total: TOTAL_TIMEOUT_MS };
+
+/** 毫秒 → 人话时长：整分钟说分钟，其余说秒（自检里是毫秒级，会出 1.5 秒这种） */
+function fmtDuration(ms) {
+  if (ms >= 60000 && ms % 60000 === 0) return `${ms / 60000} 分钟`;
+  const s = ms / 1000;
+  return `${Number.isInteger(s) ? s : s.toFixed(1)} 秒`;
+}
+
 /** 更新状态机：idle → downloading → extracting → staged →（apply）applying / error */
 const S = {
   phase: 'idle',
@@ -166,6 +188,27 @@ function resolveStageRoot(dir) {
   return null;
 }
 
+/**
+ * 发起 GET，把响应流 resolve 出去（重定向自己跟，最多 5 跳）。
+ *
+ * 超时这块是踩过坑的，别再改回 `req.setTimeout()`：
+ *   - `req.setTimeout(ms)` 走的是 `_http_client.js` 的 `setSocketTimeout()`，
+ *     而 socket 在**建连期间**（`sock.connecting === true`）会把这个 ms 推迟到
+ *     'connect' 之后再 `sock.setTimeout(ms)`（`_http_client.js:1218-1226`）。
+ *     也就是说建连阶段 socket 上带着的是 agent 自己的超时 ——
+ *     `https.globalAgent.options.timeout`，本机 Node 24.19 / Electron 44.7
+ *     实测都是 **5000ms**（`proxyEnv` 在时由 `NODE_USE_ENV_PROXY` 打开）。
+ *   - 把 timeout 作为**请求选项**传（`{ timeout }`）才没有这个空档：
+ *     `ClientRequest` 直接把它设为 `req.timeout`，`Agent.createSocket`
+ *     （`_http_agent.js:436-439`）建 socket 时就用它，不再落到 agent 的 5 秒。
+ *     实测：同一条请求，不传选项时 socket 上是 5000，传了就是 60000。
+ *   - 诚实说明：生产日志里那三次「5.02 秒就报 60s 无数据」**没能在本机复现**。
+ *     旧代码在直连、CONNECT 隧道、连接池复用三条路径上实测都是 60 秒才失败
+ *     （见 DEVNOTES 2026-10-13 条目）。上面的机制是实打实的隐患，也确实被修掉了，
+ *     但它是不是那三次 5.02 秒的唯一成因，没有证据下结论。
+ * 另外两层保护：显式建连看门狗（CONNECT_TIMEOUT_MS，给一句人话），
+ * 以及 downloadTo 里的空闲/整体计时器。
+ */
 function fetchStream(url, redirects = 0) {
   return new Promise((resolve, reject) => {
     let u;
@@ -174,7 +217,31 @@ function fetchStream(url, redirects = 0) {
       return reject(new Error('只支持 http(s) 下载'));
     }
     const mod = u.protocol === 'https:' ? https : http;
-    const req = mod.get(u, { headers: { 'User-Agent': 'Polaris-Windows' } }, (res) => {
+    let gotResponse = false;
+    let connectTimer = null;
+    let req = null;
+    const clearConnect = () => { if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; } };
+    // 建连阶段的超时：此时拿不到响应头，只可能是网络/代理连不上。
+    // 拿到响应头后这个监听器就撤掉 —— 下载途中的「没数据」交给 downloadTo 的空闲
+    // 计时器，那里的文案能分清「下到一半卡住」和「连不上」。
+    const onTimeout = () => {
+      if (gotResponse) return;
+      req.destroy(new Error(`连接超时（${fmtDuration(TIMEOUTS.connect)}内没有连上 ${u.host}）`));
+    };
+    req = mod.get(u, {
+      headers: { 'User-Agent': 'Polaris-Windows' },
+      timeout: TIMEOUTS.idle,
+    }, (res) => {
+      gotResponse = true;
+      clearConnect();
+      req.removeListener('timeout', onTimeout);
+      // socket 上那个 TIMEOUTS.idle 的计时器只该管「建连 + 等响应头」，
+      // 拿到响应头就撤掉：下载途中若一直有数据在流，它会在第 60 秒凭空
+      // 触发一次假超时（报出「60s 无数据」，可数据其实一直在下）。
+      // 这一阶段的「没数据」由 downloadTo 的空闲计时器负责，它每收到一段
+      // 数据就重新计时。另外复用连接池里的旧 socket 时，它可能还带着上一个
+      // 请求残留的超时，这里一并清掉。
+      if (req.socket) req.socket.setTimeout(0);
       const code = res.statusCode || 0;
       if (code >= 300 && code < 400 && res.headers.location) {
         res.resume();
@@ -189,30 +256,70 @@ function fetchStream(url, redirects = 0) {
       }
       resolve(res);
     });
-    req.on('error', (e) => reject(new Error('下载失败：' + (e && e.message))));
-    req.setTimeout(60000, () => req.destroy(new Error('下载超时（60s 无数据）')));
+    req.on('timeout', onTimeout);
+    connectTimer = setTimeout(() => {
+      if (gotResponse) return;
+      req.destroy(new Error(`连接超时（${fmtDuration(TIMEOUTS.connect)}内没有连上 ${u.host}）`));
+    }, TIMEOUTS.connect);
+    req.on('error', (e) => {
+      clearConnect();
+      reject(new Error('下载失败：' + (e && e.message)));
+    });
   });
 }
 
 function downloadTo(url, dest, onProgress) {
+  // 进度回调是可选的：自检（scripts/updater-timeout-test.js）只关心超时行为
+  const progress = typeof onProgress === 'function' ? onProgress : () => {};
   return fetchStream(url).then((res) => new Promise((resolve, reject) => {
     const total = Number(res.headers['content-length'] || 0);
     const out = fs.createWriteStream(dest);
     let received = 0;
     let last = 0;
     let done = false;
+    let idleTimer = null;
+    let hardTimer = null;
+    const clearTimers = () => {
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      if (hardTimer) { clearTimeout(hardTimer); hardTimer = null; }
+    };
+    // 所有失败都从这里出去：先拆计时器，再销毁两条流，最后只 reject 一次。
+    // done 保证「超时」「下载中断」「写入失败」不会互相覆盖成半截状态。
+    const fail = (e) => {
+      if (done) return;
+      done = true;
+      clearTimers();
+      try { res.destroy(); } catch (_) {}
+      try { out.destroy(); } catch (_) {}
+      reject(e);
+    };
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(
+        () => fail(new Error(`下载超时（${fmtDuration(TIMEOUTS.idle)}没有收到数据）`)),
+        TIMEOUTS.idle,
+      );
+    };
     const tick = (force) => {
       const now = Date.now();
       if (!force && now - last < 200) return;
       last = now;
-      onProgress(received, total);
+      progress(received, total);
     };
-    res.on('data', (c) => { received += c.length; tick(false); });
-    res.on('error', (e) => { if (!done) { done = true; out.destroy(); reject(new Error('下载中断：' + (e && e.message))); } });
-    out.on('error', (e) => { if (!done) { done = true; reject(new Error('写入失败：' + (e && e.message))); } });
+    armIdle();
+    // 硬上限：服务端每隔几十秒挤一点数据就能一直把空闲计时器喂饱，
+    // 没有这一条就可能「看起来在下、其实永远下不完」。
+    hardTimer = setTimeout(
+      () => fail(new Error(`下载超时（超过 ${fmtDuration(TIMEOUTS.total)}还没下完，已放弃）`)),
+      TIMEOUTS.total,
+    );
+    res.on('data', (c) => { received += c.length; armIdle(); tick(false); });
+    res.on('error', (e) => fail(new Error('下载中断：' + (e && e.message))));
+    out.on('error', (e) => fail(new Error('写入失败：' + (e && e.message))));
     out.on('finish', () => {
       if (done) return;
       done = true;
+      clearTimers();
       tick(true);
       resolve({ size: received, total });
     });
@@ -424,7 +531,8 @@ async function applyWorker() {
   const pid = Number(process.env.POLARIS_APPLY_PID || 0);
   const logFile = path.join(updDir || updateDir(), 'apply.log');
   const say = (s) => {
-    try { fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${s}\r\n`); } catch (_) { /* 写不了日志也不能中断 */ }
+    // 用 logger 的本地时间戳（以前是 toISOString 的 UTC，跟主日志差 8 小时）
+    try { fs.appendFileSync(logFile, `[${log.stamp()}] ${s}\r\n`); } catch (_) { /* 写不了日志也不能中断 */ }
   };
 
   try {
@@ -549,7 +657,8 @@ function quit() {
 }
 
 module.exports = {
-  S, info, onChange, download, apply, applyWorker, cleanStaleRename, quit, reset, restoreStaged,
+  S, TIMEOUTS, info, onChange, download, downloadTo, fetchStream, apply, applyWorker,
+  cleanStaleRename, quit, reset, restoreStaged,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
   safeName, zipPath, isZipFile, resolveStageRoot, extract, pidAlive,
 };

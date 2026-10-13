@@ -1,6 +1,13 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-11（**第 13 轮：接通应用内更新源 + 并入 main**）
+> 最后更新：2026-10-13（**第 14 轮：运行日志里的更新超时 + 日志时间戳（A-56）**）
+> 用户第 15 轮给了一份 5005 行的运行日志，点名 A+B：A 修应用内更新下载的超时/重试，
+> B 把应用层再修一轮（更新超时 + `global-client-fingerprint` 噪音 + 日志时间戳 UTC）。
+> **C 明确不改**：OneDrive 走直连是用户有意选的，不要再提分流/代理策略。
+> 见 §三 A-56（更新超时与时间戳）、A-55（流量页静默换源）、A-54（运行日志四类问题，
+> `global-client-fingerprint` 那项已由 `72e1ec3` 完成）。
+>
+> 更早：**第 13 轮：接通应用内更新源 + 并入 main**
 > 用户第 14 轮提的两条：①「现在就接通」应用内更新；②把 windows 分支仓库并入主仓库。
 > 第 ① 条查出来是个**一直没接通的死链**（D-16）：应用内更新只有「检查更新 → 有更新 → 前往下载」
 > 这一条链，但"从哪知道有新版本"的输入一直是空的 —— `store.get('remote_config_urls')` 在
@@ -300,6 +307,7 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 人工手测 | — | `npm start` / 成品包 `Polaris.exe`，由人点 |
 | `npm run test:updater`（`scripts/updater-self-test.js`） | 21 项 | **自我替换 helper 的纯 Node 自检**：假安装目录 + 假 exe + 拦截 spawn，钉死四个场景 —— 正常路径（文件全换 / 同名旧文件被覆盖 / 新增文件落位 / **`data/` 用户数据原样保留** / 旧 exe 改名 `.old` / 包与 staging 全清 / 重新拉起参数对）、父进程不退（等满 120 秒、退出码 2、**安装目录一个字节没动**）、**staging 里没有 exe**（退出码 2、安装目录未动 —— 这条是 2026-10-12 单元测试当场抓出来的，见 A-50 第 5 节）、启动时清理残留 `.old`。路径故意含中文 |
 | `npm run test:traffic`（`scripts/traffic-view-test.js`） | 36 项 | **流量页视图的纯 Node 自检**（不需要 Electron、不需要网络、不碰面板）：用 `vm` 加载 `format.js` + `views.js`，直接调 `Views.traffic(state)`，数渲染出来的 HTML —— 每天一根柱（零用量日也是 3px 短桩，`<rect>` 根数 = 当月天数）、`<line>` 只有 1 条基线、没有虚线网格、`data-range` 按钮 0 个、悬停读数已删、**合计 = 面板逐日之和（故意造"第 4 天面板没记录"的坑，那天补 0 且不进合计）**、柱宽被限在 44 以内（月初第一天只有一根柱时不能撑爆）、**面板有明细接口且已登录时拉取失败必须明确报错、不许拿本机统计顶替**（并给出失败原因）、只有「面板压根没有这个接口」（小 V2B）或未登录才退回本机统计并改写来源、有缓存但刷新失败时标「数据截至 HH:MM」、缓存过期标「超过 5 分钟未刷新」、空态文案。见 A-51 / A-55 |
+| `npm run test:updater-timeout`（`scripts/updater-timeout-test.js`） | 27 项 | **应用内更新「下载超时」的纯 Node 自检**（不需要 Electron、不下载外网、不碰真安装目录，只监听 127.0.0.1 临时端口 + 写 %TEMP%）：`updater.TIMEOUTS` 压到毫秒级后钉死七种情形 —— 建连拖 6 秒仍能下完、**连不上的文案是 connect 时长且带主机名**、连上但没数据的文案是 idle（「没有收到数据」而不是「连不上」）、每 250ms 挤 1 字节被 total 硬上限拦住、**下载超时后 phase 回 error 且下一次能立刻重试**（不再被「正在更新中」挡住）、正常路径（下载 → PK 校验 → 解压 → staged）没走坏、日志时间戳是本地时间 + 偏移量。见 A-56 |
 | `npm run test:geosync`（`scripts/geosync-test.js`） | 11 项 | **geodata 24 小时自动刷新的纯 Node 自检**（本地 HTTP 服务器 + `POLARIS_GEO_BASE` 覆盖，不碰外网）：`isFresh` 四态（空目录 / 缺标记 / 未过期 / 超过 24 小时 / 文件缺失）、正常刷新三份文件落地 + 写标记、未过期时二次刷新直接返回空且请求数不增加、**sha256 不匹配时挡住该份并原样保留旧文件（另外两份照常更新）**、上游 404 不抛异常也不覆盖。见 A-52 |
 | `npm run test:routing-sync`（`scripts/routing-sync-test.js`） | 逐条 | **两端分流表一致性的纯 Node 自检**：把 JS `TABLE`/`PROVIDERS` 与 Go `routing_table.go` 的表**逐条比对**（组数/顺序/组名/`defaultOn`/`defaultOut`/`providers`/`inlineRules`，provider 键集合与 `url`/`behavior`/`format`/`noResolve`），并断言 `providerConfig` 一律 `type: file` 且不带 `url`/`interval`。`kernel-core/` 不在本 worktree 时打印「跳过不是失败」并 `exit 0`；`POLARIS_GO_TABLE` 可显式指定 Go 源文件。见 A-53 |
 | `set POLARIS_UPDTEST_URL=<zip 地址> && Polaris.exe` | — | 真演练自我替换（下载 → 解压 → 覆盖安装目录 → 重启），**会覆盖当前目录，先拷一份**（旧写法 `--updtest <zip>` 在成品包上进不去，见 A-50） |
@@ -2711,6 +2719,106 @@ WARN 还没有节点数据，请先在「节点」页点「刷新订阅」
 
 ---
 
+## A-56 应用内更新「下载超时」与日志时间戳（2026-10-13）
+
+用户给了一份 5005 行的运行日志（`polaris-logs-1791849653626.txt`），点名 A+B 两条：
+
+- **A**：应用内更新下载的重试/超时 bug。
+- **B**：应用层都修一轮（更新超时 + `global-client-fingerprint` 噪音 + 日志时间戳 UTC）。
+- **C 明确不改**：OneDrive 走直连是用户**有意**选的（不想让 OneDrive 不停同步吃流量），
+  不要再提分流/代理策略。**这一条约束在下文所有结论里都成立。**
+
+### 日志原样序列（UTC，应用层 40 行里的关键 6 行）
+
+```
+23:58:56.689 release check has_update=true asset=Polaris-portable-1.11.3.zip
+23:58:58.050 开始下载更新
+23:59:09.334 更新下载失败：下载失败：read ECONNRESET        ← 距开始 11.3 秒
+23:59:40.941 开始下载更新
+23:59:43.772 command download_update failed: 正在更新中，请稍候
+23:59:45.964 更新下载失败：下载失败：下载超时（60s 无数据）  ← 距开始 5.02 秒
+23:59:50.081 开始下载更新
+23:59:55.105 同上（5.02 秒）
+00:00:41.164 开始下载更新
+00:00:46.197 同上（5.03 秒）
+```
+
+### 修法（三条，都已落地）
+
+1. **超时改走「请求选项」**：`electron/core/updater.js` 的 `fetchStream()` 不再用
+   `req.setTimeout(60000, …)`，改成 `mod.get(u, { headers, timeout: TIMEOUTS.idle })`。
+2. **三层超时各管一段**（`updater.js:61` 起）：`TIMEOUTS = { connect: 30s, idle: 60s,
+   total: 15min }`。connect 看门狗管「连不上」、idle 管「下到一半没数据」、total 管
+   「挤牙膏永远下不完」。三个计时器都走同一个 `fail()` 单出口（`done` 标志），
+   失败时先拆计时器再销毁两条流，只 reject 一次。
+3. **日志时间戳改本地时间**：`electron/logger.js` 新增 `stamp(d = new Date())`，
+   输出 `YYYY-MM-DD HH:mm:ss.SSS±HH:MM`（如 `2026-10-13 09:32:56.095+08:00`）。
+   旧代码用 `toISOString()` 写 UTC，比用户看到的本地时间早 8 小时，跟 mihomo 日志里的
+   `+08:00` 对不上，排查时要心算一遍。
+
+### 根因：`req.setTimeout()` 在建连窗口里不生效（实测）
+
+Node 的 `req.setTimeout(ms)` 走 `_http_client.js` 的 `setSocketTimeout()`，而 socket 在
+**建连期间**（`sock.connecting === true`）会把这个 ms 推迟到 `'connect'` 之后才设上去
+（`_http_client.js:1218-1226`）。所以建连阶段 socket 上带着的是 agent 自己的超时：
+
+```
+node 24.19   http.globalAgent.options  = {keepAlive:true,scheduling:"lifo",timeout:5000,…}
+electron 44.7 同上（timeout 也是 5000）
+```
+
+（`proxyEnv` 存在时由 `NODE_USE_ENV_PROXY` 打开。）把 timeout 作为**请求选项**传才没有
+这个空档：`ClientRequest` 直接把它设为 `req.timeout`，`Agent.createSocket`
+（`_http_agent.js:436-439`）建 socket 时就用它。**实测对照**：
+
+| 写法 | socket 分配那一刻的 `sock.timeout` |
+|---|---|
+| 不传选项 + `req.setTimeout(60000)` | **5000** |
+| 传 `{ timeout: 60000 }` | **60000** |
+
+### 诚实交代：那三次 5.02 秒**没能在本机复现**
+
+红/绿对照把旧代码单独拿出来，在三条路径上跑同一个「发完响应头就不吭声」的服务器：
+
+| 路径 | 旧代码实测结果 |
+|---|---|
+| 直连 stall 服务器 | 60028ms 失败（`下载中断：aborted`） |
+| 本机 CONNECT 代理隧道 + stall 源站 | 60014ms 失败 |
+| 连接池复用（先成功一次再 stall） | 60015ms 失败 |
+| TCP 黑洞 `10.255.255.1:443`（建连阶段） | 8 秒时仍 pending |
+
+也就是说：**旧代码的 `req.setTimeout` 在建连窗口里确实不生效（上表 5000 vs 60000 是实打实的），
+但这三次 5.02 秒是不是它造成的，没有证据下结论。** 生产那条路是真实 GitHub CDN +
+mihomo 代理 + 用户当时正被 OneDrive 同步占带宽，本机复现不了。所以：
+
+- 新代码里超时行为是**按设计**的（60 秒空闲、30 秒连不上、15 分钟硬上限），文案也分得清；
+- 交付里**不写**「旧代码第 5 秒必炸」这种结论，只在代码注释和 DEVNOTES 里记机制 + 复现失败。
+
+被推翻的推断（都做过实验，别再捡回来）：拖慢 DNS（字面 IP 不等 lookup 回调，14ms 完成）、
+TCP 黑洞地址（本机建连 15ms 就成功）、keep-alive 复用假设（三次都 60 秒）、
+「正在更新中标志不复位」（守卫触发时下载确实还在跑，守卫本身是对的）。
+
+### 修完顺手补的两个洞
+
+- **假超时**：请求选项的 60 秒计时器只该管「建连 + 等响应头」。拿到响应头就
+  `req.socket.setTimeout(0)` 撤掉它 —— 否则下载途中一直有数据在流，它也会在第 60 秒
+  凭空触发一次「60s 无数据」。
+- **文案不同源**：`onTimeout` 原来写 `fmtDuration(TIMEOUTS.idle)`（60 秒）却说「连接超时」，
+  和 30 秒的 connect 看门狗不是一回事，已改成 `TIMEOUTS.connect`。
+
+### 测试怎么钉
+
+新增 `scripts/updater-timeout-test.js`（**27 项断言全过**），`npm run test:updater-timeout`。
+纯 Node、不起 Electron、不下载外网、不碰真安装目录，只监听 127.0.0.1 临时端口 + 写 %TEMP%。
+七个用例：建连拖 6 秒仍能下完 / 连不上文案是 connect 时长 / 连上没数据文案是 idle /
+挤牙膏被 total 拦 / 失败后 phase 回 error 且能立刻重试 / 正常路径没走坏 / 时间戳是本地时间。
+
+**教训**：超时这种「看着能跑」的代码，必须拿**真实网络形状**去对（直连、代理隧道、连接池复用），
+光看文档和源码推出来的结论很容易是错的 —— 这轮就推错了一版，靠红/绿对照才把结论收回来。
+复现不了的时候，写「复现不了 + 机制是什么」，比编一个漂亮根因强。
+
+---
+
 ## 四、验证体系怎么用
 
 ```bash
@@ -2850,6 +2958,17 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    一次界面自检里，点流量页「本周」后 60 秒页面停在首页（同一版本随后连跑三次全绿）。
    现在 `app.js` 有一条路由流水 `window.__navLog`（`nav`/`goBack`/`boot` 各记一条调用栈），
    自检失败信息里会打印最后 6 条 —— 下次复现时先看它，别再从"最终状态"倒推。见 E-19。
+
+1.8 **应用内更新那三次「5.02 秒」仍未复现（第 14 轮，见 A-56）**
+   旧代码 `req.setTimeout()` 在建连窗口里不生效是实打实的（实测 socket 上是 5000 而不是 60000），
+   但把它单独拿出来在**直连 / CONNECT 隧道 / 连接池复用**三条路径上跑，旧代码都是 60 秒才失败，
+   复现不出 5 秒。新代码的文案现在能分清三种情形，下次用户再报"更新下载失败"时先看那句：
+   - 「连接超时（30 秒内没有连上 <host>）」→ 卡在建连，查网络/代理；
+   - 「下载超时（1 分钟没有收到数据）」→ 连上了但服务端不吐数据；
+   - 「下载超时（超过 15 分钟还没下完，已放弃）」→ 挤牙膏式下载。
+   **另外**：`download()` 目前失败后**不会自动重试**（只把 phase 设回 error，用户再点一次即可，
+   用例 5 钉的就是"能立刻重试"）。要不要对 `ECONNRESET`/超时做自动重试（比如退避重试 2 次），
+   属于产品取舍，**等用户定**，没擅自加。
 
 2. **TUN 模式实机验证**（需要用户同意，会临时接管网络栈）
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。
