@@ -1,0 +1,119 @@
+# Polaris Windows 端门禁（design/windows/app）
+#
+# 文件名为什么带 -windows：主仓库已经有一个 `.github/workflows/ci.yml`（纯安卓 + Go 的
+# version-gate / go / quality 三个 job）。如果这个文件也叫 ci.yml，同步进 main 时会**整个
+# 覆盖掉安卓那条**，安卓门禁当场消失。分开命名，两边互不干扰、各自独立触发。
+#
+# 为什么单独一条：主仓库的 `ci.yml` 是**纯安卓 + Go** 的（三个 job 全在 ubuntu 上），
+# `design/windows/app` 的代码一行都没被扫过；而 `build.yml` 里虽然有个 windows job，
+# 但它只在**手动发版**时跑，而且只验证「能打包」，没有任何测试或语法检查。
+# 结果就是：Windows 端 41 个 js 文件、5 条自检，全靠人记得手动跑。
+# 这个 workflow 就是补这一块：push / PR 都自动跑，只做**不需要凭据、不下载外网、
+# 不碰真安装目录**的离线自检（真面板那两条见 README 的 `test:real` / `test:ui`）。
+#
+# 触发分支：windows-portable（这条分支上才有 design/windows/ 的所有权）。
+# 合并进 main 之后，main 上的 push/PR 由主 ci.yml 负责；这个文件同步过去后
+# 会在 windows-portable 上继续生效，不会和主 ci.yml 打架（不同文件、不同 job 名）。
+
+name: Polaris Windows CI
+
+on:
+  push:
+    branches: [windows-portable]
+  pull_request:
+    branches: [windows-portable]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: win-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-offline:
+    name: Windows 离线自检 + 语法检查
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: design/windows/app
+
+    steps:
+      - name: 检出代码（当前分支）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 离线自检本身只用 Node 内置模块，不需要依赖；但 `node --check` 要能解析
+      # 每条 require，缺了 node_modules 会误报，所以照常装。
+      - name: 安装依赖
+        run: npm ci
+
+      # 5 条离线自检：不需要 Electron、不需要网络、不碰真安装目录。
+      # 用链式命令而不是 5 个 step，是为了失败时一眼看出是哪条断的，
+      # 同时保证「前一条挂了后面的不会假装通过」。
+      - name: 离线自检 5 条（updater / updater-timeout / traffic / geosync / routing-sync）
+        run: npm run test:offline
+
+      # 便宜的兜底：语法错误在这里就红，不用等打包才发现。
+      - name: 语法检查（所有 js）
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --check 只解析不执行，所以不依赖 Electron 运行时；
+          # 但 preload.js / tray.js 等文件里 require('electron') 不会被执行，安全。
+          mapfile -t files < <(git ls-files '*.js' | grep -v '^design/windows/app/node_modules/')
+          echo "待检查 ${#files[@]} 个文件"
+          for f in "${files[@]}"; do
+            node --check "$f" || { echo "::error::语法错误：$f"; exit 1; }
+          done
+          echo "全部通过"
+
+      # ------------------------------------------------------------------
+      # routing-sync 的「永远绿假通过」问题，在这里解决。
+      #
+      # 这条自检要拿 kernel-core/src/main/golang/native/config/routing/routing_table.go
+      # 跟 Windows 的 electron/core/rulesets.js 逐条比对；而 windows-portable 分支
+      # 只有 design/，没有 kernel-core/ —— 本地跑会打印「跳过」并 exit 0。
+      # 跳过在 CI 里就等于一个永远绿的假通过，所以**不能**这么放过。
+      #
+      # 选择：**在 CI 里真跑**（而不是把测试拆成两半）。
+      # 理由：
+      #   1. 这条门禁的价值就是「两端分流表一致」——拆一半就验不到跨语言一致性，
+      #      而分叉恰恰是它要防的东西（2026-10-12 就是这么静默分叉的）。
+      #   2. main 是分流表的**事实来源**，windows-portable 是镜像。要防的正是
+      #      「main 改了表、Windows 镜像没跟上」，所以必须拿 main 的表来对。
+      #   3. 成本很低：只 checkout 一个目录，不装 Go、不编译。
+      # 于是：把 main 的 kernel-core/ 取到 .ci-main/ 下，用 POLARIS_GO_TABLE 指过去，
+      # 再设 POLARIS_GO_TABLE_REQUIRED=1 禁止跳过 —— 找不到就是红，不是绿。
+      # ------------------------------------------------------------------
+      - name: 取 main 的 kernel-core（routing-sync 要用它真跑）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .ci-main
+          sparse-checkout: kernel-core
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+
+      - name: 分流表跨语言一致性（真跑，禁止跳过）
+        shell: bash
+        working-directory: design/windows/app
+        env:
+          POLARIS_GO_TABLE: ${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go
+          POLARIS_GO_TABLE_REQUIRED: '1'
+        run: |
+          set -euo pipefail
+          # 先确认文件真的在（checkout 成功不代表 sparse-checkout 真取到了）
+          if [ ! -f "$POLARIS_GO_TABLE" ]; then
+            echo "::error::没取到 main 的 routing_table.go：$POLARIS_GO_TABLE"
+            echo "::error::请检查上面的 sparse-checkout 是否还匹配得上 main 的目录结构。"
+            exit 1
+          fi
+          node scripts/routing-sync-test.js

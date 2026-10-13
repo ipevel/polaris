@@ -1,6 +1,11 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-13（**第 14 轮：运行日志里的更新超时 + 日志时间戳（A-56）**）
+> 最后更新：2026-10-13（**第 15 轮：Windows 端门禁（A-57）**）
+> 用户批了门禁这一摊：真面板两条自检挂进 npm、补 `.editorconfig`、把 5 条离线自检接进 CI。
+> 见 §三 A-57 —— 注意里面那条 ⚠️：**新门禁现在会红，因为它抓到 main 与 Windows 的
+> 分流表双向分叉是真的**，要变绿得反向移植 Go 表（跨端语义变更，未做）。
+>
+> 同一日更早：**第 14 轮：运行日志里的更新超时 + 日志时间戳（A-56）**
 > 用户第 15 轮给了一份 5005 行的运行日志，点名 A+B：A 修应用内更新下载的超时/重试，
 > B 把应用层再修一轮（更新超时 + `global-client-fingerprint` 噪音 + 日志时间戳 UTC）。
 > **C 明确不改**：OneDrive 走直连是用户有意选的，不要再提分流/代理策略。
@@ -2816,6 +2821,125 @@ TCP 黑洞地址（本机建连 15ms 就成功）、keep-alive 复用假设（�
 **教训**：超时这种「看着能跑」的代码，必须拿**真实网络形状**去对（直连、代理隧道、连接池复用），
 光看文档和源码推出来的结论很容易是错的 —— 这轮就推错了一版，靠红/绿对照才把结论收回来。
 复现不了的时候，写「复现不了 + 机制是什么」，比编一个漂亮根因强。
+
+---
+
+## A-57 Windows 端门禁：离线自检进 CI、真面板自检可 npm 起、补 .editorconfig（2026-10-13）
+
+**为什么做**：主仓库 `.github/workflows/ci.yml` 是**纯安卓 + Go** 的（version-gate / go /
+quality 三个 job 全在 ubuntu），`design/windows/app` 的代码一行都没被扫过；`build.yml` 里
+虽然有个 `windows` job，但它只在**手动发版**时跑，而且只验证「能打包」，没有任何测试。
+结果 Windows 端 41 个 js、5 条自检全靠人记得手动跑。这一轮把这块补上。
+
+### 1. 真面板两条自检挂进 npm（`test:real` / `test:ui`）
+
+坑：`scripts/ui-test.js` **不是可执行脚本**，它是被 `require` 进来的模块，真正的入口是
+`electron . --uitest`（`main.js:288` 的 `runUiTest()` 读 `--panel/--email/--password`）。
+所以 `test:ui` 不能写成 `electron scripts/ui-test.js`。
+
+新增 `scripts/preflight-creds.js`：在**启动 Electron 之前**校验参数，缺了就打印用法并
+`exit 2`。`test:real` / `test:ui` 都先过它再过 `&&`。为什么要多这一道：`ui-test` 缺参数时
+是「Electron 起完、窗口都开了、1.8 秒后」才退出码 2 —— 既浪费时间，也容易被当成「跑过了」。
+
+```jsonc
+"test:real": "node scripts/preflight-creds.js real -- && electron scripts/real-test.js --",
+"test:ui":   "node scripts/preflight-creds.js ui -- && electron . --uitest --",
+"test:offline": "npm run test:updater && npm run test:updater-timeout && npm run test:traffic && npm run test:geosync && npm run test:routing-sync"
+```
+
+参数追加在 `--` 后面：`npm run test:ui -- --panel=… --email=… --password=…`。
+
+### 2. `.editorconfig`（仓库根）
+
+安卓那套搬骨架，但**只留 Windows 端真正吃得到的段落** —— 这里没有 Kotlin/Gradle/Go，
+`.kt/.kts` 的 ktlint 键搬过来只会制造「看起来配了、其实没人读」的假配置。缩进值按仓库里
+现有代码实测对齐，不是拍脑袋：
+
+| 段落 | 值 | 依据 |
+|---|---|---|
+| `[*]` | utf-8 / lf / 4 / trim | 仓库存的就是 LF（`git cat-file blob` 数过 updater.js：664 行 LF、0 行 CRLF） |
+| `*.js` | 2 | `electron/` 与 `src/js/` 的缩进行绝大多数是 2 的倍数 |
+| `*.{json,yml,yaml,md}` | 2 | 与现有文件一致（安卓端同样给 2） |
+| `*.{html,css}` | 2 | `src/css/design.css` 72 行全是 2 |
+| `*.py` | 4 | `fetch-core.py` / `fetch-geo.py` 都是 4，无 tab |
+| `*.ps1` | 2 | `build-portable.ps1` 现在只有**一处**缩进（2 空格），样本太少不足以下结论，按项目统一风格给 2 而非 PS 常见的 4，并在文件里注明 |
+
+⚠️ 本机 git 是 `core.autocrlf=true`，工作区检出成 CRLF，而**仓库里存的是 LF**。
+`.editorconfig` 按仓库真实存储写 `lf`。要不要再加 `.gitattributes` 把这件事钉死，
+留给下一轮（会动行尾策略，不在这轮范围里）。
+
+### 3. CI 门禁（`.github/workflows/ci-windows.yml`，push + PR + 手动）
+
+⚠️ **文件名为什么带 `-windows`**：main 上已经有一个 `.github/workflows/ci.yml`（安卓 + Go 的
+version-gate / go / quality 三个 job）。这个文件最初也叫 `ci.yml`，同步进 main 时会**整个覆盖
+掉安卓那条**，安卓门禁当场消失 —— 是同步前比对 main 的 `.github/workflows/` 才发现并改名的。
+同名的坑还有一个：main 上**已经有 `.editorconfig`**（安卓那套），所以本轮的 `.editorconfig`
+**不能**同步过去，否则会顶掉它。
+
+跑三件事：`npm run test:offline`（5 条离线自检）、`node --check` 全量 js 语法检查、
+分流表跨语言一致性。
+
+**routing-sync 的「永远绿假通过」是这一轮最关键的处理**。它在 `windows-portable` 上
+找不到 `kernel-core/…/routing_table.go`（这条分支只有 `design/`），原本打印「跳过」并
+`exit 0` —— 在 CI 里那就等于一个永远绿的假通过。
+
+选择：**在 CI 里真跑**，不拆测试。理由：
+
+1. 这条门禁的价值就是「两端分流表一致」，拆一半就验不到跨语言一致性 ——
+   而分叉恰恰是它要防的东西。
+2. `main` 是分流表的事实来源，`windows-portable` 是镜像；要防的正是
+   「main 改了表、Windows 镜像没跟上」。
+3. 成本低：只 sparse-checkout 一个 `kernel-core` 目录，不装 Go、不编译。
+
+实现：`actions/checkout` 带 `ref: main` + `sparse-checkout: kernel-core` 取到 `.ci-main/`，
+用 `POLARIS_GO_TABLE` 指过去，并设 **`POLARIS_GO_TABLE_REQUIRED=1`** 让
+`routing-sync-test.js` 在找不到表时 `exit 1` 而不是跳过。同时脚本里也补了
+「显式指了路径却不存在 → 失败」这条（以前会抛 `ENOENT` 崩掉，看起来像脚本坏了）。
+
+### 4. ⚠️ 这条门禁现在会**红**，因为它抓到的是真的（未解决）
+
+把 main 的真表指过去跑，报的是**双向分叉**，不是「main 落后」：
+
+| | Go（main，25 组） | JS（windows-portable，23 组） |
+|---|---|---|
+| AI 组 | `♊️ Google Gemini` / `💬 Claude` / `💬 OpenAI` 三组 | `🤖 AI` 一组（`2487d05` 合并） |
+| 净化/广告 | 有 `🍃 应用净化`、`🛑 广告拦截` | **没有**（`33d1fc0` 删的，说会互相遮蔽） |
+| Google Play / 游戏平台 | `defaultOut: proxy` | `defaultOut: direct` |
+
+根因是两边各自改了、都没同步：
+
+- Windows 侧 `2487d05`（本分支，未同步）把三组 AI 合并成 `🤖 AI`，删掉旧 Gemini 组里的
+  `GEOSITE,google` / `GEOSITE,google-play`（这两条排在「🌏 Google」「🌏 Google Play」前面，
+  把两个组整体吃掉、开关设成什么都不生效），并补了 151 条规则。
+- main 侧 `47f4a62` 同步的还是**更早**的 Windows 布局，另外还有安卓自己的
+  `a309aaa` / `e173125`（国内直连补规则）等。
+
+`2487d05` 的提交说明里其实已经写明：「routing-sync-test PASS：与**按规格构造的 Go 表副本**
+逐条一致（**安卓端那份真实表提交后需再指过去复核一次**）」—— 这一步还没做。
+
+**所以现在不是「门禁坏了」，是门禁第一次把话说清楚了。** 要它变绿，得把 Windows 这版
+23 组布局（含 `🤖 AI` 合并、去掉 `🍃 应用净化`/`🛑 广告拦截`、`LEGACY_GROUP_ALIASES` 迁移）
+**反向移植进 main 的 `routing_table.go`** —— 那会改变安卓端的分流行为，属于跨端语义变更，
+需要单独批准，不在本轮范围里。**在这之前，这个 workflow 会红，而且红得对。**
+
+### 验收（本机 windows-portable 实测）
+
+| 项 | 结果 |
+|---|---|
+| `updater-self-test.js` | 全部通过，exit 0 |
+| `updater-timeout-test.js` | 27/27，exit 0 |
+| `traffic-view-test.js` | 36/36，exit 0 |
+| `geosync-test.js` | 11/11，exit 0 |
+| `routing-sync-test.js`（无 kernel-core） | 跳过，exit 0（本地行为不变） |
+| `node --check` 全量 js | 41 个文件全通过，exit 0 |
+| routing-sync strict + 缺路径 | **exit 1**（不再静默跳过）✅ |
+| routing-sync strict + 路径不存在 | **exit 1** ✅ |
+| routing-sync strict + main 真表 | **exit 1，报出上表那堆不一致**（真信号） |
+| `preflight-creds.js` 缺参 / `--restore` 缺 `--data` / 空值 | 都是 exit 2 并打印用法 ✅ |
+| `real-test.js` 自己缺参 | exit 2 并打印它自己的用法 ✅ |
+| `.github/workflows/ci-windows.yml` | `js-yaml` 解析通过，1 job / 7 steps ✅ |
+
+**教训**：门禁第一次跑红的时候，先别改门禁 —— 先看它是不是对的。这次它对。
 
 ---
 

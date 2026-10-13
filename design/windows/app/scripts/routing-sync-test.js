@@ -8,9 +8,16 @@
  * 所以做成测试：真的把 Go 源码解析出来跟 JS 表对一遍。
  *
  * 在 windows-portable 分支上 kernel-core/ 不存在（文件所有权不在这条分支），
- * 这时跳过并明确说明，不算失败；在 main / android-portable 上必须真跑。
+ * 默认会跳过并明确说明；在 main / android-portable 上会真跑。
+ *
+ * ⚠️ 但「跳过」在 CI 里等于一个永远绿的假通过，所以有 **strict 模式**：
+ *   设 `POLARIS_GO_TABLE_REQUIRED=1` 后找不到 Go 表就是**失败**（退出码 1），不再跳过。
+ *   `.github/workflows/ci.yml` 的 windows job 会先把 main 的 kernel-core/ 取下来，
+ *   再用 `POLARIS_GO_TABLE=<路径>` + `POLARIS_GO_TABLE_REQUIRED=1` 调这里 —— 这样
+ *   这条门禁要么真比对通过、要么红，不存在「静默跳过还显示绿」。
  *
  * 运行：node scripts/routing-sync-test.js
+ *       POLARIS_GO_TABLE=<main 里的 routing_table.go> POLARIS_GO_TABLE_REQUIRED=1 node scripts/routing-sync-test.js
  */
 'use strict';
 
@@ -33,16 +40,34 @@ const REPO_ROOT = (() => {
 
 // POLARIS_GO_TABLE 可显式指定 Go 源文件位置：在只有单平台分支的 worktree 里
 // 想校验另一条分支的内核表时用它，不必把 kernel-core 搬过来。
+// POLARIS_GO_TABLE_REQUIRED=1 时禁止跳过（CI 用），找不到就是失败。
 const GO_OVERRIDE = process.env.POLARIS_GO_TABLE ? path.resolve(process.env.POLARIS_GO_TABLE) : null;
+const REQUIRED = process.env.POLARIS_GO_TABLE_REQUIRED === '1';
 
 if (!REPO_ROOT && !GO_OVERRIDE) {
+  if (REQUIRED) {
+    console.error('[routing-sync] 失败：POLARIS_GO_TABLE_REQUIRED=1，但既没找到 kernel-core/…/routing_table.go，');
+    console.error('[routing-sync] 也没给 POLARIS_GO_TABLE。这条门禁在 CI 里不允许静默跳过。');
+    console.error('[routing-sync] 修法：workflow 里先把 main 的 kernel-core/ 取下来，再指 POLARIS_GO_TABLE 过去。');
+    process.exit(1);
+  }
   console.log('[routing-sync] 未找到 kernel-core/…/routing_table.go（不在 main/android-portable 上），跳过。');
   console.log('[routing-sync] 这条测试的意义就在两端都在时才生效，跳过不是失败。');
+  console.log('[routing-sync] （CI 请设 POLARIS_GO_TABLE_REQUIRED=1，那样就不会走到这里）');
   process.exit(0);
 }
 
-const GO = GO_OVERRIDE || path.join(REPO_ROOT, 'kernel-core', 'src', 'main', 'golang', 'native', 'config', 'routing', 'routing_table.go');
+const GO = GO_OVERRIDE || path.join(REPO_ROOT, ...GO_REL);
+
+// 显式指了路径却不存在 = 配置写错了，必须炸出来，不能当成「跳过」
+if (!fs.existsSync(GO)) {
+  console.error(`[routing-sync] 失败：Go 分流表不存在：${GO}`);
+  if (GO_OVERRIDE) console.error('[routing-sync] POLARIS_GO_TABLE 指到了不存在的文件。');
+  process.exit(1);
+}
+
 const src = fs.readFileSync(GO, 'utf8');
+console.log(`[routing-sync] Go 表：${GO}`);
 const rulesets = require(path.join(here, '..', 'electron', 'core', 'rulesets.js'));
 
 const fails = [];

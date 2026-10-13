@@ -78,13 +78,39 @@ npm run geo      # 规则库到 resources/geo/（同仓库有 Android assets 时
 npm start
 
 # 真面板联调（要真账号；密码只在命令行给一次，不写进任何文件）
-node_modules\electron\dist\electron.exe scripts\real-test.js `
-    --panel=<面板地址> --email=<测试账号> --password=<口令>
+npm run test:real -- --panel=<面板地址> --email=<测试账号> --password=<口令>
+
+# 界面自检（会真的开窗口、真鼠标点，要真账号）
+npm run test:ui -- --panel=<面板地址> --email=<测试账号> --password=<口令>
+
+# 离线自检 5 条（不需要凭据、不下载外网、不碰真安装目录）
+npm run test:offline
+# 或单跑：test:updater / test:updater-timeout / test:traffic / test:geosync / test:routing-sync
 
 # 打包便携版（动手前先问用户）
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 # 或： npm run dist   → dist/Polaris-portable-<version>.zip
 ```
+
+> `test:real` / `test:ui` 缺 `--panel/--email/--password` 会**立刻打印用法并以退出码 2 退出**
+> （由 `scripts/preflight-creds.js` 在启动 Electron 之前挡一道），不会让你等一整个启动才发现少参数。
+> 参数是**追加**在 `--` 之后的；`test:real` 还支持 `--restore --data=<数据根目录>` 复用已登录会话。
+
+### CI 门禁
+
+`.github/workflows/ci-windows.yml`（**push / PR 到 `windows-portable` + 手动 `workflow_dispatch`**）跑：
+
+> 文件名带 `-windows` 是故意的：主仓库已有 `.github/workflows/ci.yml`（安卓 + Go 的
+> version-gate / go / quality）。同名会在同步进 main 时把它整个覆盖掉，所以分开命名。
+
+1. `npm run test:offline` —— 5 条离线自检
+2. `node --check` 全量 js 语法检查
+3. **分流表跨语言一致性**：从 `main` 取 `kernel-core/`，用 `POLARIS_GO_TABLE` 指过去真跑
+   `routing-sync-test.js`，并设 `POLARIS_GO_TABLE_REQUIRED=1` **禁止跳过**（找不到就是红，不是绿）
+
+> 第 3 条为什么不许跳过：`windows-portable` 分支上没有 `kernel-core/`，本地跑会打印「跳过」并
+> `exit 0` —— 在 CI 里那等于一个永远绿的假通过。而这条测试要防的正是「main 改了分流表、
+> Windows 镜像没跟上」这种静默分叉（2026-10-12 就这么分叉过一次）。
 
 ### 出问题怎么查
 
@@ -95,8 +121,9 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 
 | 方式 | 覆盖 | 不覆盖 |
 | --- | --- | --- |
-| `scripts/real-test.js`（真账号真面板，221 项） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 → 拖动排序 → 本地方案接管 → 三个特殊出口各自真出网 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
-| `scripts/ui-test.js`（`--uitest`，真窗口真鼠标，174 项） | 自己从登录页用真账号登进去，再逐页真点：外壳/登录/首页/连接/节点页/分流页/流量页/我的页/6 个二级页/设置页/断开 | 托盘菜单、多屏 DPI、TUN 下的走查、自定义分流组拖动 |
+| `npm run test:real`（`scripts/real-test.js`，真账号真面板，221 项） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 → 拖动排序 → 本地方案接管 → 三个特殊出口各自真出网 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
+| `npm run test:ui`（`scripts/ui-test.js`，真窗口真鼠标，174 项） | 自己从登录页用真账号登进去，再逐页真点：外壳/登录/首页/连接/节点页/分流页/流量页/我的页/6 个二级页/设置页/断开 | 托盘菜单、多屏 DPI、TUN 下的走查、自定义分流组拖动 |
+| `npm run test:offline`（5 条离线自检，CI 里也跑） | `test:updater` 自我替换 helper（21 项）、`test:updater-timeout` 下载超时三层（27 项）、`test:traffic` 流量页视图（36 项）、`test:geosync` geodata 刷新（11 项）、`test:routing-sync` 两端分流表逐条一致 | 需要 Electron 运行时或真面板的路径（那两条在上面） |
 | 人工手测 | 界面交互、手感、观感、布局与主题 | — |
 
 > 2026-10-10 起**不再有任何离线自检线与假数据**：原 `scripts/mock-panel.js`（假面板）、
