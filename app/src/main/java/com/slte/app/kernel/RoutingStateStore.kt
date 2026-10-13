@@ -82,17 +82,24 @@ constructor(
      * 注意：本方法**不递归**——只有 [loadSanitized] 会回写，缓存层不会。
      */
     fun loadSanitized(): SanitizedRoutingState {
-        val raw = load()
+        val rawFile = readRaw()
+        val raw = migrateLegacyNames(rawFile)
         val custom = raw.custom.filter { RoutingInputValidator.isValidGroupName(it.name) }
         val domains = raw.directDomains.filter { RoutingInputValidator.isValidRuleDomainShape(it) }
         val droppedCustom = raw.custom.size - custom.size
         val droppedDomains = raw.directDomains.size - domains.size
+        val migrated = raw != rawFile
         val clean = raw.copy(custom = custom, directDomains = domains)
-        if (droppedCustom > 0 || droppedDomains > 0) {
-            AppLog.w(
-                LOG_TAG,
-                "load: 已清除非法本地分流项 custom=$droppedCustom domain=$droppedDomains",
-            )
+        if (droppedCustom > 0 || droppedDomains > 0 || migrated) {
+            if (droppedCustom > 0 || droppedDomains > 0) {
+                AppLog.w(
+                    LOG_TAG,
+                    "load: 已清除非法本地分流项 custom=$droppedCustom domain=$droppedDomains",
+                )
+            }
+            if (migrated) {
+                AppLog.w(LOG_TAG, "load: 已迁移历史分流组名到「$AI_GROUP_NAME」")
+            }
             write(clean)
         }
         return SanitizedRoutingState(clean, droppedCustom, droppedDomains)
@@ -129,8 +136,17 @@ constructor(
         !file.exists() || file.delete()
     }.getOrDefault(false)
 
-    /** 读取状态（不含清洗回写；供写入路径内部使用）。 */
-    fun load(): RoutingState = runCatching {
+    /**
+     * 读取状态（不含清洗回写；供写入路径内部使用）。
+     *
+     * 历史组名（[LegacyGroupAliases]）在读取时就归一——改名后用户已保存的开关与
+     * 拖动顺序不能静默丢失（退回内置默认值 / 内置顺序）。归一结果会在下一次
+     * 经 [write] 落盘时持久化；[loadSanitized] 会主动回写一次。
+     */
+    fun load(): RoutingState = migrateLegacyNames(readRaw())
+
+    /** 原样读取磁盘内容（不做历史组名归一；供 [loadSanitized] 判断是否需要回写）。 */
+    private fun readRaw(): RoutingState = runCatching {
         val file = stateFile()
         if (!file.exists()) return RoutingState()
         json.decodeFromString<RoutingState>(file.readText())
@@ -140,6 +156,14 @@ constructor(
             "load: 解析失败回退默认状态: ${sanitizeLog(it.message ?: "Unknown")}",
         )
         RoutingState()
+    }
+
+    /** 历史组名归一：`groups` 折叠旧组名，`order` 归一后去重保序；无变化时原样返回。 */
+    private fun migrateLegacyNames(state: RoutingState): RoutingState {
+        val groups = migrateLegacyGroups(state.groups)
+        val order = migrateLegacyOrder(state.order)
+        if (groups == state.groups && order == state.order) return state
+        return state.copy(groups = groups, order = order)
     }
 
     /**

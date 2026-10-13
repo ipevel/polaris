@@ -142,6 +142,74 @@
   `_GoStringLen`/`_GoStringPtr`，C 侧无任何调用方）。
 - 产物摘要：见同目录 `SHA256SUMS`（`a87939f8…d220c0`）。
 
+## 2026-10-13 重建记录（AI 分流组三合一 + 补上 10-11/12 未进包的规则改动）
+
+- 变更：
+  - `native/config/routing/routing_table.go`：「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」
+    三个组合并为一个「🤖 AI」（位置不变：📲 WhatsApp 之后、🐱 GitHub 之前；默认开、走代理、
+    无 provider）。规则 = 新增 `GEOSITE,category-ai-!cn` + openai / anthropic / google-gemini
+    三个分类 + 147 条内联域名兜底，共 151 条；并去掉旧 Gemini 组里的 `GEOSITE,google` 与
+    `GEOSITE,google-play`——它们排在「🌏 Google」「🌏 Google Play」之前，把这两个组整体吃掉
+    （开关设成什么都不生效），与 2026-10-10 移除 Google FCM / 苹果推送同因。合并后
+    `www.google.com` / `accounts.google.com` / `drive.google.com` 重新落回「🌏 Google」。
+  - 新增 `AIGroupName` / `legacyGroupAliases` / `canonicalGroupName`：`State.Groups` 与
+    `State.Order` 里的旧组名在读取侧归一（任一旧名为开 → 新组为开；顺序取三者中最靠前的
+    位置），避免一次改名把用户调过的开关与拖动顺序静默丢掉；显式的新组名优先于残留旧键。
+  - `app/src/main/java/com/slte/app/kernel/RoutingGroups.kt`：Kotlin 镜像同步合并；顺带修
+    一处漂移——`📲 Facebook` / `📲 WhatsApp` 原写成 `defaultOn = false`，内核表与 Windows 表
+    都是 `true`（全新安装的安卓端这两个组会显示为关）。迁移落在 `RoutingStateStore.load()`
+    与 `orderedGroups()`。
+- **本产物同时补上了 2026-10-11/12 那 4 次 `routing_table.go` 改动**：上一个随包 .so
+  （`a87939f8…d220c0`）是 2026-10-10 构建的，其后表改过 4 次都没有同步重建 .so。逐字节核对
+  旧产物：里面**没有** `GEOSITE,cn` / `GEOIP,CN,{t},no-resolve` / `GEOSITE,geolocation-!cn` /
+  `google-gemini` / `DOMAIN-SUFFIX,douyin.com,{t}`，三个 AI 组当时走的还是 `acl_gemini` /
+  `acl_claude` / `gs_openai` provider——即 10-12 那批「分流规则改读本地 geosite/geoip + 国内
+  直连补 GEOIP 兜底」此前从未进过随包内核。本次重建后这些串全部存在。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=C:\Android\Sdk\ndk\28.2.13676358\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+  （Go 1.23.4 windows/amd64，`GOPROXY=off` 走本地模块缓存；产物 75,190,528 字节）
+- 验证：
+  - `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go vet -tags "android cmfa with_gvisor" ./native/...`
+    通过（EXIT=0）；`go build`（同款环境变量）通过（EXIT=0）——与 CI 的 Go 门禁同款命令。
+  - `go test -c` 编译通过（新增 `TestAIGroupMerge` / `TestLegacyAIGroupAliases`，以及
+    `TestRoutingDecisionAccuracy` 里 Google 域名重新落回「🌏 Google」的断言）。
+    **本机无法执行 Go 测试二进制**：Windows 已启用 Smart App Control，含 mihomo 的测试 exe
+    被 code integrity 拦下（Microsoft-Windows-CodeIntegrity 事件 3077/3113，报
+    "did not meet the Enterprise signing level requirements"）。Go 单测的运行时结论以 CI 的
+    `go test -v -count=1 ./native/config/routing/...` 为准。
+  - 产物内**已含** `🤖 AI` / `GEOSITE,category-ai-!cn` / `GEOSITE,google-gemini` /
+    `DOMAIN-SUFFIX,chatgpt.com,{t}` … `DOMAIN-SUFFIX,tome.app,{t}`，且 AI 组不再带
+    `GEOSITE,google`。
+  - `llvm-nm -D --defined-only` 比对旧/新产物**导出符号 156 = 156 完全一致**，因此
+    `libclash.h` 不替换（沿用 Polaris 手工维护版）。
+- 产物摘要：见同目录 `SHA256SUMS`（`af293366…c76b8a`）。
+
+## 2026-10-13 重建记录（「🌏 Google Play」挪到「🌏 Google」之前）
+
+- 变更：`routing_table.go` / `RoutingGroups.kt` 把「🌏 Google Play」挪到「🌏 Google」之前
+  （顺序即优先级）。原因：geosite 的 `google-play` 只有 10 条，其中 8 条
+  （play.google.com、play.googleapis.com、play-lh.googleusercontent.com、
+  redirector.c.play.google.com …）同时也在 `google` 分类里，排在后面就全被
+  `GEOSITE,google` 先命中——真实域名覆盖为 0，那个开关设成什么都不生效，与
+  2026-10-10 移除 Google FCM / 苹果推送、2026-10-13 合并 AI 组同因。挪序只会从
+  `google` 分类抢走 4 条 Play 自己的域名（googleplay.com、xn--ngstr-lra8j.com、
+  redirector.xn--ngstr-lra8j.com、redirector.c.play.google.com），两组 DefaultOut
+  都是 proxy，连通性零影响，只改归类归属。
+- 构建命令：同上一节（Go 1.23.4 windows/amd64，产物 75,190,528 字节）。
+- 验证：
+  - `go test -count=1 ./native/config/routing/...` **本次在本机真跑起来了**：24 个用例
+    全 PASS，含 `TestRoutingDecisionAccuracy` 用真实 geosite 断言 `play.google.com` /
+    `play.googleapis.com` / `play-lh.googleusercontent.com` 落「🌏 Google Play」，
+    `www.google.com` / `accounts.google.com` / `drive.google.com` 落「🌏 Google」。
+    **更正上一节的说法**：上一节记录写「本机无法执行 Go 测试二进制」——Smart App
+    Control 的拦截时有时无（同一台机器、同一份工具链，后续构建的测试 exe 又能执行），
+    上一节那两个用例（`TestAIGroupMerge` / `TestLegacyAIGroupAliases`）本次也一并真跑过，
+    PASS。
+  - `go vet` / `go build`（CI 同款环境变量）EXIT=0。
+  - `llvm-nm -D --defined-only` 导出符号 156 = 156 与上一版完全一致，`libclash.h` 不替换。
+- 产物摘要：见同目录 `SHA256SUMS`（`b15ad722…ab41c7`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。

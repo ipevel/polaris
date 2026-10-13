@@ -584,3 +584,138 @@ func TestBuildAppliesGroupOrder(t *testing.T) {
 		t.Fatalf("group[3]=%q, want %q (names=%v)", names[3], last, names)
 	}
 }
+
+// TestAIGroupMerge 锁死 2026-10-13 的「AI 组三合一」结构：组名、位置、默认开关、
+// 内联规则条数与顺序，以及「🌏 Google 不再被前面的组吃掉」这条结构约束。
+//
+// 不依赖 geo 资源即可运行（CI 上也会跑），因此它同时守住「两端逐字一致」——
+// 安卓表是唯一真源，Windows 的 routing-sync-test.js 指过来比对的就是这份 Table。
+func TestAIGroupMerge(t *testing.T) {
+	idx := func(name string) int {
+		for i, g := range Table {
+			if g.Name == name {
+				return i
+			}
+		}
+		return -1
+	}
+
+	// 1) 三个旧组名必须从表里消失
+	for _, legacy := range []string{"♊️ Google Gemini", "💬 Claude", "💬 OpenAI"} {
+		if idx(legacy) >= 0 {
+			t.Fatalf("旧组名 %q 仍在 Table 中", legacy)
+		}
+	}
+
+	ai := idx(AIGroupName)
+	if ai < 0 {
+		t.Fatalf("%q 组缺失", AIGroupName)
+	}
+	// 2) 位置：📲 WhatsApp 之后、🐱 GitHub 之前
+	whatsapp, github := idx("📲 WhatsApp"), idx("🐱 GitHub")
+	if whatsapp < 0 || github < 0 {
+		t.Fatalf("WhatsApp/GitHub 组缺失：whatsapp=%d github=%d", whatsapp, github)
+	}
+	if whatsapp >= ai || ai >= github {
+		t.Fatalf("%q 位置不对：WhatsApp=%d AI=%d GitHub=%d", AIGroupName, whatsapp, ai, github)
+	}
+
+	// 3) 默认开、走代理、纯 GEOSITE + 内联域名（无 provider）
+	group := Table[ai]
+	if !group.DefaultOn || group.DefaultOut != "proxy" {
+		t.Fatalf("AI 组默认开关/出口不对：on=%v out=%q", group.DefaultOn, group.DefaultOut)
+	}
+	if len(group.Providers) != 0 {
+		t.Fatalf("AI 组不应声明 provider：%v", group.Providers)
+	}
+
+	// 4) 内联规则 4 条 GEOSITE + 147 条兜底域名 = 151，顺序与规格一致
+	wantHead := []string{
+		"GEOSITE,category-ai-!cn,{t}",
+		"GEOSITE,openai,{t}",
+		"GEOSITE,anthropic,{t}",
+		"GEOSITE,google-gemini,{t}",
+	}
+	if len(group.InlineRules) != 151 {
+		t.Fatalf("AI 组内联规则 %d 条，期望 151", len(group.InlineRules))
+	}
+	for i, w := range wantHead {
+		if group.InlineRules[i] != w {
+			t.Fatalf("AI 组内联规则[%d]=%q，期望 %q", i, group.InlineRules[i], w)
+		}
+	}
+	seen := make(map[string]bool, len(group.InlineRules))
+	for _, r := range group.InlineRules {
+		if seen[r] {
+			t.Fatalf("AI 组内联规则重复：%q", r)
+		}
+		seen[r] = true
+		// 5) 绝不能带 GEOSITE,google / GEOSITE,google-play
+		if r == "GEOSITE,google,{t}" || r == "GEOSITE,google-play,{t}" {
+			t.Fatalf("AI 组不得带 Google 分类（会把 🌏 Google / 🌏 Google Play 整体吃掉）：%q", r)
+		}
+	}
+
+	// 6) 结构约束：🌏 Google 之前不得有任何组声明 google 分类（否则 Google 组
+	// 又会被整体吃掉）。注意「🌏 Google Play」**必须**排在 Google 之前——它声明的是
+	// google-play 分类，不是 google，两者不冲突。
+	google, play := idx("🌏 Google"), idx("🌏 Google Play")
+	if google < 0 || play < 0 {
+		t.Fatalf("「🌏 Google」/「🌏 Google Play」组缺失：google=%d play=%d", google, play)
+	}
+	if play >= google {
+		t.Fatalf("「🌏 Google Play」必须排在「🌏 Google」之前：play=%d google=%d", play, google)
+	}
+	if ai >= play {
+		t.Fatalf("AI 组必须排在「🌏 Google Play」之前：AI=%d play=%d", ai, play)
+	}
+	for i := 0; i < google; i++ {
+		for _, r := range Table[i].InlineRules {
+			if r == "GEOSITE,google,{t}" {
+				t.Fatalf("组 %q 排在「🌏 Google」之前却声明了 %q，Google 组又会被整体吃掉",
+					Table[i].Name, r)
+			}
+		}
+	}
+}
+
+// TestLegacyAIGroupAliases 锁死旧组名的设置迁移：一次改名不能让用户已保存的
+// 开关与拖动顺序静默丢失（开关退回表内默认、顺序退回内置顺序）。
+func TestLegacyAIGroupAliases(t *testing.T) {
+	ai := RuleGroup{Name: AIGroupName, DefaultOn: true, DefaultOut: "proxy"}
+
+	cases := []struct {
+		why    string
+		groups map[string]bool
+		want   bool
+	}{
+		{"旧名任一为开 → 新组为开", map[string]bool{"💬 Claude": false, "💬 OpenAI": true}, true},
+		{"旧名全关 → 新组关", map[string]bool{"💬 Claude": false, "♊️ Google Gemini": false}, false},
+		{"单个旧名为开", map[string]bool{"♊️ Google Gemini": true}, true},
+		{"无任何设置 → 表内默认（开）", map[string]bool{}, true},
+		{"显式新组名优先于残留旧键", map[string]bool{AIGroupName: false, "💬 OpenAI": true}, false},
+	}
+	for _, c := range cases {
+		state := &State{Version: 1, Enabled: true, Groups: c.groups}
+		if got := state.GroupEnabled(ai); got != c.want {
+			t.Errorf("%s：GroupEnabled=%v，期望 %v（groups=%v）", c.why, got, c.want, c.groups)
+		}
+	}
+
+	// order：三个旧名折叠到同一个组，取最靠前的位置，且绝不丢组
+	got := OrderedTable([]string{"💬 Claude", "📲 电报消息", "♊️ Google Gemini"})
+	if len(got) != len(Table) {
+		t.Fatalf("order 迁移后组数 %d，期望 %d（不得丢组）", len(got), len(Table))
+	}
+	if got[0].Name != AIGroupName {
+		t.Fatalf("order 首位 = %q，期望 %q（三个旧名中最靠前的位置）", got[0].Name, AIGroupName)
+	}
+	if got[1].Name != "📲 电报消息" {
+		t.Fatalf("order 次位 = %q，期望 %q", got[1].Name, "📲 电报消息")
+	}
+	// 直接用新组名的 order 行为不变
+	plain := OrderedTable([]string{AIGroupName})
+	if len(plain) != len(Table) || plain[0].Name != AIGroupName {
+		t.Fatalf("新组名 order 失效：len=%d first=%q", len(plain), plain[0].Name)
+	}
+}

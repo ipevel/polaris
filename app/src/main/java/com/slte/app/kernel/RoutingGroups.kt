@@ -12,12 +12,80 @@ package com.slte.app.kernel
  * 「📢 Google FCM」「📢 苹果推送通知」两个组已移除（2026-10-10）：排在
  * 🌏 Google 与 🍎 苹果服务之后时，它们的规则会被前面的组提前命中，开关设成
  * 什么出口都不生效。Google 统一走「🌏 Google」，苹果统一走「🍎 苹果服务」。
+ *
+ * 「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」三个组已合并为「🤖 AI」
+ * （2026-10-13），同一类问题的第三例：旧 Gemini 组里带着 GEOSITE,google 与
+ * GEOSITE,google-play，排在 🌏 Google / 🌏 Google Play 之前，把那两个组整体
+ * 吃掉。旧组名的用户设置由 [LegacyGroupAliases] 迁移。
  */
 data class RoutingGroupInfo(
     val name: String,
     val defaultOn: Boolean,
     val defaultOut: String, // proxy | direct | block
 )
+
+/** 合并后的 AI 组名（唯一真源，必须与内核 `routing_table.go` 的 `AIGroupName` 逐字一致）。 */
+const val AI_GROUP_NAME: String = "🤖 AI"
+
+/**
+ * 已改名的历史分流组名 → 当前组名（2026-10-13 把「♊️ Google Gemini」
+ * 「💬 Claude」「💬 OpenAI」合并成「🤖 AI」）。
+ *
+ * 用户已保存的 `routing.json` 里 `groups` / `order` 仍是旧名，直接当未知名丢弃的话，
+ * 用户自己调过的开关会退回内置默认值、拖动顺序会退回内置顺序——静默丢设置。
+ */
+val LegacyGroupAliases: Map<String, String> =
+    mapOf(
+        "♊️ Google Gemini" to AI_GROUP_NAME,
+        "💬 Claude" to AI_GROUP_NAME,
+        "💬 OpenAI" to AI_GROUP_NAME,
+    )
+
+/** 历史组名归一为当前组名；非历史名原样返回（与内核 `canonicalGroupName` 同语义）。 */
+fun canonicalGroupName(name: String): String = LegacyGroupAliases[name] ?: name
+
+/**
+ * 迁移已保存的组开关（纯函数，可单测）：旧组名折叠到当前组名，
+ * 三者中任一为开 → 新组为开。
+ *
+ * 显式的新组名优先于任何旧名——否则用户在新版里把「🤖 AI」关掉后，
+ * 文件里残留的旧键会把它强行打开，开关就再也关不掉了。
+ * 其余未知名照旧保留（内核只认表内组名，它们本来就不生效）。
+ */
+fun migrateLegacyGroups(groups: Map<String, Boolean>): Map<String, Boolean> {
+    if (groups.keys.none { it in LegacyGroupAliases }) return groups
+    val out = LinkedHashMap<String, Boolean>(groups.size)
+    for ((name, on) in groups) {
+        if (name in LegacyGroupAliases) continue
+        out[name] = on
+    }
+    for (current in LegacyGroupAliases.values.toSet()) {
+        // 显式的新组名优先：用户在新版里关掉的组，不能被文件里残留的旧键重新打开。
+        if (current in out) continue
+        var found = false
+        var enabled = false
+        for ((legacy, target) in LegacyGroupAliases) {
+            if (target != current) continue
+            val on = groups[legacy] ?: continue
+            found = true
+            if (on) enabled = true
+        }
+        if (found) out[current] = enabled
+    }
+    return out
+}
+
+/**
+ * 迁移已保存的组顺序（纯函数，可单测）：旧组名归一后去重保序，
+ * 于是「三个旧组」里最靠前的那个位置就是新组的位置。未知名保留
+ * （[orderedGroups] 与内核 `OrderedTable` 都会忽略它们）。
+ */
+fun migrateLegacyOrder(order: List<String>): List<String> {
+    if (order.none { it in LegacyGroupAliases }) return order
+    val out = LinkedHashSet<String>(order.size)
+    order.forEach { out += canonicalGroupName(it) }
+    return out.toList()
+}
 
 val RoutingGroups: List<RoutingGroupInfo> =
     listOf(
@@ -27,14 +95,15 @@ val RoutingGroups: List<RoutingGroupInfo> =
         RoutingGroupInfo("📲 X", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🎧 TikTok", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("📸 Instagram", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("📲 Facebook", defaultOn = false, defaultOut = "proxy"),
-        RoutingGroupInfo("📲 WhatsApp", defaultOn = false, defaultOut = "proxy"),
-        RoutingGroupInfo("♊️ Google Gemini", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("💬 Claude", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("💬 OpenAI", defaultOn = true, defaultOut = "proxy"),
+        RoutingGroupInfo("📲 Facebook", defaultOn = true, defaultOut = "proxy"),
+        RoutingGroupInfo("📲 WhatsApp", defaultOn = true, defaultOut = "proxy"),
+        RoutingGroupInfo(AI_GROUP_NAME, defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🐱 GitHub", defaultOn = true, defaultOut = "proxy"),
-        RoutingGroupInfo("🌏 Google", defaultOn = true, defaultOut = "proxy"),
+        // 🌏 Google Play 必须排在 🌏 Google 之前：geosite 的 google-play 只有 10 条，
+        // 其中 8 条同时也在 google 分类里，排在后面就是死开关（与上面 AI 组合并同因）。
+        // 两组出口都是 proxy，挪序只改归类归属，连通性零影响。
         RoutingGroupInfo("🌏 Google Play", defaultOn = true, defaultOut = "proxy"),
+        RoutingGroupInfo("🌏 Google", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("Ⓜ️ 微软Bing", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("Ⓜ️ 微软云盘", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("Ⓜ️ 微软服务", defaultOn = true, defaultOut = "proxy"),
@@ -89,6 +158,7 @@ fun visibleGroupMembers(
  *
  * 规则：
  * - [order] 中出现的组名按给定次序排在前（重复只取首次出现）；
+ * - [order] 里的历史组名先经 [canonicalGroupName] 归一，改名前的拖动顺序不能丢；
  * - [order] 里没有的组，按 [RoutingGroups] 的内置默认顺序追加在后；
  * - [order] 里的未知名一律忽略——**绝不丢组**。
  *
@@ -98,7 +168,10 @@ fun orderedGroups(order: List<String> = emptyList()): List<RoutingGroupInfo> {
     if (order.isEmpty()) return RoutingGroups
     val byName = RoutingGroups.associateBy { it.name }
     val picked = LinkedHashMap<String, RoutingGroupInfo>()
-    order.forEach { name -> byName[name]?.let { picked.putIfAbsent(name, it) } }
+    order.forEach { raw ->
+        val name = canonicalGroupName(raw)
+        byName[name]?.let { picked.putIfAbsent(name, it) }
+    }
     RoutingGroups.forEach { picked.putIfAbsent(it.name, it) }
     return picked.values.toList()
 }

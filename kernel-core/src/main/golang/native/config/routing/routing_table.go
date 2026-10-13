@@ -121,6 +121,14 @@ var lanDirectRules = []string{
 // 苹果服务之后时，它们的域名与 IP 规则 100%/部分被前面的组提前命中，分组开关
 // 设成什么出口都不生效（配置与实际行为不符）。Google 统一走「🌏 Google」，
 // 苹果统一走「🍎 苹果服务」，不再单列。
+// 「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」三个组已合并为「🤖 AI」
+// （2026-10-13），是上面同一类问题的第三例：旧 Gemini 组里带着
+// GEOSITE,google 与 GEOSITE,google-play，排在「🌏 Google」「🌏 Google Play」
+// 之前，把这两个组整体吃掉（那两个开关设成什么都不生效）。合并后只保留
+// GEOSITE,category-ai-!cn + openai/anthropic/google-gemini，Google 相关域名
+// 重新落回「🌏 Google」「🌏 Google Play」，两个开关恢复生效。
+// 旧组名的用户设置由 legacyGroupAliases 迁移，见其注释。
+// 「🌏 Google Play」已挪到「🌏 Google」之前（2026-10-13）：见该组上方的说明。
 var Table = []RuleGroup{
 	{Name: "📲 电报消息", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,telegram,{t}"}},
@@ -138,18 +146,172 @@ var Table = []RuleGroup{
 		InlineRules: []string{"GEOSITE,facebook,{t}"}},
 	{Name: "📲 WhatsApp", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,whatsapp,{t}"}},
-	{Name: "♊️ Google Gemini", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,google-gemini,{t}", "GEOSITE,google,{t}", "GEOSITE,google-play,{t}"}},
-	{Name: "💬 Claude", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,anthropic,{t}"}},
-	{Name: "💬 OpenAI", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,openai,{t}"}},
+	{Name: "🤖 AI", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{
+			"GEOSITE,category-ai-!cn,{t}",
+			"GEOSITE,openai,{t}",
+			"GEOSITE,anthropic,{t}",
+			"GEOSITE,google-gemini,{t}",
+			"DOMAIN-SUFFIX,chatgpt.com,{t}",
+			"DOMAIN-SUFFIX,openai.com,{t}",
+			"DOMAIN-SUFFIX,sora.com,{t}",
+			"DOMAIN-SUFFIX,claude.ai,{t}",
+			"DOMAIN-SUFFIX,anthropic.com,{t}",
+			"DOMAIN-SUFFIX,gemini.google.com,{t}",
+			"DOMAIN-SUFFIX,aistudio.google.com,{t}",
+			"DOMAIN-SUFFIX,notebooklm.google.com,{t}",
+			"DOMAIN-SUFFIX,generativelanguage.googleapis.com,{t}",
+			"DOMAIN-SUFFIX,aiplatform.googleapis.com,{t}",
+			"DOMAIN-SUFFIX,ai.google.dev,{t}",
+			"DOMAIN-SUFFIX,labs.google,{t}",
+			"DOMAIN-SUFFIX,grok.com,{t}",
+			"DOMAIN-SUFFIX,x.ai,{t}",
+			"DOMAIN-SUFFIX,muse.ai,{t}",
+			"DOMAIN-SUFFIX,meta.ai,{t}",
+			"DOMAIN-SUFFIX,llama.com,{t}",
+			"DOMAIN-SUFFIX,copilot.microsoft.com,{t}",
+			"DOMAIN-SUFFIX,perplexity.ai,{t}",
+			"DOMAIN-SUFFIX,poe.com,{t}",
+			"DOMAIN-SUFFIX,character.ai,{t}",
+			"DOMAIN-SUFFIX,mistral.ai,{t}",
+			"DOMAIN-SUFFIX,pi.ai,{t}",
+			"DOMAIN-SUFFIX,inflection.ai,{t}",
+			"DOMAIN-SUFFIX,you.com,{t}",
+			"DOMAIN-SUFFIX,cohere.com,{t}",
+			"DOMAIN-SUFFIX,groq.com,{t}",
+			"DOMAIN-SUFFIX,openrouter.ai,{t}",
+			"DOMAIN-SUFFIX,together.ai,{t}",
+			"DOMAIN-SUFFIX,huggingface.co,{t}",
+			"DOMAIN-SUFFIX,midjourney.com,{t}",
+			"DOMAIN-SUFFIX,runwayml.com,{t}",
+			"DOMAIN-SUFFIX,leonardo.ai,{t}",
+			"DOMAIN-SUFFIX,ideogram.ai,{t}",
+			"DOMAIN-SUFFIX,stability.ai,{t}",
+			"DOMAIN-SUFFIX,elevenlabs.com,{t}",
+			"DOMAIN-SUFFIX,elevenlabs.io,{t}",
+			"DOMAIN-SUFFIX,suno.com,{t}",
+			"DOMAIN-SUFFIX,phind.com,{t}",
+			"DOMAIN-SUFFIX,blackbox.ai,{t}",
+			"DOMAIN-SUFFIX,cursor.com,{t}",
+			"DOMAIN-SUFFIX,replit.com,{t}",
+			"DOMAIN-SUFFIX,repl.co,{t}",
+			"DOMAIN-SUFFIX,chat.com,{t}",
+			"DOMAIN-SUFFIX,oaistatic.com,{t}",
+			"DOMAIN-SUFFIX,oaiusercontent.com,{t}",
+			"DOMAIN-SUFFIX,claude.com,{t}",
+			"DOMAIN-SUFFIX,claudeusercontent.com,{t}",
+			"DOMAIN-SUFFIX,bard.google.com,{t}",
+			"DOMAIN-SUFFIX,makersuite.google.com,{t}",
+			"DOMAIN-SUFFIX,gemini.google,{t}",
+			"DOMAIN-SUFFIX,ai.studio,{t}",
+			"DOMAIN-SUFFIX,deepmind.com,{t}",
+			"DOMAIN-SUFFIX,deepmind.google,{t}",
+			"DOMAIN-SUFFIX,jules.google.com,{t}",
+			"DOMAIN-SUFFIX,notebooklm.google,{t}",
+			"DOMAIN-SUFFIX,grokipedia.com,{t}",
+			"DOMAIN-SUFFIX,copilot.cloud.microsoft,{t}",
+			"DOMAIN-SUFFIX,githubcopilot.com,{t}",
+			"DOMAIN-SUFFIX,pplx.ai,{t}",
+			"DOMAIN-SUFFIX,perplexity.com,{t}",
+			"DOMAIN-SUFFIX,poecdn.net,{t}",
+			"DOMAIN-SUFFIX,cohere.ai,{t}",
+			"DOMAIN-SUFFIX,together.xyz,{t}",
+			"DOMAIN-SUFFIX,hf.co,{t}",
+			"DOMAIN-SUFFIX,hf.space,{t}",
+			"DOMAIN-SUFFIX,suno.ai,{t}",
+			"DOMAIN-SUFFIX,dreamstudio.ai,{t}",
+			"DOMAIN-SUFFIX,cursor.sh,{t}",
+			"DOMAIN-SUFFIX,cursorapi.com,{t}",
+			"DOMAIN-SUFFIX,replit.dev,{t}",
+			"DOMAIN-SUFFIX,manus.im,{t}",
+			"DOMAIN-SUFFIX,manuscdn.com,{t}",
+			"DOMAIN-SUFFIX,jetbrains.ai,{t}",
+			"DOMAIN-SUFFIX,grazie.ai,{t}",
+			"DOMAIN-SUFFIX,windsurf.com,{t}",
+			"DOMAIN-SUFFIX,windsurf.build,{t}",
+			"DOMAIN-SUFFIX,codeium.com,{t}",
+			"DOMAIN-SUFFIX,codeiumdata.com,{t}",
+			"DOMAIN-SUFFIX,tabnine.com,{t}",
+			"DOMAIN-SUFFIX,qodo.ai,{t}",
+			"DOMAIN-SUFFIX,coderabbit.ai,{t}",
+			"DOMAIN-SUFFIX,continue.dev,{t}",
+			"DOMAIN-SUFFIX,aider.chat,{t}",
+			"DOMAIN-SUFFIX,devin.ai,{t}",
+			"DOMAIN-SUFFIX,magic.dev,{t}",
+			"DOMAIN-SUFFIX,factory.ai,{t}",
+			"DOMAIN-SUFFIX,lovable.dev,{t}",
+			"DOMAIN-SUFFIX,bolt.new,{t}",
+			"DOMAIN-SUFFIX,v0.dev,{t}",
+			"DOMAIN-SUFFIX,v0.app,{t}",
+			"DOMAIN-SUFFIX,cerebras.ai,{t}",
+			"DOMAIN-SUFFIX,replicate.com,{t}",
+			"DOMAIN-SUFFIX,fireworks.ai,{t}",
+			"DOMAIN-SUFFIX,fal.ai,{t}",
+			"DOMAIN-SUFFIX,deepinfra.com,{t}",
+			"DOMAIN-SUFFIX,novita.ai,{t}",
+			"DOMAIN-SUFFIX,anyscale.com,{t}",
+			"DOMAIN-SUFFIX,baseten.co,{t}",
+			"DOMAIN-SUFFIX,runpod.io,{t}",
+			"DOMAIN-SUFFIX,lambdalabs.com,{t}",
+			"DOMAIN-SUFFIX,vast.ai,{t}",
+			"DOMAIN-SUFFIX,sambanova.ai,{t}",
+			"DOMAIN-SUFFIX,ai21.com,{t}",
+			"DOMAIN-SUFFIX,voyageai.com,{t}",
+			"DOMAIN-SUFFIX,ollama.com,{t}",
+			"DOMAIN-SUFFIX,lmstudio.ai,{t}",
+			"DOMAIN-SUFFIX,jan.ai,{t}",
+			"DOMAIN-SUFFIX,openwebui.com,{t}",
+			"DOMAIN-SUFFIX,librechat.ai,{t}",
+			"DOMAIN-SUFFIX,anythingllm.com,{t}",
+			"DOMAIN-SUFFIX,dify.ai,{t}",
+			"DOMAIN-SUFFIX,langchain.com,{t}",
+			"DOMAIN-SUFFIX,llamaindex.ai,{t}",
+			"DOMAIN-SUFFIX,deepset.ai,{t}",
+			"DOMAIN-SUFFIX,wandb.ai,{t}",
+			"DOMAIN-SUFFIX,pinecone.io,{t}",
+			"DOMAIN-SUFFIX,weaviate.io,{t}",
+			"DOMAIN-SUFFIX,qdrant.tech,{t}",
+			"DOMAIN-SUFFIX,trychroma.com,{t}",
+			"DOMAIN-SUFFIX,civitai.com,{t}",
+			"DOMAIN-SUFFIX,recraft.ai,{t}",
+			"DOMAIN-SUFFIX,krea.ai,{t}",
+			"DOMAIN-SUFFIX,lumalabs.ai,{t}",
+			"DOMAIN-SUFFIX,pika.art,{t}",
+			"DOMAIN-SUFFIX,nightcafe.studio,{t}",
+			"DOMAIN-SUFFIX,comfy.org,{t}",
+			"DOMAIN-SUFFIX,comfyregistry.org,{t}",
+			"DOMAIN-SUFFIX,heygen.com,{t}",
+			"DOMAIN-SUFFIX,synthesia.io,{t}",
+			"DOMAIN-SUFFIX,d-id.com,{t}",
+			"DOMAIN-SUFFIX,captions.ai,{t}",
+			"DOMAIN-SUFFIX,opus.pro,{t}",
+			"DOMAIN-SUFFIX,descript.com,{t}",
+			"DOMAIN-SUFFIX,lalal.ai,{t}",
+			"DOMAIN-SUFFIX,moises.ai,{t}",
+			"DOMAIN-SUFFIX,murf.ai,{t}",
+			"DOMAIN-SUFFIX,play.ht,{t}",
+			"DOMAIN-SUFFIX,resemble.ai,{t}",
+			"DOMAIN-SUFFIX,speechify.com,{t}",
+			"DOMAIN-SUFFIX,udio.com,{t}",
+			"DOMAIN-SUFFIX,sider.ai,{t}",
+			"DOMAIN-SUFFIX,jasper.ai,{t}",
+			"DOMAIN-SUFFIX,copy.ai,{t}",
+			"DOMAIN-SUFFIX,writesonic.com,{t}",
+			"DOMAIN-SUFFIX,gamma.app,{t}",
+			"DOMAIN-SUFFIX,tome.app,{t}",
+		}},
 	{Name: "🐱 GitHub", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,github,{t}"}},
-	{Name: "🌏 Google", DefaultOn: true, DefaultOut: "proxy",
-		InlineRules: []string{"GEOSITE,google,{t}"}},
+	// 「🌏 Google Play」必须排在「🌏 Google」之前（顺序即优先级）：geosite 的
+	// google-play 只有 10 条，其中 8 条（play.google.com、play-lh.googleusercontent.com、
+	// play.googleapis.com …）同时也在 google 分类里，排在后面就是死开关——开关设成
+	// 什么都不生效，与 2026-10-10 移除 Google FCM / 苹果推送、2026-10-13 合并 AI 组同因。
+	// 挪到前面只会从 google 分类抢走 4 条 Play 自己的域名，两组 DefaultOut 都是 proxy，
+	// 连通性零影响，只改归类归属（routing_decision_test.go 里钉死了这个顺序）。
 	{Name: "🌏 Google Play", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,google-play,{t}"}},
+	{Name: "🌏 Google", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{"GEOSITE,google,{t}"}},
 	{Name: "Ⓜ️ 微软Bing", DefaultOn: true, DefaultOut: "proxy",
 		InlineRules: []string{"GEOSITE,bing,{t}"}},
 	// 微软云盘放在微软服务之前（顺序即优先级），但 geosite 的 onedrive 分类只有 19 条，
@@ -282,11 +444,35 @@ var Table = []RuleGroup{
 		Providers:   []string{"acl_banad"}},
 }
 
+// AIGroupName 合并后的 AI 组名（唯一真源；App 侧 RoutingGroups.kt 必须逐字一致）。
+const AIGroupName = "🤖 AI"
+
+// legacyGroupAliases 已改名的历史分流组名 → 当前组名。
+//
+// 2026-10-13 把「♊️ Google Gemini」「💬 Claude」「💬 OpenAI」合并成「🤖 AI」。
+// 用户已保存的 routing.json 里 groups / order 仍是旧名：直接当未知名丢弃的话，
+// 用户自己调过的开关会退回表内默认值、拖动顺序会退回内置顺序——静默丢设置。
+// 所以读取侧统一映射：任一旧名为开 → 新组为开；顺序取三者中最靠前的位置。
+var legacyGroupAliases = map[string]string{
+	"♊️ Google Gemini": AIGroupName,
+	"💬 Claude":         AIGroupName,
+	"💬 OpenAI":         AIGroupName,
+}
+
+// canonicalGroupName 把历史组名映射为当前组名；非历史名原样返回。
+func canonicalGroupName(name string) string {
+	if current, ok := legacyGroupAliases[name]; ok {
+		return current
+	}
+	return name
+}
+
 // OrderedTable 按用户自定义顺序返回内置分流表。
 //
 // order 中出现的组名按给定次序排在前，未出现的组按 Table 的默认顺序追加在后；
 // 未知、重复、空名一律忽略，绝不丢组。空 order 直接返回 Table。
 // 顺序决定「规则匹配优先级」与 App 侧展示顺序，不影响各组开关。
+// 历史组名先经 canonicalGroupName 归一（改名后用户保存的顺序不能丢）。
 func OrderedTable(order []string) []RuleGroup {
 	if len(order) == 0 {
 		return Table
@@ -298,11 +484,11 @@ func OrderedTable(order []string) []RuleGroup {
 	picked := make(map[string]bool, len(order))
 	out := make([]RuleGroup, 0, len(Table))
 	for _, name := range order {
-		item, ok := byName[name]
-		if !ok || picked[name] {
+		item, ok := byName[canonicalGroupName(name)]
+		if !ok || picked[item.Name] {
 			continue
 		}
-		picked[name] = true
+		picked[item.Name] = true
 		out = append(out, item)
 	}
 	for _, item := range Table {

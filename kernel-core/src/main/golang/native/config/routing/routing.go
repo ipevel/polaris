@@ -34,7 +34,8 @@ type State struct {
 	Custom  []CustomGroup   `json:"custom"`
 	// Order 内置分流组的用户自定义顺序（组名列表，App 侧拖动排序写入）。
 	// 空 = 沿用 Table 默认顺序；只影响组与规则的排列（即规则匹配优先级
-	// 与 App 侧展示顺序），不影响各组开关。未知/重复名由 OrderedTable 忽略。
+	// 与 App 侧展示顺序），不影响各组开关。历史组名先经 canonicalGroupName
+	// 归一，其余未知/重复名由 OrderedTable 忽略。
 	Order []string `json:"order"`
 	// DirectDomains 自家后端域名（App 构建期注入清单），作为生成规则最前
 	// 的直连白名单。为空时内核退回编译期占位清单。
@@ -103,9 +104,32 @@ func ReadState() *State {
 }
 
 // GroupEnabled 内置组的启用判定：状态缺省时用表内默认值。
+//
+// 已改名的历史组名（legacyGroupAliases）一并计入：任一旧名为开 → 新组为开，
+// 否则用户的开启意图会因为一次改名静默丢失（见 legacyGroupAliases 的注释）。
 func (s *State) GroupEnabled(item RuleGroup) bool {
-	if v, ok := s.Groups[item.Name]; ok {
+	if v, ok := s.groupOverride(item.Name); ok {
 		return v
 	}
 	return item.DefaultOn
+}
+
+// groupOverride 在 Groups 里查组开关（含历史组名），返回 (开关值, 是否有显式设置)。
+func (s *State) groupOverride(name string) (bool, bool) {
+	if v, ok := s.Groups[name]; ok {
+		return v, true
+	}
+	found, enabled := false, false
+	for legacy, current := range legacyGroupAliases {
+		if current != name {
+			continue
+		}
+		if v, ok := s.Groups[legacy]; ok {
+			found = true
+			if v {
+				enabled = true
+			}
+		}
+	}
+	return enabled, found
 }

@@ -165,9 +165,9 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		{host: "www.instagram.com", want: "📸 Instagram", why: "Instagram"},
 		{host: "www.facebook.com", want: "📲 Facebook", why: "Facebook"},
 		{host: "www.whatsapp.com", want: "📲 WhatsApp", why: "WhatsApp"},
-		{host: "gemini.google.com", want: "♊️ Google Gemini", why: "Gemini"},
-		{host: "claude.ai", want: "💬 Claude", why: "Claude"},
-		{host: "api.openai.com", want: "💬 OpenAI", why: "OpenAI"},
+		{host: "gemini.google.com", want: "🤖 AI", why: "Gemini"},
+		{host: "claude.ai", want: "🤖 AI", why: "Claude"},
+		{host: "api.openai.com", want: "🤖 AI", why: "OpenAI"},
 		{host: "github.com", want: "🐱 GitHub", why: "GitHub"},
 		{host: "www.bing.com", want: "Ⓜ️ 微软Bing", why: "Bing"},
 		{host: "music.163.com", want: "🎶 网易音乐", why: "网易音乐"},
@@ -184,7 +184,16 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		{host: "contoso.livefilestore.com", want: "Ⓜ️ 微软云盘", why: "OneDrive for Business 内容主机"},
 		{host: "files.1drv.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容分发"},
 		{host: "cdn.odc.officeapps.live.com", want: "Ⓜ️ 微软云盘", why: "Office 网页版 CDN"},
-		{host: "www.google.com", want: "♊️ Google Gemini", why: "Google 统一走 Gemini 组（表内顺序在前）"},
+		// Google 相关域名必须落回「🌏 Google」：合并前 Gemini 组带着
+		// GEOSITE,google 排在前面，把这一组整体吃掉（开关设成什么都不生效）。
+		{host: "www.google.com", want: "🌏 Google", why: "Google 组恢复生效（2026-10-13 合并 AI 组）"},
+		{host: "accounts.google.com", want: "🌏 Google", why: "Google 组恢复生效"},
+		{host: "drive.google.com", want: "🌏 Google", why: "Google 组恢复生效"},
+		// Play 域名必须先落「🌏 Google Play」：它排在「🌏 Google」之后时，
+		// google-play 那 10 条里有 8 条会被 google 分类先命中，开关设成什么都不生效。
+		{host: "play.google.com", want: "🌏 Google Play", why: "Google Play 组恢复生效"},
+		{host: "play.googleapis.com", want: "🌏 Google Play", why: "Google Play 组恢复生效"},
+		{host: "play-lh.googleusercontent.com", want: "🌏 Google Play", why: "Google Play 组恢复生效"},
 		// 兜底
 		{host: "unknown-site.example", want: "🐟 漏网之鱼", why: "未命中一律兜底"},
 	}
