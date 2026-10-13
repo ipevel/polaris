@@ -615,7 +615,11 @@ const builder = require('../electron/core/builder');
       const seedFiles = rulesets.allProviderKeys().map((k) => rulesets.seedFile(k));
       const missing = seedFiles.filter((f) => !nodeFs.existsSync(nodePath.join(seedDir, f)));
       check(`规则集缓存目录已预播种（${seedFiles.length} 个文件）`, missing.length === 0, missing.slice(0, 5).join(','));
-      const probeKey = 'gs_google_play';
+      const probeKey = rulesets.allProviderKeys().find((k) => nodeFs.existsSync(nodePath.join(seedDir, rulesets.seedFile(k))));
+      // 探测键原先写死 `gs_google_play`：那个键随 2026-10-12「规则全本地」一起消失了
+      // （现在只剩 acl_* 十个种子），于是下面 readFileSync 直接抛 ENOENT，整条数据层门禁
+      // 从这里断掉。改成从当前 provider 表里动态挑一个真的在磁盘上的种子文件。
+      if (!probeKey) throw new Error(`探测用种子文件一个都不存在（${seedDir}）—— 规则集缓存没播种成功`);
       const probeFile = nodePath.join(seedDir, rulesets.seedFile(probeKey));
       const original = nodeFs.readFileSync(probeFile);
       try {
