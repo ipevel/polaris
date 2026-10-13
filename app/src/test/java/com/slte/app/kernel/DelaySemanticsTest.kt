@@ -198,9 +198,49 @@ class SpeedTestOutcomeTest {
     }
 
     @Test
+    fun `收敛判定_内核确认本轮结束后剩余超时算终态`() {
+        // 回归：29 个成员 26 个真实 + 3 个真超时，旧判据为此白等满 30s
+        val delays = mapOf("a" to 120, "b" to 30, "c" to Constants.DELAY_TIMEOUT)
+        assertEquals(SpeedSettleAction.WAIT, speedSettleAction(delays, polls = 0, kernelRoundDone = true))
+        assertEquals(
+            SpeedSettleAction.DONE,
+            speedSettleAction(delays, polls = SPEED_SETTLE_CONFIRM_POLLS, kernelRoundDone = true),
+        )
+    }
+
+    @Test
+    fun `收敛判定_内核未确认本轮结束时仍等全部真实延迟`() {
+        val delays = mapOf("a" to 120, "c" to Constants.DELAY_TIMEOUT)
+        assertEquals(
+            SpeedSettleAction.WAIT,
+            speedSettleAction(delays, polls = SPEED_SETTLE_MAX_POLLS - 1),
+        )
+        assertEquals(
+            SpeedSettleAction.WAIT,
+            speedSettleAction(delays, polls = SPEED_SETTLE_MAX_POLLS - 1, kernelRoundDone = false),
+        )
+    }
+
+    @Test
+    fun `收敛判定_内核确认本轮结束但没有真实延迟时不得判完成`() {
+        // 反向回归：内核异常即时返回（singledo 缓存为空 / providers 为空）时
+        // 读到的是一份「一条真实延迟都没有」的快照，不得据此把整页判成超时
+        val allTimeout = mapOf("a" to Constants.DELAY_TIMEOUT, "b" to Constants.DELAY_TIMEOUT)
+        assertEquals(
+            SpeedSettleAction.WAIT,
+            speedSettleAction(allTimeout, polls = 0, kernelRoundDone = true),
+        )
+        assertEquals(
+            SpeedSettleAction.GIVE_UP,
+            speedSettleAction(allTimeout, polls = SPEED_SETTLE_MIN_POLLS, kernelRoundDone = true),
+        )
+    }
+
+    @Test
     fun `收敛轮询有硬上限且沉降窗口不超过上限`() {
         assertTrue(SPEED_SETTLE_MIN_POLLS > 0)
         assertTrue(SPEED_SETTLE_MAX_POLLS > SPEED_SETTLE_MIN_POLLS)
+        assertTrue(SPEED_SETTLE_CONFIRM_POLLS in 1..SPEED_SETTLE_MIN_POLLS)
     }
 }
 

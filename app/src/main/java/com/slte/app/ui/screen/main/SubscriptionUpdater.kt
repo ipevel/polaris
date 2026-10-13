@@ -68,7 +68,7 @@ constructor(
                         serverRepository.invalidateCache()
                         dataWriter.loadServers(scope, data)
 
-                        scope.launch { autoSpeedTestAfterUpdate(configChanged = true) }
+                        scope.launch { autoSpeedTestAfterUpdate(configChanged = profileReloaded(kernelResult)) }
                     }
                     dataWriter.applySubscribeInfo(
                         data,
@@ -114,7 +114,7 @@ constructor(
                         refreshSiteInfoFromPanel()
                         serverRepository.invalidateCache()
                         dataWriter.loadServers(scope, data)
-                        scope.launch { autoSpeedTestAfterUpdate(configChanged = true) }
+                        scope.launch { autoSpeedTestAfterUpdate(configChanged = profileReloaded(result)) }
                         dataWriter.applySubscribeInfo(data, info, errorMessageRes = null)
                     }
                 },
@@ -192,7 +192,7 @@ constructor(
             )
             if (hasPlan && kernelResult != ProfileUpdateResult.FAILED) {
                 refreshSiteInfoFromPanel()
-                scope.launch { autoSpeedTestAfterUpdate(configChanged = kernelResult == ProfileUpdateResult.UPDATED) }
+                scope.launch { autoSpeedTestAfterUpdate(configChanged = profileReloaded(kernelResult)) }
             }
         }
     }
@@ -228,6 +228,13 @@ constructor(
         )
     }
 
+    /**
+     * 订阅更新后的后台测速。
+     *
+     * @param configChanged 内核是否真的重载了 profile（见 [profileReloaded]）：
+     *   只有重载过才会广播 `profileLoaded`，也只有那时才需要等它就位；
+     *   节点集合变了也必须真测（[com.slte.app.kernel.speedTestUntilReady] 的 force）。
+     */
     private suspend fun autoSpeedTestAfterUpdate(configChanged: Boolean) {
         if (configChanged && kernelManager.connected.value) {
             val before = kernelManager.profileLoaded.value
@@ -235,7 +242,7 @@ constructor(
                 kernelManager.profileLoaded.first { it > before }
             }
         }
-        kernelProxy.speedTestUntilReady()
+        kernelProxy.speedTestUntilReady(force = configChanged)
     }
 
     companion object {
@@ -245,3 +252,13 @@ constructor(
         private const val PURCHASE_REFRESH_TIMEOUT_MS = 60_000L
     }
 }
+
+/**
+ * 订阅更新后内核是否真的重载了配置文件（纯函数，可单测）。
+ *
+ * 只有 [ProfileUpdateResult.UPDATED] 会触发内核重载并广播 `profileLoaded`；
+ * [ProfileUpdateResult.UNCHANGED]（订阅内容一致、内核跳过重载）时等它永远等不到，
+ * 只会白等满 [SubscriptionUpdater] 的 `SPEED_TEST_WAIT_MS`——运行日志里
+ * 08:24:41.371 与 08:24:44.751 两次刷新各平白多等 10.65s / 10.60s。
+ */
+internal fun profileReloaded(kernelResult: ProfileUpdateResult): Boolean = kernelResult == ProfileUpdateResult.UPDATED

@@ -19,6 +19,7 @@ import com.slte.app.kernel.KernelManager
 import com.slte.app.kernel.KernelProxy
 import com.slte.app.kernel.ProfileUpdateResult
 import com.slte.app.support.MainDispatcherRule
+import com.slte.app.support.stubKernelBridge
 import com.slte.app.utils.Constants
 import com.slte.app.utils.ErrorMessages
 import io.mockk.coEvery
@@ -359,5 +360,53 @@ class SubscriptionUpdaterTest {
         coVerify(exactly = 2) { kernelConfig.updateProfile() }
         assertEquals(R.string.api_error_subscribe_info, state.value.errorMessageRes)
         assertEquals("进阶套餐", state.value.planName)
+    }
+
+    @Test
+    fun `只有内核真的重载了配置才算配置已变更`() {
+        assertTrue(profileReloaded(ProfileUpdateResult.UPDATED))
+        assertFalse(profileReloaded(ProfileUpdateResult.UNCHANGED))
+        assertFalse(profileReloaded(ProfileUpdateResult.FAILED))
+    }
+
+    @Test
+    fun `订阅内容未变化时不空等内核重载`() = runTest(mainRule.dispatcher) {
+        stubExpiry()
+        val state = data(planName = "旧套餐")
+        coEvery { subscribeRepository.fetchSubscribeInfo(force = true) } returns Result.success(plan())
+        // 订阅内容一致：内核返回 UNCHANGED 并跳过重载，profileLoaded 永远不会推进，
+        // 旧写法会在这里白等满 10s（运行日志 08:24:41.371→52.025 正是如此）
+        coEvery { kernelConfig.updateProfile() } returns ProfileUpdateResult.UNCHANGED
+        coEvery { serverRepository.fetchServers() } returns Result.success(emptyList())
+        kernelProxy.stubKernelBridge(ready = false)
+
+        updater().maybeSilentUpdate(state, this)
+        advanceUntilIdle()
+
+        assertTrue(
+            "UNCHANGED 不得等满配置重载窗口，实际虚拟耗时 ${testScheduler.currentTime}ms",
+            testScheduler.currentTime < 10_000L,
+        )
+    }
+
+    @Test
+    fun `配置真的重载时仍等内核就位`() = runTest(mainRule.dispatcher) {
+        stubExpiry()
+        val state = data(planName = "旧套餐")
+        coEvery { subscribeRepository.fetchSubscribeInfo(force = true) } returns Result.success(plan())
+        coEvery { kernelConfig.updateProfile() } returns ProfileUpdateResult.UPDATED
+        every { kernelManager.connected } returns MutableStateFlow(true)
+        // profileLoaded 停在 0：内核迟迟未广播重载完成
+        every { kernelManager.profileLoaded } returns MutableStateFlow(0)
+        coEvery { serverRepository.fetchServers() } returns Result.success(emptyList())
+        kernelProxy.stubKernelBridge(ready = false)
+
+        updater().maybeSilentUpdate(state, this)
+        advanceUntilIdle()
+
+        assertTrue(
+            "UPDATED 应保持原有等待行为，实际虚拟耗时 ${testScheduler.currentTime}ms",
+            testScheduler.currentTime >= 10_000L,
+        )
     }
 }

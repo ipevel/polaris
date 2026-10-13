@@ -312,7 +312,8 @@ constructor(
         _isTestingAll.value = true
         viewModelScope.launch {
             // 本地分流下结构组已 include-all，测速只 await 结构组（见 KernelProxySpeed）
-            val delays = kernelProxy.speedTestProgressiveAndCache { }
+            // force = true：用户手动点测速必须真跑一轮，不能被 15s 去重窗口用缓存结果打发
+            val delays = kernelProxy.speedTestProgressiveAndCache(force = true) { }
             refreshGroups()
             // 测速失败的节点再逐个复核一次：只有内核明确说"不可达"才标离线，
             // 单纯超时可能只是一次抖动，标离线会误伤活节点。
