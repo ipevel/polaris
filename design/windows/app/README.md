@@ -98,10 +98,16 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 
 ### CI 门禁
 
-`.github/workflows/ci-windows.yml`（**push / PR 到 `windows-portable` + 手动 `workflow_dispatch`**）跑：
+`.github/workflows/ci-windows.yml`（**push / PR 到 `windows-portable` + 手动 `workflow_dispatch`**，
+跑在 **`windows-latest`** 上）跑：
 
 > 文件名带 `-windows` 是故意的：主仓库已有 `.github/workflows/ci.yml`（安卓 + Go 的
 > version-gate / go / quality）。同名会在同步进 main 时把它整个覆盖掉，所以分开命名。
+>
+> 跑 Windows runner 而不是 ubuntu：`updater` 的 `extract()` 是 Windows 实现
+> （bsdtar + `powershell Expand-Archive` 回退），在 ubuntu 上必然 `spawn powershell ENOENT` ——
+> 产品本身也只有 Windows 版，拿 ubuntu 验是错平台。代价是计费更高，所以只跑离线自检，
+> 不装 Electron、不打包。
 
 1. `npm run test:offline` —— 5 条离线自检
 2. `node --check` 全量 js 语法检查

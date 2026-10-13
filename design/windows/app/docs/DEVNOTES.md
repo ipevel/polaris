@@ -2877,7 +2877,7 @@ version-gate / go / quality 三个 job）。这个文件最初也叫 `ci.yml`，
 **不能**同步过去，否则会顶掉它。
 
 跑三件事：`npm run test:offline`（5 条离线自检）、`node --check` 全量 js 语法检查、
-分流表跨语言一致性。
+分流表跨语言一致性。**跑在 `windows-latest` 上**（理由见下面「真跑 CI 后补的两件事 ①」）。
 
 **routing-sync 的「永远绿假通过」是这一轮最关键的处理**。它在 `windows-portable` 上
 找不到 `kernel-core/…/routing_table.go`（这条分支只有 `design/`），原本打印「跳过」并
@@ -2938,8 +2938,51 @@ version-gate / go / quality 三个 job）。这个文件最初也叫 `ci.yml`，
 | `preflight-creds.js` 缺参 / `--restore` 缺 `--data` / 空值 | 都是 exit 2 并打印用法 ✅ |
 | `real-test.js` 自己缺参 | exit 2 并打印它自己的用法 ✅ |
 | `.github/workflows/ci-windows.yml` | `js-yaml` 解析通过，1 job / 7 steps ✅ |
+| `npm run test:offline`（cmd 里跑，CI 同款命令） | exit 0 ✅ |
 
-**教训**：门禁第一次跑红的时候，先别改门禁 —— 先看它是不是对的。这次它对。
+### 真跑 CI 后补的两件事（第一次跑出来的）
+
+**① runner 选错了：ubuntu 上离线自检必红（19/4）**
+
+第一次 push 后 CI 实测：用例 5、6 全挂在 updater 的 `extract()`：
+
+```
+WARN  tar 解压失败，改用 Expand-Archive：tar: This does not look like a tar archive
+ERROR 更新解压失败：spawn powershell ENOENT
+```
+
+不是产品 bug —— `extract()` 就是 Windows 实现（`tar -xf` 走 Windows 自带 bsdtar，
+失败再回退 `powershell Expand-Archive`），**产品本身也只有 Windows 版**。
+拿 ubuntu 的运行时去验一个 Windows-only 模块，红是必然的。
+改成 `runs-on: windows-latest` 后 5 条离线自检全绿（CI 实测）。
+顺带好处：路径分隔符、bsdtar、PowerShell 回退这些 Windows 专有假设也纳入了验证，
+在 ubuntu 上永远验不到。代价是 runner 计费更高，所以只跑离线自检、不装 Electron、不打包。
+`timeout-minutes: 20`（`updater-self-test` 有一段故意等满 120 秒）。
+
+**② 分流表门禁在 CI 里真的红了，而且红对了**
+
+`windows-latest` 上 CI 实测 6/7 步绿，只有分流表那步红，输出：
+
+```
+[routing-sync] Go 表：D:\a\polaris\polaris\.ci-main\kernel-core\...\routing_table.go
+[routing-sync] Go 表 25 组 / 10 个 provider / 100 条内联规则
+[routing-sync] FAIL — 两端分流表不一致：
+[routing-sync] JS 表 23 组 / 10 个 provider /
+  · 组数   Go: 25   JS: 23
+  · [8] 组名  Go: "♊️ Google Gemini"   JS: "🤖 AI"
+```
+
+sparse-checkout 从 main 取 `kernel-core` 这条路是通的（日志里打印出了 `D:\a\...\.ci-main\...`），
+`POLARIS_GO_TABLE_REQUIRED=1` 也按设计生效。**这正是这条门禁存在的意义**：
+它证明了两件事 —— 门禁机制本身是好的，以及 main 的 Go 表确实还没拿到 `2487d05` 的布局。
+
+> 补充一个容易搞混的点：`routing-sync` **在 main 上跑是绿的**（main 的 Go 表与 main 的
+> `rulesets.js` 自洽，都是 25 组）。它只能验「同一个仓库里两端是否一致」，
+> **验不了「两个分支之间是否漂移」**。跨分支漂移只能靠 CI 这种「拿 A 的表对 B 的镜像」的
+> 方式抓 —— 所以那条 CI 步骤不是重复劳动。
+
+**教训**：门禁第一次跑红的时候，先别改门禁 —— 先看它是不是对的。这次它对（两次都对：
+一次是 runner 平台选错，一次是真的分流表漂移）。
 
 ---
 
