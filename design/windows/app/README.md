@@ -83,9 +83,11 @@ npm run test:real -- --panel=<面板地址> --email=<测试账号> --password=<�
 # 界面自检（会真的开窗口、真鼠标点，要真账号）
 npm run test:ui -- --panel=<面板地址> --email=<测试账号> --password=<口令>
 
-# 离线自检 5 条（不需要凭据、不下载外网、不碰真安装目录）
+# 离线自检 13 条（不需要凭据、不下载外网、不碰真安装目录）
 npm run test:offline
-# 或单跑：test:updater / test:updater-timeout / test:traffic / test:geosync / test:routing-sync
+# 或单跑：test:updater / test:updater-timeout / test:traffic / test:geosync / test:rulesync /
+#         test:routing-sync / test:flags / test:flag-row / test:dns / test:portowner /
+#         test:config / test:single-source / test:routing-view
 
 # 打包便携版（动手前先问用户）
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
@@ -96,10 +98,11 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > （由 `scripts/preflight-creds.js` 在启动 Electron 之前挡一道），不会让你等一整个启动才发现少参数。
 > 参数是**追加**在 `--` 之后的；`test:real` 还支持 `--restore --data=<数据根目录>` 复用已登录会话。
 >
-> ⚠️ **跑 `test:real` 会改动工作树**：它的 geodata 24 小时同步会写 `resources/geo/`
-> （那是仓库跟踪目录）。跑完请还原：
-> `git checkout -- design/windows/app/resources/geo/ && rm -f design/windows/app/resources/geo/geo_last_sync`
-> 详见 `docs/DEVNOTES.md` §三 A-58。
+> ⚠️ **跑 `test:real` 会改动工作树**：规则 + geodata 的 12 小时刷新会写 `resources/geo/`
+> （dev 下 `paths.geo()` 就指这个仓库跟踪目录）。跑完请还原：
+> `git checkout -- design/windows/app/resources/geo/`
+> 刷新标记 `rules_last_sync` 落在 `data/polaris-rules/`（未跟踪，不用管）。
+> 详见 `docs/DEVNOTES.md` §三 A-58 与 A-62。
 
 ### CI 门禁
 
@@ -114,22 +117,25 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > 产品本身也只有 Windows 版，拿 ubuntu 验是错平台。代价是计费更高，所以只跑离线自检，
 > 不装 Electron、不打包。
 
-1. `npm run test:offline` —— 5 条离线自检
+1. `npm run test:offline` —— **13 条离线自检**（清单见下表）
 2. `node --check` 全量 js 语法检查
-3. **分流表跨语言一致性**：从 `main` 取 `kernel-core/`，用 `POLARIS_GO_TABLE` 指过去真跑
-   `routing-sync-test.js`，并设 `POLARIS_GO_TABLE_REQUIRED=1` **禁止跳过**（找不到就是红，不是绿）
+3. **分流表跨语言一致性 + 跨仓库输入真取到**：从 `main` 取 `kernel-core/` 与安卓
+   `app/src/main/assets/flags`，用 `POLARIS_GO_TABLE` / `POLARIS_ANDROID_DIR` 指过去真跑
+   `routing-sync-test.js`，并设两个 `_REQUIRED=1` **禁止跳过**（找不到就是红，不是绿）
 
 > 第 3 条为什么不许跳过：`windows-portable` 分支上没有 `kernel-core/`，本地跑会打印「跳过」并
 > `exit 0` —— 在 CI 里那等于一个永远绿的假通过。而这条测试要防的正是「main 改了分流表、
 > Windows 镜像没跟上」这种静默分叉（2026-10-12 就这么分叉过一次）。
 >
-> ⚠️ **这条抓到的是真的，且仍未修完**：`main` 的 Go 表落后 ——
-> `main` 是 25 组 / 100 条内联，而 `android-portable`（`f65ffcd`）与 Windows 的 JS 表
-> 早已对齐在 23 组 / 246 条内联（本机实测 PASS）。**方向是「main 追平 android-portable」，
-> 不是改 Windows。** 注意 `f65ffcd` 目前还是**本地提交**，所以准确状态是
-> 「**本地已对齐，待推送**」。
-> 先放着、等安卓收尾后再一起排 —— 这个序是 **Eric 排的**（不是用户的决定）；
-> 真正要不要执行等**用户的 go-ahead**。对齐清单见 `docs/DEVNOTES.md` §五 的 1.9。
+> 现状（2026-10-14 03:2x）：`main` 的 Go 表仍是 **23 组**（`v1.11.4` 那一版），而本分支已是
+> **12 组**。所以**此刻这道门禁在 `windows-portable` 上是红的，且是预期的红** ——
+> run `38454540083` 的失败点就是它：`Go 表 23 组 / 10 个 provider / 246 条内联` ↔
+> `JS 表 12 组 / 15 个 provider`。要等 **Go 12 组表 + 安卓 Kotlin/种子 + Windows 新表
+> 同一个提交进 `main`** 之后才会转绿；在那之前别把它当成新缺陷。
+>
+> ⚠️ **发版前提**：`build.yml` 的 `windows` job 打的是 **`main` 上的** `design/windows/app`，
+> 所以必须先同步 `main` 再发版，否则放出去的便携版会是旧分流表。同步清单见
+> `docs/DEVNOTES.md` §五 的 1.9（**绝不做整分支合并**，一律路径限定取件）。
 
 ### 出问题怎么查
 
@@ -142,7 +148,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 | --- | --- | --- |
 | `npm run test:real`（`scripts/real-test.js`，真账号真面板，221 项） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 → 拖动排序 → 本地方案接管 → 三个特殊出口各自真出网 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
 | `npm run test:ui`（`scripts/ui-test.js`，真窗口真鼠标，174 项） | 自己从登录页用真账号登进去，再逐页真点：外壳/登录/首页/连接/节点页/分流页/流量页/我的页/6 个二级页/设置页/断开 | 托盘菜单、多屏 DPI、TUN 下的走查、自定义分流组拖动 |
-| `npm run test:offline`（5 条离线自检，CI 里也跑） | `test:updater` 自我替换 helper（21 项）、`test:updater-timeout` 下载超时三层（27 项）、`test:traffic` 流量页视图（36 项）、`test:geosync` geodata 刷新（11 项）、`test:routing-sync` 两端分流表逐条一致 | 需要 Electron 运行时或真面板的路径（那两条在上面） |
+| `npm run test:offline`（13 条离线自检，CI 里也跑） | `test:updater` 自我替换 helper（21 项）、`test:updater-timeout` 下载超时三层（27 项）、`test:traffic` 流量页视图（36 项）、`test:geosync` 旧 geodata 模块单测（11 项）、`test:rulesync` 规则+geo 12 小时懒更新 + 钉 commit SHA（42 项）、`test:routing-sync` 两端分流表逐条一致、`test:flags` 国旗码表↔图（11 项）、`test:flag-row` 节点行画旗（15 项）、`test:dns` DNS 解析器无污染源（10 项）、`test:portowner` 端口占用者铁律（14 项）、`test:config` 默认值与设置迁移（12 项）、`test:single-source` 规则只有一个源（8 项）、`test:routing-view` 分流规则页视图（17 项） | 需要 Electron 运行时或真面板的路径（那两条在上面） |
 | 人工手测 | 界面交互、手感、观感、布局与主题 | — |
 
 > 2026-10-10 起**不再有任何离线自检线与假数据**：原 `scripts/mock-panel.js`（假面板）、

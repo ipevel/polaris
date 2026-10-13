@@ -7,7 +7,7 @@
 # 为什么单独一条：主仓库的 `ci.yml` 是**纯安卓 + Go** 的（三个 job 全在 ubuntu 上），
 # `design/windows/app` 的代码一行都没被扫过；而 `build.yml` 里虽然有个 windows job，
 # 但它只在**手动发版**时跑，而且只验证「能打包」，没有任何测试或语法检查。
-# 结果就是：Windows 端 41 个 js 文件、5 条自检，全靠人记得手动跑。
+# 结果就是：Windows 端 41 个 js 文件、7 条自检，全靠人记得手动跑。
 # 这个 workflow 就是补这一块：push / PR 都自动跑，只做**不需要凭据、不下载外网、
 # 不碰真安装目录**的离线自检（真面板那两条见 README 的 `test:real` / `test:ui`）。
 #
@@ -60,17 +60,52 @@ jobs:
       - name: 安装 Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
+
+      # ------------------------------------------------------------------
+      # 一次 checkout 同时解决两个「CI 上永远绿」的隐患：
+      #
+      # 1. routing-sync：这条自检要拿 main 的
+      #    kernel-core/src/main/golang/native/config/routing/routing_table.go
+      #    跟 Windows 的 electron/core/rulesets.js 逐条比对；而 windows-portable
+      #    分支只有 design/，没有 kernel-core/ —— 本地跑会打印「跳过」并 exit 0。
+      #    跳过在 CI 里就等于一个永远绿的假通过，所以**不能**这么放过。
+      #    理由：main 是分流表的事实来源，windows-portable 是镜像；要防的正是
+      #    「main 改了表、Windows 镜像没跟上」。
+      # 2. flags：flag-codes-test 里有一段「与安卓端 257 张图名集合比对」，
+      #    安卓仓库不在本仓库里，不 checkout 就永远打印 skip。
+      #
+      # 成本很低：只取两个目录，不装 Go、不编译。
+      # ------------------------------------------------------------------
+      - name: 取 main 的 kernel-core + 安卓 flags（两条自检要用它真跑）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .ci-main
+          sparse-checkout: |
+            kernel-core
+            app/src/main/assets/flags
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
 
       # 离线自检本身只用 Node 内置模块，不需要依赖；但 `node --check` 要能解析
       # 每条 require，缺了 node_modules 会误报，所以照常装。
       - name: 安装依赖
         run: npm ci
 
-      # 5 条离线自检：不需要 Electron、不需要网络、不碰真安装目录。
-      # 用链式命令而不是 5 个 step，是为了失败时一眼看出是哪条断的，
+      # 13 条离线自检：不需要 Electron、不需要网络、不碰真安装目录。
+      # 用链式命令而不是 13 个 step，是为了失败时一眼看出是哪条断的，
       # 同时保证「前一条挂了后面的不会假装通过」。
-      - name: 离线自检 5 条（updater / updater-timeout / traffic / geosync / routing-sync）
+      #
+      # 两条 REQUIRED 环境变量把「跳过」堵死：
+      #   POLARIS_GO_TABLE_REQUIRED=1     → 找不到 main 的 Go 表就红，不是绿
+      #   POLARIS_ANDROID_REQUIRED=1      → 找不到安卓 flags 目录就红，不是绿
+      - name: 离线自检 13 条（updater / updater-timeout / traffic / geosync / rulesync / routing-sync / flags / flag-row / dns / portowner / config / single-source / routing-view）
+        env:
+          POLARIS_GO_TABLE: ${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go
+          POLARIS_GO_TABLE_REQUIRED: '1'
+          POLARIS_ANDROID_DIR: ${{ github.workspace }}/.ci-main
+          POLARIS_ANDROID_REQUIRED: '1'
         run: npm run test:offline
 
       # 便宜的兜底：语法错误在这里就红，不用等打包才发现。
@@ -87,45 +122,22 @@ jobs:
           done
           echo "全部通过"
 
-      # ------------------------------------------------------------------
-      # routing-sync 的「永远绿假通过」问题，在这里解决。
-      #
-      # 这条自检要拿 kernel-core/src/main/golang/native/config/routing/routing_table.go
-      # 跟 Windows 的 electron/core/rulesets.js 逐条比对；而 windows-portable 分支
-      # 只有 design/，没有 kernel-core/ —— 本地跑会打印「跳过」并 exit 0。
-      # 跳过在 CI 里就等于一个永远绿的假通过，所以**不能**这么放过。
-      #
-      # 选择：**在 CI 里真跑**（而不是把测试拆成两半）。
-      # 理由：
-      #   1. 这条门禁的价值就是「两端分流表一致」——拆一半就验不到跨语言一致性，
-      #      而分叉恰恰是它要防的东西（2026-10-12 就是这么静默分叉的）。
-      #   2. main 是分流表的**事实来源**，windows-portable 是镜像。要防的正是
-      #      「main 改了表、Windows 镜像没跟上」，所以必须拿 main 的表来对。
-      #   3. 成本很低：只 checkout 一个目录，不装 Go、不编译。
-      # 于是：把 main 的 kernel-core/ 取到 .ci-main/ 下，用 POLARIS_GO_TABLE 指过去，
-      # 再设 POLARIS_GO_TABLE_REQUIRED=1 禁止跳过 —— 找不到就是红，不是绿。
-      # ------------------------------------------------------------------
-      - name: 取 main 的 kernel-core（routing-sync 要用它真跑）
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          path: .ci-main
-          sparse-checkout: kernel-core
-          sparse-checkout-cone-mode: true
-          fetch-depth: 1
-
-      - name: 分流表跨语言一致性（真跑，禁止跳过）
+      # 上面两条 REQUIRED 是真跑的前提：checkout 成功不代表 sparse-checkout
+      # 真取到了文件，所以显式确认一次，取不到就红。
+      - name: 确认跨仓库输入真的取到了
         shell: bash
-        working-directory: design/windows/app
-        env:
-          POLARIS_GO_TABLE: ${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go
-          POLARIS_GO_TABLE_REQUIRED: '1'
         run: |
           set -euo pipefail
-          # 先确认文件真的在（checkout 成功不代表 sparse-checkout 真取到了）
-          if [ ! -f "$POLARIS_GO_TABLE" ]; then
-            echo "::error::没取到 main 的 routing_table.go：$POLARIS_GO_TABLE"
+          go="${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+          flags="${{ github.workspace }}/.ci-main/app/src/main/assets/flags"
+          if [ ! -f "$go" ]; then
+            echo "::error::没取到 main 的 routing_table.go：$go"
             echo "::error::请检查上面的 sparse-checkout 是否还匹配得上 main 的目录结构。"
             exit 1
           fi
-          node scripts/routing-sync-test.js
+          n=$(find "$flags" -maxdepth 1 -name '*.svg' | wc -l)
+          if [ "$n" -lt 100 ]; then
+            echo "::error::安卓 flags 只取到 $n 张（预期 257）：$flags"
+            exit 1
+          fi
+          echo "routing_table.go 与 $n 张安卓 flags 都在"

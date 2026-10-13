@@ -839,16 +839,17 @@ const builder = require('../electron/core/builder');
       await commands.set_setting({ key: 'mixed_port', value: Number(portBefore) || 0 });
     }
 
-    /* ---------------- 分流规则全本地（用户 2026-10-12：规则必须本地 + 每 24 小时自动更新） ---------------- */
-    // 内核不再联网拉任何 rule-provider：内置规则全是 type:file，只读随包种子。
-    // 真正需要联网更新的只有 geosite.dat / geoip.metadb / ASN.mmdb（geosync.js，
-    // 启动时 + 每 24 小时，校验 sha256 后替换）。这里真跑一次内核，确认：
+    /* ---------------- 分流规则全本地（用户 2026-10-12：规则必须本地 + 定期自动更新） ---------------- */
+    // 内核不再联网拉任何 rule-provider：内置规则全是 type:file，只读本地文件。
+    // 真正需要联网更新的是**分流清单 + geodata 一起**，来源只有 ipevel/polaris-rules 一处，
+    // 由 rulesync.js 在启动时 + 每 12 小时拉一次（逐文件核 sha256 后替换）。
+    // 这里真跑一次内核，确认：
     // ① 配置里一条 url / interval 都没有；② 每个 provider 都被加载；
-    // ③ 种子文件都已播种到 data/polaris-rules/；④ geodata 三件套在位且不超 24 小时。
-    section('分流规则全本地（无远程 rule-provider + geodata 24h 新鲜度）');
+    // ③ 种子文件都已播种到 data/polaris-rules/；④ geodata 三件套在位 + 新鲜度标记在。
+    section('分流规则全本地（无远程 rule-provider + 规则/geodata 12h 新鲜度）');
     {
       const rulesets = require('../electron/core/rulesets');
-      const geosync = require('../electron/core/geosync');
+      const rulesync = require('../electron/core/rulesync');
       const yaml2 = require('js-yaml');
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       // 下面要真重载内核配置，先确保内核在跑
@@ -888,12 +889,14 @@ const builder = require('../electron/core/builder');
       check('rule-provider 是内核从本地文件读的（vehicleType=File，不是 HTTP）',
         !prov || keys2.every((k) => !prov[k] || prov[k].vehicleType === 'File'),
         JSON.stringify(keys2.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
+      const geoLocal = Object.values(rulesync.GEO_RENAME);
       check('geodata 三件套都已就位（内核的 GEOSITE / GEOIP 规则要读它们）',
-        Object.keys(geosync.FILES).every((f) => nodeFs.existsSync(nodePath.join(paths.geo(), f))),
-        Object.keys(geosync.FILES).map((f) => `${f}:${nodeFs.existsSync(nodePath.join(paths.geo(), f))}`).join(' '));
-      check(`geodata 24 小时同步标记存在（INTERVAL_MS=${geosync.INTERVAL_MS}）`,
-        geosync.isFresh(paths.geo()) || nodeFs.existsSync(nodePath.join(paths.geo(), geosync.MARKER)),
-        `fresh=${geosync.isFresh(paths.geo())}`);
+        geoLocal.every((f) => nodeFs.existsSync(nodePath.join(paths.geo(), f))),
+        geoLocal.map((f) => `${f}:${nodeFs.existsSync(nodePath.join(paths.geo(), f))}`).join(' '));
+      const fresh = rulesync.isFresh(cacheDir, { geoDir: paths.geo() });
+      check(`规则 + geodata 的新鲜度标记在（INTERVAL_MS=${rulesync.INTERVAL_MS / 3600000}h）`,
+        fresh || nodeFs.existsSync(nodePath.join(cacheDir, rulesync.MARKER)),
+        `fresh=${fresh} marker=${rulesync.readMarker(cacheDir) ? 'v' + rulesync.readMarker(cacheDir).version : '无'}`);
     }
 
     /* ---------------- 分流落点实测（用户第 1 条：分流能不能正确地分） ---------------- */

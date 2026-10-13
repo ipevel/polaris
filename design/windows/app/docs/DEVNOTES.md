@@ -2618,6 +2618,15 @@ W Mihomo: parse classical rule [URL-REGEX,^https?://int[\w-\.]+iqiyi\.com] error
 改法：从 6 个种子文件（安卓 `app/src/main/assets/routing/providers/` + Windows `resources/rules/`）里删掉这 9 行。
 脚本 `E:\AI\drop_url_regex.py`，按行首 `URL-REGEX` 过滤、`io.open(..., newline='')` 保住原行尾（安卓 LF / Windows CRLF）。
 
+**后续（2026-10-14，A-61 之后，这条已成历史做法）**：规则来源改成统一从
+`ipevel/polaris-rules` 懒更新之后，这一刀改在**源头**做了 —— `tools/sync.mjs` 里
+`UNSUPPORTED_RULE_TYPES = new Set(['URL-REGEX'])` 在合并阶段丢弃，并在人读形态的表头
+如实记账（`丢弃内核不认的 URL-REGEX N 条`）。这样两端、以及两端的老用户，
+下次 12 小时懒更新就自动拿到干净的清单，**不需要再逐端跑脚本**：
+`drop_url_regex.py` 与这条「删种子里的 9 行」的下一轮重复劳动都可以不做了。
+（仓库产出实测：china-media 8 / proxy-media 1 / streaming 1，共 10 行；
+Windows 随包的三份种子已同步刷成 v4，与仓库 `dist/rules/*.list` 逐字节一致。）
+
 ### 2. 种子文件"只补缺失"→ 改成"每次启动覆盖写"
 
 删掉规则行之后发现：**老用户根本拿不到这次修正**。安卓 `KernelConfig.seedRoutingProviders()` 与
@@ -3190,6 +3199,362 @@ require('./electron/core/manager').prepareConfig({ reuse: true });
 也在于逼着这些断言跟产品一起更新。**
 
 ---
+
+## A-59 Windows 端补国旗：节点行画旗 + 码表补齐 + 两条自测（2026-10-14）
+
+### 起因：两端"看起来一样"的节点列表，一端有旗一端没有
+
+用户看了一眼安卓端的节点页，再看 Windows 端，问「windows端安卓安卓的补旗帜」。
+查完发现差距不是"少画了个图标"，是**三处都缺**：
+
+| | 安卓 | Windows（改前） |
+|---|---|---|
+| 旗子素材 | `app/src/main/assets/flags/` **257 张 SVG**（ad.svg…zw.svg） | **一张都没有** |
+| 渲染 | `FlagPlaceholder.kt` → `file:///android_asset/flags/<code>.svg`，取不到就降级文字 | `views.js:177` 只渲染文字标签 `badge(n.region)` |
+| 码表 | `NodeCountry.kt` 全覆盖 | `electron/core/region.js` **只定义 14 个地区码**（AE AR BE BR CA ES HK ID IE MX NZ SE SG US），KR/JP/MO/DE/TW/VN 一个都没有 |
+
+所以 Windows 端连"🇭🇰 香港"这种最常见的节点也只能靠面板下发的 `region` 文字显示，
+把 257 张图搬过来、把码表补齐、再把渲染接上，三件事一起才算补齐。
+
+### 落地四件
+
+1. **素材**：257 张 SVG 从安卓 `app/src/main/assets/flags/` 原样拷到
+   `src/assets/flags/`，仍是 ISO 3166-1 alpha-2 小写文件名，**逐字节与安卓同源**
+   （`scripts/flag-codes-test.js` 里有一条直接比两个目录的集合）。
+2. **`src/js/flags.js`**：`FLAG_CODES`（257 个，字母序）+ `flagImg(code)`。
+   取图只走 `assets/flags/<code>.svg` 这一条**相对路径**，未登记码 / 路径穿越 / 空值
+   一律返回空串 —— 宁可不出旗，也不出裂图、不拼外部路径。
+3. **`electron/core/region.js` 补码表**：`FLAG_LABEL` 扩到与安卓一致的覆盖，
+   `KEYWORDS` 补上 KR/JP/MO/DE/TW/VN 等中文名，并新增 `normalizeCode()`：
+   `SW → CH`（瑞士官方码来自 Confoederatio Helvetica）、`UK → GB`（英国 ISO 码），
+   归一放在 `detect()` 的出口上而不是逐条改表。
+   另外导出 `codeOfLabel(label)` —— 渲染层拿到的可能只有 `region` 文字（旧快照没有
+   `region_code`），要靠文字反查码。
+4. **渲染**：`views.js` 的行模板在节点名**之前**插 `${flagImg(codeOf(n))}`；
+   `codeOf` 优先吃 `region_code`，没有才回头用 `region` 文字反查。
+   策略组行、`DIRECT`/`REJECT` 这类内置出口行**不带旗**（它们本来就没有地区）。
+   `design.css` 加 `.flag { width:24px; height:18px; flex:none; … }`：
+   矩形 4:3 与图库 `viewBox 640x480` 同比例；`flex:none` 必须留 ——
+   节点行是 flex 容器，不写旗子会被拉成方块。白底旗（日/瑞/波）在白色卡片上
+   靠 `border: 1px solid rgba(0,0,0,.10)` 划边界。
+
+### 为什么是**两条**测试，而不是一条
+
+`scripts/flag-codes-test.js` 验的是"表和图一致、取图函数安全"（11 项）；
+但它**证明不了节点行真的把旗子画出来了** —— 行模板里少一个 `${flagImg(...)}`、
+或者调用点写到了 `<span class="nm">` 之后，这条测试照样全绿，而用户什么也看不到。
+
+`scripts/flag-row-test.js`（15 项）盯的就是那个接缝：把 `Views.nodes` 在 vm 里跑出
+HTML，断言"有 `region_code` 出旗 / 只有 `region` 文本也出旗 / 认不出地区不出旗且无裂图 /
+旗子在节点名之前 / 策略组行与出口行不带旗 / 12 个真实面板地区全覆盖"。
+
+### 写这条测试时踩的三个坑（都是"切行"切错）
+
+想按 `<div class="node-row"…>[\s\S]*?</div>` 取一行，会遇到三件事，任何一件都会让
+断言莫名其妙地过或不过：
+
+1. **最短匹配会提前收尾**：行内只要还有嵌套 div（成员行里的徽章就是 div），
+   `*?` 到第一个 `</div>` 就停，切出来的是缺尾巴的碎片。
+   → 改成按 div 嵌套深度找配对的那个 `</div>`。
+2. **行内夹注释**：`<!-- … -->` 里的 `</div>` 也会被当结尾。→ 先剥注释再切。
+3. **不能用 `data-node="<节点名>"` 定位**：模板输出的是 `h(name)` 转义后的值，
+   名字带 emoji 时字面量对不上。→ 改用行内 `<span class="nm">名字</span>` 认。
+
+另外两处**不是坑、是产品的现行语义**，照抄进测试就行：
+`openGroups` 的键是**分组名本身**（传错键整张卡会折叠、一行都渲染不出来）；
+出口行的名字是**标签**不是节点名（`DIRECT` → 「直连」、主组 → 「跟随「节点选择」」），
+而 `memberNames()` 会把**自己组名**从选项里滤掉，所以"策略组作为出口"那一行
+必须让主组指向**另一个组**才会出现。
+
+### 验收
+
+`npm run test:offline` 全绿：updater / updater-timeout / traffic(36) / geosync(11) /
+routing-sync / **flags(11)** / **flag-row(15)**。`FLAG_CODES` 与
+`src/assets/flags/*.svg` 各 257，与安卓端集合相同。
+
+### 待确认（未做，留给发版前）
+
+`package.json` 的 `build.files` 是 `src/**/*` 白名单，`src/assets/flags/` 落在里面，
+**理论上**会被打进去；但这条只是读配置得出的结论，**没有真跑一次
+`build-portable.ps1` 再从产物里核 `resources/app.asar`**。
+发版前应当补这一次实物核对（打包要先得到用户明确同意）。
+
+## A-60 分流分组精简 23→12、微软云盘 DNS 污染、端口占用者铁律、IPv6 默认打开（2026-10-14）
+
+### 一条主线：用户说「不要做几套分流方式，就一套」
+
+1.11.4 的真机日志里连着暴露了四件事，它们的共同点是**都源于「有几套东西在互相盖」**：
+分组有 23 个但没人能说清谁管谁、DNS 有多个解析器但其中一个在骗人、端口占用探测有结论但
+结论是错的、IPv6 有个开关但没人知道关掉会怎样。这一轮全部收敛成「一套」。
+
+### 1. 分组 23 → 12（`electron/core/rulesets.js`）
+
+- **PROVIDERS 15 个键**，键名就是规则仓库 `dist/rules/<键>.list` 的文件名契约；
+  只有 `china-ip` 是 `noResolve: true`（IP 集合，带域名去解析它没意义还费一次查询）。
+- **TABLE 12 组**，顺序即出站顺序：📲 电报消息 / 🎧 TikTok / 📲 社交媒体 / 📺 流媒体 /
+  🤖 AI / 🎮 游戏平台（以上 proxy）→ Ⓜ️ 微软 / 🍎 苹果服务 / 🎯 国内直连（direct）→
+  🌏 国外穿墙（proxy）→ 🍃 应用净化（`defaultOn: false`，block）→ 🛑 广告拦截（`defaultOn: true`，block）。
+- **取消的 5 个组刻意不做别名映射**（🐱 GitHub / 🌏 Google Play / 🌏 Google / Ⓜ️ 微软Bing /
+  Ⓜ️ 微软服务）。理由写在代码注释里：它们的语义已被「🌏 国外穿墙」吸收，硬映射等于把
+  「用户关掉 Google」翻译成「用户关掉整个穿墙」——那是**放大**用户意图，不是尊重它。
+  旧开关无处安放就让它消失，用户重拨一次（≈3 秒），比让某个开关偷偷管住一大片安全。
+- `SCHEMA_VERSION`（`rulesets.js`）与 `settings_schema`（`store.js`）**同时**升到 3：
+  迁移里 `from < rulesets.SCHEMA_VERSION` 才会把旧用户的 `routing_order` 归零，
+  两个数一旦只升一个，迁移就**静默不生效**（旧顺序里全是被删掉的组名，读起来像乱序）。
+  这也是 A-60 新增的 `test:config` 要盯的不变式。
+- 迁移**只动 `routing_order`**：`routing_rules`（用户拨的开关）与 `custom_rulesets`
+  （用户自己写的组）一个都不许碰，三条断言写在 `scripts/config-defaults-test.js`。
+
+### 2. 微软云盘直连不通：阿里 DoH 自己返回污染地址（`electron/core/builder.js`）
+
+- **根因实测**：`onedrive.live.com` 经阿里 DoH 解析得到 `128.242.240.155`（Yahoo 段）、
+  `skyapi.onedrive.live.com` 得到 `108.160.169.171` / `173.252.108.21`（Facebook 段）。
+  DNSPub、Cloudflare、Google 三家的答案都正确；Cloudflare 的 `1.1.1.1` DoH 在国内直连不上。
+- **修法**：新增 `nameserver-policy`，把微软系域名钉到可信解析器（`DOH_CLEAN_2` = doh.pub +
+  1.12.12.12；`DOH_CLEAN_3` 再多一个 8.8.8.8）；`geosite:microsoft` 走 `DOH_CLEAN_3`；
+  `default-nameserver` 用**明文 IP**（避免启动期解析解析器自己的域名）。
+  **阿里 DoH 已从所有名单删除，注释写明不要加回来**——这行注释比删掉的代码更重要。
+- 真内核验证：`Finished initial GeoSite rule microsoft => dns.nameserver-policy, records: 752`，
+  配置被内核接受（不是「写进去看着对」）。
+- 但这份日志的结论里还留了一条**更硬的**事实：直连 onedrive 不通有两层，DNS 那层之外
+  **SNI 也被重置**，所以「保留直连、只修 DNS」不是真解；这正是用户最终定「微软云盘默认直连、
+  但要走代理兜底」的原因。
+
+### 3. 端口占用者：认不出就不许动（`electron/net/portowner.js`）
+
+- 日志出现过 `close port owner: pid=16256 name= closed=false forced=true` ——
+  **探测不出是谁，却把它强杀了**。这是这一轮唯一一条「可能损坏用户环境」的问题。
+- 用户拍板：认不出是谁就不许动，宁可提示用户手动处理。决策函数 `closeDecision` 因此有
+  四条分支（无效 PID / 自己 / 认不出 / 认得出），**只有第四条会真的关**。
+- 认得出是谁靠三条退路：`tasklist /FI PID eq N /FO CSV /NH` → 允许列优先的正则 → 名称回退；
+  `taskkill` 的中英文回话（访问拒绝 / 找不到 / 只能强制终止）被翻成机器可读的原因。
+- `scripts/portowner-test.js` 用**自己生的 node 子进程**当靶子（不打别人的进程），
+  并断言「认不出时目标进程必须还活着」。
+
+### 4. IPv6 默认打开，以及「为什么关掉会断网」（`store.js` / `builder.js`）
+
+- 真机日志里 35 条 `dns resolve failed: ip version error`。**根因不是 DNS**：
+  mihomo 顶层 `ipv6: false` 时，**任何 IPv6 字面量目标**（域名解析出 v6 后也走这条）
+  都会被 dialer 拒绝。
+- **实测复现**（`design/windows/app` 的 builder + 随包真内核 `core/mihomo.exe`，
+  同一个请求发两遍，只差 ipv6）：
+
+  | 配置 | `ip version error` 条数 |
+  |---|---|
+  | `ipv6: false` | **1**（`[TCP] dial 🎯 国内直连 (match RuleSet/china-ip) … [2409:8c04:1006:3003::8]:80 error: dns resolve failed: ip version error`） |
+  | `ipv6: true` | **0** |
+
+  → 与用户日志逐字同型，确诊。修法：`DEFAULTS.ipv6 = true`；`builder.js` 只做顶层
+  `out.ipv6 = !!opts.ipv6`（mihomo 只认顶层这个键，写进 `dns:` 段没用）。
+- 设置页那条开关下补了一行说明（「关闭后 IPv6 站点会直接打不开」）——用户有权关它，
+  但得知道代价。`rowSwitch` 因此多了个可选的 `hint` 参数（不传就还是原来那行）。
+
+### 验证
+
+`npm run test:offline` 11 条全绿，其中新增两条：`test:dns`(10) 与 `test:config`(12)。
+`test:config` 是**真的跑一遍迁移**：把 `store.js` 的 `paths` / `logger` / `backup`
+三个依赖换成桩指向临时目录，再喂它一份旧版 `settings.json`。
+`test:dns` 里 `POISONED = ['alidns', '223.5.5.5', '223.6.6.6']` 是硬断言：谁把阿里 DoH 加回来就红。
+
+## A-61 规则与 geodata 统一成「一套 + 12 小时懒更新」（2026-10-14）
+
+### 用户的口径
+
+「不要什么永不联网这种，规则更新它不更新，那么用的全都是落后的啊」——1.11.4 之前是
+**两套**在跑：rule-provider 是纯本地死种子（永不联网），geodata 是 24 小时刷一次。
+两套的更新节奏、校验方式、失败处理各不相同，用户看到的却是「一个分流功能」。
+现在合成一套：**全部随同一个仓库走，全部同一条 12 小时节拍，本地种子只是首启的兜底。**
+
+### 仓库与产物（`ipevel/polaris-rules`）
+
+- 上游两条线：ACL4SSR 的分流规则 + MetaCubeX/meta-rules-dat 的 geodata，各自 15 分钟探测，
+  有变化才同步（没有变化就等下一次，不产生空提交）。
+- 产物：`dist/rules/<键>.list`（机读，纯文本行）+ `rules/<键>.txt`（人读）+ `geo/` 三份；
+  `latest.json` 里**每个文件自带 sha256 与字节数** —— 所以客户端**不需要** `SHA256SUMS.txt`，
+  被校验物与参照物来自同一份 JSON、同一次发布。
+- 15 个键：`ai apple banad banprogramad china-domain china-ip china-media games onedrive
+  proxy-gfwlist proxy-media social streaming telegram tiktok`。
+
+### 客户端（`electron/core/rulesync.js`）
+
+- **双源**：`cdn.jsdelivr.net/gh/ipevel/polaris-rules@main` → 失败退
+  `raw.githubusercontent.com/ipevel/polaris-rules/main`。`POLARIS_RULES_BASE` 可强制单源
+  （自测就是指向本地 HTTP 服务跑的），`POLARIS_RULES_NO_FALLBACK=1` 关掉回退。
+- **懒更新三步**：① `isFresh(dir)` —— 文件齐且 marker 未过期（12h）→ **一个请求都不发**；
+  ② 拉 `latest.json`，`version` 与本地 marker 相同 → **只更新时间戳，零下载**；
+  ③ 有变化才下文件，逐个核 sha256，**全部成功才写 marker**。
+- **失败一律 fail-closed**：校验不过就保留旧文件 + 记 WARN，**绝不写 marker**（下次再来）。
+  这一条不是洁癖：`cdn.jsdelivr.net` 的各个边缘缓存寿命彼此不同，实测出现过同一台机器上
+  「`latest.json` 是新的、字节还是旧的」（详见 `reports/polaris-1.11.4-log/`），
+  只要把参照物和被校验物都钉在同一份 JSON 上，这种错配就只会变成「这次不更新」。
+- **不新引依赖**：HTTP/HTTPS 全用 Node 内置模块；面板走代理的机器上，自己实现了
+  `CONNECT` 隧道兜底（项目里原本没有任何代理管线）。
+- 落盘位置：`data/polaris-rules/<键>.yaml`（`CACHE_DIR = 'polaris-rules'`），
+  与 Go 侧 `providerSubPath = "polaris-rules"` + `FileExt() = ".yaml"` 对齐 ——
+  **两端必须用同一个扩展名与子目录名**，否则 App 预播种的文件内核读不到。
+
+### 随包种子
+
+`resources/rules/acl_*.yaml` 10 份（288,861 B）→ **15 份 `<键>.yaml`（602,469 B）**。
+（最初落地时是 603,107 B；仓库 v4 在源头丢弃 URL-REGEX 后三份种子同步刷过，
+与 `polaris-rules` 的 `dist/rules/*.list` 逐字节一致。）
+种子只负责「第一次启动、还没联网」时内核有东西可用，启动后与下载物同路径、
+由 rulesync 原地覆盖。
+
+**行尾不用管**：本仓库 `core.autocrlf=true` 且没有 `.gitattributes` 钉住种子的行尾，
+所以同一个文件在不同机器上可能是 LF 也可能是 CRLF（新 checkout 会转 CRLF）。
+内核不在意 —— vendored mihomo 的文本 provider 是按 `\n` 切行后 `TrimSpace`
+（`rules/provider/provider.go` 的 `bytes.TrimSpace(line)` / `strings.TrimSpace(str)`），
+`\r` 被吃掉，空行与 `#` 注释也被跳过。所以别为「种子是不是 LF」再查一轮。
+
+### 验证
+
+`npm run test:rulesync` 42 项（见 A-63）：含「12h 内不发请求」「版本/SHA 相同不重复下载」「钉 commit SHA」
+「sha256 不符时旧文件与 marker 都必须原样」「双源回退」「marker 文件是 JSON 且带 version」。
+它用 `POLARIS_RULES_BASE` 指向本地起的一个 HTTP 服务，**真的走一遍 HTTP**，不是打桩。
+
+## A-62 随包 geodata 追平仓库 + 「规则只有一个源」门禁（2026-10-14）
+
+### 随包 geodata 落后两个多月（规划 §6.2）
+
+三份随包 geodata 的 git blob 停在 2026-08-09（`6fcafbf` 开源那次），文件时间戳停在 09-19。
+`ipevel/polaris-rules` 的 `geo/` 是活的（上游 MetaCubeX/meta-rules-dat，每天更新），
+且它的 `latest.json` 里每个文件自带 sha256/字节数 —— 仓库与清单自洽。
+
+| 文件 | 旧（随包） | 新（仓库 v4） |
+|---|---|---|
+| `geosite.dat` | 4,240,673 B `f353e4af…` | **4,290,986 B `30b8fe82…`** |
+| `geoip.metadb` | 8,677,748 B `8ad1b5ad…` | **8,414,245 B `e060b447…`** |
+| `ASN.mmdb` | 12,059,794 B `0f7e30ae…` | **8,969,559 B `d82d2f39…`** |
+
+**两端必须一起刷**：`scripts/fetch-geo.py` 的默认路径是 `local_copy()` —— 从本仓库的安卓
+assets（`app/src/main/assets/`）拷到 `resources/geo/`，拷不动才去下载，目标已相同就 `skip`。
+所以只刷 Windows 一侧，下一次 `npm run geo` / 打包会把安卓那份旧的再拷回来。
+本次两侧同刷，实测**三方逐字节一致**（仓库 = 安卓 assets = Windows `resources/geo`）。
+
+随包 geodata 只负责「第一次启动、还没联网」那一段；启动后由 `rulesync` 从同一个仓库
+每 12 小时刷新（见 A-61）。
+
+### 摘掉第二条源：`geosync.js` 不再被 require
+
+`manager.js` 里 `const geosync = require('./geosync')` 是死引用（全文件没有任何调用点）。
+`geosync.js` 指向第三方 `appshubcc/bett-rules@release` —— 就是「新 sum 配旧字节」那次
+故障的来源（见 `reports/polaris-1.11.4-log/`），现在运行期只剩 `rulesync` 一条路。
+模块**文件保留**：`fetch-geo.py` 还要用它的清单定义；但谁都不再 require 它。
+
+### 新增 `scripts/single-source-test.js`（8 项，离线）
+
+钉死「只有一套」：运行期代码（`electron/`、`src/js/`，排除 `geosync.js` 自身）
+**剥掉整行注释后**不得出现 `bett-rules` / `appshubcc` / `GeoLite2-ASN`；
+`rulesync.js` 与 `rulesets.js` 必须指向 `ipevel/polaris-rules`；
+不得有任何运行期模块 require geosync；`resources/rules/` 恰好是 `PROVIDERS` 的 15 个
+`<键>.yaml` 且无 `acl_*.yaml` 残留；geodata 三份在位且非空。
+
+注释行要剥掉是有原因的：`rulesync.js` / `rulesets.js` 的文档里**故意**写着「旧方案从
+bett-rules 拉」来说明改动原因，那是解释不是引用。已做阴性对照：把 `geosync.js` 纳入
+扫描命中 2 行、往 `manager.js` 注入一行假 URL 命中 1 行、只加注释行不误报 —— 确认这道
+门禁真的会红，不是永远绿。
+
+`package.json` / `ci-windows.yml`：`test:offline` **11 条 → 12 条**。
+
+## A-63 规则同步钉 commit SHA：把「新 sum 配旧字节」从构造上根除（2026-10-14）
+
+### 为什么非钉不可
+
+2026-10-13 那次故障的机理是 **jsDelivr 各边缘缓存的条目寿命不同**：同一个 `@main` 下，
+清单与二进制可能来自不同代 —— 设备拿到「清单是新的、字节是旧的」，校验不过就永不更新。
+`?t=` 随机 query、`Cache-Control: no-cache`、`no-store` 全部实测无效（query 不进缓存键，
+客户端头对边缘缓存无效）。
+
+**URL 里带 commit sha 的内容是不可变的**，这正是 jsDelivr `@<sha>` 的语义。
+`electron/core/rulesync.js` 每轮先解析一次 main 的 commit sha，把清单与所有文件的 URL
+都换成 `@<sha>`；marker 记下 sha，下一轮比 sha（比 version 更强）。
+
+### 2026-10-14 04:00 的真网实测（`@main` 当时正被陈旧边缘命中）
+
+| 源 | latest.json | VERSION | 清单 ↔ 该源自己的文件 |
+|---|---|---|---|
+| `cdn.jsdelivr.net/gh/ipevel/polaris-rules@main` | 10224 B，`Age: 15059`（4.2 小时前） | **2**（34 文件） | `streaming.list` **✗ 不符**：声明 `d00842a5…`，实测 `414dfbd1…` |
+| `…@b3729fce`（钉住） | 10862 B，无 `Age`（回源） | **4**（36 文件） | 三份全 ✓ |
+| `raw.githubusercontent.com/…/main`（第二源） | 10862 B | 4 | 三份全 ✓ |
+
+即：**未钉时此刻真有一份文件校验不过** —— 这就是用户设备上「规则一直不更新」的活样本；
+钉住后清单与文件必然同代。同一次实测 `api.github.com` 543 ms 可达。
+
+### 拿不到 SHA 怎么办（国内直连可能被墙）
+
+**不阻断更新**：commit / branch 两个 API 都失败时记一条 WARN（写明两个端点各自的失败原因），
+退回未钉的 `@main`，行为与 A-61 完全一致（marker 的 `sha` 记 `null`，下一轮再试钉）。
+`POLARIS_RULES_BASE` 强制单源时**跳过**钉 SHA（自测与内网镜像用）。
+
+### 失败退避：别每 12 小时都全套重试
+
+失败（清单取不到 / 建目录失败）时写 `rules_last_try`；`BACKOFF_MS` 窗口内直接跳过
+（`reason: 'backoff'`）且**一个请求都不发**，窗口过去才重试，成功即清掉该标记。
+
+### 自测 30 → 42 项
+
+新增 12 项覆盖：钉住的 URL 形态（`@<sha>` 与 `/<sha>`）、manifest 与文件都从钉住前缀取、
+marker 记 sha、拿不到 SHA 的兜底与日志、SHA 未变时一份文件都不下（只看 sha 不看 version）、
+退避窗口内零请求 / 窗口过后重试并清标记、`bases()` 两种形态。fixture 是本地 HTTP 真跑；
+`endpoints` 是**测试注入口**（`cdnBase` 特意带一段路径，否则 `host:port@<sha>` 会被
+URL 解析成 userinfo，测的就不是真实形态）。
+
+## A-64 微软云盘「默认直连」的第二层障碍：不是 DNS，是 TLS 被重置（2026-10-14）
+
+§5.1 只修了 DNS（阿里 DoH 返回污染地址，已从配置里删掉）。修完之后真网实测发现
+**直连仍然不通，而且原因不是 DNS** —— 用 doh.pub 拿到真实 IP、带正确 SNI 直连，
+握手阶段就被 `ECONNRESET`。逐主机实测（`doh.pub` 取 A 记录 → `tls.connect` 带 SNI）：
+
+| 主机 | 直连 | 说明 |
+|---|---|---|
+| `onedrive.live.com` | ✗ `ECONNRESET`（13.107.139.11 / 13.107.137.11 都） | 云盘 API |
+| `skyapi.onedrive.live.com` | ✗ `ECONNRESET` | 云盘 API |
+| `api.onedrive.com` | ✗ `ECONNRESET`（与上面同一段 150.171.22.11） | 云盘 API |
+| `docs.live.net` | ✓ 握手完成 | **真正传文件字节的内容主机** |
+| `my.microsoftpersonalcontent.com` | ✓ | **内容主机** |
+| `storage.live.com` | ✓ | 内容主机 |
+| `login.live.com` / `graph.microsoft.com` / `sharepoint.com` / `onedrive.com` | ✓ | 登录 / Graph / 站点 |
+
+即：**被重置的只有 API 主机，传字节的内容主机是通的**。所以「Ⓜ️ 微软」组保持
+`defaultOut: 'direct'`（用户要的省流量，且内容主机确实能直连），但云盘 API 走直连会失败 ——
+在该组那一行加一条 `note` 告诉用户「打不开就切到节点选择」，`note` 由 `manager.js` 的
+`rulesetState()` 透传到分流规则页。
+
+**后续可选（需要用户拍板，本版没做）**：把三个 API 主机单独走代理、其余直连 ——
+即「API 走代理 + 内容直连」，兼顾可用与省流量。它要改规则表的**顺序语义**
+（组内 `RULE-SET` 在 inline 规则之前，见 `builder.js:131-137`，所以这三条得排在
+onedrive 的 RULE-SET 之前），并且必须同时改 Go 表与安卓 Kotlin 表才能过跨语言门禁。
+
+### A-65 分流规则页也上离线自测：把「用户看得见的字」钉住（2026-10-14）
+
+**为什么加**：这一版改分流页文案时，把「规则库每 **24** 小时自动更新」漏成了 12 小时之后的漏网之鱼 ——
+A-61 把节拍从 24h 改成 12h，页头那行字没人改，靠人眼才翻出来。用户看得见的文案没有任何门禁覆盖，
+改一次就可能回退一次。于是新增 `scripts/routing-view-test.js`。
+
+**做法（不开窗口、不装 Electron）**：照 `scripts/traffic-view-test.js` 的套路，用 `vm.createContext`
+把 `src/js/format.js` + `src/js/views.js` 跑在同一个假 `window` 上，取 `window.PolarisViews.routing`，
+塞一份**合成 state**（`{rulesets:{on,total,groups,custom}}`）进去，直接断言它渲染出来的 HTML。
+分流页是纯函数（state 进、HTML 出），所以这条路不需要面板、不需要网络，秒级跑完。
+
+**17 项断言**：
+- 页头写「12 小时」且**全页不得出现「24 小时」**（防的正是上面那次漏改）；
+- 已启用计数按 `enabled` 统计（`已启用 2/3`）；
+- 行数 = 内置组数 + 自定义组数，开关数与行数一致；
+- `note` 渲染在带 note 的那一行里、**全页只出现一次**，且带 note 的行有两段小字、没 note 的行只有一段
+  （第二行说明与 note 共用同一个内联样式，数出现次数即可分辨）；
+- 出口徽标：`proxy` → 显示当前节点、`direct` → `直连`、`block` → `拦截`（精确匹配
+  `class="badge…">直连</span>` —— 宽松匹配会被同一行 note 文字里的「直连」二字蒙混过关）；
+- 组按数组顺序渲染（顺序 = 匹配优先级）；
+- 自定义组带编辑入口与「N 条自定义规则」；拖动抓手数 = 行数；
+- 关闭本地分流时给出「面板自带的分流规则正在生效」提示，且**内置组仍可配置**（开关照样画）；
+- 没有内置规则集时给出「缺少 resources/rules 规则集」空状态。
+
+**接线**：`package.json` 加 `test:routing-view`，`test:offline` 由 12 条变 **13 条**；
+`.github/workflows/ci-windows.yml` 的步骤名同步改成 13 条。README 的三处计数（用法注释、
+发版前自检清单、覆盖表）一并改到 13。
+
+> 教训：**能被用户看见的字符串，就该有一条断言盯着它**。视图自测不是只有流量页配得上。
 
 ## 四、验证体系怎么用
 

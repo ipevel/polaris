@@ -53,13 +53,67 @@
       `<div class="v ${opts.vcls || ""}"><span>${v}</span>${chev}</div></div>`;
   }
 
-  function rowSwitch(label, key, on, icon) {
+  /**
+   * 开关行。hint 是可选的第二行说明（默认没有，保持其它开关的原样）。
+   * 说明放在 row **内部**并让它换行，这样分隔线仍在整行下方 —— 放到 row 外面
+   * 会出现「先一条线、再一行小字」的割裂感。
+   */
+  function rowSwitch(label, key, on, icon, hint) {
     const ic = icon ? `<span class="mini-icon" style="background:${icon[1]}">${icon[0]}</span>` : "";
-    return `<div class="row"><div class="k">${ic}<span>${h(label)}</span></div>` +
-      `<div class="switch${on ? " on" : ""}" data-setting="${key}"></div></div>`;
+    const hh = hint
+      ? `<div style="flex-basis:100%;font-size:12px;color:var(--text3);margin-top:6px;line-height:1.5">${h(hint)}</div>`
+      : "";
+    return `<div class="row"${hint ? ' style="flex-wrap:wrap"' : ""}>` +
+      `<div class="k">${ic}<span>${h(label)}</span></div>` +
+      `<div class="switch${on ? " on" : ""}" data-setting="${key}"></div>${hh}</div>`;
   }
 
   function badge(text, cls) { return `<span class="badge ${cls}">${h(text)}</span>`; }
+
+  /**
+   * 节点行的国旗 —— 与安卓端 FlagPlaceholder 同一批图（257 个 SVG）。
+   *
+   * 图是随包资源（`src/assets/flags/<小写码>.svg`），相对路径解析，
+   * `img-src 'self'` 里的 self 就是 file://，本地相对路径属于 self。
+   *
+   * 真正的取值与白名单在 `js/flags.js`（为什么不能在视图层拼 src，那里写了原因：
+   * CSP 是 `script-src 'self'`，**行内 onerror 会被拒**，所以只能先判断再拼）。
+   * 码不认识时这里返回空串，调用方退回原来的文字徽标 —— 宁可少一面旗，不给裂图。
+   */
+  function flagImg(code) {
+    return window.PolarisFlags ? window.PolarisFlags.flagImg(code) : "";
+  }
+
+  /**
+   * 只有地区**文本**时的兜底取码。
+   *
+   * 主进程 `nodeRecord()` 其实已经给了 `region_code`，正常路径用不到这里。
+   * 但它有两个现实理由：
+   * 1. 早前版本的 `state.nodes` 快照里可能只有 `region`，升级途中会短暂命中；
+   * 2. `state.node` 是内核回读的**节点名**，节点页顶部那条「当前节点」没有 code 字段，
+   *    这里由文本反查就能一并显示旗子。
+   *
+   * 只覆盖 `region.js` 的 FLAG_LABEL 里真实存在的中文名；查不到就返回空串
+   * （`flagImg` 会对空串返回空，最终就是没有旗子 —— 不会裂图）。
+   * `SW`/`UK` 已由主进程归一成 `CH`/`GB`，这里不必再列。
+   */
+  const LABEL_CODE = {
+    "香港": "HK", "台湾": "TW", "澳门": "MO", "日本": "JP", "韩国": "KR", "新加坡": "SG",
+    "美国": "US", "英国": "GB", "德国": "DE", "法国": "FR", "荷兰": "NL", "加拿大": "CA",
+    "澳大利亚": "AU", "俄罗斯": "RU", "土耳其": "TR", "印度": "IN", "印度尼西亚": "ID",
+    "马来西亚": "MY", "泰国": "TH", "越南": "VN", "菲律宾": "PH", "巴西": "BR", "阿根廷": "AR",
+    "意大利": "IT", "西班牙": "ES", "葡萄牙": "PT", "瑞典": "SE", "挪威": "NO", "芬兰": "FI",
+    "丹麦": "DK", "瑞士": "CH", "奥地利": "AT", "比利时": "BE", "爱尔兰": "IE", "波兰": "PL",
+    "捷克": "CZ", "乌克兰": "UA", "阿联酋": "AE", "沙特": "SA", "以色列": "IL", "南非": "ZA",
+    "新西兰": "NZ", "墨西哥": "MX", "智利": "CL", "哥伦比亚": "CO", "中国": "CN",
+  };
+
+  /** 取地区码：优先用主进程给的 `region_code`，没有才由文本反查。 */
+  function codeOf(rec) {
+    if (!rec) return "";
+    if (rec.region_code) return rec.region_code;
+    return LABEL_CODE[rec.region || ""] || "";
+  }
 
   function latBadge(ms, offline) {
     if (offline) return badge("离线", "b-red");
@@ -174,7 +228,7 @@
         return `<div class="node-row" ${attr}><span class="nm">${h(label)}</span>${badge("策略组", "b-blue")}${badge("自动", "b-gray")}${radio}</div>`;
       }
       const n = s.nodes.find((x) => x.name === name) || { name, region: "", latency: -1, offline: false };
-      return `<div class="node-row" ${attr}><span class="nm">${h(n.name)}</span>${badge(n.region, "b-blue")}${latBadge(n.latency, n.offline)}${radio}</div>`;
+      return `<div class="node-row" ${attr}>${flagImg(codeOf(n))}<span class="nm">${h(n.name)}</span>${badge(n.region, "b-blue")}${latBadge(n.latency, n.offline)}${radio}</div>`;
     };
 
     // 组内成员：与安卓端 visibleGroupMembers 一致 —— 去掉「故障转移」这个入口
@@ -365,12 +419,15 @@
     const sub = g.custom
       ? `${g.inline} 条自定义规则${g.live ? "" : " · 未生效"}`
       : `${g.count} 个规则集${g.inline ? ` · ${g.inline} 条内联` : ""}${g.live ? "" : " · 未生效"}`;
+    const note = g.note
+      ? `<span style="font-size:11px;color:var(--text3);margin-top:2px">${h(g.note)}</span>`
+      : "";
     const grip = o.drag
       ? `<span class="ruleset-grip" data-ruleset-grip="${h(g.name)}" title="按住拖动，调整匹配顺序">⠿</span>`
       : "";
     return `<div class="row ruleset-row" data-ruleset-pick="${h(g.name)}" data-ruleset-row="${h(g.name)}">
       <div class="k"><span style="display:flex;flex-direction:column"><span>${h(g.name)}</span>
-      <span style="font-size:11px;color:var(--text3);margin-top:2px">${h(sub)}</span></span></div>
+      <span style="font-size:11px;color:var(--text3);margin-top:2px">${h(sub)}</span>${note}</span></div>
       <div class="v" style="display:flex;align-items:center;gap:8px">${badge(cur, g.out === "direct" ? "b-gray" : g.out === "block" ? "b-red" : "b-blue")}
       ${grip}
       ${o.edit ? `<span class="ruleset-mv" data-ruleset-edit="${h(g.name)}" title="编辑规则">✎</span>` : ""}
@@ -405,7 +462,7 @@
       `<div class="row"><div class="k"><span>新建分流组</span></div>` +
       `<div class="v"><button class="btn btn-outline btn-sm" id="btn-custom-new">新建</button></div></div>` +
       `</div>` +
-      `<div class="section-label">内置分流 · 规则库每 24 小时自动更新 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
+      `<div class="section-label">内置分流 · 规则库每 12 小时自动更新 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
       `<div class="card">` +
       (builtin.length
         ? builtin.map((g) => rulesetRow(g, { drag: true })).join("") +
@@ -438,7 +495,7 @@
         s.tunStatus.exists ? `${h(s.tunStatus.state)} · ${h(s.tunStatus.description || "")}` : "未创建",
         { chev: s.tunStatus.exists && s.tunStatus.state !== "Up", click: s.tunStatus.exists && s.tunStatus.state !== "Up" ? "cleanup-tun" : undefined, vcls: "" }) : ""}
       ${rowSwitch("允许局域网连接", "allow_lan", s.settings.allow_lan)}
-      ${rowSwitch("IPv6", "ipv6", s.settings.ipv6)}
+      ${rowSwitch("IPv6", "ipv6", s.settings.ipv6, null, "关闭后 IPv6 站点会直接打不开（直连域名解析到 IPv6 时整条失败），部分移动/教育网络尤其明显。默认保持打开。")}
     </div>
     <div class="section-label">启动与更新</div><div class="card">
       ${rowSwitch("开机自启动", "autostart", s.settings.autostart)}
@@ -786,6 +843,14 @@
       <h2>${h(c.title)}</h2><div class="dsub">${h(c.body)}</div>
       <button class="btn btn-danger" id="btn-confirm-yes" style="width:100%;height:46px;margin-bottom:10px">${h(c.yes || "确定")}</button>
       <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent" data-overlay-close>取消</button>
+    </div></div>`,
+
+    /* 纯告知：只有一个"知道了"，没有红色危险按钮 —— 给「我们不替你动手」这种场景用
+       （端口被占但认不出是谁：不提供关掉它的入口，免得用户以为点了就会关）。 */
+    notice: (c) => `<div class="overlay" data-overlay><div class="dialog">
+      <h2>${h(c.title)}</h2><div class="dsub">${h(c.body)}</div>
+      ${c.hint ? `<div class="dsub" style="font-size:12px">${h(c.hint)}</div>` : ""}
+      <button class="btn btn-primary" style="width:100%;height:46px;margin-top:6px" data-overlay-close>${h(c.yes || "知道了")}</button>
     </div></div>`,
 
     about: (i) => `<div class="overlay" data-overlay><div class="dialog">

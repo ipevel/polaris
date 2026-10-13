@@ -23,7 +23,9 @@ const builder = require('./builder');
 const rulesets = require('./rulesets');
 const region = require('./region');
 const traffic = require('./traffic');
-const geosync = require('./geosync');
+// geosync.js（旧的第三方 geodata 源）**故意不再 require**：规则与 geodata 现在只有
+// rulesync 一条路、`ipevel/polaris-rules` 一个源。那个模块留着只为 fetch-geo.py 的清单定义。
+const rulesync = require('./rulesync');
 const fmt = require('../util/format');
 
 const MAIN_GROUP = builder.DIRECT_GROUP;      // 🚀 节点选择（节点页那张主卡）
@@ -135,14 +137,13 @@ function prepareConfig(opts = {}) {
 }
 
 /**
- * 内置分流规则种子：**每次启动都覆盖**。
+ * 内置分流规则兜底：**缺什么补什么，已有的不动**。
  *
- * rule-provider 现在是 type:file（rulesets.providerConfig），path 指向本目录
- * （rulesets.CACHE_DIR），内核只读这个文件、没有任何"下载新版本写回这里"的逻辑。
- * 覆盖写是安全的，而且必须覆盖：内核只读这个文件、没有任何"下载新版本写回这里"的
- * 逻辑（早先的"只补缺失"理由已经不成立）。随包修正过的清单（例如删掉 mihomo 不认识的
- * URL-REGEX 行）只有覆盖才能立刻生效，否则旧版本残留的用户要重装才能拿到修正。
- * 只有大小不同才计入 copied，日志里能看出这次启动到底改了几个文件。
+ * 2026-10-13 改法（P1）。以前这里是「每次启动都无条件覆盖」，理由是"内核只读不写，
+ * 覆盖才能让随包修正过的清单立刻生效"。规则改成**运行期从 ipevel/polaris-rules 同步**
+ * 之后那条理由反了过来：无条件覆盖会把刚同步下来的新版打回随包那份旧的。
+ * 现在随包那份退化成首次安装 / 断网时的兜底，真正的更新与版本推进归
+ * `refreshRules()`（electron/core/rulesync.js）。
  *
  * 必须落在 data/ 内：mihomo 只允许读取 -d 目录（或 SAFE_PATHS）下的规则集文件，
  * 直接引用安装目录会被 IsSafePath 拒掉（path is not subpath of home directory）。
@@ -158,7 +159,7 @@ function ensureRuleSeeds() {
     try { fs.rmSync(legacy, { recursive: true, force: true }); log.info('已清理旧规则集目录 data/rules'); } catch (_) {}
   }
   if (!fs.existsSync(src)) {
-    log.warn('内置分流规则目录不存在，分流规则将不可用:', src);
+    log.warn('内置分流规则目录不存在，首次启动需要联网同步规则:', src);
     return false;
   }
   try { fs.mkdirSync(dst, { recursive: true }); } catch (e) {
@@ -170,22 +171,20 @@ function ensureRuleSeeds() {
     const name = rulesets.seedFile(f);
     const from = path.join(src, name);
     const to = path.join(dst, name);
+    // 已有的不动：那可能是上次同步下来的新版，覆盖等于把更新打回去
+    if (fs.existsSync(to) && fs.statSync(to).size > 0) continue;
     if (!fs.existsSync(from)) {
-      log.warn(`规则集种子缺失: ${name}`);
+      log.warn(`规则集种子缺失（等联网同步）: ${name}`);
       continue;
     }
     try {
-      // 每次启动都覆盖。早先这里是「只补缺失」，理由是怕打回内核按 interval 下载的新版；
-      // 规则全面本地化（type:file）之后内核只读不写，这条顾虑已经不存在了。
-      // 覆盖写才能让随包修正过的清单立刻生效，旧版本残留的用户不必重装。
-      // 10 个清单合计约 300 KB，每次启动多一次 IO 可以忽略。
-      if (!fs.existsSync(to) || fs.statSync(to).size !== fs.statSync(from).size) copied += 1;
       fs.copyFileSync(from, to);
+      copied += 1;
     } catch (e) {
       log.warn(`拷贝规则集 ${name} 失败:`, e && e.message);
     }
   }
-  if (copied) log.info(`内置分流规则种子已更新（${copied} 个文件）`);
+  if (copied) log.info(`内置分流规则兜底已铺好（${copied} 个文件，其余沿用本地）`);
   return true;
 }
 
@@ -195,10 +194,6 @@ function ensureRuleSeeds() {
  * 实测要 19 秒，而且没网就直接失败。
  */
 function ensureGeodata() {
-  // 顺便按 24 小时周期刷新本地规则库。刷新只写 resources/geo/（源），
-  // 由下一次 ensureGeodata() 拷进 data/ —— 内核可能正开着 data/ 里的文件，
-  // Windows 上直接替换会 EBUSY。绝不 await，不能拖慢起内核。
-  refreshGeo();
   const src = paths.geo();
   if (!fs.existsSync(src)) {
     log.warn('规则库目录不存在，首次连接可能需要联网下载:', src);
@@ -210,31 +205,119 @@ function ensureGeodata() {
     if (!fs.existsSync(from)) continue;
     const to = path.join(paths.data(), f);
     try {
-      if (fs.existsSync(to) && fs.statSync(to).size === fs.statSync(from).size) continue;
+      // 默认路径一律 **只在缺失时补**：已有那份可能是 refreshRules() 刚从上游同步下来的
+      // 新版，按大小差异覆盖会把它打回随包那份旧的（这正是 P1 要修的事）。
+      // 想强制回到随包版本，用「设置 → 恢复随包规则」那条显式路径。
+      if (fs.existsSync(to) && fs.statSync(to).size > 0) continue;
       fs.copyFileSync(from, to);
       copied += 1;
     } catch (e) {
       log.warn(`拷贝规则库 ${f} 失败:`, e && e.message);
     }
   }
-  if (copied) log.info(`规则库已就位（${copied} 个文件）`);
+  if (copied) log.info(`规则库兜底已铺好（${copied} 个文件，其余沿用本地）`);
   return true;
 }
 
 /**
- * 按 24 小时周期刷新本地规则库（用户 2026-10-12 要求：规则内置本地，
- * 但本地这份要跟上上游）。
+ * 分流规则 + 地理库统一刷新（用户 2026-10-12 要求「规则内置本地，但本地这份要跟上上游」，
+ * 2026-10-13 收紧为「所有规则全部随仓库更新，不再把规则写死」）。
  *
- * 三份 geodata 随包内置，内核只读本地 —— 所以「不联网也能分流」不受影响；
- * 这里只是隔一天拉一次。失败只记日志：旧规则照样能用，坏规则才会让内核起不来。
+ * 来源只有一处：我们自己的 `ipevel/polaris-rules`（每 15 分钟跟上游 ACL4SSR + MetaCubeX）。
+ * 规则清单进 `data/polaris-rules/`（rule-provider 的 path 前缀），
+ * geo 三份进 `data/`（内核 `-d` 目录，`geodata-loader: standard` 就近读）。
+ * 两份都随包内置，所以「不联网也能分流」不受影响；这里只是每 12 小时对一次上游。
  *
- * @returns {Promise<string[]>} 本次真正更新的文件名
+ * 拿到新规则之后必须让内核重新读：rule-provider 是 `type:file`，文件换了内容内核
+ * 不会自己感知（它只在启动/重载时读一次），所以**整个内核重启**——比 PUT /configs
+ * 更彻底，能保证 12 组规则全部按新文件重建。
+ *
+ * 三条纪律：**不 await**（不能拖慢起内核）、**单飞**（并发踩踏是 geosync 那次真机事故）、
+ * **失败只记日志**（离线照常启动，旧规则继续用）。
+ *
+ * @returns {Promise<{updated:string[], version:number|null}>}
  */
-function refreshGeo() {
-  return geosync.refresh(paths.geo(), log).catch((e) => {
-    log.warn('geo 刷新失败（不影响启动）：', e && e.message);
-    return [];
-  });
+function refreshRules() {
+  if (rulesInflight) return rulesInflight;
+  const dir = paths.polarisRules();
+  const geoDir = paths.data();
+  const p = doRefreshRules(dir, geoDir)
+    .catch((e) => {
+      log.warn('规则刷新失败（不影响启动）：', e && e.message);
+      return { updated: [], version: null };
+    })
+    .finally(() => { rulesInflight = null; });
+  rulesInflight = p;
+  return p;
+}
+
+async function doRefreshRules(dir, geoDir) {
+  // ① 本地没过期 → 一个请求都不发
+  if (rulesync.isFresh(dir, { geoDir })) {
+    log.info('规则未过期（12 小时内已同步），跳过');
+    return { updated: [], version: rulesync.readMarker(dir).version };
+  }
+
+  // ② 先只问版本（一次很小的请求），避免"没更新也停内核"
+  let latest;
+  try {
+    latest = await rulesync.checkLatest({});
+  } catch (e) {
+    log.warn('规则探测失败（不影响启动）：', e && e.message);
+    return { updated: [], version: null };
+  }
+
+  // ③ 版本没变，只是到点了 → 推 marker 时间戳，零下载
+  const marker = rulesync.readMarker(dir);
+  if (marker && Number(marker.version) === latest.version) {
+    rulesync.touchMarker(dir, latest.version);
+    log.info(`规则已是最新（v${latest.version}），仅推进同步时间`);
+    return { updated: [], version: latest.version };
+  }
+
+  // ④ 有新版本：**先停内核再换文件**。
+  //    规则清单与 geo 都被运行中的内核抓着（geoip.metadb 是 mmap 的），Windows 上
+  //    覆盖一个被占用的文件会 EBUSY —— 这正是老实现宁可写进安装目录、等下个启动
+  //    才拷贝的原因。停一次内核比"写到别处等下次"简单得多，也确实能立刻生效。
+  const wasConnected = S.phase === 'connected';
+  if (wasConnected) {
+    log.info(`规则有新版本（v${latest.version}），先停内核再更新`);
+    await stopKernel();
+  }
+  let r;
+  try {
+    r = await rulesync.refresh(dir, { providerKeys: rulesets.allProviderKeys(), geoDir, log });
+  } finally {
+    if (wasConnected) await restartForRules();
+  }
+  return { updated: (r && r.updated) || [], version: (r && r.version) || null };
+}
+
+/**
+ * 规则换新之后的收尾：把内核拉回用户断开前的状态。
+ *
+ * 走到这里说明是我们自己为了换文件停的内核，所以必须重启回在线状态；
+ * 用户本来就是断开的（`phase === 'idle'`）则什么都不做 —— 下次连接自然会读到新文件。
+ */
+async function restartForRules() {
+  try {
+    await startKernel();
+    log.info('内核已重启，新规则已生效');
+    return { restarted: true };
+  } catch (e) {
+    log.warn('重启内核加载新规则失败（旧规则仍可用）：', e && e.message);
+    return { restarted: false, error: (e && e.message) || String(e) };
+  }
+}
+
+let rulesInflight = null;
+
+/** 12 小时节拍：启动时一次 + 运行期每 12 小时一次。重复调用只会重置计时器。 */
+let rulesTimer = null;
+function scheduleRules() {
+  if (rulesTimer) clearInterval(rulesTimer);
+  rulesTimer = setInterval(() => { refreshRules(); }, rulesync.INTERVAL_MS);
+  if (rulesTimer.unref) rulesTimer.unref();
 }
 
 /* ------------------------------------------------------------------ */
@@ -834,7 +917,8 @@ async function resetRoutingGroups() {
 /**
  * 分流页需要的全部数据：总开关 + 内置表的每一组 + 当前开关 + 运行中内核里的实际出口。
  * 规则集全部是 type:file 的本地种子（见 ensureRuleSeeds），内核不再联网拉规则；
- * 每 24 小时联网刷新的只有 geosite.dat / geoip.metadb（geosync.js）。
+ * 清单与 geodata（geosite.dat / geoip.metadb / ASN.mmdb）由 rulesync.js 每 12 小时
+ * 从 `ipevel/polaris-rules` 一个源一起刷新，逐文件校验 sha256 后再替换。
  */
 async function rulesetState() {
   const enabled = new Set(rulesets.normalizeEnabled(store.get('routing_rules')));
@@ -852,6 +936,7 @@ async function rulesetState() {
       count: rulesets.providerKeys(g).length,
       inline: (g.inlineRules || []).length,
       default_on: !!g.defaultOn,
+      note: g.note || '',
       now: p && p.now ? p.now : '',
       live: !!p,
     };
@@ -1083,7 +1168,7 @@ module.exports = {
   rulesetState, setRuleset, resetRulesets, reloadConfig, setLocalRouting,
   reorderRuleset, saveCustomRuleset, deleteCustomRuleset,
   requireCore, setDirectDomains, mixedPort: () => S.mixedPort,
-  wantedMixedPort, assertPortFree, refreshGeo,
+  wantedMixedPort, assertPortFree, refreshRules, scheduleRules,
   MAIN_GROUP, STRUCTURAL_GROUPS,
   S,
 };

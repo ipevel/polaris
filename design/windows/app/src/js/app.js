@@ -649,6 +649,10 @@
    * 端口被别的程序占用（用户第 10 条）。
    * 先把「谁占着」摆出来（进程名 + PID），用户点了确认才请它退出；
    * 关掉之后顺手替用户重连一次，省得再点一下电源。
+   *
+   * 2026-10-14（用户拍板）：**认不出占用者是谁就不许动它**。
+   * 真机日志里出现过 name= 空、forced=true 的强杀记录 —— 宁可让用户手动处理，
+   * 也不能把他机器上某个认不出来的进程杀掉。所以下面分两条路走。
    */
   async function handlePortConflict() {
     // 端口可能是在别处改的（设置弹窗 / 主进程兜底），先问一次最新值再查占用者，
@@ -663,6 +667,15 @@
       return;
     }
     render();
+    // identified === false：拿不到进程名，只有 PID。这条路**不给**"关掉它"的按钮。
+    if (owner.identified === false) {
+      openDialog("notice", {
+        title: "本机代理端口被占用",
+        body: `${port} 端口被 PID ${owner.pid} 占用，但认不出它是哪个程序。`,
+        hint: `可能权限不足或该进程受系统保护。为了不误杀重要进程，Polaris 不会去关它 —— 请手动退出占用该端口的软件，或在「设置 → 本机代理端口」换一个端口。`,
+      });
+      return;
+    }
     openDialog("confirm", {
       title: "本机代理端口被占用",
       body: `${port} 端口正被「${owner.name}」(PID ${owner.pid}) 占用，所以内核起不来。要关掉它并重连吗？`,
@@ -670,7 +683,15 @@
       onYes: async () => {
         const r = await guard("关闭占用端口的程序", () => api.closePortOwner(owner.pid));
         if (!r || !r.closed) {
-          toast(`没能关掉 ${owner.name}（可能需要管理员权限），请手动退出它或换个端口`);
+          const why = {
+            "access-denied": "（系统拒绝访问，需要管理员权限）",
+            "unidentified": "（认不出是哪个程序，已放弃，不会强杀）",
+            "invalid": "（无效的进程号）",
+            "self": "（那就是 Polaris 自己）",
+            "not-found": "（进程已经不在了，但端口还占着）",
+            "still-running": "（它没响应强制结束）",
+          }[r && r.reason] || "（可能需要管理员权限）";
+          toast(`没能关掉 ${owner.name}${why}，请手动退出它或换个端口`);
           return;
         }
         toast(r.forced ? `${r.name} 没响应，已强制结束` : `已关闭 ${r.name}`);

@@ -142,10 +142,15 @@ eq('provider 键集合', goKeys, jsKeys);
 goKeys.forEach((k) => {
   const g = providers[k];
   const j = rulesets.PROVIDERS[k];
+  if (!j) { fails.push(`provider「${k}」Go 表有而 JS 表没有`); return; }
   eq(`provider[${k}] url`, g.url, j.url);
   eq(`provider[${k}] behavior`, g.behavior, j.behavior);
   eq(`provider[${k}] format`, g.format, j.format);
   eq(`provider[${k}] noResolve`, g.noResolve, !!j.noResolve);
+});
+/* 反向：JS 的 provider 键也不能多（多出来的键内核那边没有对应文件契约） */
+jsKeys.forEach((k) => {
+  if (!providers[k]) fails.push(`provider「${k}」JS 表有而 Go 表没有`);
 });
 
 /* ---------- ③ 两端生成的 rule-provider 配置都必须是 type:file ---------- */
@@ -165,6 +170,11 @@ console.log(`[routing-sync] JS 表 ${rulesets.TABLE.length} 组 / ${jsKeys.lengt
 if (fails.length) {
   console.error('\n[routing-sync] FAIL — 两端分流表不一致：');
   fails.forEach((f) => console.error('  · ' + f));
+  if (goTable.length !== rulesets.TABLE.length || goKeys.length !== jsKeys.length) {
+    console.error('\n提示：本门禁比的是「本分支的 JS 表」与「Go 表」（CI 里取 main，本地默认取当前 worktree）。');
+    console.error('      刚改过分组或 providers 时常见情形是：Go 侧也改了，但还没同步进 main。');
+    console.error('      要比对本地那份 Go 改动：POLARIS_GO_TABLE=<routing_table.go 的绝对路径> npm run test:routing-sync');
+  }
   process.exit(1);
 }
 console.log('[routing-sync] PASS — 两端逐条一致（组名/顺序/默认开关/出站/内联规则/providers/本地性）');

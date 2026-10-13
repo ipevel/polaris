@@ -41,7 +41,10 @@ const DEFAULTS = {
   sys_proxy: true,            // 连接时是否设置系统代理
   tun_mode: false,            // 是否启用 TUN（需管理员）
   allow_lan: false,
-  ipv6: false,
+  // IPv6：默认**打开**（用户 2026-10-13 定）。
+  // 打开后内核会对 v6 目标做解析与直连判定，国内直连拿到的 v6 字面量不再报
+  // 「dns resolve failed: ip version error」（见 polaris-plan.md 5.3）。
+  ipv6: true,
   // 默认固定 7890（用户第 11 轮第 2 条：点连接就该直接能用，不该让人手填端口）。
   // 0 = 随机；被别的程序占着时走"端口冲突"流程（manager.assertPortFree + 界面问一句要不要关掉它）。
   mixed_port: 7890,
@@ -59,7 +62,7 @@ const DEFAULTS = {
   custom_rulesets: [],        // 用户自己写的分流组：[{name,out,enabled,rules:['DOMAIN-SUFFIX,x.com']}]
   // 设置文件的结构版本，用来做一次性迁移（见 migrate()）。
   // 没有这一项的老 settings.json 一律当作 0。
-  settings_schema: 2,
+  settings_schema: 3,
 };
 
 /**
@@ -72,6 +75,20 @@ const DEFAULTS = {
  *
  * schema 1 → 2：`mixed_port === 0` 且文件里没有 schema 标记 = 从没主动选过端口，
  * 按新默认给 7890。升级后用户自己再改成 0（= 自动）会被记成 schema 2，不再迁移。
+ *
+ * schema 2 → 3（2026-10-13 分组简化，23 → 12 组）：**重置用户自定义的组顺序**。
+ *
+ * 只重置 `routing_order`，**不动** `routing_rules`（开关）。理由：
+ *  - 开关有明确语义，且旧名→新名由 rulesets.js 的 LEGACY_GROUP_ALIASES 迁移
+ *    （社交媒体四合一、流媒体二合一、微软二合一、哔哩哔哩/网易音乐并入国内直连），
+ *    用户的开关意图能正确带过去；被取消的组（GitHub / Google Play / Google /
+ *    微软Bing / 微软服务）查不到映射就自然消失，不会把它们的开关状态误带到别的组
+ *    （例如把「关掉 Google」变成「关掉国外穿墙」是灾难性的）。
+ *  - 顺序无法迁移：组数从 23 变 12，用户存的顺序里混着一堆已取消的组名，
+ *    `orderedTable()` 会跳过它们、剩下 12 个的相对次序仍有效，但整体读起来是
+ *    "重叠过的旧顺序"，不如直接回到新表的默认顺序（新表的顺序本来就是按
+ *    用户 2026-10-13 的口径重排过的）。
+ * 用户自己写的**自定义分流组**（custom_rulesets）完全不受影响。
  */
 function migrate(data) {
   const from = Number(data.settings_schema) || 0;
@@ -79,6 +96,17 @@ function migrate(data) {
   if (from < 2 && Number(data.mixed_port) === 0) {
     data.mixed_port = DEFAULTS.mixed_port;
     log.info(`settings migrate: mixed_port 0 -> ${DEFAULTS.mixed_port}（旧默认值改成固定端口）`);
+  }
+  if (from < 3 && data.routing_order != null) {
+    // 这里用延迟 require：store.js 是启动最早的模块之一，rulesets.js 又可能间接依赖
+    // 它（manager.js → store），顶层 require 会把循环依赖的风险提前到加载期。
+    // 只借它的 SCHEMA_VERSION 做对账，拿不到就退回硬编码的 3。
+    let tableVersion = 3;
+    try { tableVersion = require('./core/rulesets').SCHEMA_VERSION; } catch (_) {}
+    if (from < tableVersion) {
+      data.routing_order = null;
+      log.info(`settings migrate: 内置分流表结构更新（v${from} → v${tableVersion}），重置组顺序为默认`);
+    }
   }
   data.settings_schema = DEFAULTS.settings_schema;
   return data;

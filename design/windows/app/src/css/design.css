@@ -170,6 +170,14 @@ body {
 .node-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .node-row:last-child { border-bottom: 0; }
 .node-row .nm { font-weight: 600; }
+/* 国旗：矩形 4:3（与图的 viewBox 640x480 同比例），固定尺寸避免 flex 把图压变形。
+   `flex: none` 必须留 —— node-row 是 flex 容器，不写的话旗子会被拉成方块。
+   border 是为了让「白底旗」在白卡片上也有边界（日本、瑞士、波兰这类）。 */
+.flag {
+  width: 24px; height: 18px; flex: none; object-fit: cover;
+  border-radius: 3px; border: 1px solid rgba(0, 0, 0, .10);
+  background: #fff;
+}
 .radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #c7c7cc; margin-left: auto; flex: none; }
 .radio.sel { border-color: var(--blue); position: relative; }
 .radio.sel::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--blue); }

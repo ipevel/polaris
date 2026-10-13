@@ -8,9 +8,10 @@
  * ACL4SSR/ACL4SSR@master（Clash 文本规则）。两边保持逐字一致，改一处要同步另一处。
  *
  * rule-provider 与安卓端一样是 type: file：内置规则全是**本地文件 provider**，
- * 只读随包种子、启动与运行期都不联网。要联网刷新的是 geosite.dat / geoip.metadb
- * （资源文件，不是 rule-provider），由 electron/core/geosync.js 每 24 小时拉一次，
- * 校验 sha256 后再替换 —— 规则数据源从根上不再依赖任何远程 URL。
+ * 内核只读本地文件、自己不联网。运行期由 electron/core/rulesync.js 每 12 小时从
+ * `ipevel/polaris-rules` 拉一次：**清单与 geodata（geosite.dat / geoip.metadb /
+ * ASN.mmdb）同一个节拍**，逐文件校验 sha256 后再替换 —— 规则数据源只有这一个仓库，
+ * 不再直接依赖任何第三方上游，也不再有任何远程 rule-provider URL。
  * 文件统一 .yaml：mihomo 按声明的 format 解析内容，扩展名只用于对齐种子名。
  */
 
@@ -41,16 +42,24 @@ const TEST_URL = 'https://www.gstatic.com/generate_204';
  */
 const PROVIDERS = {
   // --- ACL4SSR 文本清单（种子随包内置，type:file 只读本地）---
-  acl_banad:          { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_banprogramad:   { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_chinadomain:    { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_chinacompanyip: { behavior: 'classical', format: 'text', noResolve: true, url: '' },
-  acl_unban:          { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_steamcn:        { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_download:       { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_chinamedia:     { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_proxygfwlist:   { behavior: 'classical', format: 'text', noResolve: false, url: '' },
-  acl_proxymedia:     { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  // 键名 = ipevel/polaris-rules 仓库里 dist/rules/<键>.list 的文件名。
+  // 运行时由 electron/core/rulesync.js 按同一个 commit 拉取并校验 sha256 后覆盖；
+  // 随包种子只作首次启动/断网兜底。**改这里必须同步仓库的产出文件名。**
+  social:         { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  streaming:      { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  ai:             { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  games:          { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  telegram:       { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  tiktok:         { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  'china-domain': { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  'china-ip':     { behavior: 'classical', format: 'text', noResolve: true,  url: '' },
+  'china-media':  { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  onedrive:       { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  apple:          { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  'proxy-gfwlist': { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  'proxy-media':   { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  banad:          { behavior: 'classical', format: 'text', noResolve: false, url: '' },
+  banprogramad:   { behavior: 'classical', format: 'text', noResolve: false, url: '' },
 };
 
 // 本地网络/私有地址直连（固定 DIRECT，不占用分流组）
@@ -104,23 +113,84 @@ const LAN_DIRECT_RULES = [
  * 现在 geosite 的 cn 分类有 111,873 条、geolocation-!cn 有 27,037 条（已内置），
  * 并额外给「🎯 国内直连」补 GEOIP,CN，兜住 HTTPDNS/直连 IP 的场景。
  */
+/**
+ * 内置分流组（**2026-10-13 用户定稿的分组表**）。
+ *
+ * 顺序 = 规则表的顺序（用户没拖过时就是它），也是分流页与节点页的默认展示顺序。
+ * defaultOut: proxy | direct | block —— 决定该组默认出站与成员顺序。
+ * defaultOn: 全新安装默认开启的组。
+ *
+ * **本表与安卓端 routing_table.go 的 Table 逐条一致**（组名、顺序、默认开关、
+ * 默认出站、内联规则、providers 全同），scripts/routing-sync-test.js 会校验。
+ * 为什么必须一致：两端是同一份产品的两个实现，任何一处不一致都会出现
+ * 「手机上这样、电脑上那样」的分流差异，而且极难查。
+ *
+ * --- 2026-10-13 分组简化（用户 1–6 条）---
+ * 目标：组数从 23 降到 12，把「用户根本不单独调」的组收掉，规则不丢。
+ *
+ * 合并：
+ *   X + Instagram + Facebook + WhatsApp → 「📲 社交媒体」
+ *   油管视频 + 奈飞视频 + 迪士尼/HBO/Hulu/AppleTV/BBC/Abema/DAZN/Twitch/
+ *     Spotify/Amazon → 「📺 流媒体」（规则从 2 份变成 1 份 streaming.list）
+ *   微软云盘 + 微软服务 → 「Ⓜ️ 微软」（云盘必须直连省流量，微软服务默认代理，
+ *     给一个开关整体切换；onedrive.list 里已含 Microsoft 的全部域名）
+ * 取消（规则改走「🌏 国外穿墙」兜底，出口不变，仍是代理）：
+ *   GitHub / Google Play / Google / 微软Bing / 微软服务
+ *   这五个组原本都是 defaultOut=proxy，「国外穿墙」也是 proxy，且它们的内联
+ *   GEOSITE 分类（github / google-play / google / bing / microsoft）在
+ *   geolocation-!cn 与 proxy-gfwlist.list 里有等价覆盖 → 出口行为不变。
+ *   取消它们同时**消灭了两个死开关**：Google Play 与微软Bing 的规则被前面的组
+ *   提前命中，开关设成什么都不生效（与 2026-10-10 移除 Google FCM 同一个病）。
+ * 保留：
+ *   「🍎 苹果服务」**必须保留**——它是 defaultOut=direct，简单删规则会让 iCloud /
+ *   App Store 从直连变成走代理，是行为变更。用户 2026-10-13 定：保留该组且出口可选。
+ *   「Ⓜ️ 微软」的云盘部分同理（direct）。
+ * 并入：
+ *   哔哩哔哩 / 网易音乐 → 国内直连（规则进 china-media.list，出口都 direct）
+ * 改：
+ *   「🛑 广告拦截」默认打开（用户 2026-10-13 定）
+ *
+ * 分组数量：12 个内置组 + 4 个结构组（🚀 节点选择 / 自动选择 / 故障转移 /
+ * 🐟 漏网之鱼，见文件头）。
+ *
+ * 规则数据源全部本地的原因：旧方案每个 RULE-SET 都是 type:http，启动后 24h 内
+ * 必定拉一次；拉取失败、被中间盒改写、上游每日变更都会让规则**静默失效**。
+ * 用户 2026-10-12 反馈「抖音/快手/小红书/番茄小说连上 VPN 就断网、断开才好」
+ * 正是这种依赖的代价 —— 旧方案里国内域名只有 ACL4SSR ChinaDomain.list 的
+ * 700 多条，主流 App 域名一旦缺失就落到「🐟 漏网之鱼」走代理。
+ * 现在 geosite 的 cn 分类有 111,873 条、geolocation-!cn 有 27,037 条（已内置），
+ * 并额外给「🎯 国内直连」补 GEOIP,CN，兜住 HTTPDNS/直连 IP 的场景。
+ *
+ * 运行期刷新：规则清单与 geo 数据现在由 electron/core/rulesync.js 从
+ * ipevel/polaris-rules 按同一个 commit 拉取并校验 sha256（12 小时一次），
+ * 随包种子只作首次启动/断网兜底。providers 的键名就是仓库里的文件名。
+ */
 const TABLE = [
-  { name: '📲 电报消息', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,telegram,{t}'] },
-  { name: '📹 油管视频', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,youtube,{t}'] },
-  { name: '🎥 奈飞视频', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,netflix,{t}'] },
-  { name: '📲 X', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,x,{t}'] },
-  { name: '🎧 TikTok', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,tiktok,{t}'] },
-  { name: '📸 Instagram', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,instagram,{t}'] },
-  { name: '📲 Facebook', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,facebook,{t}'] },
-  { name: '📲 WhatsApp', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,whatsapp,{t}'] },
-  // 「🤖 AI」= 原「♊️ Google Gemini」+「💬 Claude」+「💬 OpenAI」三组合并（2026-10-13，用户定）。
-  // 刻意**不带** GEOSITE,google / GEOSITE,google-play：旧 Gemini 组带着这两条并排在
-  // 「🌏 Google」「🌏 Google Play」前面，把这两个组整体吃掉 —— 它们的开关设成什么都不生效
-  // （与 2026-10-10 移除 Google FCM / 苹果推送那两个组是同一个病）。合并后它们恢复生效。
-  // 规则 = 4 条 GEOSITE 分类（geosite.dat 深度覆盖）+ 147 条内联域名（geosite 缺失/过期时兜底），
-  // 其中前 43 条是用户 2026-10-13 点名的清单，顺序照抄；其余为补齐。
-  // 刻意**不含** DeepSeek / 豆包 / Kimi / 通义等国内可直连的 AI 服务（category-ai-!cn 本身
-  // 就不含 CN 分类，加了会把它们强行推去走代理，与 2026-10-12「连上 VPN 就断网」同类）。
+  { name: '📲 电报消息', defaultOn: true, defaultOut: 'proxy',
+    inlineRules: ['GEOSITE,telegram,{t}'],
+    providers: ['telegram'] },
+  { name: '🎧 TikTok', defaultOn: true, defaultOut: 'proxy',
+    inlineRules: ['GEOSITE,tiktok,{t}'],
+    providers: ['tiktok'] },
+  { name: '📲 社交媒体', defaultOn: true, defaultOut: 'proxy',
+    inlineRules: ['GEOSITE,x,{t}', 'GEOSITE,instagram,{t}', 'GEOSITE,facebook,{t}',
+      'GEOSITE,whatsapp,{t}'],
+    providers: ['social'] },
+  { name: '📺 流媒体', defaultOn: true, defaultOut: 'proxy',
+    inlineRules: ['GEOSITE,youtube,{t}', 'GEOSITE,netflix,{t}'],
+    providers: ['streaming'] },
+  // 「🤖 AI」= 原「♊️ Google Gemini」+「💬 Claude」+「💬 OpenAI」三组合并（2026-10-13）。
+  // 刻意**不带** GEOSITE,google / GEOSITE,google-play：旧 Gemini 组带着这两条排在
+  // 「🌏 Google」「🌏 Google Play」前面，把这两个组整体吃掉 —— 它们的开关设成什么都不
+  // 生效（与 2026-10-10 移除 Google FCM / 苹果推送那两个组是同一个病）。2026-10-13
+  // 分组简化时 Google 那两个组本身也取消了，但这条经验仍然是本组不写它们的理由。
+  // 规则 = 4 条 GEOSITE 分类（geosite.dat 深度覆盖）+ 147 条内联域名（geosite 缺失/
+  // 过期时兜底），其中前 43 条是用户 2026-10-13 点名的清单，顺序照抄；其余为补齐。
+  // 刻意**不含** DeepSeek / 豆包 / Kimi / 通义等国内可直连的 AI 服务（category-ai-!cn
+  // 本身就不含 CN 分类，加了会把它们强行推去走代理，与 2026-10-12「连上 VPN 就断网」同类）。
+  // 注意：ai.list（仓库）里已有 ACL4SSR 的 AI / OpenAi / ClaudeAI / Gemini 四份清单，
+  // 内联域名与它高度重叠 —— 保留内联是刻意的：它是 geosite.dat 与规则文件同时缺失
+  // 时的最后兜底（GEOSITE 规则在 geosite.dat 损坏时会让整个 profile 加载失败）。
   { name: '🤖 AI', defaultOn: true, defaultOut: 'proxy',
     inlineRules: [
       'GEOSITE,category-ai-!cn,{t}',
@@ -274,44 +344,56 @@ const TABLE = [
       'DOMAIN-SUFFIX,writesonic.com,{t}',
       'DOMAIN-SUFFIX,gamma.app,{t}',
       'DOMAIN-SUFFIX,tome.app,{t}',
-    ] },
-  { name: '🐱 GitHub', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,github,{t}'] },
-  // 「🌏 Google Play」排在「🌏 Google」**前面**（2026-10-13）：顺序即匹配优先级，而
-  // geosite:google-play 只有 10 条，其中 8 条的真实域名同时也被 geosite:google 覆盖
-  // （play.google.com ← domain:google.com、play-*.googleusercontent.com ←
-  // domain:googleusercontent.com、play.googleapis.com ← domain:googleapis.com …），
-  // 排在后面时这个开关就是个死开关 —— 同 2026-10-10 移除 Google FCM 的病因。
-  // 反过来只会从 geosite:google 抢走 4 条 Play 自己的域名（googleplay.com、
-  // xn--ngstr-lra8j.com、redirector.xn--ngstr-lra8j.com、redirector.c.play.google.com），
-  // 两组出口都是代理，连通性零影响。与「微软云盘在微软服务之前」同一个套路。
-  { name: '🌏 Google Play', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,google-play,{t}'] },
-  { name: '🌏 Google', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,google,{t}'] },
-  { name: 'Ⓜ️ 微软Bing', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,bing,{t}'] },
-  // 微软云盘放在微软服务之前（顺序即优先级），但 geosite 的 onedrive 分类只有 19 条，
-  // 真正传文件字节的内容主机 docs.live.net / content.live.net 不在里面，会漏到下一组
-  // 「Ⓜ️ 微软服务」。那一组默认走代理，于是「微软云盘选直连」对这几个域名无效 ——
-  // 实测（routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）确认过。
-  // 所以这里补四条内联域名兜底，保证云盘相关流量不会跑到别的组去。
-  { name: 'Ⓜ️ 微软云盘', defaultOn: true, defaultOut: 'direct',
+    ],
+    providers: ['ai'] },
+  { name: '🎮 游戏平台', defaultOn: true, defaultOut: 'proxy',
+    inlineRules: ['GEOSITE,steam,{t}', 'GEOSITE,epicgames,{t}', 'GEOSITE,sony,{t}',
+      'GEOSITE,nintendo,{t}', 'GEOSITE,category-games,{t}'],
+    providers: ['games'] },
+  // 微软云盘与微软服务合成一组（2026-10-13 分组简化）：onedrive.list 里已含
+  // Microsoft 的全部域名（OneDrive 17 条 + Microsoft 79 条），所以只挂一个 provider。
+  //
+  // 为什么不能简单删掉这一组：它 defaultOut=direct，而云盘走代理太费流量
+  // （用户 2026-10-13 明确：「要不太费流量了」）。删了会让云盘落回代理。
+  // 组内直连/代理的分界由规则表本身表达：
+  //   - 云盘域名（GEOSITE,onedrive + docs.live.net / content.live.net /
+  //     odc.officeapps.live.com / officeapps.live.com）在**前面**命中 → direct
+  //   - 其余微软域名（同一份 onedrive.list 的 Microsoft 部分）跟着组出口走。
+  // 所以组出口选 direct 时云盘直连、微软服务也直连；选 proxy 时都能走代理 ——
+  // 给用户一个开关整体切换，比原来「云盘 direct + 微软服务 proxy」两个开关更直观。
+  // 注意 geosite 的 onedrive 分类只有 19 条，真正传文件字节的内容主机
+  // docs.live.net / content.live.net 不在里面，会漏到下一组，所以必须补内联兜底
+  // （实测见 routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）。
+  { name: 'Ⓜ️ 微软', defaultOn: true, defaultOut: 'direct',
+    // 2026-10-14 真网实测（docs/DEVNOTES.md A-64）：这一组的域名不是同一种命运 ——
+    //   onedrive.live.com / skyapi.onedrive.live.com / api.onedrive.com → **TLS 被重置**（直连不通）
+    //   docs.live.net / storage.live.com / my.microsoftpersonalcontent.com / login.live.com /
+    //   graph.microsoft.com / sharepoint.com → 直连可用
+    // 所以「默认直连」是按用户要求省流量（真正传字节的内容主机直连），但云盘 API 走直连会失败，
+    // 用户打不开云盘时把本组切到「节点选择」即可。note 会显示在分流规则页那一行下面。
+    note: 'onedrive.live.com 直连会被重置；云盘打不开就把本组切到「节点选择」',
     inlineRules: [
       'GEOSITE,onedrive,{t}',
       'DOMAIN-SUFFIX,docs.live.net,{t}',
       'DOMAIN-SUFFIX,content.live.net,{t}',
       'DOMAIN-SUFFIX,odc.officeapps.live.com,{t}',
       'DOMAIN-SUFFIX,officeapps.live.com,{t}',
-    ] },
-  { name: 'Ⓜ️ 微软服务', defaultOn: true, defaultOut: 'proxy', inlineRules: ['GEOSITE,microsoft,{t}'] },
-  { name: '🍎 苹果服务', defaultOn: true, defaultOut: 'direct', inlineRules: ['GEOSITE,apple,{t}'] },
-  { name: '🎮 游戏平台', defaultOn: true, defaultOut: 'proxy',
-    inlineRules: ['GEOSITE,steam,{t}', 'GEOSITE,epicgames,{t}', 'GEOSITE,sony,{t}',
-      'GEOSITE,nintendo,{t}', 'GEOSITE,category-games,{t}'] },
-  { name: '📺 哔哩哔哩', defaultOn: true, defaultOut: 'direct', inlineRules: ['GEOSITE,bilibili,{t}'] },
-  { name: '🎶 网易音乐', defaultOn: true, defaultOut: 'direct', inlineRules: ['GEOSITE,netease,{t}'] },
+      'GEOSITE,microsoft,{t}',
+      'GEOSITE,bing,{t}',
+    ],
+    providers: ['onedrive'] },
+  // 「🍎 苹果服务」保留（用户 2026-10-13 定：保留该组且出口可选）。
+  // 它是 defaultOut=direct：简单删规则会让 iCloud / App Store 从直连变成走代理，
+  // 是行为变更，可能让这些服务变慢或出问题。
+  // 规则来自仓库的 apple.list（ACL4SSR Ruleset/Apple.list，29 条），随仓库更新。
+  { name: '🍎 苹果服务', defaultOn: true, defaultOut: 'direct',
+    inlineRules: ['GEOSITE,apple,{t}'],
+    providers: ['apple'] },
   {
     name: '🎯 国内直连',
     defaultOn: true,
     defaultOut: 'direct',
-    // 国内覆盖分两层，缺一不可：
+    // 国内覆盖分三层，缺一不可：
     // 1) GEOSITE,cn 读内置 geosite.dat 的 cn 分类（111,873 条，聚合 v2fly/ACL4SSR/
     //    Loyalsoldier 等来源），是长尾覆盖的主力。原先这个组只有 gp_cn（geoip/cn，
     //    纯 IP 段）加 ACL4SSR 的 ChinaDomain.list（700 多条），**完全没有成规模的国内
@@ -322,6 +404,10 @@ const TABLE = [
     //    命中不了它们，必须按 IP 兜一层。
     // 3) 内联规则兜底：geosite.dat 虽已内置，但文件缺失/损坏时 GEOSITE 规则会直接
     //    让 profile 加载失败，所以把用户点名的主流 App 域名再内联一遍。
+    // providers 覆盖：国内域名（含 UnBan 白名单）、国内 IP 段、国内流媒体与下载
+    // （哔哩哔哩 / 网易音乐 2026-10-13 并入，出口都是 direct）。
+    // 注意 GEOIP,CN 放最前：先按 IP 归类国内直连，避免域名规则漏网后走代理，
+    // 但域名规则优先级更高（DOMAIN 类永远先于 GEOIP 匹配）。
     inlineRules: [
       // 抖音 / 字节跳动
       'DOMAIN-SUFFIX,douyin.com,{t}',
@@ -406,38 +492,78 @@ const TABLE = [
       'GEOSITE,cn,{t}',
       'GEOIP,CN,{t},no-resolve',
     ],
-    providers: ['acl_chinadomain', 'acl_chinacompanyip', 'acl_unban', 'acl_steamcn', 'acl_download', 'acl_chinamedia'],
+    providers: ['china-domain', 'china-ip', 'china-media'],
   },
+  // 取消的五个组（GitHub / Google Play / Google / 微软Bing / 微软服务）的规则在此兜底：
+  //   GEOSITE,geolocation-!cn 覆盖 google / github / bing / microsoft 等分类的绝大多数域名，
+  //   proxy-gfwlist.list（6,883 条）与 proxy-media.list（357 条）再兜一层长尾。
+  // 五个组原本都是 defaultOut=proxy，本组也是 proxy → 出口行为不变。
+  // 失去的只是「单独切换某个服务走不走代理」的能力，这与用户「组数要少」的诉求一致。
   { name: '🌏 国外穿墙', defaultOn: true, defaultOut: 'proxy',
     inlineRules: ['GEOSITE,geolocation-!cn,{t}'],
-    providers: ['acl_proxygfwlist', 'acl_proxymedia'] },
-  { name: '🍃 应用净化', defaultOn: false, defaultOut: 'block', providers: ['acl_banprogramad'] },
-  { name: '🛑 广告拦截', defaultOn: false, defaultOut: 'block',
+    providers: ['proxy-gfwlist', 'proxy-media'] },
+  { name: '🍃 应用净化', defaultOn: false, defaultOut: 'block',
+    providers: ['banprogramad'] },
+  { name: '🛑 广告拦截', defaultOn: true, defaultOut: 'block',
     inlineRules: ['GEOSITE,category-ads-all,{t}'],
-    providers: ['acl_banad'] },
+    providers: ['banad'] },
 ];
 
+/**
+ * 内置分流表的结构版本：分组结构大改时 +1。
+ * 消费方是 `electron/store.js` 的 migrate() —— settings.json 里记着上次见到的这个值，
+ * 对不上就重置用户自定义的组顺序（开关不重置，靠 LEGACY_GROUP_ALIASES 迁移）。
+ * 2026-10-13：23 组 → 12 组，2 → 3。
+ */
+const SCHEMA_VERSION = 3;
 
 const BY_NAME = new Map(TABLE.map((g) => [g.name, g]));
 
 /**
- * 旧组名 → 现组名（2026-10-13「🤖 AI」合并）。
+ * 旧组名 → 现组名（2026-10-13 分组简化 + 更早的「🤖 AI」合并）。
  *
- * 改名后用户 settings.json（`routing_rules` / `routing_order`）里存着的旧名会变成
- * "未知名"被丢弃 —— 他自己调过的开关与顺序就静默丢了。所以读设置时先映射一次，
- * 而不是让用户重调一遍。其余未知名照旧丢弃。
+ * 改名/合并后，用户 settings.json（`routing_rules` / `routing_order`）里存着的旧名
+ * 会变成"未知名"被丢弃 —— 他自己调过的开关与顺序就静默丢了。所以读设置时先映射一次，
+ * 而不是让用户重调一遍。
  *
- * 「🤖 AI」的迁移语义：三个旧组**任一为开则新组为开**（映射后去重自然得到），
- * **顺序取三者中最靠前的位置**（orderedTable 首次出现即定位，自然得到）。
+ * 迁移语义：旧组**任一为开则新组为开**（映射后去重自然得到），
+ * **顺序取若干旧组中最靠前的位置**（orderedTable 首次出现即定位，自然得到）。
  * 与安卓端 RoutingStateStore.kt / RoutingInputValidator.kt 的映射同一语义。
  *
  * 落点选在这里而不是各调用侧：`normalizeEnabled` / `orderedTable` 是所有读设置
  * 路径的收口（builder.js 组配置、manager.js 的列表/开关/拖动），只改一处不够。
+ *
+ * --- 2026-10-13 分组简化（23 → 12 组）的映射 ---
+ * 合并：X / Instagram / Facebook / WhatsApp → 「📲 社交媒体」
+ *       油管视频 / 奈飞视频 → 「📺 流媒体」
+ *       微软云盘 / 微软服务 → 「Ⓜ️ 微软」
+ * 取消（**刻意不映射**，映射表里查不到就按未知名丢弃）：
+ *       🐱 GitHub / 🌏 Google Play / 🌏 Google / Ⓜ️ 微软Bing / Ⓜ️ 微软服务
+ *   刻意不映射的理由：这五个组取消后规则并进「🌏 国外穿墙」，用户在它们上面的开关
+ *   已经无处安放；**把任何旧组的开关状态带到新组都是错的** ——
+ *   例如用户关掉「🌏 Google」，若映射成「国外穿墙」为关，会把他整个穿墙能力关掉。
+ *   所以让这五个名字自然消失，新组按 defaultOn 走。
+ *   注：「Ⓜ️ 微软服务」不映射到「Ⓜ️ 微软」，因为「Ⓜ️ 微软云盘」必须默认直连，
+ *   而微软服务的开关状态无从对应；两个旧名都丢弃、新组按 defaultOn 走。
  */
 const LEGACY_GROUP_ALIASES = {
+  // 2026-10-13 三组 AI 合并
   '♊️ Google Gemini': '🤖 AI',
   '💬 Claude': '🤖 AI',
   '💬 OpenAI': '🤖 AI',
+  // 2026-10-13 分组简化：社交媒体四合一
+  '📲 X': '📲 社交媒体',
+  '📸 Instagram': '📲 社交媒体',
+  '📲 Facebook': '📲 社交媒体',
+  '📲 WhatsApp': '📲 社交媒体',
+  // 2026-10-13 分组简化：流媒体二合一
+  '📹 油管视频': '📺 流媒体',
+  '🎥 奈飞视频': '📺 流媒体',
+  // 2026-10-13 分组简化：微软云盘 + 微软服务合成一组
+  'Ⓜ️ 微软云盘': 'Ⓜ️ 微软',
+  // 2026-10-13 分组简化：哔哩哔哩 / 网易音乐并入国内直连
+  '📺 哔哩哔哩': '🎯 国内直连',
+  '🎶 网易音乐': '🎯 国内直连',
 };
 
 /** 旧组名映射到现组名；不是旧名（或不是字符串）就原样返回 */
@@ -635,9 +761,9 @@ function seedPath(key) { return `${CACHE_DIR}/${seedFile(key)}`; }
 /**
  * 规则集 -> mihomo rule-provider 配置（与安卓端 ProviderRawMap 逐字段一致）。
  *
- * 内置规则全是 type:file：只给 path，**不给 url 也不给 interval** —— 内核只读随包
- * 播种的种子，启动与运行期都不联网。真正需要联网刷新的是 geosite.dat / geoip.metadb
- * （资源文件，不是 rule-provider），由 electron/core/geosync.js 每 24 小时拉一次。
+ * 内置规则全是 type:file：只给 path，**不给 url 也不给 interval** —— 内核只读本地
+ * 播种的种子，启动与运行期都不联网。刷新（清单与 geodata 一起）由
+ * electron/core/rulesync.js 每 12 小时做一次，见本文件头部的说明。
  *
  * path 指向随包种子播种的位置：内核按 -d（即 data/）解析，最终落在
  * data/polaris-rules/<key>.yaml —— 与安卓端 seedRoutingProviders 落点一致。
@@ -680,6 +806,7 @@ module.exports = {
   TEST_URL,
   PROVIDERS,
   TABLE,
+  SCHEMA_VERSION,
   LEGACY_GROUP_ALIASES,
   canonicalName,
   reservedNames,

@@ -710,7 +710,9 @@ const commands = {
     const id = Number(pid) || 0;
     if (!id) return fail('没给出要关闭的进程');
     const r = await portowner.close(id);
-    log.info(`close port owner: pid=${id} name=${r.name} closed=${r.closed} forced=${r.forced}`);
+    // 认不出是谁时 name 是空的 —— 这条日志就是当时把「空名字 + forced=true」摆到用户眼前的证据，
+    // 现在多了 reason，一眼能看出是「没认出来」还是「权限不够」。
+    log.info(`close port owner: pid=${id} name=${r.name || '(未识别)'} closed=${r.closed} forced=${r.forced}${r.reason ? ' reason=' + r.reason : ''}`);
     return ok(r);
   },
 

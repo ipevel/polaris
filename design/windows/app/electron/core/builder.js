@@ -219,16 +219,51 @@ function build(doc, opts = {}) {
   out['geox-url'] = {};              // 清空，防订阅残留
 
   // —— DNS：fake-ip + 本地解析，面板域名直连 ——
+  //
+  // ⚠ 阿里 DoH（dns.alidns.com / 223.5.5.5 / 223.6.6.6）**从名单里去掉，不要加回来**。
+  // 2026-10-13 实测（本机直连、逐个 DoH 端点比对，见 scripts/dns-poison-check.js 的记录）：
+  //   阿里 DoH 对微软域返回的是**污染地址**，与 1.11.4 真机日志里那 112 条
+  //   「Ⓜ️ 微软云盘 --> onedrive.live.com:443 i/o timeout」的 IP 完全对得上：
+  //     onedrive.live.com        → 128.242.240.155              （Yahoo/Verizon 段，不是微软段）
+  //     skyapi.onedrive.live.com → 108.160.169.171 / 173.252.108.21（BitGravity/Facebook 段）
+  //   同一时刻 DNSPub(1.12.12.12/120.53.53.53) / Cloudflare / Google 全部返回正确的
+  //   13.107.x.x / 150.171.x.x。所以这不是"本地 DNS 被劫持"，是**阿里 DoH 自己的解析结果就是错的**；
+  //   而原名单把阿里 DoH 排在第一位 → 用户要求默认直连的「Ⓜ️ 微软云盘」必然整组连不上。
+  //
+  // 顺序即优先级。DNSPub（doh.pub = 1.12.12.12 / 120.53.53.53）是 2026-10-13 实测**唯一
+  // 既给出正确微软地址、又稳定可达**的一家，所以它排第一；8.8.8.8 放第二位而不是 1.1.1.1，
+  // 因为实测 1.1.1.1 的 DoH 在国内基本连不上（https://1.1.1.1/dns-query 直接超时），
+  // 只占位会拖慢每一次解析。1.1.1.1 保留在名单末尾兜最坏情况。
+  const DOH_CLEAN_2 = ['https://doh.pub/dns-query', 'https://1.12.12.12/dns-query'];
+  const DOH_CLEAN_3 = [...DOH_CLEAN_2, 'https://8.8.8.8/dns-query'];
+
   out.dns = {
     enable: true,
     listen: '127.0.0.1:0',
     'enhanced-mode': 'fake-ip',
     'fake-ip-range': '198.18.0.1/16',
     'fake-ip-filter': ['*.lan', '*.local', 'localhost.ptlogin2.qq.com', ...directDomains.map((d) => `+.${d}`)],
-    'default-nameserver': ['223.5.5.5', '119.29.29.29', '1.1.1.1'],
-    nameserver: ['https://223.5.5.5/dns-query', 'https://doh.pub/dns-query', 'https://1.1.1.1/dns-query'],
-    'proxy-server-nameserver': ['https://223.5.5.5/dns-query', 'https://doh.pub/dns-query'],
-    'direct-nameserver': ['https://223.5.5.5/dns-query', 'https://doh.pub/dns-query'],
+    // 引导用：只负责把上面那些 DoH 的**主机名**解析成 IP，所以这里必须填 IP、不能用域名。
+    // 明文 DNS 只承担这一件事，不参与业务解析。
+    // 阿里 223.5.5.5 也不放这里：它既然是"会给污染答案"的那一台，就没必要在引导环节用它，
+    // DNSPub(119.29.29.29) + Cloudflare 足够把 doh.pub / 1.1.1.1 / 8.8.8.8 的 IP 拿到。
+    'default-nameserver': ['119.29.29.29', '1.1.1.1'],
+    nameserver: [...DOH_CLEAN_3],
+    'proxy-server-nameserver': [...DOH_CLEAN_3],
+    // 国内直连域名走国内 DoH（DNSPub），拿到的 CDN 就近地址才对；再挂两个国外兜底。
+    'direct-nameserver': [...DOH_CLEAN_2],
+    // 按域钉死解析器：微软/网盘这一族必须绕开任何会给出污染结果的解析器。
+    // 键是 mihomo 的域名匹配式；`+.` 前缀 = 该域及其所有子域。
+    'nameserver-policy': {
+      'geosite:microsoft': [...DOH_CLEAN_3],
+      '+.live.com': [...DOH_CLEAN_2],
+      '+.onedrive.com': [...DOH_CLEAN_2],
+      '+.sharepoint.com': [...DOH_CLEAN_2],
+      '+.office.com': [...DOH_CLEAN_2],
+      '+.office.net': [...DOH_CLEAN_2],
+      '+.msftconnecttest.com': [...DOH_CLEAN_2],
+      '+.msftncsi.com': [...DOH_CLEAN_2],
+    },
   };
 
   // —— TUN（可选，需管理员）——

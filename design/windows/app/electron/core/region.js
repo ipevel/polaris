@@ -107,27 +107,71 @@ const CODE_MAP = {
 };
 const CODE_RE = new RegExp(`\\b(${Object.keys(CODE_MAP).join('|')})\\b`);
 
-const LABEL = Object.fromEntries(Object.entries(FLAG_LABEL));
-for (const [kw, code] of KEYWORDS) if (!LABEL[code]) LABEL[code] = code;
+/**
+ * 别名归一到**图库里真有旗子**的 ISO 3166-1 alpha-2 码。
+ *
+ * 只有两个条目，都是本仓库历史上真实写偏的码，不是新功能：
+ * - `SW` 想表达瑞士，但瑞士的 ISO 码是 `CH`；`flags/` 里既没有 `sw.svg`
+ *   也没有任何一处的正式码是 SW（瑞士官方码 CH 来自 Confoederatio Helvetica）。
+ * - `UK` 是英国的**非正式**码，ISO 码是 `GB`；`flags/` 里**没有** `uk.svg`
+ *   （已核对：`uk.svg` / `ea.svg` / `ta.svg` 三个都缺，虽然部分 CDN 版本有）。
+ *
+ * 归一放在 detect 的出口上，所以 FLAG_LABEL / CODE_MAP / KEYWORDS 里
+ * 残留的这两个码都会自动纠正，不必逐条改表。
+ * `scripts/flag-codes-test.js` 会验「detect 出口的每个码都有图」。
+ */
+const CODE_ALIAS = { SW: 'CH', UK: 'GB' };
+
+/** 把地区码归一到标准码；非字符串 / 空值原样返回。 */
+function normalizeCode(code) {
+  if (typeof code !== 'string' || !code) return code;
+  const up = code.toUpperCase();
+  return CODE_ALIAS[up] || up;
+}
+
+/**
+ * 中文标签 → 国家码。给「手里只有渲染层那份 region 文本」的调用方用
+ * （`get_nodes` 其实也给了 `region_code`，那条路优先）。
+ * 一个标签只对一个码：FLAG_LABEL 里 `GB`/`CH` 等各自唯一，
+ * 构建时若撞码，以先出现的为准 —— 与 detect() 的口径一致。
+ */
+const LABEL_TO_CODE = {};
+for (const [code, label] of Object.entries(FLAG_LABEL)) {
+  const norm = CODE_ALIAS[code] || code;
+  if (label && !LABEL_TO_CODE[label]) LABEL_TO_CODE[label] = norm;
+}
+
+function codeOfLabel(label) {
+  return (label && LABEL_TO_CODE[label]) || '';
+}
+
+const LABEL = Object.fromEntries(Object.entries(FLAG_LABEL).map(([c, l]) => [normalizeCode(c), l]));
+for (const [kw, code] of KEYWORDS) if (!LABEL[code]) LABEL[normalizeCode(code)] = LABEL[code] || code;
+
+/**
+ * 出口统一归一：所有分支只构造 `{code, label}`，这里保证 code 是标准码、
+ * label 一定非空（查不到中文名时退回码本身，避免徽标里出现空白）。
+ */
+function result(code) {
+  const c = normalizeCode(code);
+  return { code: c, label: FLAG_LABEL[c] || LABEL[c] || c };
+}
 
 function detect(name) {
   const n = String(name || '');
   const byFlag = fromFlag(n);
-  if (byFlag) return byFlag;
+  if (byFlag) return result(byFlag.code);
   const lower = n.toLowerCase();
   for (const [kw, code] of LATIN) {
-    if (lower.includes(kw.toLowerCase())) return { code, label: FLAG_LABEL[code] || code };
+    if (lower.includes(kw.toLowerCase())) return result(code);
   }
   // 大写国家码（大小写敏感，避免 "in"/"it" 误命中）
   const code = n.match(CODE_RE);
-  if (code) {
-    const c = CODE_MAP[code[1]];
-    return { code: c, label: FLAG_LABEL[c] || c };
-  }
+  if (code) return result(CODE_MAP[code[1]]);
   for (const [kw, code2] of KEYWORDS) {
-    if (lower.includes(kw.toLowerCase())) return { code: code2, label: FLAG_LABEL[code2] || code2 };
+    if (lower.includes(kw.toLowerCase())) return result(code2);
   }
   return null;
 }
 
-module.exports = { detect, FLAG_LABEL };
+module.exports = { detect, FLAG_LABEL, normalizeCode, codeOfLabel };

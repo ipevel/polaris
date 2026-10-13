@@ -603,8 +603,8 @@ async function run(win, opts) {
         apple:apple?{count:apple.count,inline:apple.inline}:null};})()`);
     check('分流表里已经没有 Google FCM 与苹果推送通知',
       rsInfo.fcm.length === 0, `还剩 ${rsInfo.fcm.join(' / ') || '无'}`);
-    check('分流表正好 23 组、页面 23 个开关',
-      rsInfo.total === 23 && rsInfo.sw === 23, `total=${rsInfo.total} 开关=${rsInfo.sw}`);
+    check('分流表正好 12 组、页面 12 个开关',
+      rsInfo.total === 12 && rsInfo.sw === 12, `total=${rsInfo.total} 开关=${rsInfo.sw}`);
     check('苹果推送的 12 条内联规则并进了「🍎 苹果服务」',
       !!rsInfo.apple && Number(rsInfo.apple.inline) === 12,
       JSON.stringify(rsInfo.apple));
