@@ -652,8 +652,15 @@ const builder = require('../electron/core/builder');
       const totalText = rpKeys.reduce((n, k) => n + ((prov && prov[k]) ? String(prov[k].ruleText || '').split('\n').filter((x) => x.trim()).length : 0), 0);
       check('本地 ACL4SSR 清单都加载到了非空内容（ruleCount 全 > 0）', zero.length === 0,
         `${zero.slice(0, 6).join(',')}（ruleText 行数合计 ${totalText}）`);
-      check('rule-provider 是内核从本地文件读的（vehicleType=Local，不是 HTTP）',
-        !prov || rpKeys.every((k) => !prov[k] || prov[k].vehicleType === 'Local'),
+      // 内核的 provider.VehicleType 枚举只有四个取值
+      // （kernel-core/src/foss/golang/clash/constant/provider/interface.go:12-17）：
+      //   File / HTTP / Compatible / Inline
+      // String() 只可能回这四个之一（或 Unknown）—— **没有 `Local`**。
+      // 这条断言以前写死 'Local'，所以从 2026-10-12「规则全本地」（provider 一律 type:file）
+      // 之后它一直是红的：内核回的是 `File`。断言本意是「这条 provider 读本地文件、不是网络源」，
+      // 对应枚举值就是 `File`。别再改回 'Local'。
+      check('rule-provider 是内核从本地文件读的（vehicleType=File，不是 HTTP）',
+        !prov || rpKeys.every((k) => !prov[k] || prov[k].vehicleType === 'File'),
         JSON.stringify(rpKeys.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
       check('生成的规则里有 GEOSITE,cn 与 GEOIP,CN（国内覆盖靠它们，不是靠远程清单）',
         ['GEOSITE,cn,🎯 国内直连', 'GEOIP,CN,🎯 国内直连,no-resolve']
@@ -858,8 +865,10 @@ const builder = require('../electron/core/builder');
       check('内核把每个 rule-provider 都加载了（ruleCount 全 > 0）',
         !prov || keys2.every((k) => !prov[k] || Number(prov[k].ruleCount) > 0),
         keys2.filter((k) => prov && prov[k] && Number(prov[k].ruleCount) <= 0).join(','));
-      check('rule-provider 是内核从本地文件读的（vehicleType=Local，不是 HTTP）',
-        !prov || keys2.every((k) => !prov[k] || prov[k].vehicleType === 'Local'),
+      // 同前面那处：内核枚举是 File / HTTP / Compatible / Inline，没有 `Local`。
+      // 详见 kernel-core/src/foss/golang/clash/constant/provider/interface.go:12-17。
+      check('rule-provider 是内核从本地文件读的（vehicleType=File，不是 HTTP）',
+        !prov || keys2.every((k) => !prov[k] || prov[k].vehicleType === 'File'),
         JSON.stringify(keys2.slice(0, 3).map((k) => [k, prov && prov[k] && prov[k].vehicleType])));
       check('geodata 三件套都已就位（内核的 GEOSITE / GEOIP 规则要读它们）',
         Object.keys(geosync.FILES).every((f) => nodeFs.existsSync(nodePath.join(paths.geo(), f))),
