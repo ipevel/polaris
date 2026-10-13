@@ -35,7 +35,7 @@ app/
 │   │   ├── builder.js      # 最终 config.yaml 组装
 │   │   ├── region.js       # 节点名 → 地区
 │   │   ├── traffic.js      # 流量 WebSocket 与速率聚合
-│   │   ├── rulesets.js     # 内置分流规则集（23 组 / 10 个本地规则集）
+│   │   ├── rulesets.js     # 内置分流规则集（12 组 / 15 个本地规则集）
 │   │   ├── updater.js      # 更新下载、解压、替换脚本（自替换）
 │   │   └── remote.js       # 远程配置（多源择优、Base64 混用）
 │   ├── panel/
@@ -127,15 +127,16 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > `exit 0` —— 在 CI 里那等于一个永远绿的假通过。而这条测试要防的正是「main 改了分流表、
 > Windows 镜像没跟上」这种静默分叉（2026-10-12 就这么分叉过一次）。
 >
-> 现状（2026-10-14 03:2x）：`main` 的 Go 表仍是 **23 组**（`v1.11.4` 那一版），而本分支已是
-> **12 组**。所以**此刻这道门禁在 `windows-portable` 上是红的，且是预期的红** ——
-> run `38454540083` 的失败点就是它：`Go 表 23 组 / 10 个 provider / 246 条内联` ↔
-> `JS 表 12 组 / 15 个 provider`。要等 **Go 12 组表 + 安卓 Kotlin/种子 + Windows 新表
-> 同一个提交进 `main`** 之后才会转绿；在那之前别把它当成新缺陷。
+> 现状（2026-10-14 07:2x）：`main` 的 Go 表**已经追平**（`main` tip `47c25fc`，安卓交付
+> `ce6d656`），两端实测都是 `12 组 / 15 个 provider / 241 条内联`，所以这道门禁在
+> `windows-portable` 上**是真绿**：`5b3ca8b` 的 run `38473927116` 全部 success。
+> 它红过几次（最近一次是 run `38454540083`），红的原因正是当时 `main` 还停在旧表 ——
+> 那几次红是它该有的表现，不是缺陷；`main` 追平后自己就绿了。
 >
 > ⚠️ **发版前提**：`build.yml` 的 `windows` job 打的是 **`main` 上的** `design/windows/app`，
-> 所以必须先同步 `main` 再发版，否则放出去的便携版会是旧分流表。同步清单见
-> `docs/DEVNOTES.md` §五 的 1.9（**绝不做整分支合并**，一律路径限定取件）。
+> 所以必须先同步 `main` 再发版，否则放出去的便携版会是旧分流表（`v1.11.5` 就是同步之后
+> 打的：解包实测包内 asar 是 12 组 / 15 个 provider）。同步清单见 `docs/DEVNOTES.md` §五 的 1.9
+> （**绝不做整分支合并**，一律路径限定取件）。
 
 ### 出问题怎么查
 
@@ -148,7 +149,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 | --- | --- | --- |
 | `npm run test:real`（`scripts/real-test.js`，真账号真面板，221 项） | 真登录 → 套餐/订单/工单/邀请/公告 → 今天/本周/本月流量明细与账号合计交叉验算 → 拉真订阅 → 连真节点 → 逐组延迟 → 经活节点出网 204 → 跑真流量看面板明细闭环 → 拖动排序 → 本地方案接管 → 三个特殊出口各自真出网 | 界面手感与观感（由人点）、TUN 模式、下单支付 |
 | `npm run test:ui`（`scripts/ui-test.js`，真窗口真鼠标，174 项） | 自己从登录页用真账号登进去，再逐页真点：外壳/登录/首页/连接/节点页/分流页/流量页/我的页/6 个二级页/设置页/断开 | 托盘菜单、多屏 DPI、TUN 下的走查、自定义分流组拖动 |
-| `npm run test:offline`（13 条离线自检，CI 里也跑） | `test:updater` 自我替换 helper（21 项）、`test:updater-timeout` 下载超时三层（27 项）、`test:traffic` 流量页视图（36 项）、`test:geosync` 旧 geodata 模块单测（11 项）、`test:rulesync` 规则+geo 12 小时懒更新 + 钉 commit SHA（42 项）、`test:routing-sync` 两端分流表逐条一致、`test:flags` 国旗码表↔图（11 项）、`test:flag-row` 节点行画旗（15 项）、`test:dns` DNS 解析器无污染源（10 项）、`test:portowner` 端口占用者铁律（14 项）、`test:config` 默认值与设置迁移（12 项）、`test:single-source` 规则只有一个源（8 项）、`test:routing-view` 分流规则页视图（17 项） | 需要 Electron 运行时或真面板的路径（那两条在上面） |
+| `npm run test:offline`（13 条离线自检，CI 里也跑） | `test:updater` 自我替换 helper（25 项）、`test:updater-timeout` 下载超时三层（27 项）、`test:traffic` 流量页视图（36 项）、`test:geosync` 旧 geodata 模块单测（11 项）、`test:rulesync` 规则+geo 12 小时懒更新 + 钉 commit SHA（42 项）、`test:routing-sync` 两端分流表逐条一致、`test:flags` 国旗码表↔图（11 项）、`test:flag-row` 节点行画旗（15 项）、`test:dns` DNS 解析器无污染源（10 项）、`test:portowner` 端口占用者铁律（14 项）、`test:config` 默认值与设置迁移（12 项）、`test:single-source` 规则只有一个源（8 项）、`test:routing-view` 分流规则页视图（17 项） | 需要 Electron 运行时或真面板的路径（那两条在上面） |
 | 人工手测 | 界面交互、手感、观感、布局与主题 | — |
 
 > 2026-10-10 起**不再有任何离线自检线与假数据**：原 `scripts/mock-panel.js`（假面板）、
@@ -165,7 +166,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 
 ### 性能注意
 
-规则库（`resources/geo`，23.8 MB）随包分发。不这么做的话，mihomo 首次连接会自己去 GitHub 下 `GeoIP.dat`——实测 **19 秒**，而且没网就直接起不来。带上之后是 **2–13 ms**。
+规则库（`resources/geo`，20.7 MB）随包分发。不这么做的话，mihomo 首次连接会自己去 GitHub 下 `GeoIP.dat`——实测 **19 秒**，而且没网就直接起不来。带上之后是 **2–13 ms**。
 
 ## 便携目录布局
 

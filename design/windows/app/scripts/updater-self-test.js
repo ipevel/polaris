@@ -36,9 +36,9 @@ const updater = require('../electron/core/updater');
 let launched = null;
 require('child_process').spawn = (file, args, opts) => { launched = { file, args, opts }; return { unref() {} }; };
 
-let failed = 0;
+let failed = 0; let total = 0;
 function ok(label, cond) {
-  if (!cond) failed++;
+  total++; if (!cond) failed++;
   console.log((cond ? '  \u2713 ' : '  \u2717 ') + label);
 }
 const read = (p) => fs.readFileSync(p, 'utf8');
@@ -142,7 +142,7 @@ async function main() {
   } finally {
     fs.rmSync(TMP, { recursive: true, force: true });
   }
-  console.log(failed === 0 ? '\n全部通过' : `\n失败 ${failed} 项`);
+  console.log(`\n通过 ${total - failed} 项，失败 ${failed} 项`);
   process.exit(failed === 0 ? 0 : 1);
 }
 

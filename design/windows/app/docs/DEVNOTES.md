@@ -1,12 +1,17 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-13（**第 15 轮：Windows 端门禁（A-57）**）
+> 最后更新：2026-10-14（**文档追平** + **A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**；同日更早为第 15 轮 A-57）
+> 追平的数字一律以树为准：`kernel-core/.../routing_table.go` 与 `electron/core/rulesets.js`
+> 都是 **12 组 / 15 个 provider / 241 条内联**（11 组默认开，`🍃 应用净化` 默认关）；
+> `resources/rules/` 是 **15 个清单 / 588 KB**（发版包内实测 607 KB，差别只是行尾 CRLF）。
 > 用户批了门禁这一摊：真面板两条自检挂进 npm、补 `.editorconfig`、把 5 条离线自检接进 CI。
 > 见 §三 A-57 —— 注意里面那条：**门禁抓到 `main` 的 Go 分流表落后了**
-> （`main` 25 组 / 100 条内联；`android-portable` 的 `f65ffcd` 与 Windows 的 JS 表早已对齐在
-> 23 组 / 246 条内联，本机实测 PASS）。**方向是「main 追平 android-portable」，不是改 Windows**；
-> 属跨端语义变更，**等用户 go-ahead**，未做。`f65ffcd` 目前还是本地提交，所以准确状态是
-> 「**本地已对齐，待推送**」。对齐清单 + 导出 Go 表的避坑法见 §五 1.9。
+> （当时 `main` 25 组 / 100 条内联，Windows 的 JS 表已是 23 组 / 246 条内联，本机实测 PASS）。
+> **方向是「main 追平 Windows」，不是改 Windows**。**这条已经收口**：`main` 现在与 Windows
+> 同表 —— 实测两端都是 **12 组 / 15 个 provider / 241 条内联**（`main` tip `47c25fc`，
+> 安卓交付 `ce6d656`），`ci-windows.yml` 在 `windows-portable` 的 `5b3ca8b` 上真绿
+> （run `38473927116`；`5eb645f` 上再绿一次，run `38483441249`）。
+> 当时的判断过程与那份 23 组待办清单留在 §五 1.9（**历史记录**）。
 >
 > 同一日更早：**第 14 轮：运行日志里的更新超时 + 日志时间戳（A-56）**
 > 用户第 15 轮给了一份 5005 行的运行日志，点名 A+B：A 修应用内更新下载的超时/重试，
@@ -287,9 +292,10 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 > 于是面板请求全被送去一个没在监听的端口、自检卡在登录重试（一跑就是 93 条该类错误）。
 > 用户从资源管理器双击启动没有这些环境变量，所以这是自检环境的产物（同 E-16）。
 
-包内审计（用户要求「测试账号/密码/网址/测试数据一律不进包」）：132 个 zip 条目里没有 `data/`，
+包内审计（用户要求「测试账号/密码/网址/测试数据一律不进包」）：`v1.11.5` 便携包的 zip 条目
+（2026-10-14 复核，`tar -tf` 计 100 条）里没有 `data/`，
 没有 `settings.json` / `credentials.dat` / `*.log` / 自检报告；`app.asar` 里搜 `pinxiaoche`、
-`mbe.cc`、`Wang16766912`、`lark_n`、`fe80::1` 全部无命中；`resources/{core,geo,rules}` = 4 / 3 / 47 个文件。
+`mbe.cc`、`Wang16766912`、`lark_n`、`fe80::1` 全部无命中；`resources/{core,geo,rules}` = 4 / 3 / 15 个文件。
 
 > 成品包只剩 `--uitest` 一条验证线（`--doctor` / `--smoke` / `--mock` / `--rttest` 已随旧自检线删除；
 > 数据层的 `real-test.js` 是纯 Node 入口，不在成品包里跑）。
@@ -302,8 +308,8 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 相对基线 | 自基线 `5328b55` 起：`git diff --shortstat 5328b55 HEAD`（`design/windows/app` 源码 + 资源，不含内核二进制与 `dist/`） |
 | 应用代码 | 主进程 5,972 行 JS（`core/` 2,763 + `panel/` 1,146 + `net/` 445 + `util/` 31 + 顶层 1,587），渲染层 2,463 行 JS，样式 485 行 CSS；自检脚本 2,354 行（`real-test.js` 1,327 + `ui-test.js` 1,014） |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
-| 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，23.8 MB |
-| 内置分流 | **10 个本地清单 + 25 个分流组**，61 KB（`resources/rules/` 只留 `acl_*`，随包预播种到 `data/polaris-rules/`；**无任何远程 rule-provider**，规则全读内置 `geosite.dat`/`geoip.metadb`） |
+| 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，20.7 MB |
+| 内置分流 | **15 个本地清单 + 12 个分流组**（11 组默认开，241 条内联），588 KB（`resources/rules/` 随包预播种到 `data/polaris-rules/`；provider 全是 `type: file` 的本地文件，**没有 `type: http`**；清单内容的更新走 12 小时懒更新，`2feba16` 起的 rulesync） |
 | 自定义分流 | 用户自己写规则的分流组（最多 20 组 / 每组 200 条），**拖动排序**，存 `settings.json` 的 `custom_rulesets` |
 
 ### 测试入口（2026-10-10 起）
@@ -411,9 +417,9 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 项 | 状态 | 说明 |
 | --- | --- | --- |
 | 真实面板联调 | ✅ | `scripts/real-test.js` 拿真账号真面板真节点跑通 **221 项全绿**：登录/复用会话 → 套餐 → 订单 → 工单 → 邀请 → 公告 → Telegram → 今天/本周/本月流量明细（与账号合计交叉验算）→ 拉真订阅（32 节点）→ 连真节点 → 逐组延迟 → 经活节点 204 → 跑真流量后面板明细真的涨了 → 拖动排序生效并还原 → **本地方案接管**（面板组/规则全丢、`type: http` + 24h、种子只补缺失、内核加载 5.6 万条）→ **三个特殊出口各自真出网一次** → **节点顺序按网站下发** → **端口被占/端口保存** → **规则库 24h 到点真的强制刷新**（拨 mtime 实锤）→ **19 个分流组逐组发真请求核对落点** → **其余 32 个命令逐条真调用**（破坏性操作明确跳过）。**过程中修掉 10 个只有真面板/真界面才暴露的问题**（见 A-22、A-29、A-31、A-32、A-34~A-38、D-6、E-9） |
-| 与安卓端同一套分流模型 | ✅ | 面板下发的 `rules` / `proxy-groups` / `rule-providers` 整体丢弃，改用与安卓端**逐字一致**的 25 组本地表（默认开 23 组；第 8 轮按用户要求删掉「📢 Google FCM」与「📢 苹果推送通知」两个会被前置组遮蔽的组，见 A-39/D-11；`APPLE_PUSH_RULES` 也已在两端一起删掉）+ 4 个结构组（`🚀 节点选择` / `自动选择` / `故障转移` / `🐟 漏网之鱼`）+ 14 条内网直连 + 12 条苹果推送内联（并进「🍎 苹果服务」）；`rule-provider` 改成 `type: http` + `interval: 86400` + 随包种子预播种（冷启动断网也能立刻生效）；节点名与保留名冲突时整体降级回面板配置（与安卓端同款兜底） |
+| 与安卓端同一套分流模型 | ✅ | 面板下发的 `rules` / `proxy-groups` / `rule-providers` 整体丢弃，改用与安卓端**逐字一致**的 **12 组**本地表（2026-10-13 由 23 组精简而来，见 A-60；11 组默认开）+ 4 个结构组（`🚀 节点选择` / `自动选择` / `故障转移` / `🐟 漏网之鱼`）+ 14 条内网直连；`rule-provider` 全是 `type: file` 的随包种子（冷启动断网也能立刻生效，见 A-53 / A-54）；节点名与保留名冲突时整体降级回面板配置（与安卓端同款兜底） |
 | 面板后端自动识别 | ✅ | 照安卓端 `LoginViewModel.detectBackendType`：`/guest/comm/config` 里出现验证码相关字段 → xboard，否则 xiaov2b；结果落 `store.panel_backend` 并回显。两端差异只有礼品卡路径与"流量明细接口只有 xboard 有"两处（见 D-10） |
-| 分流规则全本地、无远程 provider | ✅ | 配置里 **0 个 `type: http`**、10 个 `type: file`（只 `path`，不带 `url` / `interval`）；规则本体读内置 `geosite.dat`（1541 个分类，`cn` 111,873 条）+ `geoip.metadb`（mmdb 按 `geoip.metadb` 命名能被 `C.Path.MMDB()` 命中）。落点正确性由 `test:routing-sync` + 安卓内核 `routing_decision_test` 钉死。见 A-53。
+| 分流规则全本地、无远程 provider | ✅ | 配置里 **0 个 `type: http`**、15 个 `type: file`（只 `path`，不带 `url` / `interval`）；规则本体读内置 `geosite.dat`（1541 个分类，`cn` 111,873 条）+ `geoip.metadb`（mmdb 按 `geoip.metadb` 命名能被 `C.Path.MMDB()` 命中）。落点正确性由 `test:routing-sync` + 安卓内核 `routing_decision_test` 钉死。见 A-53。
 | geodata 24 小时自动刷新 | ✅ | `electron/core/geosync.js`：三件套（`geosite.dat` / `geoip.metadb` / `GeoLite2-ASN.mmdb`）按 mtime marker 判 24h 新鲜度，过期才逐份下载 → 校验 sha256 → 原子替换；只写 `resources/geo/`，由 `ensureGeodata()` 在下一次起内核前拷进 `data/`（不碰正在被内核占用的 `data/` 文件）。脚本 `scripts/fetch-geo.py --refresh <dir>` 同策略。计时锚点是 marker 文件 mtime，**重启不重置**。见 A-52。 |
 | 分流落点正确性 | ✅ | 19 个启用组各挑规则集里的真域名真发一次请求，从内核日志核对落点：18 个落自己组，1 个被**同出口**的组先命中（只是归类不同）；**没有任何"该直连却走了代理"的组**。写断言的判据是**出口语义**而不是组名（见 D-11） |
 | TUN 模式实机 | ❌ | 代码路径完整（含 UAC 提权、网卡收尾、残留清理），但会临时接管网络栈，未在真机跑 |
@@ -454,11 +460,11 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 ├─ Polaris.exe
 ├─ core/            mihomo.exe + wintun.dll            (extraResources)
 ├─ resources/geo/   规则库（geoip/geosite/ASN）          (extraResources)
-├─ resources/rules/ 内置分流规则集 47 个 / 1.42 MB       (extraResources → 启动时铺到 data/polaris-rules)
+├─ resources/rules/ 内置分流规则集 15 个 / 607 KB        (extraResources → 启动时铺到 data/polaris-rules)
 └─ data/            ← 全部运行时数据
    ├─ config.yaml      内核配置（每次连接重新生成）
    ├─ profiles/        订阅原文
-   ├─ rules/           内置规则集副本（内核只允许读 -d 目录内的文件）
+   ├─ polaris-rules/   内置规则集副本（内核只允许读 -d 目录内的文件；旧名 data/rules 启动时清掉）
    ├─ settings.json
    ├─ credentials.dat  DPAPI 加密
    ├─ traffic.json     流量历史
@@ -476,9 +482,9 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 `kernel-core/.../native/config/routing/` 的**替换模型**：
 
 - **整体替换**：面板给的 `proxy-groups` / `rules` / `rule-providers` 全部丢弃（`sub-rules` 也删掉），
-  用与安卓端**逐字一致**的 25 组本地表（默认开 23 组，第 5 轮按用户截图口径排的顺序）+ 4 个结构组 + 14 条内网直连，
+  用与安卓端**逐字一致**的 **12 组**本地表（2026-10-13 由 23 组精简而来，见 A-60；11 组默认开）+ 4 个结构组 + 14 条内网直连，
   末条 `MATCH,🐟 漏网之鱼`。
-  2026-10-12 起规则重心从 `RULE-SET` 挪到 `GEOSITE`/`GEOIP`，`providers` 只剩 10 个 `acl_*`，且全部 `type: file`
+  2026-10-12 起规则重心从 `RULE-SET` 挪到 `GEOSITE`/`GEOIP`，`providers` 只剩本地清单（现在是 15 个：`social` / `streaming` / `ai` / …，不带 `acl_` 前缀），且全部 `type: file`
   （无 `url`、无 `interval`）；`APPLE_PUSH_RULES`（12 条）已删 —— 它被 `🍎 苹果服务` 的 `+.apple.com` 完全遮蔽，
   安卓侧 `64d5697` 早就删了，这份是陈旧遗留。跨语言一致性由 `npm run test:routing-sync` 逐条比对 Go 表保证（见 A-53）。
   节点本身照旧用面板下发的 `proxies`（只换分流，不换节点）。
@@ -486,18 +492,20 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
   `故障转移` fallback / `🐟 漏网之鱼` select `[节点选择,DIRECT]`）都是 `include-all` 语义 ——
   组成员靠内核按 include-all 并入，**不再由我们枚举 32 个节点名**（旧模型枚举节点名，
   订阅一换就得重写一遍；安卓端也是这个写法）。`🐟 漏网之鱼` 刻意**不** include-all（安卓端同款）。
-- **重名兜底**：面板节点名或 proxy-provider 键撞上保留名（27 表组 + 4 结构组 + 8 个 mihomo 预注册名）
+- **重名兜底**：面板节点名或 proxy-provider 键撞上保留名（12 表组 + 4 结构组 + 8 个 mihomo 预注册名）
   时，整体**降级回面板配置**并在分流页顶部说明原因 —— 与安卓端 `checkNameCollisions` 同款行为。
   硬来会让 mihomo 直接拒绝加载整份配置（组名重复），用户看到的是"连不上"。
 - **规则数据**：`type: file` + `path: polaris-rules/<key>.yaml`（相对 `-d`），**不带 `url`、不带 `interval`**。
-  种子只保留 10 个 `acl_*.yaml`（`resources/rules/`，约 61 KB），启动时铺到 `data/polaris-rules/`、
-  **只补缺失、不覆盖**。没有 `interval` 就没有「内核按 24h 拉远程」这条路径 —— 规则本体来自
-  内置 `geosite.dat` / `geoip.metadb`（由 §二.4 的 geodata 24h 刷新机制更新，见 A-52）。
+  种子就是这 15 个清单（`resources/rules/`，约 588 KB），启动时铺到 `data/polaris-rules/`、
+  **只补缺失、不覆盖**。没有 `interval` 就没有「内核自己去拉远程」这条路径：清单内容的更新由
+  我们自己的 rulesync 做（12 小时懒更新 + 钉 commit SHA，见 `2feba16` / `d36b93e`），内核只读
+  本地文件；`GEOSITE` / `GEOIP` 那些本体来自内置 `geosite.dat` / `geoip.metadb`
+  （由 §二.4 的 geodata 24h 刷新机制更新，见 A-52）。
   原先那 47 个 yaml 里的 37 个已确认无人引用并删除（38 个在安卓侧），合计省下约 3.5 MB APK 体积。
 - `path` 必须是相对 `-d` 的路径：mihomo 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Path))`，
   只放行 homeDir 下的子路径，写绝对路径或直接指向 `resources/rules/` 一律被拒（见坑 C-7）。
 - 目录名 `polaris-rules` 与安卓端 `providerSubPath` 一致。种子铺到 `data/polaris-rules/`（内核的 `-d` 目录内），
-  2026-10-12 起只剩 10 个 `acl_*.yaml`（约 61 KB）；早先用 `type: file` 直读清单那个年代的 `data/rules/`
+  2026-10-12 起只剩本地清单种子，现在是 15 个（约 588 KB）；早先用 `type: file` 直读清单那个年代的 `data/rules/`
   仍在启动时顺手清掉，不留死文件。
 
 其余语义沿用安卓端：本地规则插在订阅规则**之前**、内网地址始终直连、
@@ -3556,6 +3564,112 @@ A-61 把节拍从 24h 改成 12h，页头那行字没人改，靠人眼才翻出
 
 > 教训：**能被用户看见的字符串，就该有一条断言盯着它**。视图自测不是只有流量页配得上。
 
+## A-66 安卓规则刷新没有本地端口可走：等价物是 TUN，不是 mixed_port（2026-10-14）
+
+Windows 侧规则刷新走 `127.0.0.1:<mixed_port>` 的 CONNECT 隧道（`getViaProxy`），
+安卓侧**不能照抄**：`app/src/main/java/com/slte/app/kernel/SanitizerRules.kt:28` 的
+`ZEROED_PORT_KEYS` 含 `mixed-port`，`kernel-core/src/main/golang/native/config/process.go:75`
+写死 `cfg.MixedPort = 0`（同段 `Port / SocksPort / RedirPort / TProxyPort` 也全 0、
+`AllowLan=false`）—— 安卓内核**不监听任何本地入站端口**，没有 `127.0.0.1:<port>` 可连。
+
+等价物是 TUN：`app/src/main/java/com/slte/app/kernel/KernelProxyIp.kt:18` 的注释即设计口径
+（本应用流量由 Android 路由进 TUN，`TunService` 三种访问控制模式都含本应用）。
+现成时序范式在同文件 `fetchPublicIp()`（25-46 行）：`manager.connected.value` 为真 →
+`awaitTunnelReady(3s)` → 失败重试 3 次、退避 1.5s。
+
+**定下的口径**：内核就绪 → 等 TUN 就绪 → 直接发请求（**不配任何代理**）；隧道没起来时
+保持直连 + `@main` 兜底 + 30 分钟退避。两端不是同一套实现，但解决的是同一个问题。
+
+> 一条耦合必须记住：GitHub 系列域名现在被「Ⓜ️ 微软」组吞成**直连**（A-60 的 12 组简化引入），
+> 所以**光加隧道不解决国内取 commit SHA** —— `api.github.com` 仍会直连被重置。
+> 隧道要有意义，得先修表的归属（待用户拍板）。
+
+**本轮三条未决（等用户拍板，代码一律按住不动）**：
+1. GitHub 出站归属：12 组简化后 `github.com` / `api.github.com` / `raw.githubusercontent.com` /
+   `objects.githubusercontent.com` / `gist.github.com` / `github.io` 实测全落 `Ⓜ️ 微软`（直连），
+   机制是 geosite `microsoft` 分类含 github 系列、而原 `🐱 GitHub` 组（排在微软组之前）被取消。
+   已核：随包 `proxy-gfwlist.yaml` 本就含 10 条 github 规则，**只要微软组不再先吞它，GitHub 自然落
+   `🌏 国外穿墙`（代理），不需要新增规则**。
+2. `Ⓜ️ 微软服务` 别名缺失：`routing_table.go` 注释写「微软云盘/微软服务 → Ⓜ️ 微软」，
+   但 `legacyGroupAliases` 只有 `Ⓜ️ 微软云盘`；不硬映射（硬映射会把 proxy 意图变成 direct）。
+3. 安卓 CONNECT 隧道（即本节口径）实现时机：与表修复一起排。
+
+## A-67 12 组表的实测数、随包种子的行尾、v1.11.5 便携包实物核对（2026-10-14）
+
+**为什么记**：这一版把「23 组 / 10 个本地规则集」那套数字从 README 与 DEVNOTES 里清掉之后，
+数字的**来源**必须留档 —— 下面每一个数都是**照树数出来的**，不是照旧文档改的。核对对象：
+`windows-portable` 的工作树、`main` 的 Go 表、Release `v1.11.5` 的便携包。
+
+### 1) 分流表：12 组 / 15 个 provider / 241 条内联（11 组默认开）
+
+- 组数 **12**、provider **15**、内联规则 **241** 条；**11 组默认开**，只有 `🍃 应用净化` 默认关。
+- provider 键（两端同一批，**不带 `acl_` 前缀**）：`social` / `streaming` / `ai` / `games` /
+  `telegram` / `tiktok` / `china-domain` / `china-ip` / `china-media` / `onedrive` / `apple` /
+  `proxy-gfwlist` / `proxy-media` / `banad` / `banprogramad`。
+- **Go 表与 JS 表逐条一致**：`kernel-core/src/main/golang/native/config/routing/routing_table.go`
+  与 `electron/core/rulesets.js` 的组名、顺序、每条内联规则逐条比对无差异 —— `test:routing-sync`
+  钉的就是这件事，它是 `POLARIS_GO_TABLE_REQUIRED=1` 的硬门禁（取不到 Go 表就红，不许跳过）。
+- 随包资源实测：`resources/rules/` **15 个 / 588.3 KB**；`resources/geo/` **3 个 / 20.7 MB**；
+  `resources/core/` 在仓库里**不存在**（由 `fetch-core.py` 拉取，不入库）。
+- 从此各处不得再出现「23 组」「10 个 `acl_*`」「61 KB」这套旧数。
+
+### 2) 随包种子的行尾：包内 CRLF、上游 dist 是 LF（别拿逐字节当门禁）
+
+v1.11.5 便携包里 15 份种子与 `ipevel/polaris-rules` 的 `dist/rules/*.list`
+**逐字节不一致（0/15）**，但**行尾归一后 15/15 完全一致**（逐份行数也相同）：
+
+| 事实 | 值 |
+| --- | --- |
+| 包内 15 份种子 | 全部 **CRLF** |
+| `dist/rules/*.list` | 全部 **LF** |
+| 行尾归一后 | **15/15 一致** |
+| 行数（抽样） | china-ip 9115、proxy-gfwlist 6884、banprogramad 1011、china-domain 684 |
+
+**成因**：本仓库 `core.autocrlf=true`，构建机的工作区就是 CRLF，electron-builder 照原样打进包。
+**内核吃得住**：mihomo 读 rule-provider 时 TrimSpace，行尾不影响匹配（同 A-61）。
+**但**：谁要是拿「逐字节一致」当门禁（随包种子 ↔ 上游 dist），换一台 `autocrlf` 不同的机器就会
+**误红** —— 所以：**若哪天要按字节比，先归一**。不要为此去改构建流程。
+
+### 3) v1.11.5 便携包实物核对：四条判据全过，**无发版事故**
+
+| 判据 | 结果 |
+| --- | --- |
+| 包与 Release 记录一致 | ✅ 185,291,814 B；sha256 `663cfcdd868b2f2c410af914e96d79d75359c832e2d576d0728e32bd85012c6d` |
+| `resources/geo` 三份 | ✅ 3/3 相符 |
+| asar 内分流表 | ✅ 真数 **12 组 / 15 provider / 默认开 11** |
+| 包内版本号 | ✅ **1.11.5**（`Polaris.exe` 的 FileVersion 与 asar 内 `package.json`） |
+
+三份 geodata 的 digest：
+
+- `geosite.dat` `30b8fe82c220879da1fadf896ec18b26b495091980dab3dca7a11199c74a5773`
+- `geoip.metadb` `e060b447d974e2dde71340c47783f0263d4d4a6656237f4f824c186044647eb3`
+- `ASN.mmdb` `d82d2f39ea82a175a3d63484c8b4723040d134ba1edf4b27d6819c2f96c14a9b`
+
+附带（同一次解包）：zip 条目 **100 条**；包内无 `data/`、无 `settings.json` / `credentials.dat` /
+`*.log`；asar 里搜 `pinxiaoche` / `mbe.cc` / `Wang16766912` / `lark_n` / `fe80::1` **全部无命中**。
+
+### 4) 数字的出处：门禁里谁碰了随包种子，谁不碰
+
+**13 条离线门禁里没有一条对 15 份种子或 geo 三份做逐字节比较**（逐条核过）：
+
+- `single-source-test.js` 是唯一读随包种子的门禁，只比**文件名集合**（`PROVIDERS` 的 15 个键 ↔
+  `resources/rules/*.yaml`，:113-119）、查 `acl_*.yaml` 残留（:121-123）、查 geo 三份
+  **存在且 >1024 B**（:131-139）—— 都不看字节内容，与行尾无关。
+- `rulesync-test.js`（:133-136、:447-448）与 `geosync-test.js`（:142-160）里确实有 sha256 与
+  `deepStrictEqual` 的逐字节断言，但比的是**测试自己造的假远端仓库**与临时目录里的落盘文件，
+  不碰随包种子 —— 与行尾无关。
+- `routing-sync-test.js` 比的是**文本**（`readFileSync(..., "utf8")` + 字符串比较），不是字节。
+- 真正对随包种子做逐字节断言的是 **`test:real`**（不在 13 条离线里，要 Electron + 真账号）：
+  `scripts/real-test.js:635-646` 的 `after.equals(packaged)`。它**不怕行尾** —— 两侧都来自同一棵
+  工作树/同一个包（`copyFileSync` 字节复制），CRLF 不会造成差异。
+
+**结论**：眼下没有 CRLF 敏感的门禁；风险只在于「将来有人拿逐字节比种子 ↔ 上游」。
+
+顺带钉一条口径（同 A-65 的教训）：**被写进文档的数字，就该由脚本自己打印**。
+`scripts/updater-self-test.js` 原先把结尾写成「全部通过 / 失败 N 项」，条数只能靠人眼数 ✓；
+现在它自己打印 `通过 25 项，失败 0 项`（照 `traffic-view-test.js` 的格式），README 只抄这一行。
+
+---
 ## 四、验证体系怎么用
 
 ```bash
@@ -3707,14 +3821,16 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    用例 5 钉的就是"能立刻重试"）。要不要对 `ECONNRESET`/超时做自动重试（比如退避重试 2 次），
    属于产品取舍，**等用户定**，没擅自加。
 
-1.9 **分流表门禁：本地已对齐，待推送 —— main 要追平 android-portable（第 15 轮，见 A-57）**
+1.9 **分流表门禁：已收口 —— main 已与 Windows 同表（第 15 轮，见 A-57）**
 
-   **先放着、等安卓那边收尾后再一起排（2026-10-13）。** 这个序是 **Eric 排的**，
-   不是用户的决定；真正要不要执行等**用户的 go-ahead**。
-   谁看到 `.github/workflows/ci-windows.yml` 那条「分流表跨语言一致性」红，先来读这一条。
+   ✅ **已完成（2026-10-14 复核）**：`main` 已采用 Windows 这份表 —— `main` tip `47c25fc`
+   （安卓交付 `ce6d656`）。实测两端逐条一致：`Go 表 12 组 / 15 个 provider / 241 条内联` ↔
+   `JS 表 12 组 / 15 个 provider / 241 条内联`（`routing-sync-test.js` 严格模式 PASS）。
+   `ci-windows.yml` 在 `windows-portable` 的 `5b3ca8b` 上是**真绿**：run `38473927116`，
+   13 条离线自检 + 全量 `node --check` + 跨仓库输入确认全部 success。
 
-   **当前准确状态：本地已对齐，待 `f65ffcd` 推送。**（别写成「已对齐」—— `f65ffcd`
-   还是本地提交，见下面的 ⚠️。）
+   下面保留的是**当时**的判断过程与那份 23 组待办清单 —— **历史记录，别再照它做**：
+   实际落地的是更后面的「分组精简 23 → 12 组」（A-60），两端现在共用同一份 12 组表。
 
    ⚠️ **方向已更正（2026-10-13，Eric 指出 + 本机复核）**：这条以前写成「把 Windows 的 23 组
    反向移植进 main」，**方向是反的**，别照旧版做。真实情况是 **Go↔JS 两端早就对齐了，
@@ -3777,9 +3893,9 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    > 提醒：`routing-sync-test.js` 只能验**同一个仓库内**两端一致，验不了跨分支漂移。
    > 对齐完两条分支都绿了，才算真的对齐 —— 别只看 main 绿了就收工。
 
-   > **执行前提**：这一步会改 main 上安卓 App 的分流行为（25→23 组、内联 100→246 条），
-   > 属跨端语义变更。**go-ahead 是用户的，他还没给 —— 在那之前谁都不要动 main 的
-   > `routing_table.go`。** 这份清单只是待办记录。
+   > **执行前提（已满足）**：这一步会改 main 上安卓 App 的分流行为，属跨端语义变更 ——
+   > go-ahead 用户已给，`main` 已落地（最终口径不是 23 组，而是 **12 组 / 241 条内联**，
+   > 见本节开头的 ✅）。这段保留为当时的待办记录。
 
 2. **TUN 模式实机验证**（需要用户同意，会临时接管网络栈）
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。
