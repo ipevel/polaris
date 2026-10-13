@@ -35,7 +35,7 @@ app/
 │   │   ├── builder.js      # 最终 config.yaml 组装
 │   │   ├── region.js       # 节点名 → 地区
 │   │   ├── traffic.js      # 流量 WebSocket 与速率聚合
-│   │   ├── rulesets.js     # 内置分流规则集（main 上仍是 25 组 / 47 个规则集；windows-portable 已到 23 组，见 DEVNOTES §五 1.9）
+│   │   ├── rulesets.js     # 内置分流规则集（23 组 / 10 个本地规则集）
 │   │   ├── updater.js      # 更新下载、解压、替换脚本（自替换）
 │   │   └── remote.js       # 远程配置（多源择优、Base64 混用）
 │   ├── panel/
