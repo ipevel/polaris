@@ -2919,8 +2919,10 @@ version-gate / go / quality 三个 job）。这个文件最初也叫 `ci.yml`，
 
 **所以现在不是「门禁坏了」，是门禁第一次把话说清楚了。** 要它变绿，得把 Windows 这版
 23 组布局（含 `🤖 AI` 合并、去掉 `🍃 应用净化`/`🛑 广告拦截`、`LEGACY_GROUP_ALIASES` 迁移）
-**反向移植进 main 的 `routing_table.go`** —— 那会改变安卓端的分流行为，属于跨端语义变更，
-需要单独批准，不在本轮范围里。**在这之前，这个 workflow 会红，而且红得对。**
+**反向移植进 main 的 `routing_table.go`** —— 那会改变安卓端的分流行为，属于跨端语义变更。
+
+> **用户已决定（2026-10-13）：先放着，等安卓收尾后一起排。** 所以这个红是知情的、刻意的。
+> 完整的移植步骤写在 §五 的 **1.9**，谁接手照那份清单做即可。
 
 ### 验收（本机 windows-portable 实测）
 
@@ -3136,6 +3138,44 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    **另外**：`download()` 目前失败后**不会自动重试**（只把 phase 设回 error，用户再点一次即可，
    用例 5 钉的就是"能立刻重试"）。要不要对 `ECONNRESET`/超时做自动重试（比如退避重试 2 次），
    属于产品取舍，**等用户定**，没擅自加。
+
+1.9 **分流表门禁现在是红的 —— 等安卓收尾后做 Go 表反向移植（第 15 轮，见 A-57）**
+
+   **用户已决定：先放着，等安卓那边收尾后一起排。** 所以这个红是**知情的、刻意的**，
+   不是忘了修 —— 谁看到 `.github/workflows/ci-windows.yml` 那条「分流表跨语言一致性」红，
+   先来读这一条。
+
+   现状（2026-10-13 实测）：
+
+   | | 组数 | 第 8-10 组 |
+   |---|---|---|
+   | main 的 Go 表（`routing_table.go`） | 25 | `♊️ Google Gemini` / `💬 Claude` / `💬 OpenAI` |
+   | windows-portable 的 JS 表（`rulesets.js`） | 23 | `🤖 AI`（合并三组） |
+
+   两边都还各有对方没有的东西（main 有 `🍃 应用净化`/`🛑 广告拦截`；Windows 有 151 条 AI 内联规则
+   与 `LEGACY_GROUP_ALIASES` 旧名迁移）。CI 会打印完整差异，不用手工比对。
+
+   **要做的移植**（把 Windows 这版布局落到 main 的 Go 表上，不是反过来）：
+
+   1. `♊️ Google Gemini` + `💬 Claude` + `💬 OpenAI` 三个 `RuleSet` 合并成一个 `🤖 AI`
+      （位置：`📲 WhatsApp` 之后、`🐱 GitHub` 之前；`DefaultOn: true`、`DefaultOut: proxy`、
+      无 providers）。
+   2. `inlineRules` = `GEOSITE,category-ai-!cn` + `openai` / `anthropic` / `google-gemini`
+      + Windows `rulesets.js` 里那 147 条内联域名兜底（照抄顺序，别漏）。
+   3. **删掉旧 Gemini 组里的 `GEOSITE,google` / `GEOSITE,google-play`** —— 这两条排在
+      「🌏 Google」「🌏 Google Play」前面，会把那两个组整体吃掉、开关设成什么都不生效。
+   4. `📺 哔哩哔哩` 与 `🎯 国内直连` 的 providers / inlineRules 对齐 Windows 版；
+      `🌏 Google Play`、`🎮 游戏平台` 的 `DefaultOut` 由 `proxy` 改 `direct`。
+   5. `🍃 应用净化` / `🛑 广告拦截` 两组按 Windows 侧 `33d1fc0` 的理由处理（"会互相遮蔽"）。
+   6. 移植完在 main 上跑 `node design/windows/app/scripts/routing-sync-test.js` 应变绿
+      （main 有 `kernel-core/`，会自动找到 Go 表，不用设 `POLARIS_GO_TABLE`）。
+   7. **别忘了同步 main 那份 `rulesets.js`**（现在还是 25 组旧版）；README 里
+      `rulesets.js # 内置分流规则集（25 组 / 47 个规则集）` 这行也要改成 23 组。
+   8. 安卓侧 `app/src/main/java/.../KernelConfig.kt` 之类如果也镜像了组名，一起对齐；
+      跑一次安卓的 `Polaris CI`（三个 job）确认没打坏。
+
+   > 提醒：`routing-sync-test.js` 只能验**同一个仓库内**两端一致，验不了跨分支漂移。
+   > 移植完两条分支都绿了，才算真的对齐 —— 别只看 main 绿了就收工。
 
 2. **TUN 模式实机验证**（需要用户同意，会临时接管网络栈）
    开 TUN → 验证流量 → 关 TUN → 确认路由/DNS 还原、虚拟网卡状态。先跟用户确认再动。

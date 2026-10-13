@@ -117,6 +117,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > 第 3 条为什么不许跳过：`windows-portable` 分支上没有 `kernel-core/`，本地跑会打印「跳过」并
 > `exit 0` —— 在 CI 里那等于一个永远绿的假通过。而这条测试要防的正是「main 改了分流表、
 > Windows 镜像没跟上」这种静默分叉（2026-10-12 就这么分叉过一次）。
+>
+> ⚠️ **这条现在红着，是知情的**：它抓到 main 的 Go 表与 Windows 的 JS 表双向分叉
+> （25 组 vs 23 组，AI 组一边分三组、一边已合并成「🤖 AI」）。
+> 用户已决定先放着、等安卓收尾后一起排；移植清单见 `docs/DEVNOTES.md` §五 的 1.9。
 
 ### 出问题怎么查
 
