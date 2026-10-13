@@ -34,7 +34,19 @@ concurrency:
 jobs:
   windows-offline:
     name: Windows 离线自检 + 语法检查
-    runs-on: ubuntu-latest
+    # 为什么跑 windows-latest 而不是 ubuntu（更贵、更慢，是权衡后的选择）：
+    #   1. 这个产品只有 Windows 版。updater 的 extract() 就是 Windows 实现
+    #      （`tar -xf` 走 Windows 自带 bsdtar，失败再回退 `powershell Expand-Archive`）。
+    #      在 ubuntu 上跑到解压那一步必然 `spawn powershell ENOENT` —— 第一次提交
+    #      就是 ubuntu，离线自检当场 19/4 红（用例 5、6 全挂）。那不是产品 bug，
+    #      是拿错平台的运行时去验一个 Windows-only 的模块。
+    #   2. 顺带把 Windows 专有假设（路径分隔符、bsdtar、PowerShell 回退）也纳入验证，
+    #      这些在 ubuntu 上永远验不到。
+    # 代价：Windows runner 计费更高。所以只跑离线自检，不装 Electron、不打包。
+    runs-on: windows-latest
+    # 离线自检里 updater-self-test 有一段故意等满 120 秒（验「父进程不退」），
+    # 加上 npm ci 与 Windows runner 的启动开销，给足余量。
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: design/windows/app
