@@ -139,9 +139,18 @@ var lanDirectRules = []string{
 //   - 2026-10-14 用户裁定「微软组只留云盘直连，其余走兜底」：上面那条宽口径的
 //     GEOSITE,microsoft（752 条，含 github.com / githubusercontent.com / github.io /
 //     bing / office / outlook / teams）会把已取消的 GitHub 系列重新吞成 **直连**，
-//     所以把「Ⓜ️ 微软」收窄成「云盘 + 系统更新 + Azure」三类。收窄后 GitHub 系列
+//     所以把「Ⓜ️ 微软」收窄成「云盘 + 登录 + 系统更新 + Azure」四类。收窄后 GitHub 系列
 //     按原设计落回「🌏 国外穿墙」（proxy-gfwlist 里本就有 github 的 10 条规则），
 //     Bing / Office / Outlook / Teams 同样落回穿墙 —— 这正是取消这些组时的预期。
+//   - 同日第二轮：该组声明的种子（onedrive provider）原本还并入了 ACL4SSR 的宽口径
+//     Microsoft.list（DOMAIN-KEYWORD,microsoft + bing/office/outlook/msn + 裸 live.com）。
+//     规则链里 RULE-SET 排在内联规则之前，于是上面删掉的 GEOSITE 所抓的域名又被它接回
+//     直连 —— 单看表看不出来，是 harness 修好「RULE-SET 未注册 provider 时静默返回
+//     false」这个假阴性之后才暴露的。已在规则仓库源头去掉那次合并
+//     （polaris-rules b0cf02b：onedrive 92 → 17 条，只留 OneDrive 本体），并把 6 条
+//     身份/认证域（msftauth.net / msauth.net / msftauthimages.net / msauthimages.net /
+//     msftidentity.com / msidentity.com）补进本组内联规则：它们旧表靠 Microsoft.list
+//     覆盖，那份不再并入后只能写在这里。
 //   - 保留「🍎 苹果服务」且默认直连（用户已定）；「🛑 广告拦截」默认打开。
 //
 // 「🍎 苹果服务」「Ⓜ️ 微软」两组默认 **direct**：它们和翻墙无关，走代理纯属浪费流量。
@@ -341,6 +350,16 @@ var Table = []RuleGroup{
 			"DOMAIN-SUFFIX,login.live.com,{t}",
 			"DOMAIN-SUFFIX,login.microsoftonline.com,{t}",
 			"DOMAIN-SUFFIX,login.microsoft.com,{t}",
+			// ②b 身份/认证族：零流量、与 login.* 同族，业务版 OneDrive / SharePoint 登录会走到。
+			// 旧表靠宽口径 Microsoft.list 覆盖，那份不再并入种子后只能写在这里。
+			// 不补的 4 条（aadrm.com / msappproxy.net / public-trust.com / omniroot.com）
+			// 与云盘无关，走「🌏 国外穿墙」兜底。
+			"DOMAIN-SUFFIX,msftauth.net,{t}",
+			"DOMAIN-SUFFIX,msauth.net,{t}",
+			"DOMAIN-SUFFIX,msftauthimages.net,{t}",
+			"DOMAIN-SUFFIX,msauthimages.net,{t}",
+			"DOMAIN-SUFFIX,msftidentity.com,{t}",
+			"DOMAIN-SUFFIX,msidentity.com,{t}",
 			// ③ 系统更新：geosite 里没有 windowsupdate 分类，只能逐条写
 			"DOMAIN-SUFFIX,update.microsoft.com,{t}",
 			"DOMAIN-SUFFIX,windowsupdate.microsoft.com,{t}",

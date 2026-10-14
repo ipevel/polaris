@@ -13,6 +13,7 @@ import (
 	"github.com/metacubex/mihomo/component/geodata"
 	"github.com/metacubex/mihomo/component/resource"
 	C "github.com/metacubex/mihomo/constant"
+	P "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/rules"
 	RP "github.com/metacubex/mihomo/rules/provider"
 	T "github.com/metacubex/mihomo/tunnel"
@@ -67,8 +68,14 @@ func openRealGeo(t *testing.T) {
 	geodata.SetSiteMatcher("mph")
 }
 
-// registerLocalProviders 按内核启动时的同一顺序加载本地规则集并返回生成的分流规则，
-// 否则 RULE-SET 规则匹配时找不到 provider 实例会 panic。
+// registerLocalProviders 按内核启动时的同一顺序加载本地规则集并返回生成的分流规则。
+//
+// 必须真的把 provider 注册进 tunnel.RuleProviders()：RULE-SET 的命中判定走的是
+// provider.RuleSet.getProvider() → tunnel.RuleProviders()[名字]（见
+// rules/provider/rule_set.go:62-65），拿不到实例就**静默返回 false**（:35），
+// 不报错也不 panic。只 ParseRuleProvider + Initial() 而不调 tunnel.UpdateRules，
+// 会让全部 RULE-SET 规则在这一层失效，读出来的落点是假象——2026-10-14 就是因此
+// 把「微软组仍挂宽口径 onedrive 规则集」这层漏掉了，8 个域名读成了错误的组。
 func registerLocalProviders(t *testing.T) []string {
 	t.Helper()
 	cfg := testRawConfig()
@@ -76,6 +83,7 @@ func registerLocalProviders(t *testing.T) []string {
 		t.Fatalf("Build: %v", err)
 	}
 	RP.SetTunnel(T.Tunnel)
+	providers := make(map[string]P.RuleProvider, len(cfg.RuleProvider))
 	for key, raw := range cfg.RuleProvider {
 		if p, _ := raw["path"].(string); p != "" {
 			// 与 process.patchProviders 保持一致：path → <profileDir>/providers/<path>
@@ -88,6 +96,12 @@ func registerLocalProviders(t *testing.T) []string {
 		if err := rp.Initial(); err != nil {
 			t.Fatalf("本地规则集 %q 初始化失败：%v", key, err)
 		}
+		providers[key] = rp
+	}
+	// 内核启动时由 tunnel 把 rule-providers 注册进来，这里等价复刻。
+	T.UpdateRules(nil, nil, providers)
+	if got := len(T.RuleProviders()); got != len(providers) {
+		t.Fatalf("规则集注册数不符：tunnel 里 %d 个，期望 %d 个", got, len(providers))
 	}
 	return cfg.Rule
 }
@@ -203,6 +217,23 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		{host: "update.microsoft.com", want: "Ⓜ️ 微软", why: "Windows Update"},
 		{host: "windowsupdate.com", want: "Ⓜ️ 微软", why: "Windows Update"},
 		{host: "portal.azure.com", want: "Ⓜ️ 微软", why: "Azure 门户"},
+		// 身份/认证族：旧表靠宽口径 Microsoft.list 覆盖，规则仓库去掉那次合并后
+		// （polaris-rules b0cf02b）只能由本组内联规则接住，所以逐条钉住。
+		{host: "msftauth.net", want: "Ⓜ️ 微软", why: "微软账号认证（业务版 OneDrive 登录）"},
+		{host: "msauth.net", want: "Ⓜ️ 微软", why: "微软账号认证"},
+		{host: "msftauthimages.net", want: "Ⓜ️ 微软", why: "微软账号认证图形资源"},
+		{host: "msauthimages.net", want: "Ⓜ️ 微软", why: "微软账号认证图形资源"},
+		{host: "msftidentity.com", want: "Ⓜ️ 微软", why: "微软身份服务"},
+		{host: "msidentity.com", want: "Ⓜ️ 微软", why: "微软身份服务"},
+		// 裁定不补的 4 条：不写内联规则，落点按**实测**钉住（各自不同）——
+		//   aadrm.com        命中 geosite 的 azure 分类 → 本组保留的 GEOSITE,azure 接住，
+		//                    所以仍是直连。这是上游分类的结果，不是我们额外加的规则。
+		//   msappproxy.net   不在任何 geosite 分类里 → 落到最后的「🐟 漏网之鱼」。
+		//   public-trust.com / omniroot.com  只命中 geolocation-!cn → 「🌏 国外穿墙」。
+		{host: "aadrm.com", want: "Ⓜ️ 微软", why: "旧 RMS：落在 geosite azure 分类里（上游分类，未额外加规则）"},
+		{host: "msappproxy.net", want: "🐟 漏网之鱼", why: "企业应用代理：不在任何 geosite 分类里"},
+		{host: "public-trust.com", want: "🌏 国外穿墙", why: "证书信任链（裁定不补）"},
+		{host: "omniroot.com", want: "🌏 国外穿墙", why: "证书信任链（裁定不补）"},
 		{host: "music.163.com", want: "🎯 国内直连", why: "网易音乐（原「🎶 网易音乐」）"},
 		{host: "www.bilibili.com", want: "🎯 国内直连", why: "哔哩哔哩（原「📺 哔哩哔哩」）"},
 		{host: "store.steampowered.com", want: "🎮 游戏平台", why: "Steam"},

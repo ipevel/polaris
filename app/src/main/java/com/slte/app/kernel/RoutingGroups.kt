@@ -24,6 +24,12 @@ package com.slte.app.kernel
  *  - 2026-10-14 续：「Ⓜ️ 微软」收窄为「云盘 + 登录 + 系统更新 + Azure」——宽口径的
  *    `GEOSITE,microsoft`（752 条）会把已取消的 GitHub 系列吞成**直连**，收窄后
  *    GitHub / Bing / Office / Outlook / Teams 落回「🌏 国外穿墙」（详见 `routing_table.go`）。
+ *  - 2026-10-14 三续：收窄漏了该组声明的种子——`onedrive.yaml` 当时是 ACL4SSR
+ *    `OneDrive.list` + `Ruleset/Microsoft.list` 的合并（92 条，含 `DOMAIN-KEYWORD,microsoft`、
+ *    `bing`/`office`/`outlook`/`msn`/裸 `live.com`），而规则链里 RULE-SET 排在内联规则**之前**，
+ *    等于把删掉的 `GEOSITE,microsoft` 又接了回来。规则仓库已去掉 `alsoRuleset: ['Microsoft']`
+ *    （92 → 17 条），身份/认证族 6 条改写进组内联规则。该组的 `Providers`（onedrive）与
+ *    出口（direct）不变。
  * 已取消且**刻意不做别名映射**的旧名见 [LegacyGroupAliases] 的说明。
  */
 data class RoutingGroupInfo(

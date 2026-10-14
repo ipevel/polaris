@@ -295,6 +295,56 @@
     `libclash.h` 不替换。
 - 产物摘要：见同目录 `SHA256SUMS`（`881529da…6ea804`）。
 
+## 2026-10-14 重建记录（第二轮：随包种子去掉宽口径 Microsoft.list，补 6 条认证域）
+
+- 背景：上一轮只收窄了「Ⓜ️ 微软」组的内联规则，**漏了该组声明的种子**。该组 `Providers`
+  指向 `onedrive`，而随包种子 `onedrive.yaml` 当时是 ACL4SSR `Clash/OneDrive.list`
+  与 `Clash/Ruleset/Microsoft.list` 的合并（92 条），后者含 `DOMAIN-KEYWORD,microsoft`、
+  `bing.*`、`office*`、`outlook*`、`msn.com`、裸 `live.com`。规则链里 RULE-SET 排在
+  内联规则**之前**（`routing_build.go` 先 emit RULE-SET 再 emit InlineRules），
+  于是上一轮删掉的 `GEOSITE,microsoft` 所抓的域名又被种子接回直连。
+- 为什么上一轮没发现：harness（`routing_decision_test.go`）只 `ParseRuleProvider` +
+  `Initial()`，没有把 provider 注册进 `tunnel.RuleProviders()`，而 RULE-SET 的命中判定
+  走 `rules/provider/rule_set.go:62-65` 的 `getProvider()` → 拿不到实例就**静默返回
+  false**。即全部 RULE-SET 规则在 harness 里恒不命中，读出来的是内联规则单独作用的结果。
+  已修：`registerLocalProviders` 收齐 `map[string]P.RuleProvider` 后调
+  `T.UpdateRules(nil, nil, providers)`，并断言 `len(T.RuleProviders())` 相符。
+- 变更：
+  1. 规则仓库侧（`ipevel/polaris-rules` `b0cf02b`）：`tools/manifest.mjs` 的 onedrive 条目
+     删掉 `alsoRuleset: ['Microsoft']`，`dist/rules/onedrive.list` 92 条 → **17 条**
+     （只剩 `Clash/OneDrive.list` 本体）。选白名单而非事后加排除项：上游明天新增什么都不会漏进来。
+  2. 随包种子 `app/src/main/assets/routing/providers/onedrive.yaml` 换成该 17 条
+     （sha256 `69eb753d…230ecb`，515 字节）。
+  3. `native/config/routing/routing_table.go` 的「Ⓜ️ 微软」组内联规则 13 条 → **19 条**，
+     新增 ②b 身份/认证族 6 条：`DOMAIN-SUFFIX,{msftauth.net,msauth.net,msftauthimages.net,
+     msauthimages.net,msftidentity.com,msidentity.com}`。它们旧表靠 `Microsoft.list` 覆盖，
+     那份不再并入后只能写在这里。裁定不补的 4 条（`aadrm.com` / `msappproxy.net` /
+     `public-trust.com` / `omniroot.com`）不写规则。
+  4. 顺带：上游 `meta-rules-dat` release 前进（`2026-10-13T03:08:15Z` →
+     `2026-10-14T01:20:26Z`），随包 geo 三份按仓库 `dist/geo/` 刷新
+     （geosite.dat `30b8fe82…` → `edcea5a7…` 4,276,543 B；geoip.metadb `e060b447…` →
+     `2a423d87…` 8,414,245 B；ASN.mmdb 未变）。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=C:\Android\Sdk\ndk\28.2.13676358\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+  （Go 1.23.4 windows/amd64，`GOPROXY=off` 走本地模块缓存；产物 75,190,440 字节）
+- 验证：
+  - `go test -count=1 ./native/config/routing/...` 全绿（`POLARIS_GEO_DIR=app/src/main/assets`
+    + `POLARIS_PROVIDERS_DIR=app/src/main/assets/routing/providers`）。
+    **修好注册之后**，`TestRoutingDecisionAccuracy` 逐格落点与用户裁定表相符：
+    GitHub 6 / Bing 2 / Office 2 / Outlook / Teams / live.com / msn →「🌏 国外穿墙」；
+    云盘 + 登录 + 更新 + Azure + 6 条认证域 →「Ⓜ️ 微软」（direct）。
+  - geosite 分类实测（临时探针，用完即删）：`microsoft` 752 / `onedrive` 19 / `azure` 151 /
+    `bing` 40 / `geolocation-!cn` 27340；`msftauth.net`、`msauth.net`、`msftauthimages.net`、
+    `msidentity.com` 在 `microsoft` 分类里（但我们不再挂 `GEOSITE,microsoft`），
+    `msauthimages.net`、`msftidentity.com` **不在任何分类**，所以这 6 条必须写成内联规则。
+  - 逐字节核对产物（反向对照）：新规则串 `DOMAIN-SUFFIX,{msftauth.net,msauth.net,
+    msftauthimages.net,msauthimages.net,msftidentity.com,msidentity.com},{t}` **各命中 1 次**；
+    宽口径串 `GEOSITE,microsoft,{t}` / `GEOSITE,bing,{t}` **各 0 次**。
+  - `llvm-nm -D --defined-only` 导出符号 **156** 个，与前次一致（本次只改规则字符串），
+    `libclash.h` 不替换。
+- 产物摘要：见同目录 `SHA256SUMS`（`44dbd69f…e30922a`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。
