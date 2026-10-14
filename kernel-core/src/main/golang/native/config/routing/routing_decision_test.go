@@ -262,6 +262,9 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 
 	for _, c := range cases {
 		got := decision(t, ruleChain, c.host, c.ip)
+		// 逐格打印落点：`go test -v` 的输出本身就是那张可复核的落点表，
+		// 报告里引用的每一格都能在日志里对到行，不靠「PASS 蕴含全部相符」。
+		t.Logf("%-40s -> %-12s (want %-12s) %s", cmpHost(c.host, c.ip), got, c.want, c.why)
 		if got != c.want {
 			t.Errorf("%s（%s）命中分流组 = %q，期望 %q",
 				c.why, cmpHost(c.host, c.ip), got, c.want)
