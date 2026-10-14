@@ -132,6 +132,56 @@ async function scenarioStaleRename() {
   ok('没有残留时再调一次也不报错', true);
 }
 
+async function scenarioCopyFails() {
+  console.log('\n场景 5 · 复制失败（目标侧同名的是个目录，copyFileSync 必失败）');
+  reset();
+  launched = null;
+  // 让「复制 resources/rules/gs_cn.yaml」这一步必然失败：目标侧同名路径是个目录
+  fs.mkdirSync(path.join(APP, 'resources', 'rules', 'gs_cn.yaml'), { recursive: true });
+  const fast = updater.APPLY.retryDelays;
+  updater.APPLY.retryDelays = [1, 1];   // 别真等 57 秒
+  let code;
+  try {
+    setEnv(999999);
+    code = await updater.applyWorker();
+  } finally {
+    updater.APPLY.retryDelays = fast;
+  }
+  const alog = read(path.join(UPD, 'apply.log'));
+  ok('退出码 1（失败）', code === 1);
+  ok('失败文件记了第 1 次重试', /重试 .*gs_cn\.yaml（第 1\/3 次）/.test(alog));
+  ok('失败文件记了第 2 次重试（旧代码不 await，只会记第 1 次就往下走）', /重试 .*gs_cn\.yaml（第 2\/3 次）/.test(alog));
+  ok('日志里有「复制失败，已放弃本次安装」', alog.includes('复制失败，已放弃本次安装'));
+  ok('没有「清理完成」（清理不得早于复制完成）', !alog.includes('清理完成'));
+  ok('没有「已重新拉起」（失败不许拉起）', !alog.includes('已重新拉起'));
+  ok('staging 还在（留给下次重试）', fs.existsSync(STAGE));
+  ok('zip 还在（没被清掉）', fs.existsSync(path.join(UPD, 'Polaris-1.11.0.zip')));
+  ok('staged.json 还在（下次启动还能 restoreStaged）', fs.existsSync(path.join(UPD, 'staged.json')));
+  ok('没有拉起任何东西', launched === null);
+  ok('安装目录里仍有可启动的 Polaris.exe', fs.existsSync(FAKE_EXE));
+  ok('用户数据 data/ 原样保留', read(path.join(APP, 'data', 'credentials.dat')) === 'USER-CREDENTIALS');
+}
+
+async function scenarioCleanupOrder() {
+  console.log('\n场景 6 · 成功路径的顺序：复制完成 → 清理完成 → 重新拉起');
+  reset();
+  launched = null;
+  setEnv(999999);
+  const code = await updater.applyWorker();
+  const alog = read(path.join(UPD, 'apply.log'));
+  const iCopy = alog.indexOf('复制完成');
+  const iClean = alog.indexOf('清理完成');
+  const iLaunch = alog.indexOf('已重新拉起');
+  ok('退出码 0', code === 0);
+  ok('三行日志都在', iCopy >= 0 && iClean >= 0 && iLaunch >= 0);
+  ok('「复制完成」早于「清理完成」', iCopy < iClean);
+  ok('「清理完成」早于「已重新拉起」', iClean < iLaunch);
+  ok('拉起时环境里没有 POLARIS_APPLY_*（否则新实例会再跑一遍 helper）',
+    !!launched && launched.opts && !Object.keys(launched.opts.env || {}).some((k) => k.startsWith('POLARIS_APPLY_')));
+  ok('拉起时仍带着 PATH（只剔自己那几个变量）',
+    !!launched && Object.keys(launched.opts.env || {}).some((k) => k.toLowerCase() === 'path'));
+}
+
 async function main() {
   console.log('自我替换 helper 自检（临时目录：' + TMP + '）');
   try {
@@ -139,6 +189,8 @@ async function main() {
     await scenarioParentAlive();
     await scenarioStagingGone();
     await scenarioStaleRename();
+    await scenarioCopyFails();
+    await scenarioCleanupOrder();
   } finally {
     fs.rmSync(TMP, { recursive: true, force: true });
   }

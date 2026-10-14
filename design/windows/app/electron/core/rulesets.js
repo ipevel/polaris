@@ -132,8 +132,8 @@ const LAN_DIRECT_RULES = [
  *   X + Instagram + Facebook + WhatsApp → 「📲 社交媒体」
  *   油管视频 + 奈飞视频 + 迪士尼/HBO/Hulu/AppleTV/BBC/Abema/DAZN/Twitch/
  *     Spotify/Amazon → 「📺 流媒体」（规则从 2 份变成 1 份 streaming.list）
- *   微软云盘 + 微软服务 → 「Ⓜ️ 微软」（云盘必须直连省流量，微软服务默认代理，
- *     给一个开关整体切换；onedrive.list 里已含 Microsoft 的全部域名）
+ *   微软云盘 + 微软服务 → 「Ⓜ️ 微软」（云盘必须直连省流量；2026-10-14 收窄成
+ *     云盘 + 账号认证 + 系统更新 + Azure，微软其余域名回落「🌏 国外穿墙」）
  * 取消（规则改走「🌏 国外穿墙」兜底，出口不变，仍是代理）：
  *   GitHub / Google Play / Google / 微软Bing / 微软服务
  *   这五个组原本都是 defaultOut=proxy，「国外穿墙」也是 proxy，且它们的内联
@@ -350,17 +350,17 @@ const TABLE = [
     inlineRules: ['GEOSITE,steam,{t}', 'GEOSITE,epicgames,{t}', 'GEOSITE,sony,{t}',
       'GEOSITE,nintendo,{t}', 'GEOSITE,category-games,{t}'],
     providers: ['games'] },
-  // 微软云盘与微软服务合成一组（2026-10-13 分组简化）：onedrive.list 里已含
-  // Microsoft 的全部域名（OneDrive 17 条 + Microsoft 79 条），所以只挂一个 provider。
+  // 微软云盘与微软服务合成一组（2026-10-13 分组简化）。
+  //
+  // 2026-10-14 收窄（用户拍板）：旧表用 GEOSITE,microsoft + GEOSITE,bing 的宽口径把
+  // GitHub / Bing / Office / Outlook / Teams 一并拉成直连；现在这些回落「🌏 国外穿墙」
+  // （代理），本组只留三块 —— 云盘、账号/认证、系统更新，外加 Azure。
+  // 随包种子 onedrive.yaml 也同步收窄（只含 OneDrive 的 17 条，不再并入 Microsoft.list），
+  // 所以「微软服务」不再有 provider 兜底，组内每条规则都写死在这里。
   //
   // 为什么不能简单删掉这一组：它 defaultOut=direct，而云盘走代理太费流量
   // （用户 2026-10-13 明确：「要不太费流量了」）。删了会让云盘落回代理。
-  // 组内直连/代理的分界由规则表本身表达：
-  //   - 云盘域名（GEOSITE,onedrive + docs.live.net / content.live.net /
-  //     odc.officeapps.live.com / officeapps.live.com）在**前面**命中 → direct
-  //   - 其余微软域名（同一份 onedrive.list 的 Microsoft 部分）跟着组出口走。
-  // 所以组出口选 direct 时云盘直连、微软服务也直连；选 proxy 时都能走代理 ——
-  // 给用户一个开关整体切换，比原来「云盘 direct + 微软服务 proxy」两个开关更直观。
+  // 组出口给用户一个开关整体切换：选 direct 时云盘直连，选 proxy 时整组走代理。
   // 注意 geosite 的 onedrive 分类只有 19 条，真正传文件字节的内容主机
   // docs.live.net / content.live.net 不在里面，会漏到下一组，所以必须补内联兜底
   // （实测见 routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）。
@@ -373,13 +373,29 @@ const TABLE = [
     // 用户打不开云盘时把本组切到「节点选择」即可。note 会显示在分流规则页那一行下面。
     note: 'onedrive.live.com 直连会被重置；云盘打不开就把本组切到「节点选择」',
     inlineRules: [
+      // ① 云盘：OneDrive 本体与内容主机
       'GEOSITE,onedrive,{t}',
       'DOMAIN-SUFFIX,docs.live.net,{t}',
       'DOMAIN-SUFFIX,content.live.net,{t}',
       'DOMAIN-SUFFIX,odc.officeapps.live.com,{t}',
       'DOMAIN-SUFFIX,officeapps.live.com,{t}',
-      'GEOSITE,microsoft,{t}',
-      'GEOSITE,bing,{t}',
+      // ② 账号登录：取文件前要先登录，漏了它云盘照样用不了
+      'DOMAIN-SUFFIX,login.live.com,{t}',
+      'DOMAIN-SUFFIX,login.microsoftonline.com,{t}',
+      'DOMAIN-SUFFIX,login.microsoft.com,{t}',
+      // ②b 身份/认证族：零流量、与 login.* 同族，业务版 OneDrive / SharePoint 登录会走到
+      'DOMAIN-SUFFIX,msftauth.net,{t}',
+      'DOMAIN-SUFFIX,msauth.net,{t}',
+      'DOMAIN-SUFFIX,msftauthimages.net,{t}',
+      'DOMAIN-SUFFIX,msauthimages.net,{t}',
+      'DOMAIN-SUFFIX,msftidentity.com,{t}',
+      'DOMAIN-SUFFIX,msidentity.com,{t}',
+      // ③ 系统更新：geosite 里没有 windowsupdate 分类，只能逐条写
+      'DOMAIN-SUFFIX,update.microsoft.com,{t}',
+      'DOMAIN-SUFFIX,windowsupdate.microsoft.com,{t}',
+      'DOMAIN-SUFFIX,windowsupdate.com,{t}',
+      // ④ Azure
+      'GEOSITE,azure,{t}',
     ],
     providers: ['onedrive'] },
   // 「🍎 苹果服务」保留（用户 2026-10-13 定：保留该组且出口可选）。

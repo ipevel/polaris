@@ -1,14 +1,14 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-14（**文档追平** + **A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**；同日更早为第 15 轮 A-57）
+> 最后更新：2026-10-14（**A-68 覆盖安装修复**：`withRetry` 没 await，复制没完成就清理并重启；同日更早为**文档追平** + **A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**、第 15 轮 A-57）
 > 追平的数字一律以树为准：`kernel-core/.../routing_table.go` 与 `electron/core/rulesets.js`
-> 都是 **12 组 / 15 个 provider / 241 条内联**（11 组默认开，`🍃 应用净化` 默认关）；
-> `resources/rules/` 是 **15 个清单 / 588 KB**（发版包内实测 607 KB，差别只是行尾 CRLF）。
+> 都是 **12 组 / 15 个 provider / 252 条内联**（11 组默认开，`🍃 应用净化` 默认关）；
+> `resources/rules/` 是 **15 个清单 / 586 KB**（发版包内实测 607 KB，差别只是行尾 CRLF）。
 > 用户批了门禁这一摊：真面板两条自检挂进 npm、补 `.editorconfig`、把 5 条离线自检接进 CI。
 > 见 §三 A-57 —— 注意里面那条：**门禁抓到 `main` 的 Go 分流表落后了**
 > （当时 `main` 25 组 / 100 条内联，Windows 的 JS 表已是 23 组 / 246 条内联，本机实测 PASS）。
 > **方向是「main 追平 Windows」，不是改 Windows**。**这条已经收口**：`main` 现在与 Windows
-> 同表 —— 实测两端都是 **12 组 / 15 个 provider / 241 条内联**（`main` tip `47c25fc`，
+> 同表 —— 实测两端都是 **12 组 / 15 个 provider / 252 条内联**（`main` tip `47c25fc`，
 > 安卓交付 `ce6d656`），`ci-windows.yml` 在 `windows-portable` 的 `5b3ca8b` 上真绿
 > （run `38473927116`；`5eb645f` 上再绿一次，run `38483441249`）。
 > 当时的判断过程与那份 23 组待办清单留在 §五 1.9（**历史记录**）。
@@ -309,7 +309,7 @@ Windows 侧源码在 `design/windows/`，主分支 `main` 里也同步一份）�
 | 应用代码 | 主进程 5,972 行 JS（`core/` 2,763 + `panel/` 1,146 + `net/` 445 + `util/` 31 + 顶层 1,587），渲染层 2,463 行 JS，样式 485 行 CSS；自检脚本 2,354 行（`real-test.js` 1,327 + `ui-test.js` 1,014） |
 | 内核 | mihomo v1.19.32（windows-amd64-**compatible**）+ wintun 0.14.1 |
 | 规则库 | geoip.metadb + geosite.dat + ASN.mmdb，20.7 MB |
-| 内置分流 | **15 个本地清单 + 12 个分流组**（11 组默认开，241 条内联），588 KB（`resources/rules/` 随包预播种到 `data/polaris-rules/`；provider 全是 `type: file` 的本地文件，**没有 `type: http`**；清单内容的更新走 12 小时懒更新，`2feba16` 起的 rulesync） |
+| 内置分流 | **15 个本地清单 + 12 个分流组**（11 组默认开，252 条内联），586 KB（`resources/rules/` 随包预播种到 `data/polaris-rules/`；provider 全是 `type: file` 的本地文件，**没有 `type: http`**；清单内容的更新走 12 小时懒更新，`2feba16` 起的 rulesync） |
 | 自定义分流 | 用户自己写规则的分流组（最多 20 组 / 每组 200 条），**拖动排序**，存 `settings.json` 的 `custom_rulesets` |
 
 ### 测试入口（2026-10-10 起）
@@ -496,7 +496,7 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
   时，整体**降级回面板配置**并在分流页顶部说明原因 —— 与安卓端 `checkNameCollisions` 同款行为。
   硬来会让 mihomo 直接拒绝加载整份配置（组名重复），用户看到的是"连不上"。
 - **规则数据**：`type: file` + `path: polaris-rules/<key>.yaml`（相对 `-d`），**不带 `url`、不带 `interval`**。
-  种子就是这 15 个清单（`resources/rules/`，约 588 KB），启动时铺到 `data/polaris-rules/`、
+  种子就是这 15 个清单（`resources/rules/`，约 586 KB），启动时铺到 `data/polaris-rules/`、
   **只补缺失、不覆盖**。没有 `interval` 就没有「内核自己去拉远程」这条路径：清单内容的更新由
   我们自己的 rulesync 做（12 小时懒更新 + 钉 commit SHA，见 `2feba16` / `d36b93e`），内核只读
   本地文件；`GEOSITE` / `GEOIP` 那些本体来自内置 `geosite.dat` / `geoip.metadb`
@@ -505,7 +505,7 @@ Tauri 的 exe 只有 ~15 MB，但依赖系统 WebView2 运行时。要满足零�
 - `path` 必须是相对 `-d` 的路径：mihomo 走 `C.Path.IsSafePath(C.Path.Resolve(schema.Path))`，
   只放行 homeDir 下的子路径，写绝对路径或直接指向 `resources/rules/` 一律被拒（见坑 C-7）。
 - 目录名 `polaris-rules` 与安卓端 `providerSubPath` 一致。种子铺到 `data/polaris-rules/`（内核的 `-d` 目录内），
-  2026-10-12 起只剩本地清单种子，现在是 15 个（约 588 KB）；早先用 `type: file` 直读清单那个年代的 `data/rules/`
+  2026-10-12 起只剩本地清单种子，现在是 15 个（约 586 KB）；早先用 `type: file` 直读清单那个年代的 `data/rules/`
   仍在启动时顺手清掉，不留死文件。
 
 其余语义沿用安卓端：本地规则插在订阅规则**之前**、内网地址始终直连、
@@ -3600,16 +3600,17 @@ Windows 侧规则刷新走 `127.0.0.1:<mixed_port>` 的 CONNECT 隧道（`getVia
 数字的**来源**必须留档 —— 下面每一个数都是**照树数出来的**，不是照旧文档改的。核对对象：
 `windows-portable` 的工作树、`main` 的 Go 表、Release `v1.11.5` 的便携包。
 
-### 1) 分流表：12 组 / 15 个 provider / 241 条内联（11 组默认开）
+### 1) 分流表：12 组 / 15 个 provider / 252 条内联（11 组默认开）
 
-- 组数 **12**、provider **15**、内联规则 **241** 条；**11 组默认开**，只有 `🍃 应用净化` 默认关。
+- 组数 **12**、provider **15**、内联规则 **252** 条；**11 组默认开**，只有 `🍃 应用净化` 默认关。
+- 2026-10-14 晚：`Ⓜ️ 微软` 组**收窄**（删 `GEOSITE,microsoft` / `GEOSITE,bing`，补 6 条认证域与 3 条更新域，共 18 条内联；随包 `onedrive.yaml` 同步收窄到 17 条），内联总数 **241 → 252**，组数与 provider 数不变；本节的 241/588.3 KB 已按收窄后重数。
 - provider 键（两端同一批，**不带 `acl_` 前缀**）：`social` / `streaming` / `ai` / `games` /
   `telegram` / `tiktok` / `china-domain` / `china-ip` / `china-media` / `onedrive` / `apple` /
   `proxy-gfwlist` / `proxy-media` / `banad` / `banprogramad`。
 - **Go 表与 JS 表逐条一致**：`kernel-core/src/main/golang/native/config/routing/routing_table.go`
   与 `electron/core/rulesets.js` 的组名、顺序、每条内联规则逐条比对无差异 —— `test:routing-sync`
   钉的就是这件事，它是 `POLARIS_GO_TABLE_REQUIRED=1` 的硬门禁（取不到 Go 表就红，不许跳过）。
-- 随包资源实测：`resources/rules/` **15 个 / 588.3 KB**；`resources/geo/` **3 个 / 20.7 MB**；
+- 随包资源实测：`resources/rules/` **15 个 / 586.4 KB**；`resources/geo/` **3 个 / 20.7 MB**；
   `resources/core/` 在仓库里**不存在**（由 `fetch-core.py` 拉取，不入库）。
 - 从此各处不得再出现「23 组」「10 个 `acl_*`」「61 KB」这套旧数。
 
@@ -3670,6 +3671,56 @@ v1.11.5 便携包里 15 份种子与 `ipevel/polaris-rules` 的 `dist/rules/*.li
 现在它自己打印 `通过 25 项，失败 0 项`（照 `traffic-view-test.js` 的格式），README 只抄这一行。
 
 ---
+## A-68 应用内「覆盖安装」是坏的：`withRetry` 没 await，复制没完成就清理并重启（2026-10-14）
+
+**现象（用户真机 `E:\OneDrive\Desktop\软件\Polaris-portable-1.11.4`）**：卡在**无限升级循环** ——
+安装目录里 `Polaris.exe` 已经是 1.11.5（246,302,208 B），但 `resources/app.asar` 还是 1.11.4 那份
+（2,531,668 B / 10-13 17:30:15）。版本号是从 asar 里的 `package.json` 读的，于是永远读到 1.11.4
+→ 每 30 秒又「发现」1.11.5 → 下载 → 解压 → 半复制 → 重启，17:01 / 17:02 / 17:03 连转三轮。
+`apply.log` 里 11 个文件报 `EBUSY` / `UNKNOWN` / `ENOENT`（`resources/app.asar`、`resources.pak`、
+`icudtl.dat`、`v8_context_snapshot.bin`、`vk_swiftshader.dll`、`chrome_100_percent.pak`、
+`chrome_200_percent.pak`、`d3dcompiler_47.dll`、`dxcompiler.dll`、`dxil.dll`、`locales/zh-CN.pak`），
+**每条只有「第 1/5 次」、没有 2~5 次**，紧接着就是「复制完成 / 清理完成 / 已重新拉起」。
+
+**根因（三条叠在一起，少一条都不会变成这样）**
+
+1. **`withRetry` 是 `async`，调用处没 `await`** —— `copyTree` 里写的是
+   `withRetry(() => fs.copyFileSync(s, d), say, ...)`，**发出去就不管**：第一次失败之后循环立刻
+   走到下一个文件，`applyWorker` 接着报「复制完成」，后台那条重试链还在睡。所以日志里只有
+   「第 1/5 次」，而且**失败被完全吞掉**（重试最终抛出的错没人接）。
+2. **主进程退出 ≠ 子进程退出** —— Electron 的 GPU / renderer 子进程此刻还映射着
+   `app.asar` / `*.pak` / `*.dll` / `icudtl.dat`，正是上面那 11 个；`copyFileSync` 必然拿到
+   `EBUSY`。原来只等主进程 pid 消失就动手，窗口根本不够。
+3. **清理与拉起没有「等复制确认完成」** —— `rmSync(recursive)` 一头撞上还被占的文件就整棵抛错，
+   staging 里剩一堆删不掉的残留（真机就是这样）；`spawn(新 exe)` 又**继承**了
+   `POLARIS_APPLY_*`，新实例以为自己是 helper 再跑一遍 worker，而 staging 已经没了，于是打出
+   误导的「staging 里没有 Polaris.exe，放弃（安装目录未改动）」。
+
+**修法**（都在 `electron/core/updater.js`，可调参数集中在新增的 `APPLY` 常量，自检会把它缩到毫秒级）
+
+- `withRetry` 改成**真 await**（`copyTree` 改 `async`、逐文件 `await`），失败必须冒到 helper 顶层；
+  单文件重试窗口从「5 次共 15 秒」拉长到 `retryDelays` 合计约 **57 秒**，覆盖子进程退出的那段时间。
+- **先等齐、再复制**：新增 `listFiles` / `canOverwrite` / `waitOverwritable` —— 拿 staging 的文件清单
+  逐个探「能不能用写权限打开」，最多等 `overwriteWaitMs`（90 秒）；等不齐也往下走（由按文件重试兜底）。
+- **复制失败就到此为止**：不清理 staging / zip、不拉起、退出码非 0，`staged.json` 留着让下次启动
+  还能 `restoreStaged()` 重试；万一新 exe 还没落位，把旧 exe 改回 `Polaris.exe`（用户至少还能启动旧版）。
+- **清理改成尽力而为**：新增 `rmTolerant`，单个文件删不掉只记一条日志、**不中断整棵树**。
+- **拉起时显式传 env 并剔掉 `POLARIS_APPLY_*`**，其余变量（含 `PATH`）原样带过去。
+
+**回归**（`scripts/updater-self-test.js`，25 → **43 项**）
+
+- 场景 5「复制失败」：让目标侧同名路径是个目录（`copyFileSync` 必失败）→ 钉住**退出码 1、
+  记了第 1 与第 2 次重试（旧代码只会记第 1 次）、没有「清理完成」、没有「已重新拉起」、
+  staging / zip / staged.json 都还在、安装目录里仍有可启动的 exe、`data/` 原样**。
+- 场景 6「清理顺序」：成功路径上**「复制完成」早于「清理完成」早于「已重新拉起」**，
+  且拉起时的环境里**没有** `POLARIS_APPLY_*`、`PATH` 还在。
+
+**没验到的（如实留着）**
+
+- 本机**没有真跑过「覆盖安装」**：真机那台由用户自己手动修（把新包解压覆盖一次）；
+  这个修法是否真的解掉无限升级循环，要等下一次真机升级才作数。
+- 「单个文件删不掉不能让整棵树中断」这条只做了**结构**上的保证（`rmTolerant` 逐项 try/catch），
+  自检里没能造出一个「真的删不掉」的文件（Windows 上不好在 Node 里稳定锁住一个文件）。
 ## 四、验证体系怎么用
 
 ```bash
@@ -3824,8 +3875,8 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
 1.9 **分流表门禁：已收口 —— main 已与 Windows 同表（第 15 轮，见 A-57）**
 
    ✅ **已完成（2026-10-14 复核）**：`main` 已采用 Windows 这份表 —— `main` tip `47c25fc`
-   （安卓交付 `ce6d656`）。实测两端逐条一致：`Go 表 12 组 / 15 个 provider / 241 条内联` ↔
-   `JS 表 12 组 / 15 个 provider / 241 条内联`（`routing-sync-test.js` 严格模式 PASS）。
+   （安卓交付 `ce6d656`）。实测两端逐条一致：`Go 表 12 组 / 15 个 provider / 252 条内联` ↔
+   `JS 表 12 组 / 15 个 provider / 252 条内联`（`routing-sync-test.js` 严格模式 PASS）。
    `ci-windows.yml` 在 `windows-portable` 的 `5b3ca8b` 上是**真绿**：run `38473927116`，
    13 条离线自检 + 全量 `node --check` + 跨仓库输入确认全部 success。
 

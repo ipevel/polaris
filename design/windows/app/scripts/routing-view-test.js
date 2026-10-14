@@ -50,7 +50,7 @@ function rowOf(html, name) {
 
 const groups = [
   { name: '📲 电报消息', out: 'proxy', enabled: true, count: 1, inline: 2, default_on: true, live: true, now: '🇭🇰 香港 01' },
-  { name: 'Ⓜ️ 微软', out: 'direct', enabled: true, count: 1, inline: 7, default_on: true, note: NOTE, live: true },
+  { name: 'Ⓜ️ 微软', out: 'direct', enabled: true, count: 1, inline: 18, default_on: true, note: NOTE, live: true },
   { name: '🛑 广告拦截', out: 'block', enabled: false, count: 1, inline: 0, default_on: true, live: true },
 ];
 

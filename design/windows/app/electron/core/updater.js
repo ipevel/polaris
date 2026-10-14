@@ -60,6 +60,20 @@ const TOTAL_TIMEOUT_MS = 15 * 60 * 1000;   // 一次下载的硬上限（186MB �
  *  这样三种「卡死」都能在十几秒里验完，不用真等 15 分钟。 */
 const TIMEOUTS = { connect: CONNECT_TIMEOUT_MS, idle: IDLE_TIMEOUT_MS, total: TOTAL_TIMEOUT_MS };
 
+/* ---------------- helper 侧的可调参数（A-68） ----------------
+ * `applyWorker()` 覆盖安装目录时，目标文件可能还被 Electron 的 GPU/renderer 子进程
+ * 映射着（`resources/app.asar`、`*.pak`、`*.dll`、`icudtl.dat`），此刻 copyFileSync
+ * 会拿到 EBUSY/EPERM/UNKNOWN。**主进程退出 ≠ 子进程退出**，所以必须「先等齐、再复制」，
+ * 并且按文件重试的窗口要足够长，覆盖子进程退出的那段时间。
+ * 自检 `scripts/updater-self-test.js` 会把这些值缩到毫秒级。
+ */
+const APPLY = {
+  retryDelays: [500, 1000, 2000, 3000, 5000, 5000, 10000, 10000, 10000, 10000], // 单文件重试间隔，合计约 57 秒
+  overwriteWaitMs: 90 * 1000,   // 等「将被覆盖的文件」全部可写的总窗口
+  overwritePollMs: 1000,        // 轮询间隔
+  lockCodes: ['EBUSY', 'EPERM', 'EACCES', 'UNKNOWN', 'ENOTEMPTY'],
+};
+
 /** 毫秒 → 人话时长：整分钟说分钟，其余说秒（自检里是毫秒级，会出 1.5 秒这种） */
 function fmtDuration(ms) {
   if (ms >= 60000 && ms % 60000 === 0) return `${ms / 60000} 分钟`;
@@ -488,32 +502,123 @@ function pidAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; }
 }
 
-/** 带退避重试：杀软/索引器会短暂占住文件，立刻重试基本都能过 */
-async function withRetry(fn, say, what) {
+/**
+ * 带退避重试：杀软/索引器会短暂占住文件，立刻重试基本都能过。
+ *
+ * **调用处必须 await**（A-68）：这个函数是 async，以前 `copyTree` 里直接调、不 await，
+ * 于是第一次失败之后流程就往下走了 —— 复制还在后台重试，`applyWorker` 已经报
+ * 「复制完成」并开始清理、拉起。真机上的表现就是 apply.log 里每个失败文件只有
+ * 「第 1/5 次」一条、紧接着「复制完成」，安装目录里留着旧的 `resources/app.asar`
+ * （exe 已经是新的）→ 版本号永远读旧值 → 无限升级循环。
+ *
+ * `fn` 允许是异步的（改名那一步就是），`await` 一并覆盖。
+ */
+async function withRetry(fn, say, what, delays) {
+  const schedule = Array.isArray(delays) ? delays : APPLY.retryDelays;
+  const attempts = schedule.length + 1;
   let last;
-  for (let i = 0; i < 5; i++) {
-    try { return fn(); } catch (e) {
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn(); } catch (e) {
       last = e;
-      say(`重试 ${what}（第 ${i + 1}/5 次）：${e && e.message}`);
-      await sleep(1000 * (i + 1));
+      if (i === attempts - 1) break;
+      say(`重试 ${what}（第 ${i + 1}/${attempts} 次）：${e && e.message}`);
+      await sleep(schedule[i]);
     }
   }
   throw last;
+}
+
+/** 递归列出 root 下所有普通文件的相对路径（符号链接、设备文件一律不算）。
+ *  helper 用它算出「这次会覆盖哪些文件」，好在动手之前先等它们可写。 */
+function listFiles(root, prefix = '', out = []) {
+  let entries = [];
+  try { entries = fs.readdirSync(path.join(root, prefix), { withFileTypes: true }); } catch (_) { return out; }
+  for (const ent of entries) {
+    const rel = prefix ? path.join(prefix, ent.name) : ent.name;
+    if (ent.isDirectory()) listFiles(root, rel, out);
+    else if (ent.isFile()) out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * 这个目标文件现在能不能被覆盖。
+ * Windows 上被别的进程映射着的 exe/dll/pak，用**写权限**打开会拿 EBUSY/EPERM ——
+ * 那正是 copyFileSync 会失败的一批，提前探一次就能「先等齐、再动手」。
+ */
+function canOverwrite(file) {
+  try { fs.closeSync(fs.openSync(file, 'r+')); return true; }
+  catch (e) {
+    if (e && e.code === 'ENOENT') return true;      // 目标还不存在，直接写
+    return !APPLY.lockCodes.includes(e && e.code);
+  }
+}
+
+/**
+ * 等安装目录里「将被覆盖的文件」全部可写，最多等 APPLY.overwriteWaitMs。
+ * 主进程退出 ≠ Electron 的 GPU/renderer 子进程退出：它们还映射着 app.asar / *.pak /
+ * *.dll / icudtl.dat，正好是 v1.11.4 真机上 EBUSY 的那 11 个文件。
+ * 等不齐也照样往下走（由 copyTree 的按文件重试兜底），只是把「还有几个被占」写进日志。
+ */
+async function waitOverwritable(appDir, stageRoot, say) {
+  const rels = listFiles(stageRoot);
+  const started = Date.now();
+  let announced = false;
+  for (;;) {
+    const locked = rels.filter((rel) => !canOverwrite(path.join(appDir, rel)));
+    if (!locked.length) {
+      if (announced) say(`目标文件已全部可覆盖（等了 ${Math.round((Date.now() - started) / 1000)} 秒）`);
+      return true;
+    }
+    const list = locked.slice(0, 5).join('、') + (locked.length > 5 ? ' 等' : '');
+    if (Date.now() - started >= APPLY.overwriteWaitMs) {
+      say(`等目标文件可覆盖超时（${Math.round(APPLY.overwriteWaitMs / 1000)} 秒），仍有 ${locked.length} 个被占：${list}`);
+      return false;
+    }
+    if (!announced) { say(`有 ${locked.length} 个目标文件还被占着（${list}），等子进程退干净`); announced = true; }
+    await sleep(APPLY.overwritePollMs);
+  }
+}
+
+/**
+ * 尽力删除：单个文件删不掉（还被占着）**不能中断整棵树的清理** ——
+ * 真机上 `rmSync(recursive)` 就是因为头几个文件 EBUSY 直接抛错，staging 里剩一堆残留。
+ * 删不掉的记一条日志留给下次启动，**不抛错**。
+ */
+function rmTolerant(target, say) {
+  let leftovers = 0;
+  const walk = (p) => {
+    let entries = [];
+    try { entries = fs.readdirSync(p, { withFileTypes: true }); } catch (_) { return; }
+    for (const ent of entries) {
+      const c = path.join(p, ent.name);
+      if (ent.isDirectory()) { walk(c); try { fs.rmdirSync(c); } catch (_) { leftovers++; } }
+      else { try { fs.rmSync(c, { force: true }); } catch (_) { leftovers++; } }
+    }
+  };
+  try {
+    if (fs.statSync(target).isDirectory()) { walk(target); try { fs.rmdirSync(target); } catch (_) { leftovers++; } }
+    else fs.rmSync(target, { force: true });
+  } catch (_) { /* 本来就不存在 */ }
+  if (leftovers && typeof say === 'function') say(`清理时有 ${leftovers} 项删不掉（多半还被占着），留给下次启动再清`);
+  return leftovers === 0;
 }
 
 /**
  * 把 src 整棵树复制进 dest，同名文件覆盖。
  * 只复制不删除：旧版本里有、新版本里没有的文件留着（v2rayN 也是这个策略），
  * 这样万一新包少带一个文件，用户至少还能启动。
+ *
+ * **每个文件都要 await**（A-68）：不 await 的话失败会被吞掉，流程照常往下走。
  */
-function copyTree(src, dest, say) {
+async function copyTree(src, dest, say) {
   fs.mkdirSync(dest, { recursive: true });
   for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, ent.name);
     const d = path.join(dest, ent.name);
-    if (ent.isDirectory()) { copyTree(s, d, say); continue; }
+    if (ent.isDirectory()) { await copyTree(s, d, say); continue; }
     if (!ent.isFile()) continue;   // 符号链接、设备文件等一律不碰
-    withRetry(() => fs.copyFileSync(s, d), say, path.relative(src, s));
+    await withRetry(() => fs.copyFileSync(s, d), say, path.relative(src, s));
   }
 }
 
@@ -568,31 +673,56 @@ async function applyWorker() {
     }, say, '改名自身 exe');
     say(`已把自身改名成 ${oldName}`);
 
-    // 3) 覆盖安装目录（只复制不删除，data/ 是用户数据，staging 里本来就没有它）
-    copyTree(stageRoot, appDir, say);
+    // 3) 先等「将被覆盖的文件」全部可写（A-68）。主进程退了不代表子进程退了：
+    //    Electron 的 GPU/renderer 还映射着 app.asar / *.pak / *.dll / icudtl.dat，
+    //    直接复制就会拿到一串 EBUSY。先等齐，能避免「复制到一半」的半新半旧状态。
+    await waitOverwritable(appDir, stageRoot, say);
+
+    // 4) 覆盖安装目录（只复制不删除，data/ 是用户数据，staging 里本来就没有它）
+    try {
+      await copyTree(stageRoot, appDir, say);
+    } catch (e) {
+      // 复制失败就**到此为止**：不清理 staging/zip、不拉起、退出码非 0，
+      // 让下次启动还能重试（staging 还在，restoreStaged() 会把它认回来）。
+      // 兜底一条：万一新 exe 还没落位，把旧 exe 改回去，别让用户连旧版都启动不了。
+      if (!fs.existsSync(path.join(appDir, 'Polaris.exe'))) {
+        try {
+          fs.renameSync(oldName, path.join(appDir, 'Polaris.exe'));
+          say('新 exe 没落位，已把旧 exe 改回 Polaris.exe（用户仍能启动旧版）');
+        } catch (e2) {
+          say('旧 exe 改回失败：' + (e2 && e2.message));
+        }
+      }
+      throw new Error('复制失败，已放弃本次安装（不清理、不重启，下次启动会重试）：' + (e && e.message));
+    }
     say('复制完成');
 
-    // 4) 校验：新 exe 必须在，否则后面拉起的就是空气
+    // 5) 校验：新 exe 必须在，否则后面拉起的就是空气
     if (!fs.existsSync(path.join(appDir, 'Polaris.exe'))) {
       throw new Error('复制完成但安装目录里没有 Polaris.exe');
     }
 
-    // 5) 清理。**只删环境变量指过来的那个目录**，不用 stateFile()/zipPath()/stagingDir()
+    // 6) 清理。**只删环境变量指过来的那个目录**，不用 stateFile()/zipPath()/stagingDir()
     //    重新推导 —— helper 算出的 root 可能和主进程不一样（安装目录中途变得不可写就会变），
     //    重新推导会删错地方，或者干脆漏删。漏删的后果是下次启动 restoreStaged() 把 staging
     //    认成「已就绪」，用户再点一次「重启并安装」就等于拿旧包把自己降级回去。
+    //    清理**必须在所有复制确认完成之后**，而且单个文件删不掉不能中断整棵树（rmTolerant）。
     try { fs.rmSync(path.join(updDir, 'staged.json'), { force: true }); } catch (_) {}
     try {
       for (const f of fs.readdirSync(updDir)) {
-        if (/^Polaris-.*\.zip$/i.test(f)) fs.rmSync(path.join(updDir, f), { force: true });
+        if (/^Polaris-.*\.zip$/i.test(f)) rmTolerant(path.join(updDir, f), say);
       }
     } catch (_) {}
-    try { fs.rmSync(stageRoot, { recursive: true, force: true }); } catch (_) {}
+    rmTolerant(stageRoot, say);
     say('清理完成');
 
-    // 6) 重新拉起
+    // 7) 重新拉起。**环境里必须剔掉 POLARIS_APPLY_\***：新实例要是继承了
+    //    POLARIS_APPLY_STAGE，它会以为自己是 helper 再跑一遍 worker —— 那时 staging
+    //    已经删了，于是打出误导的「staging 里没有 Polaris.exe，放弃（安装目录未改动）」。
+    const childEnv = { ...process.env };
+    for (const k of Object.keys(childEnv)) if (k.startsWith('POLARIS_APPLY_')) delete childEnv[k];
     require('child_process').spawn(path.join(appDir, 'Polaris.exe'), [], {
-      detached: true, stdio: 'ignore', windowsHide: true, cwd: appDir,
+      detached: true, stdio: 'ignore', windowsHide: true, cwd: appDir, env: childEnv,
     }).unref();
     say('已重新拉起');
     return 0;
@@ -657,8 +787,9 @@ function quit() {
 }
 
 module.exports = {
-  S, TIMEOUTS, info, onChange, download, downloadTo, fetchStream, apply, applyWorker,
+  S, TIMEOUTS, APPLY, info, onChange, download, downloadTo, fetchStream, apply, applyWorker,
   cleanStaleRename, quit, reset, restoreStaged,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
   safeName, zipPath, isZipFile, resolveStageRoot, extract, pidAlive,
+  copyTree, listFiles, canOverwrite, waitOverwritable, rmTolerant,
 };
