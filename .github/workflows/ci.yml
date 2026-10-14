@@ -121,6 +121,37 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleDebug :app:testDebugUnitTest 2>&1 | tee -a ci-failure.log
 
+      # RoutingTableParityTest 用 assumeTrue 跳过：找不到 Go 表（kernel-core/…/routing_table.go）
+      # 时会 skipped=1 静默空过，而 gradle 退出码照样是 0 —— CI 侧分辨不出「真比过」与「空过」。
+      # 所以这里直接读它落盘的 JUnit XML：tests=0 或 skipped≠0 一律判失败。
+      # 该用例是「Kotlin 表 == Go 表」这条跨语言契约的唯一自动证据，不许出现永远绿的假通过。
+      - name: 分流表一致性用例真跑校验（不许 skipped）
+        run: |
+          set -e
+          f=app/build/test-results/testDebugUnitTest/TEST-com.slte.app.kernel.RoutingTableParityTest.xml
+          if [ ! -f "$f" ]; then
+            echo "::error::找不到 $f —— RoutingTableParityTest 没执行或结果没落盘"
+            exit 1
+          fi
+          line=$(grep -m1 -o '<testsuite[^>]*>' "$f")
+          echo "$line"
+          attr() { printf '%s' "$line" | sed -n "s/.* $1=\"\([0-9]*\)\".*/\1/p"; }
+          tests=$(attr tests); skipped=$(attr skipped); failures=$(attr failures); errors=$(attr errors)
+          echo "RoutingTableParityTest: tests=$tests skipped=$skipped failures=$failures errors=$errors"
+          grep -o 'testcase name="[^"]*"' "$f" | sed 's/testcase name=//' || true
+          if [ -z "$tests" ] || [ "$tests" -lt 1 ]; then
+            echo "::error::tests=$tests —— 用例数为 0，没有真跑"
+            exit 1
+          fi
+          if [ "$skipped" != "0" ]; then
+            echo "::error::skipped=$skipped —— findUpwards 没找到 Go 表，用例被 assumeTrue 空过"
+            exit 1
+          fi
+          if [ "$failures" != "0" ] || [ "$errors" != "0" ]; then
+            echo "::error::failures=$failures errors=$errors"
+            exit 1
+          fi
+
       - name: 仪器化测试编译检查
 
         run: |
