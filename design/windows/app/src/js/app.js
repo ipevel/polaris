@@ -902,7 +902,7 @@
     }));
     const rb = $("#btn-ruleset-reset");
     if (rb) rb.addEventListener("click", () => openDialog("confirm", {
-      title: "恢复内置分流默认", body: "按产品预设恢复各分类的开关与顺序（苹果服务、Google、哔哩哔哩、国内直连、国外穿墙默认开启）。不影响你自己建的分流组。已连接时会热重载配置。", yes: "恢复默认",
+      title: "恢复内置分流默认", body: "按产品预设恢复各分类的开关与顺序（只有「应用净化」默认关闭，其余默认开启）。不影响你自己建的分流组。已连接时会热重载配置。", yes: "恢复默认",
       onYes: async () => {
         const r = await guard("恢复默认", () => api.resetRulesets());
         if (r) { await refreshRoutes(); render(); toast("已恢复内置分流默认"); }
