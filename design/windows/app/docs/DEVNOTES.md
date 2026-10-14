@@ -3814,6 +3814,91 @@ Outlook / Teams 回落 `🌏 国外穿墙`）这件事，两端都担心同一�
 3. 口径沿用 A-61 / A-67：**产品行为由产品自己的代码 + 真内核给，不由文档给**。以后再问「某域名落哪一组」，
    照这套装置跑一遍，别读代码猜。
 
+## A-70 1.11.6 发布记录：微软组收窄、种子换窄、geo 刷新、覆盖安装修复（2026-10-14）
+
+**一句话**：这一版把「Ⓜ️ 微软」从宽口径微软系直连收窄成「云盘 + 登录 + 认证族 + 系统更新 + Azure」，
+把随包种子从 92 行换成 17 行，刷新了两份 geodata，并修掉了让用户卡在无限升级循环里的覆盖安装缺陷。
+
+### 1. 发布事实（run / tag / 资产）
+
+| 项 | 值 |
+| --- | --- |
+| 发布 run | `38579462635`（`build.yml`，`--ref main`，head `fb08978`，`versionName=1.11.6`，`publishRelease=true`，`gateMode=strict`） |
+| run 结论 | **success**，`version` / `build` / `windows` / `release` 四个 job 全绿 |
+| Release | `Polaris 1.11.6`，published 2026-10-14T14:40:09Z，非 draft 非 prerelease |
+| tag | `v1.11.6` → commit `fb08978`（= run head） |
+| CI 读数 | `版本 1.11.6 / versionCode 29866460 / tag v1.11.6` |
+| APK | 34,880,111 B，digest `e120b84c…` |
+| 便携 zip | 185,291,948 B，digest `d8a5a764…` |
+| `SHA256SUMS.txt` | 两条与 GitHub 自己的 digest 字段逐字一致 |
+
+同款告警如期出现：`[WARN] app/build.gradle.kts 里的默认 versionName 仍为 1.11.5` —— **纯告警、不阻断**，
+由发布后的 `chore(release)` 同步回退值，不影响包内容。
+
+### 2. 这一版改了什么（用户看得见的行为）
+
+| 变化 | 之前 | 现在 | 出处 |
+| --- | --- | --- | --- |
+| `Ⓜ️ 微软` 组内联 | `GEOSITE,microsoft` + `GEOSITE,bing`（宽口径，微软系全直连） | **18 条窄集合**：`GEOSITE,onedrive` → `docs.live.net` / `content.live.net` / `odc.officeapps.live.com` / `officeapps.live.com` → `login.live.com` / `login.microsoftonline.com` / `login.microsoft.com` → `msftauth.net` / `msauth.net` / `msftauthimages.net` / `msauthimages.net` / `msftidentity.com` / `msidentity.com` → `update.microsoft.com` / `windowsupdate.microsoft.com` / `windowsupdate.com` → `GEOSITE,azure` | `design/windows/app/electron/core/rulesets.js`；对齐源 `kernel-core/src/main/golang/native/config/routing/routing_table.go:339-370` |
+| 随包种子 `resources/rules/onedrive.yaml` | 92 行 / 2543 B（`DOMAIN-KEYWORD,microsoft`、`bing.com`、`office.com`、`outlook.com`、`msn.com`、裸 `live.com` 的宽口径清单） | **17 行 / 515 B**，与规则仓库 `dist/rules/onedrive.list` 同字节 | `design/windows/app/resources/rules/onedrive.yaml` |
+| `resources/geo/geosite.dat` | `30B8FE82…` | `EDCEA5A7…`（4,276,543 B） | 与安卓 assets、规则仓库三方同哈希 |
+| `resources/geo/geoip.metadb` | `E060B447…` | `2A423D87…`（8,414,245 B） | 同上 |
+| `resources/geo/ASN.mmdb` | `D82D2F39…` | 未变（三方本来就一致） | — |
+| 应用内覆盖安装 | 复制没 await、清理早于复制完成、只等主进程 pid → **无限升级循环** | 见 **A-68**，提交 `ffde1a1` | `electron/core/updater.js` |
+
+表本身的结构一行没动：仍 **12 组 / 15 provider / 默认开 11**（只有 🍃 应用净化默认关），
+内联总数 **241 → 252**（`Ⓜ️ 微软` 组 7 → 18 条）。
+
+效果（真内核落组实测见 A-69）：GitHub 全系 / Bing / Office / Outlook / Teams / `www.microsoft.com` → `🌏 国外穿墙`（代理）；
+云盘 + 登录 + 系统更新 + Azure → `Ⓜ️ 微软[DIRECT]`。
+
+### 3. 发版后实物核对（便携包 asar / APK）
+
+便携包（asar 内）：
+
+- `version = 1.11.6`；asar integrity **334/334**；
+- `rulesets.js` 里 `Ⓜ️ 微软` 组**恰好 18 条内联**，顺序与镜像完全一致；旧 `GEOSITE,microsoft,` / `GEOSITE,bing,` **0 次**；内联合计 **252**（与 `test:routing-sync` 门禁打印的数一致）；
+- 种子 15 个、无 `acl_*`；`onedrive.yaml` 17 行（包内 CRLF 532 B —— 行尾成因见 A-67）；
+- geo 三份 = `EDCEA5A7…` / `2A423D87…` / `D82D2F39…`（与安卓 assets、规则仓库三方一致）；
+- 包内无 `data/`、无凭据、无日志。
+
+APK 侧内核探针：6 条认证族 + `windowsupdate.microsoft.com` **全命中**；`GEOSITE,microsoft` / `GEOSITE,bing` **0 次**。
+
+### 4. 实机验证（用户那台 `Polaris-portable-1.11.4` 目录，覆盖升级到 1.11.6）
+
+| 读数 | 值 |
+| --- | --- |
+| 启动行 | `Polaris 1.11.6 start \| packaged=true portable=true` |
+| 版本检查 | `release check: latest=1.11.6 current=1.11.6 has_update=false` |
+| 规则懒更新 | 已在 12 小时窗口内跳过（不重复拉取） |
+
+⇒ 覆盖安装之后版本号、打包态、便携态、更新检查、规则懒更新全部回到一致状态 ——
+1.11.4 那台机器卡住的「无限升级循环」到此结束。
+
+### 5. 一个坑：P0 覆盖安装修复**只在它之后的那一跳生效**
+
+从 1.11.5 走 App 内更新升 1.11.6 时，跑的还是 **1.11.5 包里那份旧 updater**。实测那份
+（`v1.11.5` tag 的 `electron/core/updater.js`，664 行）：`await withRetry` 只有 **1 处**，
+而 `withRetry(` 一共出现 **3 次** —— 另外 2 处调用没被 await；也**没有** `waitOverwritable` /
+`rmTolerant` 两个守卫。**所以这一跳必须手动覆盖安装**；修好的那份（795 行、`await withRetry`
+2 处、两个守卫都在）从 1.11.6 往后才用得上。
+
+这条是「修复的作用域」的直接证据：**包里带着修好的 updater，不代表用户能用上它 ——
+用哪份 updater，取决于他当前装的那一版。** 以后再修 updater，都要按「再往后一跳才生效」来预期。
+
+### 6. 数字的出处（照 A-65 的口径：写进文档的数，由脚本或实物自己给）
+
+| 数字 | 谁给的 |
+| --- | --- |
+| 12 组 / 15 provider / 252 内联 | `test:routing-sync`（带 `POLARIS_GO_TABLE_REQUIRED=1`）自己打印的那行 |
+| `Ⓜ️ 微软` 18 条内联 | 发版包 asar 实物里数出来的（不是照抄 Go 表的计数） |
+| updater 43 项 | `test:updater` 脚本自己打印的总条数 |
+| zip / APK 字节数与 digest | 发布 run 的资产 + `SHA256SUMS.txt` |
+| 种子 92 → 17 行、2543 → 515 B | 两版包内文件的实际大小 |
+
+**教训沿用 A-67**：包内种子是 CRLF、仓库 `dist/rules` 是 LF（`core.autocrlf=true`），
+内核会 TrimSpace 所以能吃下，但**谁拿「逐字节」当门禁谁就会误报**；要按字节比，先归一。
+
 ## 四、验证体系怎么用
 
 ```bash
