@@ -269,13 +269,14 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 	}
 }
 
-// TestMicrosoftGroupKeepsDirectOutbound 锁死「微软一整组默认直连、且不被国外穿墙吞掉」。
+// TestMicrosoftGroupKeepsDirectOutbound 锁死「微软组默认出站是 direct、且不被国外穿墙吞掉」。
 //
 // 2026-10-13 用户反馈 OneDrive 走代理「要不太费流量了」，2026-10-14 把原来的
-// 「Ⓜ️ 微软云盘 / Ⓜ️ 微软服务 / Ⓜ️ 微软Bing」三组合并为一组「Ⓜ️ 微软」并默认直连。
-// 合并后唯一还会失效的是顺序：它必须排在「🌏 国外穿墙」之前，否则 geolocation-!cn
-// 会先命中 microsoft / bing / onedrive 分类里的域名，用户在节点页给这一组选什么
-// 出站都白搭。这里把顺序与默认出站本身钉死，以后有人调表顺序会立刻红。
+// 「Ⓜ️ 微软云盘 / Ⓜ️ 微软服务 / Ⓜ️ 微软Bing」三组合并为一组「Ⓜ️ 微软」并默认直连；
+// 同日两次收窄只改了该组的**覆盖范围**，组级出口仍是 direct。
+// 这里钉的是组级出口与顺序：它必须排在「🌏 国外穿墙」之前，否则 geolocation-!cn
+// 会先命中 onedrive / azure 分类里的域名，用户在节点页给这一组选什么出站都白搭。
+// 以后有人调表顺序或改这一组的默认出站会立刻红。
 func TestMicrosoftGroupKeepsDirectOutbound(t *testing.T) {
 	idx := func(name string) int {
 		for i, g := range Table {
@@ -293,7 +294,7 @@ func TestMicrosoftGroupKeepsDirectOutbound(t *testing.T) {
 		t.Errorf("「Ⓜ️ 微软」必须排在「🌏 国外穿墙」(%d) 之前，实际 ms=%d", abroad, ms)
 	}
 
-	// 默认出站钉住：微软整组直连，国外穿墙走代理
+	// 默认出站钉住：微软组 direct，国外穿墙 proxy
 	if Table[ms].DefaultOut != "direct" {
 		t.Errorf("「Ⓜ️ 微软」默认出站 = %q，期望 direct", Table[ms].DefaultOut)
 	}

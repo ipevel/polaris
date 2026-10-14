@@ -216,7 +216,7 @@
   - `native/config/routing/routing_table.go`：`Table` 由 23 组精简为 **12 组**（顺序即优先级）：
     `📲 电报消息` / `🎧 TikTok` / `📲 社交媒体`（X+Instagram+Facebook+WhatsApp 四合一）/
     `📺 流媒体`（油管+奈飞二合一）/ `🤖 AI` / `🎮 游戏平台` / `Ⓜ️ 微软`（云盘+微软服务+Bing 三合一，
-    默认 direct）/ `🍎 苹果服务`（direct）/ `🎯 国内直连`（直连组并入 B 站与网易音乐，direct）/
+    默认 direct —— 该组的**覆盖范围**已于同日两次收窄，见下文两节）/ `🍎 苹果服务`（direct）/ `🎯 国内直连`（直连组并入 B 站与网易音乐，direct）/
     `🌏 国外穿墙` / `🍃 应用净化`（默认关、block）/ `🛑 广告拦截`（block）。
     随表删除的组：`🐱 GitHub`、`🌏 Google Play`、`🌏 Google`、`Ⓜ️ 微软Bing`、`Ⓜ️ 微软服务`、
     `📺 哔哩哔哩`、`🎶 网易音乐` 等 11 个。
