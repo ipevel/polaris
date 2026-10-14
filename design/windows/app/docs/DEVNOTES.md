@@ -1,6 +1,6 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 最后更新：2026-10-14（**A-68 覆盖安装修复**：`withRetry` 没 await，复制没完成就清理并重启；同日更早为**文档追平** + **A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**、第 15 轮 A-57）
+> 最后更新：2026-10-14（**A-69 域名落组真内核实测**：`Ⓜ️ 微软` 收窄后逐域名读数 + 换回宽种子的对照实验；同日更早为 **A-68 覆盖安装修复**（`withRetry` 没 await，复制没完成就清理并重启）、**文档追平**、**A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**、第 15 轮 A-57）
 > 追平的数字一律以树为准：`kernel-core/.../routing_table.go` 与 `electron/core/rulesets.js`
 > 都是 **12 组 / 15 个 provider / 252 条内联**（11 组默认开，`🍃 应用净化` 默认关）；
 > `resources/rules/` 是 **15 个清单 / 586 KB**（发版包内实测 607 KB，差别只是行尾 CRLF）。
@@ -3603,7 +3603,7 @@ Windows 侧规则刷新走 `127.0.0.1:<mixed_port>` 的 CONNECT 隧道（`getVia
 ### 1) 分流表：12 组 / 15 个 provider / 252 条内联（11 组默认开）
 
 - 组数 **12**、provider **15**、内联规则 **252** 条；**11 组默认开**，只有 `🍃 应用净化` 默认关。
-- 2026-10-14 晚：`Ⓜ️ 微软` 组**收窄**（删 `GEOSITE,microsoft` / `GEOSITE,bing`，补 6 条认证域与 3 条更新域，共 18 条内联；随包 `onedrive.yaml` 同步收窄到 17 条），内联总数 **241 → 252**，组数与 provider 数不变；本节的 241/588.3 KB 已按收窄后重数。
+- 2026-10-14 晚：`Ⓜ️ 微软` 组**收窄**（删 `GEOSITE,microsoft` / `GEOSITE,bing`，补 6 条认证域与 3 条更新域，共 18 条内联；随包 `onedrive.yaml` 同步收窄到 17 条），内联总数 **241 → 252**，组数与 provider 数不变；本节的 241 / 588.3 KB 已按收窄后重数为 **252 / 586.4 KB**。
 - provider 键（两端同一批，**不带 `acl_` 前缀**）：`social` / `streaming` / `ai` / `games` /
   `telegram` / `tiktok` / `china-domain` / `china-ip` / `china-media` / `onedrive` / `apple` /
   `proxy-gfwlist` / `proxy-media` / `banad` / `banprogramad`。
@@ -3668,7 +3668,7 @@ v1.11.5 便携包里 15 份种子与 `ipevel/polaris-rules` 的 `dist/rules/*.li
 
 顺带钉一条口径（同 A-65 的教训）：**被写进文档的数字，就该由脚本自己打印**。
 `scripts/updater-self-test.js` 原先把结尾写成「全部通过 / 失败 N 项」，条数只能靠人眼数 ✓；
-现在它自己打印 `通过 25 项，失败 0 项`（照 `traffic-view-test.js` 的格式），README 只抄这一行。
+现在它自己打印 `通过 43 项，失败 0 项`（照 `traffic-view-test.js` 的格式），README 只抄这一行。
 
 ---
 ## A-68 应用内「覆盖安装」是坏的：`withRetry` 没 await，复制没完成就清理并重启（2026-10-14）
@@ -3721,6 +3721,99 @@ v1.11.5 便携包里 15 份种子与 `ipevel/polaris-rules` 的 `dist/rules/*.li
   这个修法是否真的解掉无限升级循环，要等下一次真机升级才作数。
 - 「单个文件删不掉不能让整棵树中断」这条只做了**结构**上的保证（`rmTolerant` 逐项 try/catch），
   自检里没能造出一个「真的删不掉」的文件（Windows 上不好在 Node 里稳定锁住一个文件）。
+
+---
+## A-69 域名到底落哪一组：拿产品自己的配置 + 随包内核实测（2026-10-14）
+
+**为什么记**：`Ⓜ️ 微软` 组收窄（只留云盘 + 登录 + 系统更新 + Azure，GitHub / Bing / Office /
+Outlook / Teams 回落 `🌏 国外穿墙`）这件事，两端都担心同一个坑：**光删 `GEOSITE,microsoft` /
+`GEOSITE,bing` 挡不住** —— 因为该组还挂着 `RULE-SET,onedrive`，而当时随包的 `onedrive.yaml`
+是**宽口径微软清单**。这条不能靠读代码推，只能让真内核自己说落哪一组。
+
+### 装置（在 Bot 工作区的 `probe-rules\`，**不入库**，可复现）
+
+- `make-config.js`：`require('electron/core/builder.js')` → `build({ proxies: [假节点] },
+  { mixedPort: 17899, controllerPort: 19098, mode: 'rule', routing: { on: true } })`，拿到的就是
+  **产品自己生成的完整配置**（`rule-providers` / `rules` / `proxy-groups` 全是真的），落地
+  `config.yaml`；再把 `resources/rules/<键>.yaml` 复制进 `seeds\`，并把每个
+  `rule-providers.<键>.path` 改指到那里。
+- 内核：随包 `resources/core/mihomo.exe` —— 实测 `-v` = `Mihomo Meta v1.19.32 windows amd64
+  with go1.26.8`。
+- 手法：`mihomo.exe -d probe-rules -f config.yaml` 起内核，`curl --proxy http://127.0.0.1:17899`
+  逐域名发 HTTPS，读内核日志里的 `match` 行。**落组是内核给的，不是我在 JS 里算的**。
+- 假节点故意指 `127.0.0.1:1`（必然连不通），所以每条都带 `dial … error` —— 但 `match … using <组>`
+  在 dial 之前就已经定了，要读的就是它。
+- 一个可作旁证的副作用：`seeds\` 里只有 **14** 份而不是 15，少的正是 `banprogramad.yaml` ——
+  因为 `🍃 应用净化` 默认关，`builder.build()` 根本不为它生成 `rule-providers`，脚本也就没得复制。
+  说明这份配置确实走了产品的「启用集合」逻辑，不是我另搭的一套。
+
+### 代码里的先后：规则集在内联之前（先命中先赢）
+
+`electron/core/builder.js` 逐组生成规则时：**`:135` 先推 `RULE-SET,<键>,<组>`**（每个 provider 一条），
+**`:137` 才推该组的 `inlineRules`**。⇒ 同一组内，**规则集命中优先于内联**。所以「删掉
+`GEOSITE,microsoft` 就够了」是错的：只要 `onedrive` 规则集里还写着 bing / office / outlook，
+它们照样被这一组先接住。
+
+### 表 1：收窄后（种子 17 行 / 515 B / sha256 `69eb753d…`）实测落组
+
+| 域名 | 落组 | 内核给的命中规则 |
+| --- | --- | --- |
+| `bing.com` | `🌏 国外穿墙` | `RuleSet/proxy-gfwlist` |
+| `www.bing.com` | `🌏 国外穿墙` | `RuleSet/proxy-gfwlist` |
+| `office.com` | `🌏 国外穿墙` | `GeoSite/geolocation-!cn` |
+| `www.office.com` | `🌏 国外穿墙` | `GeoSite/geolocation-!cn` |
+| `outlook.office.com` | `🌏 国外穿墙` | `GeoSite/geolocation-!cn` |
+| `www.microsoft.com` | `🌏 国外穿墙` | `RuleSet/proxy-gfwlist` |
+| `teams.microsoft.com` | `🌏 国外穿墙` | `RuleSet/proxy-gfwlist` |
+| `github.com` | `🌏 国外穿墙` | `RuleSet/proxy-gfwlist` |
+| `www.google.com` | `🌏 国外穿墙` | `RuleSet/proxy-gfwlist` |
+| `login.live.com` | `Ⓜ️ 微软[DIRECT]` | `DomainSuffix(login.live.com)` |
+| `onedrive.live.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `storage.live.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `update.microsoft.com` | `Ⓜ️ 微软[DIRECT]` | `DomainSuffix(update.microsoft.com)` |
+| `login.microsoftonline.com` | `Ⓜ️ 微软[DIRECT]` | `DomainSuffix(login.microsoftonline.com)` |
+| `www.baidu.com`（对照） | `🎯 国内直连[DIRECT]` | `RuleSet(china-domain)` |
+
+日志原文（各举一条，完整在 `core.log`）：
+
+```
+[TCP] 127.0.0.1:3759 --> github.com:443 match RuleSet/proxy-gfwlist using 🌏 国外穿墙
+[TCP] 127.0.0.1:6410 --> office.com:443 match GeoSite/geolocation-!cn using 🌏 国外穿墙
+[TCP] 127.0.0.1:3740 --> onedrive.live.com:443 match RuleSet(onedrive) using Ⓜ️ 微软[DIRECT]
+[TCP] 127.0.0.1:3727 --> login.live.com:443 match DomainSuffix(login.live.com) using Ⓜ️ 微软[DIRECT]
+[TCP] 127.0.0.1:8327 --> www.baidu.com:443 match RuleSet(china-domain) using 🎯 国内直连[DIRECT]
+```
+
+### 表 2：对照实验 —— 只把种子换回 v1.11.5 包内那份（92 行 / 2543 B），表不动
+
+方法：**只覆盖 `seeds\onedrive.yaml` 一个文件**，其余一切不动（表、配置、内核都同一份），重启内核重测。
+
+| 域名 | 落组 | 命中规则 |
+| --- | --- | --- |
+| `bing.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `office.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `outlook.office.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `www.microsoft.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `teams.microsoft.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `login.live.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `onedrive.live.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+| `storage.live.com` | `Ⓜ️ 微软[DIRECT]` | `RuleSet(onedrive)` |
+
+**8/8 全部落 `Ⓜ️ 微软[DIRECT]`，全部由 `RuleSet(onedrive)` 接住** —— 表已经是收窄后的那一版，
+仅仅因为种子宽，Bing / Office / Outlook / Teams 就又回到直连了。⇒ **换窄种子是必需的**。
+
+### 结论
+
+1. 收窄后：GitHub 全系 / Bing / Office / Outlook / Teams / `www.microsoft.com` → `🌏 国外穿墙`（代理）；
+   云盘（`onedrive.live.com` / `storage.live.com`）+ 登录（`login.live.com` /
+   `login.microsoftonline.com`）+ 系统更新（`update.microsoft.com`）→ `Ⓜ️ 微软[DIRECT]`；
+   对照域名 `www.baidu.com` → `🎯 国内直连[DIRECT]`（证明装置确实能读到「直连」这一侧）。
+2. **表与种子必须同一笔进**：只删内联挡不住宽种子（表 2 直接证到）；反过来只换种子而不删
+   `GEOSITE,microsoft` / `GEOSITE,bing` 也挡不住那两条**宽口径内联本身**（这一半是**推导，未实测** ——
+   没再为了它把表回退一次）。
+3. 口径沿用 A-61 / A-67：**产品行为由产品自己的代码 + 真内核给，不由文档给**。以后再问「某域名落哪一组」，
+   照这套装置跑一遍，别读代码猜。
+
 ## 四、验证体系怎么用
 
 ```bash
