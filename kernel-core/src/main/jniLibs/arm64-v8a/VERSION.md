@@ -256,6 +256,45 @@
     `_GoStringLen` / `_GoStringPtr` 自 Go 1.23.4 起不再生成，C 侧无调用方）。
 - 产物摘要：见同目录 `SHA256SUMS`（`4dcd946d…4a8fd7`）。
 
+## 2026-10-14 重建记录（「Ⓜ️ 微软」组收窄）
+
+- 变更：`native/config/routing/routing_table.go` 的「Ⓜ️ 微软」组内联规则由 7 条改为 13 条，
+  去掉宽口径的 `GEOSITE,microsoft`（752 条）与 `GEOSITE,bing`（40 条），换成
+  「云盘 + 登录 + 系统更新 + Azure」四类：`GEOSITE,onedrive`、
+  `DOMAIN-SUFFIX,{docs.live.net,content.live.net,odc.officeapps.live.com,officeapps.live.com}`、
+  `DOMAIN-SUFFIX,{login.live.com,login.microsoftonline.com,login.microsoft.com}`、
+  `DOMAIN-SUFFIX,{update.microsoft.com,windowsupdate.microsoft.com,windowsupdate.com}`、
+  `GEOSITE,azure`。组名、顺序、`DefaultOn`/`DefaultOut`（direct）、`Providers`（onedrive）均未动，
+  表仍是 12 组 / 15 provider。
+- 原因：2026-10-14 用户裁定「微软组只留云盘直连，其余走兜底」。宽口径的 `GEOSITE,microsoft`
+  含 `github.com` / `githubusercontent.com` / `github.io` / `bing.com` / `office.com` /
+  `outlook.com` / `teams.microsoft.com`，会把已取消的 GitHub 组重新吞成**直连**（国内等于不可用）。
+  收窄后 GitHub 系列落回「🌏 国外穿墙」（`proxy-gfwlist` 本就含 10 条 github 规则，未新增规则），
+  Bing / Office / Outlook / Teams / MSN 同样落回穿墙。
+- 构建命令：`GOOS=android GOARCH=arm64 CGO_ENABLED=1
+  CC=C:\Android\Sdk\ndk\28.2.13676358\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android28-clang.cmd
+  go build -tags "android cmfa with_gvisor" -buildmode=c-shared -o libclash.so ./native`
+  （Go 1.23.4 windows/amd64，`GOPROXY=off` 走本地模块缓存；产物 75,191,160 字节）
+- 验证：
+  - `go test -count=1 ./native/config/routing/...` 全绿，其中 `TestRoutingDecisionAccuracy`
+    用真实 geosite 跑（`POLARIS_GEO_DIR=app/src/main/assets` +
+    `POLARIS_PROVIDERS_DIR=app/src/main/assets/routing/providers`），逐域落点与用户裁定表逐格相符；
+    内核日志侧证 `onedrive => Ⓜ️ 微软, records: 19`、`azure => Ⓜ️ 微软, records: 151`、
+    `geolocation-!cn => 🌏 国外穿墙, records: 27340`，`microsoft` / `bing` 两条 GeoSite 规则
+    已不再挂在「Ⓜ️ 微软」组下。
+  - `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go vet -tags "android cmfa with_gvisor" ./native/...`
+    EXIT=0；同环境 `go build` EXIT=0 —— 与 CI 的 Go 门禁同款命令。
+  - 逐字节核对产物（反向对照，这是「收窄真进了二进制」的证据）：
+    新规则串 `GEOSITE,azure,{t}` / `DOMAIN-SUFFIX,login.live.com,{t}` /
+    `DOMAIN-SUFFIX,login.microsoftonline.com,{t}` / `DOMAIN-SUFFIX,login.microsoft.com,{t}` /
+    `DOMAIN-SUFFIX,update.microsoft.com,{t}` / `DOMAIN-SUFFIX,windowsupdate.microsoft.com,{t}` /
+    `DOMAIN-SUFFIX,windowsupdate.com,{t}` **各命中 1 次**；
+    旧规则串 `GEOSITE,microsoft,{t}` / `GEOSITE,bing,{t}` **各 0 次**
+    （替换前的产物正好相反：前者 1 / 1，后者 0）。
+  - `llvm-nm -D --defined-only` 比对旧/新产物**导出符号 156 = 156 完全一致**，因此
+    `libclash.h` 不替换。
+- 产物摘要：见同目录 `SHA256SUMS`（`881529da…6ea804`）。
+
 ## 注意
 
 - 本 so 为**自定义构建**，包含上游 mihomo 没有的本地 outbound 补丁——**不能**直接用上游 ClashMetaForAndroid APK 里的 so 替换，会丢失这些协议。

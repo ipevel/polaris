@@ -21,6 +21,9 @@ package com.slte.app.kernel
  *    proxy，出口行为不变，却消灭了两个死开关；📺 哔哩哔哩 / 🎶 网易音乐 并入
  *    「🎯 国内直连」（走直连，不需要单独开关）；
  *  - 「🍃 应用净化」保持默认关闭，「🛑 广告拦截」改为默认开启。
+ *  - 2026-10-14 续：「Ⓜ️ 微软」收窄为「云盘 + 登录 + 系统更新 + Azure」——宽口径的
+ *    `GEOSITE,microsoft`（752 条）会把已取消的 GitHub 系列吞成**直连**，收窄后
+ *    GitHub / Bing / Office / Outlook / Teams 落回「🌏 国外穿墙」（详见 `routing_table.go`）。
  * 已取消且**刻意不做别名映射**的旧名见 [LegacyGroupAliases] 的说明。
  */
 data class RoutingGroupInfo(
@@ -113,9 +116,10 @@ val RoutingGroups: List<RoutingGroupInfo> =
         RoutingGroupInfo("📺 流媒体", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo(AI_GROUP_NAME, defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🎮 游戏平台", defaultOn = true, defaultOut = "proxy"),
-        // 「Ⓜ️ 微软」默认 direct：合并前云盘直连、服务走代理、Bing 走代理，本次按
-        // 用户要求（2026-10-13「要不太费流量了」）整组直连。它必须排在「🌏 国外穿墙」
-        // 之前，否则 geolocation-!cn 会先吃掉 microsoft / bing / onedrive 分类。
+        // 「Ⓜ️ 微软」默认 direct：2026-10-13 按用户要求（「要不太费流量了」）把云盘整组
+        // 直连；2026-10-14 再收窄成「云盘 + 登录 + 系统更新 + Azure」，Bing / Office /
+        // Outlook / Teams / GitHub 交回「🌏 国外穿墙」。它必须排在「🌏 国外穿墙」之前，
+        // 否则 geolocation-!cn 会先吃掉 onedrive / azure 分类。
         RoutingGroupInfo("Ⓜ️ 微软", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🍎 苹果服务", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🎯 国内直连", defaultOn = true, defaultOut = "direct"),

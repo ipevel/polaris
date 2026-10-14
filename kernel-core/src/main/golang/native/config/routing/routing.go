@@ -28,8 +28,8 @@ type CustomGroup struct {
 // 即维持面板下发的 rules/proxy-groups，与 override 的静默降级策略一致；
 // App 侧 RoutingState 的缺省值与之保持一致（两侧均默认关闭）。
 type State struct {
-	Version int `json:"version"`
-	Enabled bool `json:"enabled"`
+	Version int             `json:"version"`
+	Enabled bool            `json:"enabled"`
 	Groups  map[string]bool `json:"groups"` // 内置分流组名 -> 启用；缺省 = 内置默认
 	Custom  []CustomGroup   `json:"custom"`
 	// Order 内置分流组的用户自定义顺序（组名列表，App 侧拖动排序写入）。

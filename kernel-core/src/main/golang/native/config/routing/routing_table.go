@@ -136,6 +136,12 @@ var lanDirectRules = []string{
 //     「🌏 国外穿墙」的 geolocation-!cn 覆盖，出口行为不变，却消灭了两个死开关
 //     （Google Play 与微软Bing 的规则会被前面的组提前命中，开关设成什么都不生效）。
 //   - 取消 哔哩哔哩 / 网易音乐：并入「🎯 国内直连」（走直连，不需要单独开关）。
+//   - 2026-10-14 用户裁定「微软组只留云盘直连，其余走兜底」：上面那条宽口径的
+//     GEOSITE,microsoft（752 条，含 github.com / githubusercontent.com / github.io /
+//     bing / office / outlook / teams）会把已取消的 GitHub 系列重新吞成 **直连**，
+//     所以把「Ⓜ️ 微软」收窄成「云盘 + 系统更新 + Azure」三类。收窄后 GitHub 系列
+//     按原设计落回「🌏 国外穿墙」（proxy-gfwlist 里本就有 github 的 10 条规则），
+//     Bing / Office / Outlook / Teams 同样落回穿墙 —— 这正是取消这些组时的预期。
 //   - 保留「🍎 苹果服务」且默认直连（用户已定）；「🛑 广告拦截」默认打开。
 //
 // 「🍎 苹果服务」「Ⓜ️ 微软」两组默认 **direct**：它们和翻墙无关，走代理纯属浪费流量。
@@ -323,13 +329,24 @@ var Table = []RuleGroup{
 		Providers: []string{"games"}},
 	{Name: "Ⓜ️ 微软", DefaultOn: true, DefaultOut: "direct",
 		InlineRules: []string{
+			// ① 云盘：OneDrive 本体与内容主机（geosite 的 onedrive 分类只有 19 条）
 			"GEOSITE,onedrive,{t}",
 			"DOMAIN-SUFFIX,docs.live.net,{t}",
 			"DOMAIN-SUFFIX,content.live.net,{t}",
 			"DOMAIN-SUFFIX,odc.officeapps.live.com,{t}",
 			"DOMAIN-SUFFIX,officeapps.live.com,{t}",
-			"GEOSITE,microsoft,{t}",
-			"GEOSITE,bing,{t}",
+			// ② 账号登录：OneDrive 取文件前要先登录，漏了它云盘照样用不了。
+			// 这三条是「云盘能正常用」的最小集，收窄前本来就被 GEOSITE,microsoft 覆盖成
+			// 直连，不能因为收窄把登录踢到代理。到此为止，不再加 login.windows.net 之类。
+			"DOMAIN-SUFFIX,login.live.com,{t}",
+			"DOMAIN-SUFFIX,login.microsoftonline.com,{t}",
+			"DOMAIN-SUFFIX,login.microsoft.com,{t}",
+			// ③ 系统更新：geosite 里没有 windowsupdate 分类，只能逐条写
+			"DOMAIN-SUFFIX,update.microsoft.com,{t}",
+			"DOMAIN-SUFFIX,windowsupdate.microsoft.com,{t}",
+			"DOMAIN-SUFFIX,windowsupdate.com,{t}",
+			// ④ Azure：geosite 的 azure 分类 151 条，全部是 azure 自家域
+			"GEOSITE,azure,{t}",
 		},
 		Providers: []string{"onedrive"}},
 	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",

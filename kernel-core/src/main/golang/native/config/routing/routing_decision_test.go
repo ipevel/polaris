@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/metacubex/mihomo/component/geodata"
-	C "github.com/metacubex/mihomo/constant"
-	RP "github.com/metacubex/mihomo/rules/provider"
 	"github.com/metacubex/mihomo/component/resource"
+	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/rules"
+	RP "github.com/metacubex/mihomo/rules/provider"
 	T "github.com/metacubex/mihomo/tunnel"
 )
 
@@ -168,26 +168,41 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		{host: "gemini.google.com", want: "🤖 AI", why: "Gemini"},
 		{host: "claude.ai", want: "🤖 AI", why: "Claude"},
 		{host: "api.openai.com", want: "🤖 AI", why: "OpenAI"},
-		// GitHub 组已取消：它本来就是 proxy，规则已被 geolocation-!cn 覆盖，
+		// GitHub 组已取消：它本来就是 proxy，规则已被 geolocation-!cn / proxy-gfwlist 覆盖，
 		// 出口行为不变，只是不再有独立开关（与 Google / Google Play 同理）。
-		// ⚠️ 已知偏差（2026-10-14 12 组简化引入，已上报主管待裁定）：
-		// 取消「🐱 GitHub」组后，这些域名并没有像 Table 注释所说落回「🌏 国外穿墙」，
-		// 而是被「Ⓜ️ 微软」的 GEOSITE,microsoft 吃掉（geosite 的 microsoft 分类里
-		// 就含 github.com / githubusercontent.com / github.io），于是 GitHub 从
-		// **proxy 变成 direct** —— 在国内直连等于不可用。
-		// 这里先按当前实测行为断言，把偏差固定成一条看得见的记录；裁定后应改成
-		// 「🌏 国外穿墙」（或在「🎯 国内直连」之前补一组 GitHub → proxy）。
-		{host: "github.com", want: "Ⓜ️ 微软", why: "GitHub（取消 GitHub 组后的实际落点，见上方偏差说明）"},
-		{host: "api.github.com", want: "Ⓜ️ 微软", why: "GitHub API（同上，实测直连）"},
-		{host: "raw.githubusercontent.com", want: "Ⓜ️ 微软", why: "GitHub raw（同上，实测直连）"},
-		{host: "objects.githubusercontent.com", want: "Ⓜ️ 微软", why: "GitHub 对象存储（同上，实测直连）"},
-		{host: "gist.github.com", want: "Ⓜ️ 微软", why: "Gist（同上，实测直连）"},
-		{host: "github.io", want: "Ⓜ️ 微软", why: "GitHub Pages（同上，实测直连）"},
-		// 这几条是「Ⓜ️ 微软」应当接住的自家域名，行为与合并前一致
-		{host: "www.msn.com", want: "Ⓜ️ 微软", why: "MSN"},
-		{host: "live.com", want: "Ⓜ️ 微软", why: "微软账号"},
-		{host: "www.office.com", want: "Ⓜ️ 微软", why: "Office 网页版"},
-		{host: "www.bing.com", want: "Ⓜ️ 微软", why: "Bing（原「Ⓜ️ 微软Bing」）"},
+		// 2026-10-14 用户裁定「微软组只留云盘直连，其余走兜底」：微软组不再用宽口径的
+		// GEOSITE,microsoft（752 条，含 github.com / githubusercontent.com / github.io），
+		// GitHub 系列因此按原设计落回「🌏 国外穿墙」——proxy-gfwlist 里本就有 10 条
+		// github 规则，不需要为此新增规则。这条偏差（曾实测为「Ⓜ️ 微软」直连）就此关闭。
+		{host: "github.com", want: "🌏 国外穿墙", why: "GitHub"},
+		{host: "api.github.com", want: "🌏 国外穿墙", why: "GitHub API"},
+		{host: "raw.githubusercontent.com", want: "🌏 国外穿墙", why: "GitHub raw"},
+		{host: "objects.githubusercontent.com", want: "🌏 国外穿墙", why: "GitHub 对象存储"},
+		{host: "gist.github.com", want: "🌏 国外穿墙", why: "Gist"},
+		{host: "github.io", want: "🌏 国外穿墙", why: "GitHub Pages"},
+		// 同一裁定：微软组收窄后 Bing / Office / Outlook / Teams 也落回穿墙。
+		{host: "bing.com", want: "🌏 国外穿墙", why: "Bing"},
+		{host: "www.bing.com", want: "🌏 国外穿墙", why: "Bing"},
+		{host: "office.com", want: "🌏 国外穿墙", why: "Office"},
+		{host: "www.office.com", want: "🌏 国外穿墙", why: "Office 网页版"},
+		{host: "outlook.com", want: "🌏 国外穿墙", why: "Outlook"},
+		{host: "teams.microsoft.com", want: "🌏 国外穿墙", why: "Teams"},
+		// 这两条以前断言成「Ⓜ️ 微软」，收窄后不再被微软组接住；它们的落点同样钉住，
+		// 免得「微软组只留云盘直连」把整个 microsoft 分类静默换掉时没人发现。
+		{host: "live.com", want: "🌏 国外穿墙", why: "微软账号门户（登录走 login.live.com，已单独直连）"},
+		{host: "www.msn.com", want: "🌏 国外穿墙", why: "MSN"},
+		// 这几条是「Ⓜ️ 微软」收窄后**仍然**应当直连的自家域名：云盘 + 登录 + 更新 + Azure。
+		{host: "onedrive.live.com", want: "Ⓜ️ 微软", why: "OneDrive"},
+		{host: "skyapi.onedrive.live.com", want: "Ⓜ️ 微软", why: "OneDrive 同步 API"},
+		{host: "api.onedrive.com", want: "Ⓜ️ 微软", why: "OneDrive API"},
+		{host: "my.microsoftpersonalcontent.com", want: "Ⓜ️ 微软", why: "OneDrive 个人内容主机"},
+		{host: "storage.live.com", want: "Ⓜ️ 微软", why: "OneDrive 存储"},
+		{host: "login.live.com", want: "Ⓜ️ 微软", why: "微软账号登录（OneDrive 取文件的前置）"},
+		{host: "login.microsoftonline.com", want: "Ⓜ️ 微软", why: "微软账号登录（OAuth 授权端点）"},
+		{host: "login.microsoft.com", want: "Ⓜ️ 微软", why: "微软账号登录"},
+		{host: "update.microsoft.com", want: "Ⓜ️ 微软", why: "Windows Update"},
+		{host: "windowsupdate.com", want: "Ⓜ️ 微软", why: "Windows Update"},
+		{host: "portal.azure.com", want: "Ⓜ️ 微软", why: "Azure 门户"},
 		{host: "music.163.com", want: "🎯 国内直连", why: "网易音乐（原「🎶 网易音乐」）"},
 		{host: "www.bilibili.com", want: "🎯 国内直连", why: "哔哩哔哩（原「📺 哔哩哔哩」）"},
 		{host: "store.steampowered.com", want: "🎮 游戏平台", why: "Steam"},

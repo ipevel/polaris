@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/config"
+	"github.com/metacubex/mihomo/constant"
 )
 
 func testRawConfig() *config.RawConfig {
@@ -167,7 +167,7 @@ func TestGroupStateOverride(t *testing.T) {
 		Enabled: true,
 		Groups: map[string]bool{
 			"🎧 TikTok": false,
-			"📲 电报消息": true,
+			"📲 电报消息":   true,
 		},
 	}
 	if err := Build(cfg, state, nil); err != nil {
