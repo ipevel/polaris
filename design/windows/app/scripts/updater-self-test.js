@@ -17,7 +17,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const TMP = path.join(os.tmpdir(), 'polaris-updater-selftest');
+// P0：安装目录/数据目录不许落在 os.tmpdir()（守卫 1 会拒绝），所以基目录放 homedir 下
+const TMP = path.join(os.homedir(), '.polaris-updater-selftest');
 const APP = path.join(TMP, '中文路径测试', 'Polaris-portable-1.10.0'); // 故意含非 ASCII
 const DATA = path.join(TMP, 'data');
 const UPD = path.join(DATA, 'update');
@@ -50,33 +51,58 @@ function reset() {
   fs.mkdirSync(path.join(APP, 'resources', 'rules'), { recursive: true });
   fs.mkdirSync(path.join(APP, 'data'), { recursive: true });
   fs.writeFileSync(path.join(APP, 'Polaris.exe'), 'OLD-1.10.0');
+  fs.writeFileSync(path.join(APP, 'resources', 'app.asar'), 'OLD-ASAR');
   fs.writeFileSync(path.join(APP, 'resources', 'core', 'mihomo.exe'), 'core-OLD');
   fs.writeFileSync(path.join(APP, 'resources', 'rules', 'gs_apple.yaml'), 'apple-OLD');
   fs.writeFileSync(path.join(APP, 'data', 'credentials.dat'), 'USER-CREDENTIALS');
   // staging：download() 解压出来的新包（zip 顶层就是文件，没有外层目录）
   for (const d of ['resources/core', 'resources/rules']) fs.mkdirSync(path.join(STAGE, d), { recursive: true });
   fs.writeFileSync(path.join(STAGE, 'Polaris.exe'), 'NEW-1.11.0');
+  fs.writeFileSync(path.join(STAGE, 'resources', 'app.asar'), 'NEW-ASAR');
   fs.writeFileSync(path.join(STAGE, 'resources', 'core', 'mihomo.exe'), 'core-NEW');
   fs.writeFileSync(path.join(STAGE, 'resources', 'rules', 'gs_apple.yaml'), 'apple-NEW');
   fs.writeFileSync(path.join(STAGE, 'resources', 'rules', 'gs_cn.yaml'), 'cn-rules');
+  // P0：包内清单（缺清单 = 拒绝安装）—— 按 staged 树真实内容生成
+  const rels = [];
+  const walk = (dir, prefix) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = prefix ? prefix + '/' + e.name : e.name;
+      if (e.isDirectory()) walk(path.join(dir, e.name), rel); else rels.push(rel);
+    }
+  };
+  walk(STAGE, '');
+  const mfLines = rels.filter((r) => r !== 'resources/polaris-files.sha256').map((r) =>
+    require('crypto').createHash('sha256').update(fs.readFileSync(path.join(STAGE, r))).digest('hex') + '  ' + r);
+  fs.writeFileSync(path.join(STAGE, 'resources', 'polaris-files.sha256'), mfLines.join('\n') + '\n');
   // 待清理的残留
   fs.writeFileSync(path.join(UPD, 'staged.json'), '{"version":"1.11.0"}');
   fs.writeFileSync(path.join(UPD, 'Polaris-1.11.0.zip'), 'PK-zip');
 }
 
-function setEnv(pid) {
+// P0 两阶段：默认跑阶段 1（守卫+清单校验+复制到临时目录+拉起）；
+// phase='apply' 时直接以阶段 2 跑（真正安装），临时目录另给一个（STAGE 是源，不能被当成临时副本）
+const HELPER_TMP = path.join(TMP, 'helper-temp');
+function setEnv(pid, phase) {
   process.env.POLARIS_APPLY_STAGE = '1';
   process.env.POLARIS_APPLY_ROOT = STAGE;
   process.env.POLARIS_APPLY_TARGET = APP;
   process.env.POLARIS_APPLY_UPDATEDIR = UPD;
   process.env.POLARIS_APPLY_PID = String(pid);
+  if (phase === 'apply') {
+    fs.mkdirSync(HELPER_TMP, { recursive: true });
+    process.env.POLARIS_APPLY_REEXEC = '1';
+    process.env.POLARIS_APPLY_TEMPDIR = HELPER_TMP;
+  } else {
+    delete process.env.POLARIS_APPLY_REEXEC;
+    delete process.env.POLARIS_APPLY_TEMPDIR;
+  }
 }
 
 async function scenarioNormal() {
   console.log('\n场景 1 · 父进程已退出（正常路径）');
   reset();
   launched = null;
-  setEnv(999999); // 不存在的 pid
+  setEnv(999999, 'apply'); // 不存在的 pid；phase 2 直接跑真正安装
   const code = await updater.applyWorker();
   ok('退出码 0', code === 0);
   ok('Polaris.exe 换成新包', read(FAKE_EXE) === 'NEW-1.11.0');
@@ -122,7 +148,7 @@ async function scenarioStagingGone() {
 async function scenarioStaleRename() {
   console.log('\n场景 4 · 启动时清理上次残留的 .old');
   reset();
-  setEnv(999999);
+  setEnv(999999, 'apply');
   await updater.applyWorker();
   ok('替换后 .old 确实在', fs.existsSync(FAKE_EXE + '.old'));
   updater.cleanStaleRename();
@@ -142,7 +168,7 @@ async function scenarioCopyFails() {
   updater.APPLY.retryDelays = [1, 1];   // 别真等 57 秒
   let code;
   try {
-    setEnv(999999);
+    setEnv(999999, 'apply');
     code = await updater.applyWorker();
   } finally {
     updater.APPLY.retryDelays = fast;
@@ -151,10 +177,14 @@ async function scenarioCopyFails() {
   ok('退出码 1（失败）', code === 1);
   ok('失败文件记了第 1 次重试', /重试 .*gs_cn\.yaml（第 1\/3 次）/.test(alog));
   ok('失败文件记了第 2 次重试（旧代码不 await，只会记第 1 次就往下走）', /重试 .*gs_cn\.yaml（第 2\/3 次）/.test(alog));
-  ok('日志里有「复制失败，已放弃本次安装」', alog.includes('复制失败，已放弃本次安装'));
+  ok('日志里有「失败：」并带上原因', /失败：/.test(alog) && /gs_cn\.yaml/.test(alog));
   ok('没有「清理完成」（清理不得早于复制完成）', !alog.includes('清理完成'));
   ok('没有「已重新拉起」（失败不许拉起）', !alog.includes('已重新拉起'));
   ok('staging 还在（留给下次重试）', fs.existsSync(STAGE));
+  ok('apply-result.json 记了失败且 rolled_back=true', (() => {
+    try { const r = JSON.parse(read(path.join(UPD, 'apply-result.json'))); return r.ok === false && r.rolled_back === true && /gs_cn\.yaml/.test(String(r.reason)); } catch (_) { return false; }
+  })());
+  ok('备份目录已清（回滚完成）', !fs.readdirSync(UPD).some((n) => n.indexOf('backup-') === 0));
   ok('zip 还在（没被清掉）', fs.existsSync(path.join(UPD, 'Polaris-1.11.0.zip')));
   ok('staged.json 还在（下次启动还能 restoreStaged）', fs.existsSync(path.join(UPD, 'staged.json')));
   ok('没有拉起任何东西', launched === null);
@@ -166,7 +196,7 @@ async function scenarioCleanupOrder() {
   console.log('\n场景 6 · 成功路径的顺序：复制完成 → 清理完成 → 重新拉起');
   reset();
   launched = null;
-  setEnv(999999);
+  setEnv(999999, 'apply');
   const code = await updater.applyWorker();
   const alog = read(path.join(UPD, 'apply.log'));
   const iCopy = alog.indexOf('复制完成');
@@ -182,6 +212,21 @@ async function scenarioCleanupOrder() {
     !!launched && Object.keys(launched.opts.env || {}).some((k) => k.toLowerCase() === 'path'));
 }
 
+
+async function scenarioManifestMissing() {
+  console.log('\n场景 7 · 包内清单缺失（P0：缺清单 = 拒绝安装）');
+  reset();
+  launched = null;
+  fs.rmSync(path.join(STAGE, 'resources', 'polaris-files.sha256'));
+  setEnv(999999);
+  const code = await updater.applyWorker();
+  ok('退出码 1（拒绝）', code === 1);
+  ok('安装目录未被改动', read(FAKE_EXE) === 'OLD-1.10.0');
+  ok('旧 exe 没被改名', !fs.existsSync(FAKE_EXE + '.old'));
+  const r = JSON.parse(read(path.join(UPD, 'apply-result.json')));
+  ok('apply-result.json 记了清单原因', r.ok === false && /清单/.test(String(r.reason)));
+  ok('没有拉起任何东西', launched === null);
+}
 async function main() {
   console.log('自我替换 helper 自检（临时目录：' + TMP + '）');
   try {
@@ -191,6 +236,7 @@ async function main() {
     await scenarioStaleRename();
     await scenarioCopyFails();
     await scenarioCleanupOrder();
+    await scenarioManifestMissing();
   } finally {
     fs.rmSync(TMP, { recursive: true, force: true });
   }
