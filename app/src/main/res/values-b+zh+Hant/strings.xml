@@ -319,7 +319,15 @@
     <string name="routing_custom_invalid_name">組名為空、超長或與內建組衝突</string>
     <string name="routing_custom_duplicate_name">同名規則組已存在</string>
     <string name="routing_custom_invalid_url">僅支援 https 地址，且不得指向本機/內網</string>
-    <string name="routing_custom_cleaned_invalid">部分自訂規則組名稱或直連網域非法，已自動移除</string>
+    <string name="routing_custom_cleaned_invalid">部分自訂規則組名稱或直連網域不合法（如與內建組重名、含非法字元），已在 App 清單中暫時隱藏（設定仍保留在本機）</string>
+    <string name="routing_hidden_title">暫時隱藏的項目</string>
+    <string name="routing_hidden_desc">下列項目不會在 App 清單生效，但仍原樣保留在本機設定檔中，不會被刪除</string>
+    <string name="routing_hidden_custom_tag">自訂規則組（暫時隱藏）</string>
+    <string name="routing_hidden_domain_tag">直連網域（暫時隱藏）</string>
+    <string name="routing_export_backup">匯出本機分流設定</string>
+    <string name="routing_export_backup_desc">把 routing.json 存到下載目錄並分享（含被隱藏項目）</string>
+    <string name="routing_export_backup_share">匯出本機分流設定</string>
+    <string name="routing_export_backup_failed">匯出失敗，請重試</string>
     <string name="routing_degraded_notice">本機分流未生效：訂閱節點名稱與內建分流組名稱衝突，已暫時回退面板分流</string>
 
     <!-- V5 UI（v5 重新設計新增） -->

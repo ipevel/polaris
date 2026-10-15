@@ -13,6 +13,7 @@ import com.slte.app.kernel.RoutingInputValidator
 import com.slte.app.kernel.RoutingStateStore
 import com.slte.app.kernel.orderedGroups
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.File
 import java.net.URI
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,10 @@ data class RoutingRulesData(
     val errorMessageRes: Int? = null,
     val savedCount: Int = 0,
     val custom: List<RoutingCustomGroup> = emptyList(),
+    // 被隐藏的非法条目（磁盘上仍在，只是 App 清单不用）：每次读都带出来给用户看，
+    // 不能只报「本次读丢了几个」——那样用户看不到自己少了什么。
+    val hiddenCustomNames: List<String> = emptyList(),
+    val hiddenDomainNames: List<String> = emptyList(),
 )
 
 data class CustomGroupForm(
@@ -75,7 +80,8 @@ constructor(
     /** 组的生效开关：routing.json 有覆盖用覆盖值，否则用内置默认。 */
     private fun refresh() {
         // loadSanitized：旧版本或其它写入点可能在 routing.json 留下非法名称/
-        // 域名（会让整份内核配置加载失败），读时清掉并回写，同时提示用户。
+        // 域名（会让整份内核配置加载失败）。读时**只隐藏、不回写磁盘**，
+        // 并把被隐藏条目带出来供 UI 列出（见 RoutingStateStore.loadSanitized 的注释）。
         val sanitized = routingStateStore.loadSanitized()
         val state = sanitized.state
         val items =
@@ -91,6 +97,8 @@ constructor(
             it.copy(
                 items = items,
                 custom = state.custom,
+                hiddenCustomNames = sanitized.hiddenCustom.map { it.name },
+                hiddenDomainNames = sanitized.hiddenDomains,
                 errorMessageRes =
                 if (sanitized.hasDropped) {
                     R.string.routing_custom_cleaned_invalid
@@ -100,6 +108,14 @@ constructor(
             )
         }
     }
+
+    /**
+     * 导出用：routing.json 的真实路径。
+     *
+     * 给出去的是**磁盘原样**文件——包含 App 列表里暂时隐藏的条目；用户要能自救，
+     * 所以导出不经过任何清洗（见 [RoutingStateStore.loadSanitized] 的注释）。
+     */
+    fun backupFile(): File = routingStateStore.stateFile()
 
     fun setEnabled(
         name: String,
