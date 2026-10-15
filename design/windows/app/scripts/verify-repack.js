@@ -8,7 +8,8 @@
  * 五条：
  *   ① 条目名：不含反斜杠、不以 / 开头、不含 .. 段（zip 规范用正斜杠，反斜杠会让部分解压器建出怪名字）
  *   ② 文件条目集合与源目录**归一化后**逐一相同（分隔符统一 /、大小写统一），不是只比数量
- *   ③ 目录条目差异：只允许「源里是空目录」被丢；有结论并打印；非空目录被丢 → 红
+ *   ③ 目录差异：目录「存在」= 有目录条目 或 有文件落在它下面（打包器可不写目录条目）；
+ *      只有「源里非空 + 新 zip 里既无目录条目也无文件落其下」才算真丢 → 红；空目录被丢 → 结论输出
  *   ④ 条目名大小写与源**逐字一致**（② 归一化比较抓不到大小写变化，这条单独抓）
  *   ⑤ 负例证据：本文件的判定逻辑可被纯 Node 单测直接喂坏 zip（见 test 文件）
  *
@@ -100,10 +101,21 @@ function main() {
     ok = fail('④ 条目名大小写与源不一致：' + caseDiff.length + ' 个', caseDiff.slice(0, 20).join('\n')) && ok;
   } else console.log('  [ OK ] ④ 条目名大小写与源逐字一致（' + fileEntries.length + ' 个）');
 
-  /* ③ 目录条目差异：只允许「源里是空目录」被丢；给结论（fail-closed） */
+  /* ③ 目录差异（2026-10-15 修：原判据误报）——
+        目录「存在」= zip 里有该目录条目 **或** 有任意文件条目以 <dir>/ 为前缀。
+        为什么：打包器（Compress-Archive）**只写文件条目、不写目录条目**，而目录条目对解压器本来就是冗余的
+        （解压时按文件路径重建）。原来的判据只查目录条目，于是「每个非空目录都被判丢」——dryRun
+        run 38767099173 的 windows job 就是被这条误报挡下的（96 个文件一个没丢、①②④ 全绿）。
+        现在只有「源里该目录**非空** + 新 zip 里既无目录条目、也没有任何文件落在它下面」才算真丢 → 红。 */
   const srcDirsNorm = src.dirs.map(norm).sort();
   const zipDirsNorm = dirEntries.map(norm).sort();
-  const droppedDirs = srcDirsNorm.filter((d) => zipDirsNorm.indexOf(d) < 0);
+  const fileNorms = fileEntries.map(norm);
+  const dirCovered = (d) => {
+    if (zipDirsNorm.indexOf(d) >= 0) return true;
+    const prefix = d + '/';
+    return fileNorms.some((n) => n.startsWith(prefix));
+  };
+  const droppedDirs = srcDirsNorm.filter((d) => !dirCovered(d));
   const emptyDropped = [];
   const meaningfulDropped = [];
   for (const d of droppedDirs) {
@@ -118,7 +130,7 @@ function main() {
     console.log('       结论：可接受——便携包不依赖空目录（data/ 由运行期 paths.ensureAll 创建）；');
     console.log('       若将来包内出现必须存在的空目录，改为在该目录放一个 .keep 占位文件。');
     console.log('       被丢清单：' + emptyDropped.join('、'));
-  } else console.log('  [ OK ] ③ 目录条目与源一致（无差异）');
+  } else console.log('  [ OK ] ③ 无目录丢失（打包器可以不写目录条目；文件落点已覆盖全部源目录）');
 
   if (!ok) { console.error('重打包后断言未通过（fail-closed）'); process.exit(1); }
   console.log('重打包后断言全部通过');
