@@ -188,6 +188,14 @@ function clearSiteLog() {
 
 loadSiteLog();
 
+/**
+ * 摘要连续取不到多少次就升级提示（硬要求②的 N）。
+ * 为什么是 3：单次多为网络抖动/刚发版；连续 3 次（默认 6 小时自动检查一次 ≈ 18 小时）就不像偶发了。
+ * 为什么不直接拒绝安装：镜像 / 自建 CDN 本来就没有 SHA256SUMS.txt（PR 口径：不拦），
+ * 拦掉等于把这类用户的更新通道堵死 —— 升级的是**可见性**（error 日志 + 醒目提示），不是阻断。
+ */
+const SHA_MISSING_ESCALATE = 3;
+
 function ok(extra) { return Object.assign({ ok: true }, extra || {}); }
 function fail(msg) { return { ok: false, msg: msg || '操作失败' }; }
 
@@ -626,6 +634,10 @@ const commands = {
       // 存的是"上次查到的线上最新版"，与当前版本现算，所以装完新版本自己会灭。
       update_available: cmpVersion(s.update_latest, s.version) > 0,
       update_version: s.update_latest || '',
+      // 本次有没有做包校验（摘要取不到时 UI 要显示「本次未做包校验」）
+      update_sha_state: s.update_sha_state || 'ok',
+      update_sha_reason: s.update_sha_reason || '',
+      update_sha_missing_streak: Number(s.update_sha_missing_streak) || 0,
       update_checked_at: Number(s.update_checked_at) || 0,
       // 本地有没有节点数据（订阅原文 + 组装好的 config.yaml）。界面用它区分
       // 「还没登录」和「登录了但订阅没拉下来」——旧代码这两种情况都显示"未登录"，
@@ -689,6 +701,8 @@ const commands = {
     chrome: process.versions.chrome,
     node: process.versions.node,
     is_admin: await elevate.isAdmin(),
+    // 硬要求①：内核启动校验「跳过」也要能在关于页看见（不是静默通过）
+    last_kernel_verify: store.get('last_kernel_verify') || null,
   }),
 
   is_admin: async () => elevate.isAdmin(),
@@ -731,17 +745,35 @@ const commands = {
     const picked = pickUpdateInfo(cfg, gh);
     const u = picked.info;
     const st = updater.info();
+    // 硬要求②：摘要取不到的降级路径写死边界 —— 连续 SHA_MISSING_ESCALATE 次 → 显式 error 日志 + 界面醒目提示；
+    // 取到一次就归零（streak 落盘，跨重启累计，界面事后也能复查）。
+    const shaState = String(u.sha_state || 'ok');
+    const prevStreak = Number(store.get('update_sha_missing_streak') || 0);
+    const shaStreak = shaState === 'ok' ? 0 : prevStreak + 1;
+    if (shaState !== 'ok' && shaStreak >= SHA_MISSING_ESCALATE) {
+      log.error(`连续 ${shaStreak} 次取不到发布侧摘要：本次仍未做包校验（包本身可能没问题，但请留意下载来源）`);
+    }
     // 把"线上最新版"落盘：设置页那个红点要在**重启之后**还在（用户第 13 轮第 2 条），
     // 不能只活在这一次会话的内存里。没更新时写空串，红点随之消失。
     store.patch({
       update_latest: u.has_update ? String(u.version || '') : '',
       // 地址也要落盘：红点跨重启还在，重启后点「前往下载」时 check_update 的返回值已经没了
       update_url: u.has_update ? String(u.url || '') : '',
+      // 摘要与地址**成对**落盘：下载时用它核对下载到的那份包（拿不到就是空串 → 只 warn 不拦）
+      update_sha256: u.has_update ? String(u.sha256 || '') : '',
+      // 硬条件：'missing' = 本次没做包校验；落盘 + 给 UI 显示，不许静默
+      update_sha_state: u.has_update ? String(u.sha_state || 'ok') : '',
+      update_sha_reason: u.has_update ? String(u.sha_reason || '') : '',
+      update_sha_missing_streak: shaStreak,
       update_checked_at: Date.now(),
     });
     return {
       has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
       source: picked.source,
+      sha256: u.sha256 || '',
+      sha_state: u.sha_state || 'ok',
+      sha_reason: u.sha_reason || '',
+      sha_streak: shaStreak,
       // 便携版能不能自己装：打包 + 安装目录可写才允许，否则退回「前往下载」
       can_apply: paths.isPackaged && paths.isPortable(),
       apply_blocked: paths.isPackaged && paths.isPortable() ? '' : updater.applyBlockedReason(),
@@ -761,7 +793,11 @@ const commands = {
     if (target && !updater.isAllowedDownloadUrl(target)) {
       throw new Error('更新地址不是 http(s) 链接，已拒绝下载：' + target.slice(0, 120));
     }
-    return updater.download(target, version || u.version || store.get('update_latest') || '');
+    // 摘要只在「地址就是那次 check_update 落盘的那个」时才可用：地址被换成镜像 / 面板回的那个时，
+    // 手上这份摘要是**别的包**的，拿来核对只会把好包判成坏包。
+    const expected = target && target === String(store.get('update_url') || '').trim()
+      ? String(store.get('update_sha256') || '') : '';
+    return updater.download(target, version || u.version || store.get('update_latest') || '', expected);
   },
 
   apply_update: async () => {

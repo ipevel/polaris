@@ -138,6 +138,21 @@
     return `<div class="inline-err"${id ? ` id="${id}"` : ""}>${h(text || "")}</div>`;
   }
 
+  /**
+   * 摘要取不到时的可见文案（硬要求②）：
+   *   - 说清「取不到摘要 ≠ 包有问题，但本次没有校验」；
+   *   - 连续 N（= 主进程 ipc 里的 SHA_MISSING_ESCALATE，3）次未校验 → 换更醒目的说法；
+   *   - 结果落盘（settings），所以**事后/重启后仍能复查**，不是弹窗一闪而过。
+   */
+  function shaNotice(state, reason, streak) {
+    const st = String(state || "ok");
+    if (st === "ok" || !state) return "";
+    const n = Number(streak) || 0;
+    const why = reason ? "（" + reason + "）" : "";
+    if (n >= 3) return err("连续 " + n + " 次未做包校验：取不到发布侧摘要，包本身可能没问题，但请留意下载来源" + why);
+    return err("本次未做包校验：取不到发布侧摘要 ≠ 包有问题，但本次没有校验" + why);
+  }
+
   const Views = {};
 
   /* ---------------- 首页 ---------------- */
@@ -511,6 +526,10 @@
         : (s.updateInfo && s.updateInfo.staged
           ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.updateInfo.version) + "（已下载）</span>"
           : '<span style="color:var(--blue)">检查更新</span>'), { chev: false, click: "check-update" })}
+      ${s.settings.update_available ? shaNotice(s.settings.update_sha_state, s.settings.update_sha_reason, s.settings.update_sha_missing_streak) : ""}
+      ${(s.appInfo && s.appInfo.last_kernel_verify && s.appInfo.last_kernel_verify.state && s.appInfo.last_kernel_verify.state !== "ok")
+        ? err("内核启动校验未执行（不计为通过）：" + (s.appInfo.last_kernel_verify.reason || "未知原因"))
+        : ""}
       ${row("导出日志", "", { chev: false, click: "export-logs" })}
       ${row("开源许可", "GPL-3.0", { click: "license" })}
       ${row("运行模式", s.appInfo.portable ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
@@ -717,6 +736,7 @@
         <div id="upd-text" class="dsub" style="margin-top:8px;text-align:center"></div>
       </div>
       ${blocked}
+      ${shaNotice(u.sha_state, u.sha_reason, u.sha_streak)}
       ${primary}
       <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent" data-overlay-close>稍后再说</button>
     </div></div>`;
