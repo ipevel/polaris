@@ -1233,7 +1233,7 @@
     });
     window.polaris.on("toast", (t) => { if (t && t.message) toast(t.message); });
     window.polaris.on("navigate", (t) => { if (t && t.route) nav(t.route); });
-    window.polaris.on("update", (st) => paintUpdate(st));
+    window.polaris.on("update", (st) => { state.update_state = st; paintUpdate(st); });
   }
 
   /**
@@ -1242,6 +1242,19 @@
    */
   function paintUpdate(st) {
     if (!st) { const box = $("#upd-progress"); if (box) box.style.display = "none"; return; }
+    // P0：上次更新失败必须看得见（不能只躺在 apply.log 里）；同一份结果只弹一次
+    const last = st.last_apply_result;
+    if (last && last.ok === false && shownApplyTs !== String(last.ts || '')) {
+      shownApplyTs = String(last.ts || '');
+      toast(last.rolled_back === true
+        ? ("上次更新失败，已回滚到旧版本：" + String(last.reason || "未知原因"))
+        : ("上次更新失败且回滚未完成，请查看 data\\update 里的 apply-result.json：" + String(last.reason || "未知原因")));
+    }
+    const ign = st.staged_ignored;
+    if (ign && ign.version && shownIgnored !== String(ign.version)) {
+      shownIgnored = String(ign.version);
+      toast("检测到旧暂存包 " + ign.version + "，已忽略（当前 " + String(ign.current || '') + "）");
+    }
     const box = $("#upd-progress");
     if (box) {
       box.style.display = "";
@@ -1255,6 +1268,9 @@
       toast("更新包已下载完成");
     }
   }
+
+  let shownApplyTs = '';
+  let shownIgnored = '';
 
   function updateLabel(st) {
     const mb = (n) => (Number(n) / 1048576).toFixed(1) + " MB";

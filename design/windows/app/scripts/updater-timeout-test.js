@@ -122,10 +122,19 @@ function buildZip(entries) {
   return Buffer.concat([...locals, centralBuf, eocd]);
 }
 
-const GOOD_ZIP = buildZip([
+// a 笔的包内清单闸门：夹具包必须带**合法清单**（缺清单 = 拒绝安装，闸门不放宽）。
+// 清单格式与 scripts/package-manifest.js 一致：<64hex>␣␣<相对路径>，清单自身不列入。
+const crypto = require('crypto');
+const sha256Of = (s) => crypto.createHash('sha256').update(Buffer.from(String(s), 'utf8')).digest('hex');
+const FIXTURE_FILES = [
   { name: 'Polaris.exe', data: 'NEW-1.11.3' },
+  { name: 'resources/app.asar', data: 'NEW-ASAR' },
   { name: 'resources/core/mihomo.exe', data: 'core-NEW' },
-]);
+];
+const FIXTURE_MANIFEST = FIXTURE_FILES.map((f) => sha256Of(f.data) + '  ' + f.name).join('\n') + '\n';
+const GOOD_ZIP = buildZip(FIXTURE_FILES.concat([
+  { name: 'resources/polaris-files.sha256', data: FIXTURE_MANIFEST },
+]));
 
 /* ---------------- 临时 HTTP 服务器（只监听 127.0.0.1） ---------------- */
 let server = null;
