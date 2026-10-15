@@ -95,6 +95,20 @@ function sumsUrlFor(assetUrl) {
  *   { has_update, version, url, size, notes, title }
  * `url` 取 `Polaris-portable-*.zip` 资产（没有就退回任意 .zip，再退回发布页）。
  */
+/**
+ * 摘要状态（纯函数，可离线单测）：
+ *   'ok'      = 拿到了可比对的 sha256
+ *   'missing' = **本次没做包校验**（取不到 / 摘要里没有该条 / 发布里没有 zip 资产）
+ * 抽出来是为了两件事：UI 能拿到一句人话的原因；单测不依赖网络。
+ */
+function shaStateFor(zipName, sums, err) {
+  if (err) return { state: 'missing', reason: '取发布侧摘要失败（' + ((err && err.message) || err) + '）', sha256: '' };
+  if (!zipName) return { state: 'missing', reason: '发布里没有 zip 资产', sha256: '' };
+  const h = sums && typeof sums.get === 'function' ? sums.get(zipName) : '';
+  if (!h) return { state: 'missing', reason: '发布侧摘要里没有 ' + zipName, sha256: '' };
+  return { state: 'ok', reason: '', sha256: String(h) };
+}
+
 async function checkLatest(currentVersion) {
   const url = `${apiBase()}/repos/${REPO}/releases/latest`;
   const json = await getJson(url);
@@ -106,20 +120,19 @@ async function checkLatest(currentVersion) {
   const zip = pick(/^Polaris-portable-.*\.zip$/i) || pick(/\.zip$/i);
 
   // 发布侧摘要在同一个 Release 里（release job 写的 SHA256SUMS.txt，与 zip 同目录）。
-  // 取不到**不算失败**：镜像 / 自建 CDN 没有这份文件，最差就是回到「没有摘要可核」。
-  let sha256 = '';
+  // 取不到**不算失败**（镜像 / 自建 CDN 没有这份文件），但**必须让用户看见**：
+  // 决策主管硬条件——摘要取不到时更新页要显示「本次未做包校验」，不许静默 warn。
+  let sums = null; let sumsErr = null;
   if (zip && zip.browser_download_url) {
     const su = sumsUrlFor(zip.browser_download_url);
     if (su) {
-      try {
-        sha256 = parseSums(await getText(su)).get(String(zip.name || '')) || '';
-        if (sha256) log.info(`release sums: ${zip.name} sha256=${sha256.slice(0, 12)}…`);
-        else log.warn('SHA256SUMS.txt 里没有 ' + zip.name + '，这次不核摘要');
-      } catch (e) {
-        log.warn('取 SHA256SUMS.txt 失败（这次不核摘要）：' + (e && e.message));
-      }
+      try { sums = parseSums(await getText(su)); } catch (e) { sumsErr = e; }
     }
   }
+  const sha = shaStateFor(zip ? String(zip.name || '') : '', sums, sumsErr);
+  const sha256 = sha.sha256 || '';
+  if (sha.state === 'ok') log.info(`release sums: ${zip.name} sha256=${sha256.slice(0, 12)}…`);
+  else log.warn('本次未做包校验：' + sha.reason);
 
   const info = {
     has_update: fmt.cmpVersion(latest, currentVersion) > 0,
@@ -130,10 +143,13 @@ async function checkLatest(currentVersion) {
     title: String(json.name || '').trim(),
     // 下载后用它逐字节核对 zip（空串 = 没有可核对的摘要，客户端只 warn 不拦）
     sha256: sha256,
+    // 硬条件：'missing' = 本次没做包校验，UI 必须显示出来（不许静默）
+    sha_state: sha.state,
+    sha_reason: sha.reason,
   };
   log.info(`release check: latest=${latest} current=${currentVersion} has_update=${info.has_update}` +
     (zip ? ` asset=${zip.name} sha256=${sha256 ? sha256.slice(0, 12) + '…' : '(无)'}` : ' (没有 zip 资产)'));
   return info;
 }
 
-module.exports = { checkLatest, apiBase, REPO, DEFAULT_API, parseSums, sumsUrlFor, getText };
+module.exports = { checkLatest, apiBase, REPO, DEFAULT_API, parseSums, sumsUrlFor, getText, shaStateFor };

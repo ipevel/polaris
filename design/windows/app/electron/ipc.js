@@ -626,6 +626,9 @@ const commands = {
       // 存的是"上次查到的线上最新版"，与当前版本现算，所以装完新版本自己会灭。
       update_available: cmpVersion(s.update_latest, s.version) > 0,
       update_version: s.update_latest || '',
+      // 本次有没有做包校验（摘要取不到时 UI 要显示「本次未做包校验」）
+      update_sha_state: s.update_sha_state || 'ok',
+      update_sha_reason: s.update_sha_reason || '',
       update_checked_at: Number(s.update_checked_at) || 0,
       // 本地有没有节点数据（订阅原文 + 组装好的 config.yaml）。界面用它区分
       // 「还没登录」和「登录了但订阅没拉下来」——旧代码这两种情况都显示"未登录"，
@@ -739,12 +742,17 @@ const commands = {
       update_url: u.has_update ? String(u.url || '') : '',
       // 摘要与地址**成对**落盘：下载时用它核对下载到的那份包（拿不到就是空串 → 只 warn 不拦）
       update_sha256: u.has_update ? String(u.sha256 || '') : '',
+      // 硬条件：'missing' = 本次没做包校验；落盘 + 给 UI 显示，不许静默
+      update_sha_state: u.has_update ? String(u.sha_state || 'ok') : '',
+      update_sha_reason: u.has_update ? String(u.sha_reason || '') : '',
       update_checked_at: Date.now(),
     });
     return {
       has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
       source: picked.source,
       sha256: u.sha256 || '',
+      sha_state: u.sha_state || 'ok',
+      sha_reason: u.sha_reason || '',
       // 便携版能不能自己装：打包 + 安装目录可写才允许，否则退回「前往下载」
       can_apply: paths.isPackaged && paths.isPortable(),
       apply_blocked: paths.isPackaged && paths.isPortable() ? '' : updater.applyBlockedReason(),

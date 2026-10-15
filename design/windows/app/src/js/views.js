@@ -511,6 +511,9 @@
         : (s.updateInfo && s.updateInfo.staged
           ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.updateInfo.version) + "（已下载）</span>"
           : '<span style="color:var(--blue)">检查更新</span>'), { chev: false, click: "check-update" })}
+      ${(s.settings.update_available && s.settings.update_sha_state && s.settings.update_sha_state !== "ok")
+        ? err("本次未做包校验（取不到发布侧摘要" + (s.settings.update_sha_reason ? "：" + s.settings.update_sha_reason : "") + "）")
+        : ""}
       ${row("导出日志", "", { chev: false, click: "export-logs" })}
       ${row("开源许可", "GPL-3.0", { click: "license" })}
       ${row("运行模式", s.appInfo.portable ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
@@ -717,6 +720,9 @@
         <div id="upd-text" class="dsub" style="margin-top:8px;text-align:center"></div>
       </div>
       ${blocked}
+      ${(u.sha_state && u.sha_state !== "ok")
+        ? err("本次未做包校验（取不到发布侧摘要" + (u.sha_reason ? "：" + u.sha_reason : "") + "）")
+        : ""}
       ${primary}
       <button class="btn" style="width:100%;height:44px;color:var(--text2);background:transparent" data-overlay-close>稍后再说</button>
     </div></div>`;

@@ -147,6 +147,14 @@ const sched = typeof win.PolarisScheduleRender === 'function' ? win.PolarisSched
   check('W4 端口占用模板保留 hint（原来 hint 就在这一份里，改名不许弄丢）',
     portHtml.indexOf('端口 7890 被其它程序占用') >= 0, portHtml.slice(0, 80));
 
+  /* ---------- PR-A 硬条件：摘要取不到时更新弹窗必须显示「本次未做包校验」 ---------- */
+  const updArg = { version: '1.12.2', current: '1.12.1', notes: '修了些东西', sha_state: 'missing', sha_reason: '发布侧摘要里没有 Polaris-portable-1.12.2.zip' };
+  const updHtml = typeof Dialogs.update === 'function' ? String(Dialogs.update(updArg)) : '';
+  check('PR-A 更新弹窗：摘要缺失时显示「本次未做包校验」', updHtml.indexOf('本次未做包校验') >= 0, updHtml.slice(0, 120));
+  check('PR-A 更新弹窗：带上人话原因', updHtml.indexOf('发布侧摘要里没有') >= 0);
+  const updOk = typeof Dialogs.update === 'function' ? String(Dialogs.update({ version: '1.12.2', current: '1.12.1', notes: 'x', sha_state: 'ok' })) : '';
+  check('PR-A 更新弹窗：摘要正常时不显示该提示', updOk.indexOf('本次未做包校验') < 0);
+
   /* ---------- W5：弹窗开着时不重绘，关掉补绘 ---------- */
   win.PolarisRender();                       // 基线渲染
   const base = win.__polarisRenderCount;

@@ -122,6 +122,27 @@ function wiring() {
   check('启动前核内核（manager.startKernel）', /verifyManifestEntry\(/.test(mgrSrc) && /mihomo\.exe/.test(mgrSrc));
   check('ipc 把落盘摘要传下去', /update_sha256/.test(ipcSrc));
   check('store 有 update_sha256 默认值', /update_sha256/.test(stSrc));
+
+  /* 硬条件（决策主管）：摘要取不到 → 状态必须是 missing，UI 才能显示「本次未做包校验」 */
+  const relSrc = rd('electron/core/release.js');
+  const vSrc = rd('src/js/views.js');
+  check('shaStateFor：拿到摘要 → ok',
+    R.shaStateFor('Polaris-portable-1.12.1.zip', new Map([['Polaris-portable-1.12.1.zip', A]]), null).state === 'ok');
+  const s1 = R.shaStateFor('Polaris-portable-1.12.1.zip', new Map(), null);
+  check('shaStateFor：摘要里没有该条 → missing + 人话原因',
+    s1.state === 'missing' && /没有 Polaris-portable-1\.12\.1\.zip/.test(s1.reason), JSON.stringify(s1));
+  const s2 = R.shaStateFor('x.zip', null, new Error('boom'));
+  check('shaStateFor：取不到（网络错）→ missing + 原因带原错',
+    s2.state === 'missing' && /取发布侧摘要失败/.test(s2.reason) && /boom/.test(s2.reason), JSON.stringify(s2));
+  const s3 = R.shaStateFor('', new Map(), null);
+  check('shaStateFor：没有 zip 资产 → missing', s3.state === 'missing' && /没有 zip 资产/.test(s3.reason), JSON.stringify(s3));
+  check('release.checkLatest 返回 sha_state / sha_reason（UI 靠它判）',
+    /sha_state: sha\.state/.test(relSrc) && /sha_reason: sha\.reason/.test(relSrc));
+  check('ipc 落盘并暴露 update_sha_state / sha_state',
+    /update_sha_state/.test(ipcSrc) && /sha_state: u\.sha_state/.test(ipcSrc));
+  check('更新弹窗在 sha_state≠ok 时显示「本次未做包校验」',
+    /本次未做包校验/.test(vSrc) && /u\.sha_state !== "ok"/.test(vSrc));
+  check('设置页也显示该提示', /s\.settings\.update_sha_state !== "ok"/.test(vSrc));
 }
 
 e2e().then(() => {
