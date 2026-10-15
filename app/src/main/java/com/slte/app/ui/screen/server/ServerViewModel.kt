@@ -72,15 +72,21 @@ constructor(
     /**
      * 用户自建分流组名，**只供渲染层决定显示名**（见 groupDisplayName）。
      *
-     * 显示映射必须放过自建组：用户完全可以把自建组叫成某个旧内置组名（v1.11.6 里
-     * 「Ⓜ️ 微软云盘」还只是别名、不是内置组，那时建的同名自建组就是这种情况），
-     * 那是他自己的名字，不能因为内核里还挂着旧名就替他改名。
+     * 显示映射必须放过自建组：用户完全可以把自建组叫成某个旧内置组名——v1.11.6 时
+     * 「Ⓜ️ 微软」还是内置组名（`RoutingInputValidator.reservedNames` 含
+     * `RoutingGroups.map { it.name }`），用户当时**建不了**同名自建组；1.12.0 改名
+     * （提交 `1563d093`）后它才不再是保留名，所以今天完全可能存在一个叫「Ⓜ️ 微软」的
+     * 用户自建组。那是他自己的名字，不能因为内核还挂着旧名就被替他改名。
+     *
+     * **读盘时机（线程模型）**：初始化时读一次并缓存，刷新时只用缓存、**不重复读盘**；
+     * 内核每次重载配置成功（[KernelManager.profileLoaded]，改分流规则会触发重载）时
+     * 再刷新一次缓存。既不在节点页刷新路径里做文件 IO，又能在用户增删自建组后跟上。
      *
      * 读盘用 [com.slte.app.kernel.RoutingStateStore.readOrNull] 而不是 loadSanitized：后者会做
      * 清洗回写，节点页没有理由触发那次写盘（清洗语义是另一条线）。
      *
      * **null = 读不出来**（文件在但解析失败）→ 渲染层保守不映射；空集 = 确实没有自建组 → 照常映射。
-     * 初值也是 null：第一次刷新落地前宁可保守显示内核原名，也不要误改用户自建组。
+     * 初值也是 null：初始化那次读落地前宁可保守显示内核原名，也不要误改用户自建组。
      */
     val customGroupNames: StateFlow<Set<String>?> = _customGroupNames.asStateFlow()
 
@@ -147,6 +153,8 @@ constructor(
         val cachedDelays = kernelProxy.cachedSpeedResults()
         serverRepository.getCachedServers()?.let { applyNodes(it, cachedDelays) }
         refreshSpecialNodes()
+        // 自建组名：初始化读一次并缓存（之后只在 profileLoaded 时刷新，见 [customGroupNames]）
+        _customGroupNames.value = customGroupNamesFromStore()
         observeKernelReloads()
     }
 
@@ -169,6 +177,8 @@ constructor(
     private fun observeKernelReloads() {
         viewModelScope.launch {
             kernelManager.profileLoaded.collect {
+                // 分流规则变化会走重载：此刻刷新自建组名缓存（用户可能刚增删了自定义组）
+                _customGroupNames.value = customGroupNamesFromStore()
                 val groups = kernelProxy.proxyGroups()
                 // 内核刚起来的瞬间可能查不到组，此时不覆盖已有列表——保留旧数据等下一次，
                 // 免得把本来正常的页面刷成空。列表本来就是空时照常写入，否则永远自愈不了。
@@ -528,7 +538,7 @@ constructor(
 
     private suspend fun refreshGroups() {
         _isLoadingGroups.value = true
-        _customGroupNames.value = customGroupNamesFromStore()
+        // 不在这里读自建组名：用 init / profileLoaded 维护的缓存（见 [customGroupNames]）
         refreshPrimarySectionState(kernelProxy.proxyGroups())
         _isLoadingGroups.value = false
     }
@@ -536,12 +546,12 @@ constructor(
     /**
      * 读自建分流组名（只读、不触发清洗回写；见 [customGroupNames] 的注释）。
      *
-     * 同步读，不切 IO：routing.json 是个小文件，仓库里读它的既有路径
-     * （RoutingRulesViewModel.refresh、SettingsViewModel）也都在主线程同步读；
-     * 这里换成 withContext(Dispatchers.IO) 会把刷新挪出测试调度器，
-     * 让 ServerViewModelTest 的 advanceUntilIdle 抓不到状态更新（实测 5 条用例被拖挂）。
+     * 只在**初始化**与**内核重载成功**时调用，不在每次刷新里调用——避免把文件 IO 放进
+     * 节点页刷新路径（线程模型见 [customGroupNames]）。
      *
-     * 解析失败 → null（**不能**与「没有自建组」混为一谈，见 [customGroupNames]）。
+     * 解析失败 → null：**不能**与「没有自建组」混为一谈——[com.slte.app.kernel.RoutingStateStore.load]
+     * 在解析失败时会回退默认 state（见其 readRaw 的 getOrElse），靠空集合兜会把「读不出来」
+     * 误判成「没有自建组」，于是叫「Ⓜ️ 微软」的自建组会被误改名。
      */
     private fun customGroupNamesFromStore(): Set<String>? {
         val state = kernelProxy.config.routingStateStore.readOrNull() ?: return null
