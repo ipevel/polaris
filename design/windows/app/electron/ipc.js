@@ -737,11 +737,14 @@ const commands = {
       update_latest: u.has_update ? String(u.version || '') : '',
       // 地址也要落盘：红点跨重启还在，重启后点「前往下载」时 check_update 的返回值已经没了
       update_url: u.has_update ? String(u.url || '') : '',
+      // 摘要与地址**成对**落盘：下载时用它核对下载到的那份包（拿不到就是空串 → 只 warn 不拦）
+      update_sha256: u.has_update ? String(u.sha256 || '') : '',
       update_checked_at: Date.now(),
     });
     return {
       has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
       source: picked.source,
+      sha256: u.sha256 || '',
       // 便携版能不能自己装：打包 + 安装目录可写才允许，否则退回「前往下载」
       can_apply: paths.isPackaged && paths.isPortable(),
       apply_blocked: paths.isPackaged && paths.isPortable() ? '' : updater.applyBlockedReason(),
@@ -761,7 +764,11 @@ const commands = {
     if (target && !updater.isAllowedDownloadUrl(target)) {
       throw new Error('更新地址不是 http(s) 链接，已拒绝下载：' + target.slice(0, 120));
     }
-    return updater.download(target, version || u.version || store.get('update_latest') || '');
+    // 摘要只在「地址就是那次 check_update 落盘的那个」时才可用：地址被换成镜像 / 面板回的那个时，
+    // 手上这份摘要是**别的包**的，拿来核对只会把好包判成坏包。
+    const expected = target && target === String(store.get('update_url') || '').trim()
+      ? String(store.get('update_sha256') || '') : '';
+    return updater.download(target, version || u.version || store.get('update_latest') || '', expected);
   },
 
   apply_update: async () => {

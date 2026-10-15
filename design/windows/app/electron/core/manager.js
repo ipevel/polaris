@@ -354,6 +354,14 @@ async function startKernel() {
   if (!fs.existsSync(exe)) {
     throw new Error(`未找到内核 mihomo.exe（${paths.core()}），请重新解压完整目录`);
   }
+  // 启动前定点核对内核与包内清单：内核是随包分发的原生 exe，半覆盖 / 被杀软截断时，
+  // 它坏掉的表现是「连不上」这种玄学，在这里换成一句人话。只核内核**一个**文件 ——
+  // 整包（geo / 规则几百 MB）每次启动都算一遍不可接受。清单缺失 / 没有这一条 → 跳过。
+  const integrity = require('./updater').verifyManifestEntry(require('./updater').installDir(), 'resources/core/mihomo.exe');
+  if (!integrity.ok) {
+    throw new Error(`内核 mihomo.exe 与包内清单不符（${integrity.reason}），请重新解压完整的便携目录`);
+  }
+  if (integrity.skipped) log.info('内核启动校验跳过：' + integrity.reason);
   ensureGeodata();
   prepareConfig();
 

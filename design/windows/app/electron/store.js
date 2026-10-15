@@ -29,6 +29,9 @@ const DEFAULTS = {
   // 上次查到的更新包地址。**必须落盘**：红点是跨重启的，重启后点「前往下载」/「下载更新」
   // 时 check_update 的返回值已经不在内存里了，只能从这儿取（否则 GitHub 通道查到的地址会丢）。
   update_url: '',
+  // 与 update_url 成对：发布侧 SHA256SUMS.txt 里那个 zip 的 sha256（空串 = 没有可核对的摘要）。
+  // 只在地址与上面这个完全一致时才拿来核对下载物，见 ipc.js 的 download_update。
+  update_sha256: '',
   // —— 更新来源 ——
   // 远程配置（可选的**覆盖**来源，可以指向镜像 / 自建 CDN）。安卓端在构建期注入同一份地址
   // （.github/workflows/build.yml 的 REMOTE_CONFIG_URLS）；Windows 端以前没人写这个键，
