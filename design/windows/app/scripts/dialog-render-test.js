@@ -148,10 +148,13 @@ const sched = typeof win.PolarisScheduleRender === 'function' ? win.PolarisSched
     portHtml.indexOf('端口 7890 被其它程序占用') >= 0, portHtml.slice(0, 80));
 
   /* ---------- PR-A 硬条件：摘要取不到时更新弹窗必须显示「本次未做包校验」 ---------- */
-  const updArg = { version: '1.12.2', current: '1.12.1', notes: '修了些东西', sha_state: 'missing', sha_reason: '发布侧摘要里没有 Polaris-portable-1.12.2.zip' };
+  const updArg = { version: '1.12.2', current: '1.12.1', notes: '修了些东西', sha_state: 'missing', sha_reason: '发布侧摘要里没有 Polaris-portable-1.12.2.zip', sha_streak: 1 };
   const updHtml = typeof Dialogs.update === 'function' ? String(Dialogs.update(updArg)) : '';
   check('PR-A 更新弹窗：摘要缺失时显示「本次未做包校验」', updHtml.indexOf('本次未做包校验') >= 0, updHtml.slice(0, 120));
+  check('PR-A 更新弹窗：说清「取不到摘要 ≠ 包有问题，但本次没有校验」', updHtml.indexOf('≠ 包有问题') >= 0 && updHtml.indexOf('但本次没有校验') >= 0);
   check('PR-A 更新弹窗：带上人话原因', updHtml.indexOf('发布侧摘要里没有') >= 0);
+  const updEsc = typeof Dialogs.update === 'function' ? String(Dialogs.update(Object.assign({}, updArg, { sha_streak: 3 }))) : '';
+  check('PR-A 更新弹窗：连续 3 次未校验 → 换醒目说法（含「连续 3 次」）', updEsc.indexOf('连续 3 次未做包校验') >= 0 && updEsc.indexOf('留意下载来源') >= 0, updEsc.slice(0, 140));
   const updOk = typeof Dialogs.update === 'function' ? String(Dialogs.update({ version: '1.12.2', current: '1.12.1', notes: 'x', sha_state: 'ok' })) : '';
   check('PR-A 更新弹窗：摘要正常时不显示该提示', updOk.indexOf('本次未做包校验') < 0);
 

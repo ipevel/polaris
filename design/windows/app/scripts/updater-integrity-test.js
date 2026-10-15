@@ -140,9 +140,26 @@ function wiring() {
     /sha_state: sha\.state/.test(relSrc) && /sha_reason: sha\.reason/.test(relSrc));
   check('ipc 落盘并暴露 update_sha_state / sha_state',
     /update_sha_state/.test(ipcSrc) && /sha_state: u\.sha_state/.test(ipcSrc));
-  check('更新弹窗在 sha_state≠ok 时显示「本次未做包校验」',
-    /本次未做包校验/.test(vSrc) && /u\.sha_state !== "ok"/.test(vSrc));
-  check('设置页也显示该提示', /s\.settings\.update_sha_state !== "ok"/.test(vSrc));
+  check('更新弹窗在 sha_state≠ok 时显示「本次未做包校验」（走 shaNotice）',
+    /本次未做包校验/.test(vSrc) && /shaNotice\(u\.sha_state, u\.sha_reason, u\.sha_streak\)/.test(vSrc));
+  check('设置页也显示该提示（读落盘字段，事后可复查）', /shaNotice\(s\.settings\.update_sha_state/.test(vSrc));
+
+  /* 三处补丁（决策主管硬要求） */
+  const mgr2 = rd('electron/core/manager.js');
+  const st2 = rd('electron/store.js');
+  check('硬要求①：内核校验「跳过」记 warn（不是 info、不静默）', /log\.warn\('内核启动校验未执行/.test(mgr2));
+  check('硬要求①：跳过落盘 last_kernel_verify（关于页可见）',
+    /last_kernel_verify/.test(mgr2) && /last_kernel_verify/.test(st2) && /last_kernel_verify/.test(vSrc));
+  check('硬要求①：条目在而不符仍拒绝启动（保持不动）', /与包内清单不符/.test(mgr2));
+  check('硬要求②：N=3 有常量与注释、连续取不到升级为 error 日志',
+    /SHA_MISSING_ESCALATE = 3/.test(ipcSrc) && /log\.error\(/.test(ipcSrc) && /取不到发布侧摘要/.test(ipcSrc));
+  check('硬要求②：streak 落盘（跨重启累计）+ 取到一次归零',
+    /update_sha_missing_streak/.test(ipcSrc) && /update_sha_missing_streak/.test(st2) && /shaStreak = shaState === 'ok' \? 0/.test(ipcSrc));
+  check('硬要求②：文案说明「取不到摘要 ≠ 包有问题，但本次没有校验」',
+    /≠ 包有问题/.test(vSrc) && /但本次没有校验/.test(vSrc));
+  const regPath = path.join(__dirname, '..', 'docs', 'REGRESSION-CHECKLIST.md');
+  check('硬要求③：真机未取证已列入下一版界面回归清单',
+    fs.existsSync(regPath) && /未取证/.test(fs.readFileSync(regPath, 'utf8')) && /en-US Windows/.test(fs.readFileSync(regPath, 'utf8')));
 }
 
 e2e().then(() => {
