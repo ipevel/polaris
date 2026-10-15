@@ -30,7 +30,7 @@ class RoutingGroupsMigrationTest {
             "📲 WhatsApp" to "📲 社交媒体",
             "📹 油管视频" to "📺 流媒体",
             "🎥 奈飞视频" to "📺 流媒体",
-            "Ⓜ️ 微软云盘" to "Ⓜ️ 微软",
+            "Ⓜ️ 微软" to "Ⓜ️ 微软云盘",
             "📺 哔哩哔哩" to "🎯 国内直连",
             "🎶 网易音乐" to "🎯 国内直连",
         )
@@ -52,7 +52,7 @@ class RoutingGroupsMigrationTest {
                 "📺 流媒体",
                 AI_GROUP_NAME,
                 "🎮 游戏平台",
-                "Ⓜ️ 微软",
+                "Ⓜ️ 微软云盘",
                 "🍎 苹果服务",
                 "🎯 国内直连",
                 "🌏 国外穿墙",
@@ -92,11 +92,11 @@ class RoutingGroupsMigrationTest {
     }
 
     @Test
-    fun `微软组默认开启且直连`() {
+    fun `微软云盘组默认开启且直连`() {
         // 2026-10-13 用户反馈 OneDrive 走代理「要不太费流量了」，本次该组默认直连。
         // 注意：这里断言的是**组级出口**（defaultOut = direct）；该组的覆盖范围在
         // 2026-10-14 两次收窄中变更过，不代表组内每个域名都直连。
-        val microsoft = RoutingGroups.single { it.name == "Ⓜ️ 微软" }
+        val microsoft = RoutingGroups.single { it.name == "Ⓜ️ 微软云盘" }
         assertTrue(microsoft.defaultOn)
         assertEquals("direct", microsoft.defaultOut)
     }

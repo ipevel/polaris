@@ -364,7 +364,7 @@ const TABLE = [
   // 注意 geosite 的 onedrive 分类只有 19 条，真正传文件字节的内容主机
   // docs.live.net / content.live.net 不在里面，会漏到下一组，所以必须补内联兜底
   // （实测见 routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）。
-  { name: 'Ⓜ️ 微软', defaultOn: true, defaultOut: 'direct',
+  { name: 'Ⓜ️ 微软云盘', defaultOn: true, defaultOut: 'direct',
     // 2026-10-14 真网实测（docs/DEVNOTES.md A-64）：这一组的域名不是同一种命运 ——
     //   onedrive.live.com / skyapi.onedrive.live.com / api.onedrive.com → **TLS 被重置**（直连不通）
     //   docs.live.net / storage.live.com / my.microsoftpersonalcontent.com / login.live.com /
@@ -552,14 +552,14 @@ const BY_NAME = new Map(TABLE.map((g) => [g.name, g]));
  * --- 2026-10-13 分组简化（23 → 12 组）的映射 ---
  * 合并：X / Instagram / Facebook / WhatsApp → 「📲 社交媒体」
  *       油管视频 / 奈飞视频 → 「📺 流媒体」
- *       微软云盘 / 微软服务 → 「Ⓜ️ 微软」
+ *       微软云盘 / 微软服务 → 「Ⓜ️ 微软」（2026-10-15 该组改名「Ⓜ️ 微软云盘」，见下）
  * 取消（**刻意不映射**，映射表里查不到就按未知名丢弃）：
  *       🐱 GitHub / 🌏 Google Play / 🌏 Google / Ⓜ️ 微软Bing / Ⓜ️ 微软服务
  *   刻意不映射的理由：这五个组取消后规则并进「🌏 国外穿墙」，用户在它们上面的开关
  *   已经无处安放；**把任何旧组的开关状态带到新组都是错的** ——
  *   例如用户关掉「🌏 Google」，若映射成「国外穿墙」为关，会把他整个穿墙能力关掉。
  *   所以让这五个名字自然消失，新组按 defaultOn 走。
- *   注：「Ⓜ️ 微软服务」不映射到「Ⓜ️ 微软」，因为「Ⓜ️ 微软云盘」必须默认直连，
+ *   注：「Ⓜ️ 微软服务」不映射到本组（现名「Ⓜ️ 微软云盘」），因为它必须默认直连，
  *   而微软服务的开关状态无从对应；两个旧名都丢弃、新组按 defaultOn 走。
  */
 const LEGACY_GROUP_ALIASES = {
@@ -575,8 +575,8 @@ const LEGACY_GROUP_ALIASES = {
   // 2026-10-13 分组简化：流媒体二合一
   '📹 油管视频': '📺 流媒体',
   '🎥 奈飞视频': '📺 流媒体',
-  // 2026-10-13 分组简化：微软云盘 + 微软服务合成一组
-  'Ⓜ️ 微软云盘': 'Ⓜ️ 微软',
+  // 2026-10-13 分组简化：微软云盘 + 微软服务合成一组；2026-10-15 该组改名「Ⓜ️ 微软云盘」，别名方向随之翻转
+  'Ⓜ️ 微软': 'Ⓜ️ 微软云盘',
   // 2026-10-13 分组简化：哔哩哔哩 / 网易音乐并入国内直连
   '📺 哔哩哔哩': '🎯 国内直连',
   '🎶 网易音乐': '🎯 国内直连',

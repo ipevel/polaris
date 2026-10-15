@@ -32,6 +32,8 @@ package com.slte.app.kernel
  *    等于把删掉的 `GEOSITE,microsoft` 又接了回来。规则仓库已去掉 `alsoRuleset: ['Microsoft']`
  *    （92 → 17 条），身份/认证族 6 条改写进组内联规则。该组的 `Providers`（onedrive）与
  *    出口（direct）不变。
+ *  - 2026-10-15：「Ⓜ️ 微软」改名「Ⓜ️ 微软云盘」（原名只覆盖云盘 + 登录 + 更新 + Azure，叫「微软」名不副实）；
+ *    别名表方向翻转为「Ⓜ️ 微软」→「Ⓜ️ 微软云盘」，旧开关与拖动顺序照旧迁移。
  * 已取消且**刻意不做别名映射**的旧名见 [LegacyGroupAliases] 的说明。
  */
 data class RoutingGroupInfo(
@@ -65,7 +67,7 @@ val LegacyGroupAliases: Map<String, String> =
         "📲 WhatsApp" to "📲 社交媒体",
         "📹 油管视频" to "📺 流媒体",
         "🎥 奈飞视频" to "📺 流媒体",
-        "Ⓜ️ 微软云盘" to "Ⓜ️ 微软",
+        "Ⓜ️ 微软" to "Ⓜ️ 微软云盘",
         "📺 哔哩哔哩" to "🎯 国内直连",
         "🎶 网易音乐" to "🎯 国内直连",
     )
@@ -124,11 +126,11 @@ val RoutingGroups: List<RoutingGroupInfo> =
         RoutingGroupInfo("📺 流媒体", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo(AI_GROUP_NAME, defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🎮 游戏平台", defaultOn = true, defaultOut = "proxy"),
-        // 「Ⓜ️ 微软」默认 direct：2026-10-13 按用户要求（「要不太费流量了」）把云盘整组
+        // 「Ⓜ️ 微软云盘」（2026-10-15 由「Ⓜ️ 微软」改名）默认 direct：2026-10-13 按用户要求（「要不太费流量了」）把云盘整组
         // 直连；2026-10-14 再收窄成「云盘 + 登录 + 系统更新 + Azure」，Bing / Office /
         // Outlook / Teams / GitHub 交回「🌏 国外穿墙」。它必须排在「🌏 国外穿墙」之前，
         // 否则 geolocation-!cn 会先吃掉 onedrive / azure 分类。
-        RoutingGroupInfo("Ⓜ️ 微软", defaultOn = true, defaultOut = "direct"),
+        RoutingGroupInfo("Ⓜ️ 微软云盘", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🍎 苹果服务", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🎯 国内直连", defaultOn = true, defaultOut = "direct"),
         // 「🌏 国外穿墙」声明的是 geolocation-!cn 兜底分类，必须排在所有具体平台组

@@ -50,7 +50,7 @@ function rowOf(html, name) {
 
 const groups = [
   { name: '📲 电报消息', out: 'proxy', enabled: true, count: 1, inline: 2, default_on: true, live: true, now: '🇭🇰 香港 01' },
-  { name: 'Ⓜ️ 微软', out: 'direct', enabled: true, count: 1, inline: 18, default_on: true, note: NOTE, live: true },
+  { name: 'Ⓜ️ 微软云盘', out: 'direct', enabled: true, count: 1, inline: 18, default_on: true, note: NOTE, live: true },
   { name: '🛑 广告拦截', out: 'block', enabled: false, count: 1, inline: 0, default_on: true, live: true },
 ];
 
@@ -72,11 +72,11 @@ check('行数 = 3 个内置组 + 1 个自定义组', rowCount === 4, `实测 ${r
 const switchCount = (html.match(/data-ruleset="/g) || []).length;
 check('每行一个开关', switchCount === 4, `实测 ${switchCount}`);
 
-const msRow = rowOf(html, 'Ⓜ️ 微软');
+const msRow = rowOf(html, 'Ⓜ️ 微软云盘');
 const tgRow = rowOf(html, '📲 电报消息');
 const adRow = rowOf(html, '🛑 广告拦截');
 
-check('note 渲染在「Ⓜ️ 微软」那一行里', msRow.includes(NOTE));
+check('note 渲染在「Ⓜ️ 微软云盘」那一行里', msRow.includes(NOTE));
 check('note 全页只出现一次', (html.split(NOTE).length - 1) === 1);
 check('带 note 的行有两段小字（说明 + note）', msRow.split(SUB_STYLE).length - 1 === 2, `实测 ${msRow.split(SUB_STYLE).length - 1}`);
 check('没 note 的行只有一段小字', tgRow.split(SUB_STYLE).length - 1 === 1 && adRow.split(SUB_STYLE).length - 1 === 1);
@@ -86,7 +86,7 @@ check('出口徽标：direct → 直连', /class="badge[^"]*">直连<\/span>/.te
 check('出口徽标：block → 拦截', /class="badge[^"]*">拦截<\/span>/.test(adRow), (adRow.match(/class="badge[^"]*">[^<]*<\/span>/) || [''])[0]);
 
 const i1 = html.indexOf('data-ruleset-row="📲 电报消息"');
-const i2 = html.indexOf('data-ruleset-row="Ⓜ️ 微软"');
+const i2 = html.indexOf('data-ruleset-row="Ⓜ️ 微软云盘"');
 const i3 = html.indexOf('data-ruleset-row="🛑 广告拦截"');
 check('组按数组顺序渲染（顺序 = 匹配优先级）', i1 > 0 && i1 < i2 && i2 < i3, `${i1} < ${i2} < ${i3}`);
 

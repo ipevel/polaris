@@ -205,32 +205,32 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		// 免得「微软组只留云盘直连」把整个 microsoft 分类静默换掉时没人发现。
 		{host: "live.com", want: "🌏 国外穿墙", why: "微软账号门户（登录走 login.live.com，已单独直连）"},
 		{host: "www.msn.com", want: "🌏 国外穿墙", why: "MSN"},
-		// 这几条是「Ⓜ️ 微软」收窄后**仍然**应当直连的自家域名：云盘 + 登录 + 更新 + Azure。
-		{host: "onedrive.live.com", want: "Ⓜ️ 微软", why: "OneDrive"},
-		{host: "skyapi.onedrive.live.com", want: "Ⓜ️ 微软", why: "OneDrive 同步 API"},
-		{host: "api.onedrive.com", want: "Ⓜ️ 微软", why: "OneDrive API"},
-		{host: "my.microsoftpersonalcontent.com", want: "Ⓜ️ 微软", why: "OneDrive 个人内容主机"},
-		{host: "storage.live.com", want: "Ⓜ️ 微软", why: "OneDrive 存储"},
-		{host: "login.live.com", want: "Ⓜ️ 微软", why: "微软账号登录（OneDrive 取文件的前置）"},
-		{host: "login.microsoftonline.com", want: "Ⓜ️ 微软", why: "微软账号登录（OAuth 授权端点）"},
-		{host: "login.microsoft.com", want: "Ⓜ️ 微软", why: "微软账号登录"},
-		{host: "update.microsoft.com", want: "Ⓜ️ 微软", why: "Windows Update"},
-		{host: "windowsupdate.com", want: "Ⓜ️ 微软", why: "Windows Update"},
-		{host: "portal.azure.com", want: "Ⓜ️ 微软", why: "Azure 门户"},
+		// 这几条是「Ⓜ️ 微软云盘」收窄后**仍然**应当直连的自家域名：云盘 + 登录 + 更新 + Azure。
+		{host: "onedrive.live.com", want: "Ⓜ️ 微软云盘", why: "OneDrive"},
+		{host: "skyapi.onedrive.live.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 同步 API"},
+		{host: "api.onedrive.com", want: "Ⓜ️ 微软云盘", why: "OneDrive API"},
+		{host: "my.microsoftpersonalcontent.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 个人内容主机"},
+		{host: "storage.live.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 存储"},
+		{host: "login.live.com", want: "Ⓜ️ 微软云盘", why: "微软账号登录（OneDrive 取文件的前置）"},
+		{host: "login.microsoftonline.com", want: "Ⓜ️ 微软云盘", why: "微软账号登录（OAuth 授权端点）"},
+		{host: "login.microsoft.com", want: "Ⓜ️ 微软云盘", why: "微软账号登录"},
+		{host: "update.microsoft.com", want: "Ⓜ️ 微软云盘", why: "Windows Update"},
+		{host: "windowsupdate.com", want: "Ⓜ️ 微软云盘", why: "Windows Update"},
+		{host: "portal.azure.com", want: "Ⓜ️ 微软云盘", why: "Azure 门户"},
 		// 身份/认证族：旧表靠宽口径 Microsoft.list 覆盖，规则仓库去掉那次合并后
 		// （polaris-rules b0cf02b）只能由本组内联规则接住，所以逐条钉住。
-		{host: "msftauth.net", want: "Ⓜ️ 微软", why: "微软账号认证（业务版 OneDrive 登录）"},
-		{host: "msauth.net", want: "Ⓜ️ 微软", why: "微软账号认证"},
-		{host: "msftauthimages.net", want: "Ⓜ️ 微软", why: "微软账号认证图形资源"},
-		{host: "msauthimages.net", want: "Ⓜ️ 微软", why: "微软账号认证图形资源"},
-		{host: "msftidentity.com", want: "Ⓜ️ 微软", why: "微软身份服务"},
-		{host: "msidentity.com", want: "Ⓜ️ 微软", why: "微软身份服务"},
+		{host: "msftauth.net", want: "Ⓜ️ 微软云盘", why: "微软账号认证（业务版 OneDrive 登录）"},
+		{host: "msauth.net", want: "Ⓜ️ 微软云盘", why: "微软账号认证"},
+		{host: "msftauthimages.net", want: "Ⓜ️ 微软云盘", why: "微软账号认证图形资源"},
+		{host: "msauthimages.net", want: "Ⓜ️ 微软云盘", why: "微软账号认证图形资源"},
+		{host: "msftidentity.com", want: "Ⓜ️ 微软云盘", why: "微软身份服务"},
+		{host: "msidentity.com", want: "Ⓜ️ 微软云盘", why: "微软身份服务"},
 		// 裁定不补的 4 条：不写内联规则，落点按**实测**钉住（各自不同）——
 		//   aadrm.com        命中 geosite 的 azure 分类 → 本组保留的 GEOSITE,azure 接住，
 		//                    所以仍是直连。这是上游分类的结果，不是我们额外加的规则。
 		//   msappproxy.net   不在任何 geosite 分类里 → 落到最后的「🐟 漏网之鱼」。
 		//   public-trust.com / omniroot.com  只命中 geolocation-!cn → 「🌏 国外穿墙」。
-		{host: "aadrm.com", want: "Ⓜ️ 微软", why: "旧 RMS：落在 geosite azure 分类里（上游分类，未额外加规则）"},
+		{host: "aadrm.com", want: "Ⓜ️ 微软云盘", why: "旧 RMS：落在 geosite azure 分类里（上游分类，未额外加规则）"},
 		{host: "msappproxy.net", want: "🐟 漏网之鱼", why: "企业应用代理：不在任何 geosite 分类里"},
 		{host: "public-trust.com", want: "🌏 国外穿墙", why: "证书信任链（裁定不补）"},
 		{host: "omniroot.com", want: "🌏 国外穿墙", why: "证书信任链（裁定不补）"},
@@ -239,15 +239,15 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 		{host: "store.steampowered.com", want: "🎮 游戏平台", why: "Steam"},
 		// 系统服务
 		{host: "www.apple.com", want: "🍎 苹果服务", why: "苹果"},
-		{host: "onedrive.live.com", want: "Ⓜ️ 微软", why: "OneDrive"},
+		{host: "onedrive.live.com", want: "Ⓜ️ 微软云盘", why: "OneDrive"},
 		// OneDrive 真正传文件字节的内容主机。geosite 的 onedrive 分类里没有，
-		// 漏到下一组「🌏 国外穿墙」的话，「Ⓜ️ 微软选直连」对它们就是失效的。
-		{host: "docs.live.net", want: "Ⓜ️ 微软", why: "OneDrive 内容主机"},
-		{host: "xyz.docs.live.net", want: "Ⓜ️ 微软", why: "OneDrive 租户内容主机"},
-		{host: "contoso-my.sharepoint.com", want: "Ⓜ️ 微软", why: "OneDrive/SharePoint 内容主机"},
-		{host: "contoso.livefilestore.com", want: "Ⓜ️ 微软", why: "OneDrive for Business 内容主机"},
-		{host: "files.1drv.com", want: "Ⓜ️ 微软", why: "OneDrive 内容分发"},
-		{host: "cdn.odc.officeapps.live.com", want: "Ⓜ️ 微软", why: "Office 网页版 CDN"},
+		// 漏到下一组「🌏 国外穿墙」的话，「Ⓜ️ 微软云盘选直连」对它们就是失效的。
+		{host: "docs.live.net", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容主机"},
+		{host: "xyz.docs.live.net", want: "Ⓜ️ 微软云盘", why: "OneDrive 租户内容主机"},
+		{host: "contoso-my.sharepoint.com", want: "Ⓜ️ 微软云盘", why: "OneDrive/SharePoint 内容主机"},
+		{host: "contoso.livefilestore.com", want: "Ⓜ️ 微软云盘", why: "OneDrive for Business 内容主机"},
+		{host: "files.1drv.com", want: "Ⓜ️ 微软云盘", why: "OneDrive 内容分发"},
+		{host: "cdn.odc.officeapps.live.com", want: "Ⓜ️ 微软云盘", why: "Office 网页版 CDN"},
 		// Google 相关域名落回「🌏 国外穿墙」：Google / Google Play 两个开关已取消，
 		// 它们本来就都是 proxy，出口行为与 geolocation-!cn 完全一致。
 		{host: "www.google.com", want: "🌏 国外穿墙", why: "Google（组已取消）"},
@@ -275,7 +275,7 @@ func TestRoutingDecisionAccuracy(t *testing.T) {
 // TestMicrosoftGroupKeepsDirectOutbound 锁死「微软组默认出站是 direct、且不被国外穿墙吞掉」。
 //
 // 2026-10-13 用户反馈 OneDrive 走代理「要不太费流量了」，2026-10-14 把原来的
-// 「Ⓜ️ 微软云盘 / Ⓜ️ 微软服务 / Ⓜ️ 微软Bing」三组合并为一组「Ⓜ️ 微软」并默认直连；
+// 「Ⓜ️ 微软云盘 / Ⓜ️ 微软服务 / Ⓜ️ 微软Bing」三组合并为一组「Ⓜ️ 微软」并默认直连（该组 2026-10-15 改名「Ⓜ️ 微软云盘」）；
 // 同日两次收窄只改了该组的**覆盖范围**，组级出口仍是 direct。
 // 这里钉的是组级出口与顺序：它必须排在「🌏 国外穿墙」之前，否则 geolocation-!cn
 // 会先命中 onedrive / azure 分类里的域名，用户在节点页给这一组选什么出站都白搭。
@@ -289,17 +289,17 @@ func TestMicrosoftGroupKeepsDirectOutbound(t *testing.T) {
 		}
 		return -1
 	}
-	ms, abroad := idx("Ⓜ️ 微软"), idx("🌏 国外穿墙")
+	ms, abroad := idx("Ⓜ️ 微软云盘"), idx("🌏 国外穿墙")
 	if ms < 0 || abroad < 0 {
-		t.Fatalf("「Ⓜ️ 微软」或「🌏 国外穿墙」组不见了：ms=%d abroad=%d", ms, abroad)
+		t.Fatalf("「Ⓜ️ 微软云盘」或「🌏 国外穿墙」组不见了：ms=%d abroad=%d", ms, abroad)
 	}
 	if ms >= abroad {
-		t.Errorf("「Ⓜ️ 微软」必须排在「🌏 国外穿墙」(%d) 之前，实际 ms=%d", abroad, ms)
+		t.Errorf("「Ⓜ️ 微软云盘」必须排在「🌏 国外穿墙」(%d) 之前，实际 ms=%d", abroad, ms)
 	}
 
 	// 默认出站钉住：微软组 direct，国外穿墙 proxy
 	if Table[ms].DefaultOut != "direct" {
-		t.Errorf("「Ⓜ️ 微软」默认出站 = %q，期望 direct", Table[ms].DefaultOut)
+		t.Errorf("「Ⓜ️ 微软云盘」默认出站 = %q，期望 direct", Table[ms].DefaultOut)
 	}
 	if Table[abroad].DefaultOut != "proxy" {
 		t.Errorf("「🌏 国外穿墙」默认出站 = %q，期望 proxy", Table[abroad].DefaultOut)
@@ -307,7 +307,7 @@ func TestMicrosoftGroupKeepsDirectOutbound(t *testing.T) {
 
 	// OneDrive 真正传文件字节的内容主机必须落在这组的内联规则里（geosite 的
 	// onedrive 分类不含 docs.live.net / officeapps.live.com），否则它们会被
-	// geolocation-!cn 吃掉，「Ⓜ️ 微软选直连」对上传下载就是失效的。
+	// geolocation-!cn 吃掉，「Ⓜ️ 微软云盘选直连」对上传下载就是失效的。
 	for _, want := range []string{
 		"DOMAIN-SUFFIX,docs.live.net,{t}",
 		"DOMAIN-SUFFIX,content.live.net,{t}",
@@ -322,7 +322,7 @@ func TestMicrosoftGroupKeepsDirectOutbound(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("「Ⓜ️ 微软」内联规则缺少 %q", want)
+			t.Errorf("「Ⓜ️ 微软云盘」内联规则缺少 %q", want)
 		}
 	}
 }
