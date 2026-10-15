@@ -281,6 +281,40 @@ jobs:
             exit 1
           fi
 
+      - name: 校验 config/remote.json 的遗留更新字段为空（fail-closed）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -e
+          # 历史版本 App 与 Windows 端的镜像来源都会读 config/remote.json 的 update_* 字段；
+          # 字段非空会让客户端提示一个早已下架（甚至下载不到包）的旧版本。
+          # 发版流程不再回写该文件：分支保护下直推 main 会被拒，而该步骤在 Release 建出之后执行，
+          # 失败会留下「Release 已发布、remote.json 未更新」的半成品。改为只读校验、fail-closed：
+          # 读不到文件或字段非空一律不放行，人工用 PR 置空后重跑发版。
+          OUT="$(gh api "repos/$REPO/contents/config/remote.json?ref=$SHA" --jq .content 2>&1)" || {
+            echo "::error::读取 config/remote.json 失败（fail-closed，不放行）：$OUT"; exit 1; }
+          printf '%s' "$OUT" | tr -d '\n' | base64 -d > "$RUNNER_TEMP/remote.json" || {
+            echo "::error::config/remote.json base64 解码失败（fail-closed，不放行）"; exit 1; }
+          python3 - "$RUNNER_TEMP/remote.json" <<'PY'
+          import json, sys
+          cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+          bad = []
+          if str(cfg.get("update_version", "") or "").strip():
+              bad.append("update_version=%r" % cfg.get("update_version"))
+          if str(cfg.get("update_apk_url", "") or "").strip():
+              bad.append("update_apk_url=%r" % cfg.get("update_apk_url"))
+          if str(cfg.get("update_apk_sha256", "") or "").strip():
+              bad.append("update_apk_sha256=%r" % cfg.get("update_apk_sha256"))
+          if cfg.get("update_force") is True:
+              bad.append("update_force=true")
+          if bad:
+              print("::error::config/remote.json 的遗留更新字段非空：%s" % "; ".join(bad))
+              print("::error::这会让仍在读该文件的客户端提示旧版本；请用 PR 置空后重跑发版")
+              sys.exit(1)
+          print("::notice::config/remote.json 遗留更新字段均为空，校验通过")
+          PY
   # 版本解析与门禁是所有产物的共同前置：安卓 APK 与 Windows 便携版必须用同一个
   # versionName / versionCode / tag，而且都必须先过同一道门禁。抽成独立 job 输出，
   # 下游用 needs 取用——否则同一段逻辑要在两个 runner 上各写一份，日后必然走偏。
@@ -859,55 +893,3 @@ jobs:
             echo "::notice::tag $TAG 已确认指向构建提交 $TAGGED_SHA"
           fi
           echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
-
-      - name: 清空 config/remote.json 的遗留更新字段（仅历史版本客户端读取）
-        env:
-          VERSION: ${{ inputs.versionName }}
-          TAG_INPUT: ${{ inputs.releaseTag }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          TAG="${TAG_INPUT:-v${VERSION}}"
-          # releaseTag 是自由文本输入，限定 tag 合法字符后再拼进 gh 命令（防注入 / 防畸形标签）
-          if [ -n "$TAG_INPUT" ] && ! printf '%s' "$TAG_INPUT" | grep -qE '^[A-Za-z0-9._/-]+$'; then
-            echo "::error::releaseTag 含非法字符（仅允许字母、数字、. _ - /）"
-            exit 1
-          fi
-
-          # 顺序不变量：只有在 Release 资产真实存在之后，才允许改动 remote.json——
-          # 历史版本 App 会据该文件提示更新，写早了会出现「提示有新版本却下载不到包」。
-          ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')" || { echo "::error::Release $TAG 不存在，中止 remote.json 更新"; exit 1; }
-          printf '%s\n' "$ASSETS" | grep -qx "Polaris-${VERSION}.apk" || { echo "::error::Release $TAG 缺少资产 Polaris-${VERSION}.apk，中止 remote.json 更新"; exit 1; }
-
-          git clone --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" polaris-updater
-          cd polaris-updater
-          python3 -c "
-          import json, os
-          version = os.environ['VERSION']
-          # 应用内更新已改走 GitHub Releases（AppUpdateChecker 直查 Releases API），
-          # remote.json 的 update_* 字段已无 App 读取。保留这些键并置空，是为了让仍在读该文件的
-          # 历史版本 App 解析到空版本号后不再提示更新，同时避免新旧 schema 分叉
-          # （RemoteConfigData 为整份序列化缓存）。
-          with open('config/remote.json', 'r') as f:
-              cfg = json.load(f)
-          cfg['update_version'] = ''
-          cfg['update_changelog_title'] = ''
-          cfg['update_changelog'] = ''
-          cfg['update_force'] = False
-          cfg['update_apk_url'] = ''
-          cfg['update_apk_sha256'] = ''
-          with open('config/remote.json', 'w') as f:
-              json.dump(cfg, f, indent=2, ensure_ascii=False)
-              f.write('\n')
-          print('remote.json 已停用更新字段 (version=%s)' % version)
-          "
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add config/remote.json
-          if git diff --cached --quiet; then
-            echo "无变更，跳过 push"
-          else
-            git commit -m "chore: 自动更新 remote.json → ${VERSION}"
-            git push
-            echo "已推送 remote.json 更新"
-          fi
