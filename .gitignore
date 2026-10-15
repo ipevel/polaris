@@ -15,6 +15,7 @@ app/gradle.properties
 .env.*
 *.log
 .DS_Store
+Thumbs.db
 AGENTS.md
 .agents/
 .vscode/

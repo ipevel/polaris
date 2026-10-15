@@ -47,3 +47,15 @@ indent_size = 4
 
 [*.sh]
 indent_style = tab
+
+# ---- Windows 便携版（Electron）：electron/ 与 src/js/ 全用 2 空格 ----
+[*.js]
+indent_size = 2
+
+# ---- Windows 前端模板与样式：src/ 下 2 空格 ----
+[*.{html,css}]
+indent_size = 2
+
+# ---- Windows 打包脚本：scripts/build-portable.ps1 按项目统一风格用 2 ----
+[*.ps1]
+indent_size = 2

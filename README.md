@@ -32,10 +32,13 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 ### Windows
 
 1. 从同一个 [Releases](https://github.com/ipevel/polaris/releases) 下载 `Polaris-portable-<版本号>.zip`（Windows 10/11 x64）。
-2. **解压到任意目录**（推荐非系统盘、路径不含空格），双击 `Polaris.exe` 即可，无需安装、无需管理员权限。
-3. 目录结构：`Polaris.exe` + `core/`（mihomo 内核 + wintun）+ `resources/geo/`、`resources/rules/`（内置地理库与 47 个分流规则集）+ `data/`（配置、订阅、日志，首次运行自动创建）。
-4. TUN 模式需要管理员权限（设置页里点开关会引导重启为管理员）；仅用系统代理时不需要。
-5. 卸载 = 直接删掉整个目录；`data/` 是唯一会产生写入的地方。
+2. **校验完整性**：比对下载页 `SHA256SUMS.txt` 里的摘要（`certutil -hashfile Polaris-portable-<版本号>.zip SHA256`），不一致请勿使用。
+3. **解压到任意目录**（推荐非系统盘、路径不含空格），双击 `Polaris.exe` 即可，无需安装、无需管理员权限。
+4. 目录结构：`Polaris.exe` + `core/`（mihomo 内核 + wintun）+ `resources/geo/`、`resources/rules/`（内置地理库与 47 个分流规则集）+ `data/`（配置、订阅、日志，首次运行自动创建）。
+5. TUN 模式需要管理员权限（设置页里点开关会引导重启为管理员）；仅用系统代理时不需要。
+6. 卸载 = 直接删掉整个目录；`data/` 是唯一会产生写入的地方。
+
+> 升级时**不要**把新包覆盖解压进旧目录：解压到新文件夹，再把旧的 `data/` 拷过去（订阅、登录态、设置都在里面）。
 
 > 包内**不含任何面板地址与账号**，首次启动在登录页填自己的面板网址。源码与开发/打包细节见 `design/windows/app/README.md`。
 
@@ -53,6 +56,22 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 > 两个平台共用同一版本号与同一个 [Release](https://github.com/ipevel/polaris/releases/latest)（Android 为 `Polaris-<版本>.apk`，Windows 为 `Polaris-portable-<版本>.zip`）。
 
 > 内核：metacubex/mihomo v1.19.30（含 anytls / masque / openvpn / tailscale / zerotier 等本地 outbound 补丁）。版本以 [Releases](https://github.com/ipevel/polaris/releases) 为准。
+
+## 目录结构
+
+| 路径 | 说明 |
+| --- | --- |
+| `app/` | 安卓 App：Compose 界面、面板数据层、内核管理与配置组装、应用内更新 |
+| `kernel-common/` | 内核公共层：日志、常量、存储与兼容工具 |
+| `kernel-core/` | 内核本体与 JNI 桥；Go 补丁链在 `src/main/golang/`，预编译产物在 `src/main/jniLibs/arm64-v8a/` |
+| `kernel-service/` | 常驻前台服务与 `VpnService`（VPN / TUN 接管） |
+| `design/windows/app/` | Windows 客户端源码（Electron 主进程 + 前端 + 自检脚本 + 打包配置） |
+| `design/windows/` | 设计系统与设计稿（`pages/`、`shots/`、`SPEC.md`、`build.py`） |
+| `gradle/libs.versions.toml` | 依赖与插件版本目录 |
+
+App 内部按层划分：`data/`（面板 API 适配、远程配置、本地存储、应用内更新）、`domain/`、`kernel/`（订阅清洗、内核配置组装、节点与分流）、`ui/`（页面、导航与组件）、`di/`。
+
+`kernel-*` 三个模块派生自 ClashMetaForAndroid，包名仍是 `com.github.kr328.clash.*`。
 
 ## 开发环境
 
@@ -96,6 +115,14 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ### Windows 便携版
 
 源码在 `design/windows/app/`（Electron 工程，与 Android 侧构建互不影响）。
+
+```powershell
+cd design/windows/app
+npm install
+npm run core      # 拉 mihomo.exe + wintun.dll 到 core/
+npm run geo       # 规则库到 resources/geo/
+npm start         # 运行（真实模式：需要已登录面板，没有离线演示数据）
+```
 
 > Windows 端的版本号唯一来源是 `design/windows/app/package.json` 的 `version`，发布时必须与 Android 的 `versionName` 一致（同一个 Release、同一个 tag）。
 
