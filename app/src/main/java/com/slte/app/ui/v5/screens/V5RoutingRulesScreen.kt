@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -51,6 +52,7 @@ import com.slte.app.ui.v5.V5RowItem
 import com.slte.app.ui.v5.V5Switch
 import com.slte.app.ui.v5.V5TopBar
 import com.slte.app.ui.v5.v5Enter
+import com.slte.app.utils.RoutingBackupExport
 import kotlin.math.roundToInt
 
 /**
@@ -88,6 +90,34 @@ internal fun V5RoutingRulesScreen(
 
             data.errorMessageRes?.let { res ->
                 V5Banner(ChipTone.DANGER, stringResource(res))
+            }
+
+            // —— 被隐藏的非法条目（磁盘上仍在，只是 App 清单不用）：名称可读 + 可导出，
+            // 用户必须看得见自己「少了什么」，也必须能自救（私有 filesDir + allowBackup=false）。
+            if (data.hiddenCustomNames.isNotEmpty() || data.hiddenDomainNames.isNotEmpty()) {
+                val context = LocalContext.current
+                V5CardFlat(Modifier.v5Enter(2)) {
+                    V5RowItem(
+                        title = stringResource(R.string.routing_hidden_title),
+                        sub = stringResource(R.string.routing_hidden_desc),
+                    )
+                    data.hiddenCustomNames.forEach { name ->
+                        V5Divider()
+                        V5RowItem(title = name, sub = stringResource(R.string.routing_hidden_custom_tag))
+                    }
+                    data.hiddenDomainNames.forEach { domain ->
+                        V5Divider()
+                        V5RowItem(title = domain, sub = stringResource(R.string.routing_hidden_domain_tag))
+                    }
+                    V5Divider()
+                    V5RowItem(
+                        title = stringResource(R.string.routing_export_backup),
+                        sub = stringResource(R.string.routing_export_backup_desc),
+                        icon = SlteIcons.UpdateSubscription,
+                        chevron = true,
+                        onClick = { RoutingBackupExport.exportAndShare(context, viewModel.backupFile()) },
+                    )
+                }
             }
 
             // —— 自定义规则组（首行本身就是带高亮的"添加"入口，即本区小标题）
