@@ -1,7 +1,7 @@
 name: Feature request / 功能建议
 description: 提出新功能或改进建议 / Suggest an idea for this project
 title: "[Feat] <android|win|repo|rules> "
-labels: ["enhancement", "status:triage"]
+labels: ["feat", "triage"]
 body:
   - type: markdown
     attributes:
