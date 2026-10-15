@@ -315,6 +315,63 @@ jobs:
               sys.exit(1)
           print("::notice::config/remote.json 遗留更新字段均为空，校验通过")
           PY
+
+      - name: 校验变更说明的编码（UTF-8 / 无乱码，fail-closed）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          VERSION: ${{ inputs.versionName }}
+          NOTES_INPUT: ${{ inputs.releaseNotes }}
+        run: |
+          set -e
+          # v1.11.6 的发布说明「### 变更说明」整段乱码（「安装」显示成「瀹夊崜」）：那是 UTF-8
+          # 字节在进入 runner 之前被按 GBK/CP936 家族解码过一次；同一份 body 里模板段是干净的，
+          # 说明本 workflow 的拼接没问题，坏的是自由文本输入本身。所以首选仓库里受 PR 审阅的
+          # UTF-8 文件 docs/release-notes/<版本>.md，没有该文件才退回 dispatch 输入；两条路径
+          # 过同一道编码校验，任一不合格一律不放行（fail-closed，发生在打 tag / 建 Release 之前）。
+          NOTES_FILE="docs/release-notes/${VERSION}.md"
+          : > "$RUNNER_TEMP/notes_src.txt"
+          if OUT="$(gh api "repos/$REPO/contents/$NOTES_FILE?ref=$SHA" --jq .content 2>&1)"; then
+            printf '%s' "$OUT" | tr -d '\n' | base64 -d > "$RUNNER_TEMP/notes_src.txt" || {
+              echo "::error::$NOTES_FILE base64 解码失败（fail-closed，不放行）"; exit 1; }
+            SRC="$NOTES_FILE"
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
+            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
+            printf '%s' "$NOTES_INPUT" > "$RUNNER_TEMP/notes_src.txt"
+            SRC="dispatch 输入 releaseNotes"
+          else
+            echo "::error::读取 $NOTES_FILE 失败（fail-closed，不放行）：$OUT"; exit 1
+          fi
+          python3 - "$RUNNER_TEMP/notes_src.txt" "$SRC" <<'PY'
+          import sys
+          raw = open(sys.argv[1], "rb").read()
+          src = sys.argv[2]
+          if raw.startswith(b"\xef\xbb\xbf"):
+              print("::error::变更说明（%s）带 UTF-8 BOM，请去掉后重跑" % src); sys.exit(1)
+          try:
+              text = raw.decode("utf-8")
+          except UnicodeDecodeError as e:
+              print("::error::变更说明（%s）不是合法 UTF-8：%s" % (src, e)); sys.exit(1)
+          bad = []
+          pua = [c for c in text if "\ue000" <= c <= "\uf8ff"]
+          if pua:
+              bad.append("私用区字符 %d 个（如 U+%04X）—— 典型的 UTF-8 被按 GBK/CP936 解码后的残留" % (len(pua), ord(pua[0])))
+          if "\ufffd" in text:
+              bad.append("替换字符 U+FFFD —— 文本在某一环被有损解码过")
+          c1 = [c for c in text if "\u0080" <= c <= "\u009f"]
+          if c1:
+              bad.append("C1 控制字符 %d 个（如 U+%04X）" % (len(c1), ord(c1[0])))
+          if bad:
+              print("::error::变更说明（%s）疑似乱码：%s" % (src, "；".join(bad)))
+              print("::error::请把说明写成仓库里的 UTF-8 文件 docs/release-notes/<版本>.md 后重跑")
+              sys.exit(1)
+          if text.strip():
+              print("::notice::变更说明来源=%s，编码校验通过（%d 字符）" % (src, len(text)))
+          else:
+              print("::notice::变更说明为空（来源=%s），本次 Release 不输出「变更说明」小节" % src)
+          PY
+
   # 版本解析与门禁是所有产物的共同前置：安卓 APK 与 Windows 便携版必须用同一个
   # versionName / versionCode / tag，而且都必须先过同一道门禁。抽成独立 job 输出，
   # 下游用 needs 取用——否则同一段逻辑要在两个 runner 上各写一份，日后必然走偏。
@@ -789,10 +846,23 @@ jobs:
 
       - name: 组装 Release 说明
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
           VERSION: ${{ inputs.versionName }}
           NOTES: ${{ inputs.releaseNotes }}
         run: |
           set -e
+          # 与 release-precheck 同源：优先仓库里受 PR 审阅的 UTF-8 文件（release job 不检出代码，
+          # 所以经 API 按本次构建提交读取），没有才用 dispatch 输入；编码已在前置门禁校验过，
+          # 这里只负责取用，不重复判乱码。
+          NOTES_FILE="docs/release-notes/${VERSION}.md"
+          if OUT="$(gh api "repos/$REPO/contents/$NOTES_FILE?ref=$SHA" --jq .content 2>&1)"; then
+            NOTES="$(printf '%s' "$OUT" | tr -d '\n' | base64 -d)"
+            echo "::notice::变更说明取自 $NOTES_FILE"
+          else
+            echo "::notice::仓库无 $NOTES_FILE，变更说明用 dispatch 输入"
+          fi
           {
             echo "## Polaris ${VERSION}"
             echo ""
