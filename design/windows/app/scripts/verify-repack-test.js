@@ -125,6 +125,18 @@ resetSrc();
 const dirDrop = runCase('dir-drop', goodEntries().filter((e) => e.name !== 'locales/zh-CN.pak' && e.name !== 'locales/'));
 check('③ 非空目录被丢 → 红并提示报主管', dirDrop.code === 1 && /③ 有\*\*非空\*\*目录被丢/.test(dirDrop.out) && /必须报主管/.test(dirDrop.out), dirDrop.out.trim().split('\n').slice(0, 3).join(' | '));
 
+/* ③（2026-10-15 修）打包器不写目录条目但文件都在 → 必须绿（CI 真实现场） */
+resetSrc();
+const noDir = runCase('no-dir-entries', SRC_FILES.map(([rel, data]) => ({ name: rel, data })));
+check('③ 目录条目缺失但文件都在 → 绿（不再误报）', noDir.code === 0, noDir.out.trim().split('\n').slice(-4).join(' | '));
+check('③ 该场景仍打印空目录结论（可接受 + 为什么 + 将来怎么办）',
+  /③ 空目录被丢 1 个/.test(noDir.out) && /结论：可接受/.test(noDir.out) && /运行期 paths\.ensureAll 创建/.test(noDir.out) && /\.keep 占位/.test(noDir.out), noDir.out.trim().split('\n').slice(-5).join(' | '));
+check('③ 该场景不报「非空目录被丢」', !/非空\*\*目录被丢/.test(noDir.out));
+
+/* ③ 某目录的文件整批丢失 → 必须红 */
+resetSrc();
+const dirLost = runCase('dir-files-lost', goodEntries().filter((e) => e.name.indexOf('resources/core/') !== 0));
+check('③ 某目录文件整批丢失 → 红并点名该目录', dirLost.code === 1 && /③ 有\*\*非空\*\*目录被丢/.test(dirLost.out) && /resources\/core/.test(dirLost.out), dirLost.out.trim().split('\n').slice(0, 5).join(' | '));
 /* 用法错 → 退出码 2 */
 const usage = spawnSync(process.execPath, [CHECKER], { encoding: 'utf8' });
 check('用法错 → 退出码 2', usage.status === 2);
