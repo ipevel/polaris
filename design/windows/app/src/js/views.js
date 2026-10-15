@@ -503,6 +503,9 @@
     </div>
     <div class="section-label">关于</div><div class="card">
       ${row("当前版本", h(s.settings.version), { chev: false })}
+      ${(s.update_state && s.update_state.last_apply_result && s.update_state.last_apply_result.ok === false)
+        ? err("上次更新失败" + (s.update_state.last_apply_result.rolled_back === true ? "，已回滚到旧版本：" : "，回滚未完成：") + (s.update_state.last_apply_result.reason || "未知原因"))
+        : ""}
       ${row("检查更新", s.settings.update_available
         ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.settings.update_version) + "</span>"
         : (s.updateInfo && s.updateInfo.staged

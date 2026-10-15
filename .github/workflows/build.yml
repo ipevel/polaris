@@ -811,6 +811,52 @@ jobs:
         working-directory: design/windows/app
         run: npm run dist
 
+      - name: 生成并校验包内清单（发版前置门禁）
+        # 为什么必须在打包之后：清单要哈希**最终产物**（Polaris.exe / resources/app.asar / dll/pak/dat），
+        # 这些只有 electron-builder 跑完才存在。
+        # 为什么重打包：清单必须与 zip 里的字节一致，而 zip 只能整体重写。
+        # 门禁：重打包前后各 verify 一次，任一失败即红——更新器把「缺清单 / 哈希不符」当拒绝安装，
+        # 不一致的包发出去等于把用户的更新通道堵死。
+        shell: pwsh
+        working-directory: design/windows/app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipItem = Get-ChildItem dist -Filter 'Polaris-portable-*.zip' | Select-Object -First 1
+          if (-not $zipItem) { Write-Error '没找到 dist/Polaris-portable-*.zip'; exit 1 }
+          $zip = $zipItem.FullName
+          Write-Host "便携版产物：$zip"
+          $before = (Get-FileHash $zip -Algorithm SHA256).Hash
+          $tmp = Join-Path $env:RUNNER_TEMP 'polaris-manifest'
+          if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+          Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+          $countBefore = (Get-ChildItem $tmp -Recurse -File).Count
+          node scripts/package-manifest.js write $tmp
+          node scripts/package-manifest.js verify $tmp
+          Remove-Item $zip -Force
+          Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -CompressionLevel Optimal
+          # 重打包后**再验一次**：解压新 zip，确认清单在、与字节一致、且没丢文件
+          $tmp2 = Join-Path $env:RUNNER_TEMP 'polaris-manifest-check'
+          if (Test-Path $tmp2) { Remove-Item $tmp2 -Recurse -Force }
+          Expand-Archive -LiteralPath $zip -DestinationPath $tmp2 -Force
+          node scripts/package-manifest.js verify $tmp2
+          # 重打包后断言（独立 PR ci/win-repack-assertions；决策主管五条要求，全部 fail-closed）：
+          #   ① 条目名：无反斜杠、不以 / 开头、无 .. 段
+          #   ② 文件条目集合与源目录**归一化后**逐一相同（分隔符/大小写统一后比集合，不是只比数量）
+          #   ③ 目录条目差异：只允许「源里是空目录」被丢，并打印结论——空目录丢失可接受（便携包不依赖空目录，
+          #      data/ 由运行期 paths.ensureAll 创建）；将来若包内出现必须存在的空目录，改为放 .keep 占位。
+          #      非空目录被丢 → 红，并要求单独报主管
+          #   ④ 条目名大小写与源**逐字一致**（② 归一化比较抓不到大小写变化）
+          #   ⑤ 判定逻辑在 Node 脚本里，负例可离线复现（scripts/verify-repack-test.js）
+          # 为什么不用 pwsh 直接比：Windows 文件系统大小写不敏感、解压路径天然带反斜杠（按解压路径判会假红），
+          # 条目名的真身只在 zip 中央目录里；放进 Node 也让 ⑤ 的负例能在本地/CI 真跑。
+          node scripts/verify-repack.js --before $tmp --zip $zip
+          $after = (Get-FileHash $zip -Algorithm SHA256).Hash
+          Write-Host "重打包完成：$zip"
+          Write-Host "  重打包前 sha256 = $before"
+          Write-Host "  重打包后 sha256 = $after（Release 的 SHA256SUMS.txt 用这个）"
+          Write-Host "  清单条目数 = $countBefore"
+          Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $tmp2 -Recurse -Force -ErrorAction SilentlyContinue
       - name: 上传产物
         if: inputs.dryRun != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -860,6 +906,66 @@ jobs:
           fi
           cp -v "$ZIP" out/
           (cd out && sha256sum "$(basename "$ZIP")") >> out/SHA256SUMS.txt
+
+          # 发版前置门禁（第二道，针对**将要发布的那份 zip**）：
+          # 更新器把「缺清单 / 哈希不符」当拒绝安装，所以发布前再独立验一次字节，
+          # 防产物在下载/搬运环节被改动。这里不依赖仓库文件（release job 没有 checkout）。
+          #
+          # 2026-10-15 修（run 38774587692 假红）：原实现是 unzip 解压后 sha256sum -c。
+          # 包内 使用说明.txt 是带 UTF-8 标志位（general purpose bit 11）的非 ASCII 条目名，
+          # 而 runner 上的 Info-ZIP unzip 6.00 会在**解压阶段**把名字转成旧字符集
+          # （unzip -U / unzip -UU / LANG=C.UTF-8 都改不了），于是清单里那一行在文件系统上
+          # 找不到 → 假红挡住发版。改成**直接按中央目录的条目名读字节**校验：名字按 bit 11
+          # 正确解码、不经过文件系统往返，断言一条不变（清单存在 / 必含 Polaris.exe 与
+          # resources/app.asar / 逐条 sha256 一致 / 条目数一致 / 缺多不符一律 fail-closed）。
+          # 口径：这是「**打包自洽**」检查，**不是签名**；防篡改靠 Release 的 SHA256SUMS.txt
+          # 与用户侧校验。
+          python3 - "$ZIP" <<'PY'
+          import hashlib
+          import sys
+          import zipfile
+
+          MF = "resources/polaris-files.sha256"
+          zf = zipfile.ZipFile(sys.argv[1])
+          names = [n for n in zf.namelist() if not n.endswith("/")]
+
+          if MF not in names:
+              print("::error::便携版 zip 里没有包内清单 %s" % MF)
+              sys.exit(1)
+
+          entries = []
+          for line in zf.read(MF).decode("utf-8").splitlines():
+              if not line.strip():
+                  continue
+              digest, _, path = line.partition("  ")
+              entries.append((digest.strip(), path.strip()))
+
+          for required in ("Polaris.exe", "resources/app.asar"):
+              if not any(path == required for _, path in entries):
+                  print("::error::清单里没有 %s" % required)
+                  sys.exit(1)
+
+          bad = []
+          for digest, path in entries:
+              try:
+                  data = zf.read(path)
+              except KeyError:
+                  bad.append("%s：包内没有这个条目" % path)
+                  continue
+              if hashlib.sha256(data).hexdigest() != digest:
+                  bad.append("%s：哈希不符" % path)
+          if bad:
+              print("::error::包内清单与产物不一致：%s" % "；".join(bad[:10]))
+              sys.exit(1)
+
+          # 口径：产物文件数**排除清单自身**（清单在包内，不能把自己算进去）。
+          n_files = len([n for n in names if n != MF])
+          if n_files != len(entries):
+              print("::error::清单条目数 %d 与产物文件数 %d 不一致" % (len(entries), n_files))
+              sys.exit(1)
+
+          print("便携版包内清单校验通过（%d 个文件）" % len(entries))
+          PY
           echo "--- SHA256SUMS.txt ---"
           cat out/SHA256SUMS.txt
 
