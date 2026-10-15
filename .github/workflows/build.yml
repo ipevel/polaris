@@ -788,8 +788,24 @@ jobs:
           set -e
           # 便携版文件名 Polaris-portable-<version>.zip 由 package.json 的 version 决定，
           # 必须与安卓 APK 的 versionName 逐字一致，否则同一个 Release 里两个产物版本号不同。
-          npm version --no-git-tag-version "$POLARIS_RELEASE_VERSION"
-          node -e "const p=require('./package.json');console.log('便携版版本号：'+p.version)"
+          #
+          # 幂等（2026-10-15，run 38714136117 的失败修复）：发版前的「版本号 PR」会把版本行
+          # 先合进 main，此时 package.json 已经等于目标版本，直接 `npm version` 会以
+          # "Version not changed" 退出 1，把整个发版卡死在 windows 步。所以先比再动：
+          # 已是目标值就跳过；不是才 bump。bump 之后**必须断言等于目标值**——
+          # 只跳过不校验，等于把「版本对不上」静默放进产物。
+          current="$(node -e "process.stdout.write(require('./package.json').version)")"
+          if [ "$current" = "$POLARIS_RELEASE_VERSION" ]; then
+            echo "package.json 已是目标版本 $current，跳过 npm version"
+          else
+            npm version --no-git-tag-version "$POLARIS_RELEASE_VERSION"
+          fi
+          after="$(node -e "process.stdout.write(require('./package.json').version)")"
+          if [ "$after" != "$POLARIS_RELEASE_VERSION" ]; then
+            echo "::error::package.json 版本 $after 与本次发布版本 $POLARIS_RELEASE_VERSION 不一致，拒绝打包"
+            exit 1
+          fi
+          echo "便携版版本号：$after"
 
       - name: 打包便携版
         working-directory: design/windows/app
