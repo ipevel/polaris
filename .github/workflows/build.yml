@@ -811,6 +811,46 @@ jobs:
         working-directory: design/windows/app
         run: npm run dist
 
+      - name: 生成并校验包内清单（发版前置门禁）
+        # 为什么必须在打包之后：清单要哈希**最终产物**（Polaris.exe / resources/app.asar / dll/pak/dat），
+        # 这些只有 electron-builder 跑完才存在。
+        # 为什么重打包：清单必须与 zip 里的字节一致，而 zip 只能整体重写。
+        # 门禁：重打包前后各 verify 一次，任一失败即红——更新器把「缺清单 / 哈希不符」当拒绝安装，
+        # 不一致的包发出去等于把用户的更新通道堵死。
+        shell: pwsh
+        working-directory: design/windows/app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipItem = Get-ChildItem dist -Filter 'Polaris-portable-*.zip' | Select-Object -First 1
+          if (-not $zipItem) { Write-Error '没找到 dist/Polaris-portable-*.zip'; exit 1 }
+          $zip = $zipItem.FullName
+          Write-Host "便携版产物：$zip"
+          $before = (Get-FileHash $zip -Algorithm SHA256).Hash
+          $tmp = Join-Path $env:RUNNER_TEMP 'polaris-manifest'
+          if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+          Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+          $countBefore = (Get-ChildItem $tmp -Recurse -File).Count
+          node scripts/package-manifest.js write $tmp
+          node scripts/package-manifest.js verify $tmp
+          Remove-Item $zip -Force
+          Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -CompressionLevel Optimal
+          # 重打包后**再验一次**：解压新 zip，确认清单在、与字节一致、且没丢文件
+          $tmp2 = Join-Path $env:RUNNER_TEMP 'polaris-manifest-check'
+          if (Test-Path $tmp2) { Remove-Item $tmp2 -Recurse -Force }
+          Expand-Archive -LiteralPath $zip -DestinationPath $tmp2 -Force
+          node scripts/package-manifest.js verify $tmp2
+          $countAfter = (Get-ChildItem $tmp2 -Recurse -File).Count
+          if ($countAfter -ne ($countBefore + 1)) {
+            Write-Error "重打包后文件数 $countAfter 与预期 $($countBefore + 1) 不一致（原 $countBefore 个 + 清单 1 个），拒绝上传"
+            exit 1
+          }
+          $after = (Get-FileHash $zip -Algorithm SHA256).Hash
+          Write-Host "重打包完成：$zip"
+          Write-Host "  重打包前 sha256 = $before"
+          Write-Host "  重打包后 sha256 = $after（Release 的 SHA256SUMS.txt 用这个）"
+          Write-Host "  清单条目数 = $countBefore"
+          Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $tmp2 -Recurse -Force -ErrorAction SilentlyContinue
       - name: 上传产物
         if: inputs.dryRun != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -860,6 +900,22 @@ jobs:
           fi
           cp -v "$ZIP" out/
           (cd out && sha256sum "$(basename "$ZIP")") >> out/SHA256SUMS.txt
+
+          # 发版前置门禁（第二道，针对**将要发布的那份 zip**）：
+          # 更新器把「缺清单 / 哈希不符」当拒绝安装，所以发布前再独立验一次字节，
+          # 防产物在下载/搬运环节被改动。这里不依赖仓库文件（release job 没有 checkout）。
+          TMPZ=$(mktemp -d)
+          unzip -q "$ZIP" -d "$TMPZ"
+          MF="$TMPZ/resources/polaris-files.sha256"
+          if [ ! -f "$MF" ]; then echo "::error::便携版 zip 里没有包内清单 resources/polaris-files.sha256"; exit 1; fi
+          grep -q '  Polaris.exe$' "$MF" || { echo "::error::清单里没有 Polaris.exe"; exit 1; }
+          grep -q '  resources/app.asar$' "$MF" || { echo "::error::清单里没有 resources/app.asar"; exit 1; }
+          (cd "$TMPZ" && sha256sum -c --quiet resources/polaris-files.sha256) || { echo "::error::包内清单与产物不一致"; exit 1; }
+          N_FILES=$(find "$TMPZ" -type f ! -name 'polaris-files.sha256' | wc -l)
+          N_MF=$(grep -c . "$MF")
+          if [ "$N_FILES" -ne "$N_MF" ]; then echo "::error::清单条目数 $N_MF 与产物文件数 $N_FILES 不一致"; exit 1; fi
+          rm -rf "$TMPZ"
+          echo "便携版包内清单校验通过（$N_MF 个文件）"
           echo "--- SHA256SUMS.txt ---"
           cat out/SHA256SUMS.txt
 
