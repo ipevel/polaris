@@ -593,7 +593,8 @@ Polaris 现状：便携版无安装器，升级靠 zip 覆盖；`appId` 只影�
 **纪律 3：签名纪律。**
 
 - **正面样板（直接引用）**：Polaris 安卓 `app/build.gradle.kts:175-192` 在缺 `POLARIS_RELEASE_STORE_FILE` 时直接 `throw GradleException("禁止使用 debug 签名发布")` —— release 包**绝不静默回落 debug 签名**。对照 bettbox：无 keystore 时静默回落 debug 签名（安卓逆向 §13 A6）。
-- **签名方案**：release 必须**显式**声明 v2 + v3，不要依赖构建工具默认值。实测（apksigner 35.0.0 `verify --verbose`）：Polaris 安卓 1.12.0 的 `Polaris-1.12.0.apk` 报 v1=false / v2=true / **v3=false / v3.1=false / v4=false**；bettbox 1.19.5 同样只有 v2。**缺 v3 = 无法做密钥轮换**：证书一旦丢失或需要更换，所有用户必须卸载重装才能升级 —— v3 的 proof-of-rotation 必须在换证书**之前**就已签上，晚开等于没开。
+- **签名方案纪律**：release 必须**显式**声明 v2 + v3，不要依赖构建工具默认值。实测（apksigner 35.0.0 `verify --verbose`）：Polaris 安卓 1.12.0 / 1.12.1 的 APK 均报 v1=false / v2=true / **v3=false / v3.1=false / v4=false**；bettbox 1.19.5 同样只有 v2。开 v3 本身无兼容风险（v2 仍在，覆盖 Android 7–8；本项目 minSdk 28），且只有 v3 块能携带 proof-of-rotation 结构。
+- **真正决定「将来能不能平滑换签名证书」的是：签名 keystore 必须备份、不得丢失** —— 生成轮换用的 lineage 需要**旧私钥**。⚠️「已安装的旧 APK 是否必须带 v3，新密钥才能在下次更新时被接受」这一点**本次未取证**（Android 官方 v3 文档正文为 JS 渲染，取不到；AOSP `ApkSignatureVerifier.java` 未见直接判据）—— 不要当事实引用；要结论就用 Android 9+ 真机做一次 `apksigner rotate` + 换签更新端到端验证。
 
 ---
 
