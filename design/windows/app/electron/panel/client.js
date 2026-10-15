@@ -345,13 +345,27 @@ function pick(obj, keys, fallback) {
   return fallback;
 }
 
+/**
+ * 时间戳统一成毫秒。面板同一份数据里两种单位都出现过：有的字段给秒（10 位），
+ * 有的给毫秒（13 位）。旧实现三个分支全乘 1000（死三元），毫秒会被放大 1000 倍，
+ * 日期直接算成公元 5 万年（W2）。
+ * 规则：>= 1e12 认定已经是毫秒、原样返回；其余按秒 ×1000（秒语义与旧实现一致）。
+ * 0 / 负数 / 空串 / 解析不出来一律 0（= 没有日期，dateOnly(0) 会返回空串）。
+ */
 function toTs(v) {
   if (v == null) return 0;
-  if (typeof v === 'number') return v > 1e12 ? v * 1000 : (v > 1e9 ? v * 1000 : v * 1000);
-  const n = parseInt(String(v), 10);
-  if (Number.isFinite(n)) return n > 1e12 ? n : n * 1000;
-  const d = Date.parse(String(v));
+  if (typeof v === 'number') return fromEpoch(v);
+  const s = String(v).trim();
+  if (!s) return 0;
+  if (/^-?\d+(?:\.\d+)?$/.test(s)) return fromEpoch(Number(s));
+  const d = Date.parse(s);
   return Number.isFinite(d) ? d : 0;
+}
+
+/** 秒/毫秒混用的字段归一化：>= 1e12 已经是毫秒，其余按秒补 */
+function fromEpoch(n) {
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n >= 1e12 ? n : n * 1000;
 }
 
 function dateOnly(ms) {
@@ -585,12 +599,32 @@ async function siteInfo() {
 // userInfo 的短缓存：流量页/首页/我的页会同时要同一份数据，
 // 每次都重新拉两个接口既慢又容易把面板打到限流；45 秒内的重复调用直接复用。
 // 关键是**只缓存取到了套餐的结果** —— 一次网络抖动不该把"未订阅"缓存下来。
+//
+// 但缓存是"拿到结果才写"的：进流量页时 get_plan / get_traffic / 首页同时要这份数据，
+// 三路都在缓存被填上之前就到了，TTL 一条都挡不住 —— 实测并发 3 路 = 6 个请求
+// （/user/info ×3 + /user/getSubscribe ×3，见 scripts/panel-client-test.js）。
+// 所以再叠一层**在飞合并**：同一时刻只允许一轮请求在飞，后来的搭同一趟车。
 let userInfoCache = null;
+let userInfoInflight = null;
+let userInfoGen = 0;            // clearUserInfoCache() 会 +1：换账号/登出后旧请求回来不许写缓存
 const USER_INFO_TTL = 45000;
 
 async function userInfo(options) {
   const force = !!(options && options.force);
   if (!force && userInfoCache && Date.now() - userInfoCache.at < USER_INFO_TTL) return userInfoCache.data;
+  if (userInfoInflight) return userInfoInflight;   // 已经在飞：搭车，不再各发一轮
+  const p = fetchUserInfo();
+  userInfoInflight = p;
+  // 清理只挂在 p 自己身上；用 .then(done, done) 而不是 .finally()，
+  // 免得失败的请求多出一个没人接的 rejected promise（Electron 里会报 unhandled rejection）。
+  const done = () => { if (userInfoInflight === p) userInfoInflight = null; };
+  p.then(done, done);
+  return p;
+}
+
+/** 真正的那一轮请求（/user/info + /user/getSubscribe）。拆出来只为让 userInfo() 能在外面挂在飞合并。 */
+async function fetchUserInfo() {
+  const gen = userInfoGen;
   // 累计流量、套餐对象、到期时间都在 /user/getSubscribe 里：/user/info **没有 u/d、
   // 也没有 plan 对象**（只有 plan_id / transfer_enable / expired_at）。
   // 旧代码只读 /user/info，于是「我的」页永远是"未订阅 / 已使用 0 GB"——真实面板实测。
@@ -639,11 +673,11 @@ async function userInfo(options) {
     d: downUsed,
     ...(plan ? { plan } : {}),
   };
-  if (planName || transferEnable > 0) userInfoCache = { at: Date.now(), data };
+  if (gen === userInfoGen && (planName || transferEnable > 0)) userInfoCache = { at: Date.now(), data };
   return data;
 }
 
-function clearUserInfoCache() { userInfoCache = null; }
+function clearUserInfoCache() { userInfoCache = null; userInfoGen += 1; userInfoInflight = null; }
 
 async function subscribeInfo() {
   const s = await get('/user/getSubscribe');
@@ -909,14 +943,31 @@ async function paymentMethods() {
   }));
 }
 
-/** 收银台：返回 URL，由渲染层用系统浏览器打开（不在应用内嵌第三方支付页） */
+/**
+ * 收银台：返回 URL，由渲染层用系统浏览器打开（不在应用内嵌第三方支付页）。
+ *
+ * POST 这一步就是"下单、要支付地址"，它的返回就是面板给的地址（V2Board 家族多数分支
+ * data 直接是 URL 字符串，少数回 { url }）。
+ * 旧代码 `.catch(() => null)` 吞掉失败、再用 `void res` 丢掉成功结果，最后无条件拼一个
+ * GET 地址 —— 面板 500 / 订单失效时照样"成功"打开一个坏链接，界面一句提示都没有，
+ * ipc 层那句 `if (!url) throw new Error('面板未返回支付地址')` 也因此成了死代码。
+ * 现在：POST 失败就让它抛（渲染层 guard 会 toast 出面板给的原因）；
+ * POST 成功但没给地址（少数分支只回 true）才退回 GET 收银台地址，行为不退步。
+ */
 async function checkoutUrl(tradeNo, method) {
   const res = await post('/user/order/checkout', {
     trade_no: tradeNo,
     payment_id: method,
     callback_url: `${session.panelUrl}${API_PREFIX}/user/order/checkout`,
-  }).catch(() => null);
-  void res;
+  });
+  const raw = typeof res === 'string'
+    ? res.trim()
+    : String(pick(res || {}, ['url', 'pay_url', 'checkout_url', 'payment_url', 'link'], '')).trim();
+  if (raw) {
+    // 已是绝对 URL 或自定义 scheme（alipays: 这类）原样交出去，只补相对路径
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return raw;
+    return `${session.panelUrl}${raw.startsWith('/') ? '' : '/'}${raw}`;
+  }
   return `${session.panelUrl}${API_PREFIX}/user/order/checkout?trade_no=${encodeURIComponent(tradeNo)}&payment_id=${encodeURIComponent(method)}`;
 }
 
@@ -1155,8 +1206,9 @@ module.exports = {
   tickets, createTicket, invite, giftHistory, redeemGift, notices, trafficLog,
   changePassword, sendEmailCode, forgotPassword, registerConfig,
   normalizePanelUrl,
-  // 纯函数，导出给自检用（把面板原始行按天聚合 / 工单正文兜底 / 后端识别）
+  // 纯函数，导出给自检用（把面板原始行按天聚合 / 工单正文兜底 / 后端识别 / 时间戳归一化）
   aggregateTrafficLog,
+  toTs,
   ticketContent,
   clearUserInfoCache,
   detectBackend,

@@ -418,12 +418,32 @@ function reset() {
 }
 
 /**
+ * 更新地址只认 http/https。
+ * 地址有三个来源：界面传进来的、面板 check_update 回的、落盘的 update_url/download_url。
+ * 落盘那份是可写的，而 file:// 或自定义协议进了 downloadTo 会被当成别的协议/本地路径用，
+ * 所以在这里统一收口；拒绝时给一句人能看懂的原因，不要静默当成路径处理。
+ */
+function isAllowedDownloadUrl(url) {
+  return /^https?:\/\//i.test(String(url == null ? '' : url).trim());
+}
+
+function assertDownloadUrl(url) {
+  const u = String(url == null ? '' : url).trim();
+  if (!isAllowedDownloadUrl(u)) {
+    throw new Error(`更新地址不是 http(s) 链接，已拒绝下载：${u.slice(0, 120) || '(空)'}`);
+  }
+  return u;
+}
+
+/**
  * 下载 + 校验 + 解压 + 校验，一步到位（UI 上就是一个进度条）。
  * 任何一步失败都会把 phase 设成 error 并抛错，绝不留下半个包当「下载好了」。
  */
 async function download(url, version) {
   const target = String(url || '').trim();
   if (!target) throw new Error('未配置更新地址');
+  // 协议校验放在最前面：不合法时连 updateDir 都不碰，不留半个状态
+  assertDownloadUrl(target);
   if (/\.apk(\?|#|$)/i.test(target)) {
     // 后端只有一个 update_url 时它指的是安卓包，直接下下来装会把 Windows 端毁掉
     throw new Error('更新地址指向的是安卓安装包，Windows 版请等后端补上 update_windows_url');
@@ -733,13 +753,49 @@ async function applyWorker() {
 }
 
 /**
+ * 启动自愈（W9）：安装目录里没有 `Polaris.exe`，却留着上次自我替换改名的
+ * `Polaris.exe.old`。这是 applyWorker 第 2 步（改名）与第 4 步（复制）之间被强杀 /
+ * 掉电留下的残局：**安装目录里唯一还能启动的文件就是那个 .old**，用户双击安装目录
+ * 里的任何东西都起不来。此时把它改回 Polaris.exe 就恢复了（Windows 允许给运行中的
+ * exe 改名，所以「用户双击 .old 启动」这条路上也能救回来）。
+ *
+ * 只做这一件事：不碰其它文件，改名失败就原样保留 .old（宁可不自愈，也不能把唯一的
+ * 可执行文件弄丢）。dir 可传，方便纯 Node 自检不碰真实安装目录。
+ */
+function healMissingExe(dir) {
+  const target = dir || installDir();
+  const exe = path.join(target, 'Polaris.exe');
+  const old = exe + '.old';
+  try {
+    if (fs.existsSync(exe)) return { healed: false, reason: 'exe 在' };
+    if (!fs.existsSync(old)) return { healed: false, reason: '没有 .old' };
+    fs.renameSync(old, exe);
+    log.info('启动自愈：安装目录缺少 Polaris.exe，已把 ' + old + ' 改回 Polaris.exe');
+    return { healed: true, exe };
+  } catch (e) {
+    log.warn('启动自愈失败，保留 ' + old + ' 不动：' + (e && e.message));
+    return { healed: false, reason: (e && e.message) || 'unknown' };
+  }
+}
+
+/**
  * 删掉上一次更新留下的 `Polaris.exe.old`。
  * 改名那一刻它还被 helper 进程占着，只能由新进程启动时删。
+ *
+ * W9：**只有当前这个进程正在跑的 exe 真的存在时才删**。helper 改名后被杀、或用户是
+ * 双击 .old 启动的（那时 process.execPath 就是 .old 本身），.old 是安装目录里唯一能
+ * 启动的文件 —— 这时删掉它，等于把用户最后的救生圈扔了，只能手工改文件名才能再用。
  */
 function cleanStaleRename() {
   try {
     const old = process.execPath + '.old';
-    if (fs.existsSync(old)) { fs.rmSync(old, { force: true }); log.info('清理了上次更新残留的 ' + old); }
+    if (!fs.existsSync(old)) return;
+    if (!fs.existsSync(process.execPath)) {
+      log.warn('保留 ' + old + '：当前 exe 不存在，它是安装目录里唯一能启动的文件（等自愈改名）');
+      return;
+    }
+    fs.rmSync(old, { force: true });
+    log.info('清理了上次更新残留的 ' + old);
   } catch (e) { log.warn('清理残留 exe 失败：' + (e && e.message)); }
 }
 
@@ -788,7 +844,8 @@ function quit() {
 
 module.exports = {
   S, TIMEOUTS, APPLY, info, onChange, download, downloadTo, fetchStream, apply, applyWorker,
-  cleanStaleRename, quit, reset, restoreStaged,
+  cleanStaleRename, healMissingExe, quit, reset, restoreStaged,
+  isAllowedDownloadUrl, assertDownloadUrl,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
   safeName, zipPath, isZipFile, resolveStageRoot, extract, pidAlive,
   copyTree, listFiles, canOverwrite, waitOverwritable, rmTolerant,

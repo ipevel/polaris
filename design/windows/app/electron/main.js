@@ -51,7 +51,15 @@ try {
 
 // 上一次自我替换留下的 Polaris.exe.old：改名那一刻它还被 helper 进程占着，
 // 只能由新进程启动时删（见 updater.js 的 applyWorker 第 2 步）。
-try { require('./core/updater').cleanStaleRename(); } catch (_) { /* 删不掉也不影响启动 */ }
+// 但如果在「已改名、新文件还没落位」的瞬间被强杀/掉电，安装目录里就只剩 .old、
+// 没有 Polaris.exe，应用再也起不来（W9）——所以**先自愈，再清理**：
+// healMissingExe() 把 .old 改回 Polaris.exe；cleanStaleRename() 只在 exe 真的在时才删 .old。
+try {
+  const updater = require('./core/updater');
+  const healed = updater.healMissingExe();
+  if (healed && healed.healed) log.info('安装目录缺少 Polaris.exe，已从 .old 恢复（上次更新被中断）');
+  updater.cleanStaleRename();
+} catch (e) { /* 恢复/清理失败都不影响启动 */ }
 
 // 分流规则 + 地理库统一刷新（P1）：来源只有 ipevel/polaris-rules 一处，
 // 规则清单 14 + geo 3 份，每 12 小时对一次上游；有变化会在内核在线时重启内核生效。
@@ -318,9 +326,17 @@ function runUiTest() {
 
 app.on('before-quit', () => { quitting = true; });
 
-app.on('window-all-closed', (e) => {
-  // 托盘常驻：不退出
-  e?.preventDefault?.();
+app.on('window-all-closed', () => {
+  // 托盘常驻：不退出。**这个监听器本身就是「不退出」的手段** —— Electron 只有在
+  // 没有任何 window-all-closed 监听器时才按默认行为 quit；该事件的 event 不可取消，
+  // 所以旧代码那句 e?.preventDefault?.() 是纯空操作（B8）。
+  // 窗口全关之后托盘是唯一入口，于是这里做真正有意义的事：确保托盘还在。
+  // （托盘创建失败、或被系统/用户销毁过而窗口又关掉，用户就再也叫不出界面了。）
+  try {
+    require('./tray').ensureTray();
+  } catch (e) {
+    log.warn('window-all-closed 补建托盘失败：' + (e && e.message));
+  }
 });
 
 // 退出前的最后清理（还原系统代理 / 停内核）
@@ -335,6 +351,8 @@ app.on('will-quit', async () => {
   } catch (e) {
     log.error('shutdown failed:', e && e.message);
   }
+  // 释放托盘图标：Windows 上不释放，通知区会留一个点不动的幽灵图标
+  try { require('./tray').destroyTray(); } catch (_) { /* 释放失败不影响退出 */ }
 });
 
 process.on('uncaughtException', (e) => {

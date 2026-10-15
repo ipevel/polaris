@@ -846,8 +846,11 @@
     </div></div>`,
 
     /* 纯告知：只有一个"知道了"，没有红色危险按钮 —— 给「我们不替你动手」这种场景用
-       （端口被占但认不出是谁：不提供关掉它的入口，免得用户以为点了就会关）。 */
-    notice: (c) => `<div class="overlay" data-overlay><div class="dialog">
+       （端口被占但认不出是谁：不提供关掉它的入口，免得用户以为点了就会关）。
+       键名必须与上面的 notice（公告：标题 + 日期 + Markdown 正文）区分开：
+       同一个对象字面量里重名的键，后面那个会把前面那个整个覆盖掉 —— 旧代码两个都叫
+       notice，于是公告弹窗静默退化成这份纯文本版，日期与 Markdown 全丢。 */
+    portNotice: (c) => `<div class="overlay" data-overlay><div class="dialog">
       <h2>${h(c.title)}</h2><div class="dsub">${h(c.body)}</div>
       ${c.hint ? `<div class="dsub" style="font-size:12px">${h(c.hint)}</div>` : ""}
       <button class="btn btn-primary" style="width:100%;height:46px;margin-top:6px" data-overlay-close>${h(c.yes || "知道了")}</button>

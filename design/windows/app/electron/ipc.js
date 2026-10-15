@@ -754,7 +754,13 @@ const commands = {
 
   download_update: async ({ url, version } = {}) => {
     const u = remote.updateInfo();
-    const target = String(url || u.url || store.get('update_url') || store.get('download_url') || '');
+    const target = String(url || u.url || store.get('update_url') || store.get('download_url') || '').trim();
+    // 只放行 http/https：这里和 open_external 一个口径。地址可能是面板回的、也可能是
+    // 落盘的 update_url，file:// 或自定义协议会被下载层当成别的协议用。
+    // 空地址交给 updater.download 报「未配置更新地址」，别把两种错混成一句。
+    if (target && !updater.isAllowedDownloadUrl(target)) {
+      throw new Error('更新地址不是 http(s) 链接，已拒绝下载：' + target.slice(0, 120));
+    }
     return updater.download(target, version || u.version || store.get('update_latest') || '');
   },
 

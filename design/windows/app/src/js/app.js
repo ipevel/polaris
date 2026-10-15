@@ -210,6 +210,9 @@
   // 自检用（与 PolarisNav / PolarisDialog 同性质）：红点这类"状态变了要重绘"的逻辑，
   // 需要在不开新路由的前提下强制重绘一次才能验。
   window.PolarisRender = render;
+  // 自检用：scheduleRender 是"面板数据回来 → 重绘"的唯一入口，
+  // 而它在弹窗开着时必须只记账不重绘（见 scripts/dialog-render-test.js）。
+  window.PolarisScheduleRender = scheduleRender;
 
   /** 二级页面返回：没有历史就回"我的" */
   function goBack() {
@@ -230,7 +233,11 @@
     $$("[data-overlay-close]", overlayRoot).forEach((b) => b.addEventListener("click", closeDialog));
     bindDialog(name, arg);
   }
-  function closeDialog() { overlayRoot.innerHTML = ""; }
+  function closeDialog() {
+    overlayRoot.innerHTML = "";
+    // 弹窗期间被推迟的那次重绘在这里补上：不然"面板数据在弹窗开着时回来了"就白回来了。
+    if (renderPendingWhileDialog) { renderPendingWhileDialog = false; render(); }
+  }
   window.PolarisDialog = { open: openDialog, close: closeDialog };
 
   function toast(msg) {
@@ -669,7 +676,7 @@
     render();
     // identified === false：拿不到进程名，只有 PID。这条路**不给**"关掉它"的按钮。
     if (owner.identified === false) {
-      openDialog("notice", {
+      openDialog("portNotice", {
         title: "本机代理端口被占用",
         body: `${port} 端口被 PID ${owner.pid} 占用，但认不出它是哪个程序。`,
         hint: `可能权限不足或该进程受系统保护。为了不误杀重要进程，Polaris 不会去关它 —— 请手动退出占用该端口的软件，或在「设置 → 本机代理端口」换一个端口。`,
@@ -1345,11 +1352,21 @@
   const panelInflight = {};
   const panelAt = {};
   let renderTimer = null;
+  let renderPendingWhileDialog = false;   // 弹窗期间攒下的那次重绘，closeDialog() 时补
 
   /** 合并同一轮里的多次重绘（渐进加载一项一绘，但别把事件循环堵死） */
   function scheduleRender() {
     if (renderTimer) return;
-    renderTimer = setTimeout(() => { renderTimer = null; render(); }, 30);
+    renderTimer = setTimeout(() => {
+      renderTimer = null;
+      // 弹窗开着时**只记一笔，不 render**：render() 第一行就是 overlayRoot.innerHTML = ""，
+      // 会把用户正在看的弹窗（公告/支付方式/更新/端口占用…）整个抹掉。
+      // state 里的数据在 it.apply(v) 那一步就写好了，缺的只是这一次 DOM 重建 ——
+      // closeDialog() 会把攒下的这次补上，所以面板数据不会因此停更。
+      // （live 状态回调 :1222 一直有同样的保护，只有这条路径漏了。）
+      if (overlayRoot.children.length) { renderPendingWhileDialog = true; return; }
+      render();
+    }, 30);
   }
 
   function panelItem(key) { return PANEL_ITEMS.filter((x) => x.key === key)[0]; }
