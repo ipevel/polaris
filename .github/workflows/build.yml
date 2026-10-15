@@ -3,6 +3,18 @@ name: Polaris Build
 # 打包并（可选）发布到 GitHub Releases。
 #
 # 用法：Actions → Polaris Build → Run workflow，填参数后运行。
+#   - 只能从 main 分支或 v* 标签触发；其它 ref 会被 release-precheck 直接拒绝。
+#   - 发版前置门禁（release-precheck，fail-closed）：本 commit 上
+#       「版本门禁自测 / 内核 Go 门禁（vet + build + test）/ 质量门禁（test + ktlint + lint）」
+#     三条 required check 与「Windows 离线自检 + 语法检查」必须全部 conclusion=success；
+#     Checks API 读不到、名字对不上、或结论不是 success 一律判不通过 —— 不允许「读不到就放行」。
+#     这三条 required 的名字必须与 main 分支保护里的 contexts 逐字一致（改名即读不到）。
+#   - 门禁通过后由流水线自己创建 tag（v<versionName>，指向本次构建的 commit）：
+#     tag 不存在则创建；已存在且指向同一 commit 则幂等继续；指向别的 commit 直接失败。
+#     人工不再需要先打 tag；本流水线不 force、不移动、不删除任何已有 tag。
+#   - 排练：dryRun=true 时只跑到「前置门禁 + 编译」，不打 tag、不上传产物、不建 Release。
+#     ⚠️ workflow_dispatch 只能触发默认分支（main）上的 workflow，所以排练只能在
+#     本文件合并进 main 之后手动跑一次；合并前的检查都是静态的。
 #   - buildType=release 需要仓库 Secrets 四件套（全部 POLARIS_ 前缀）：
 #       POLARIS_RELEASE_STORE_B64 / POLARIS_RELEASE_STORE_PASSWORD
 #       POLARIS_RELEASE_KEY_ALIAS / POLARIS_RELEASE_KEY_PASSWORD
@@ -16,7 +28,9 @@ name: Polaris Build
 #   - versionName 必须填本次发布的版本号，且严格大于上一已发布版本：构建前会跑
 #     .scripts/version_gate.py 校验版本号/versionCode/tag 三者自洽，并检查区间内的
 #     feat / 破坏性变更是否递增了对应位（规则见 .scripts/version_gate.py 的文档字符串）。
-#     可用 gateMode=warn 降级为告警、gateMode=off 跳过（仅限紧急回滚场景）。
+#     发版固定 strict：不再提供 warn/off 降级开关（紧急回滚请走 revert + 新的补丁版本）。
+#   - 本 workflow 不再重复跑单元测试 / ktlint / Android Lint / R8 存活校验：这些已在
+#     ci.yml 的质量门禁里跑过，而 release-precheck 要求那次结果必须是 success。
 
 on:
   workflow_dispatch:
@@ -88,17 +102,16 @@ on:
         description: Release 标签名（留空自动使用 v<版本号>）
         required: false
         default: ''
-      gateMode:
+      dryRun:
         description: |
-          版本门禁模式。strict=不一致即中止（默认）；warn=只告警；off=跳过。
-          门禁内容：版本号合法、tag 与版本号一致、版本号与 versionCode 相对上一版严格递增、
-          区间内有 feat 却只升 PATCH 则拦截（规则见 .scripts/version_gate.py 的文档字符串）。
+          排练模式：true 时只跑到「前置门禁 + 编译」，不打 tag、不上传产物、不建 Release。
+          ⚠️ workflow_dispatch 只能触发默认分支（main）上的 workflow，所以排练只能在
+          本文件合并进 main 之后手动跑一次；合并前的检查都是静态的。
         type: choice
         options:
-          - strict
-          - warn
-          - off
-        default: strict
+          - 'false'
+          - 'true'
+        default: 'false'
       releaseNotes:
         description: |
           Release 变更说明（留空则不输出「变更说明」小节；填 auto 会写成「见 git log」）。
@@ -120,10 +133,154 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 发版前置门禁（fail-closed）：读不到、名字对不上、或结论不是 success 一律判不通过。
+  # 放行一次就等于把没验过的提交当成「已发布版本」发出去，所以这里不设任何降级开关。
+  release-precheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # 读 check-runs API 需要 checks: read；显式声明，避免仓库默认权限收紧后静默变成 403。
+      checks: read
+    steps:
+      - name: 校验触发 ref（只允许 main 或 v* 标签）
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -e
+          case "$REF" in
+            refs/heads/main|refs/tags/v*)
+              echo "触发 ref 合法：$REF" ;;
+            *)
+              echo "::error::发版只能从 refs/heads/main 或 refs/tags/v* 触发，当前为 $REF"
+              exit 1 ;;
+          esac
+
+      - name: 校验本次构建提交的质量门禁（三条 required + Windows 离线自检，fail-closed）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -e
+          cat > "$RUNNER_TEMP/check_runs_gate.py" <<'PRECHECK_PY'
+          import json, os, sys, urllib.request
+
+          TOKEN = os.environ["GH_TOKEN"]
+          REPO = os.environ["REPO"]
+          SHA = os.environ["SHA"]
+
+          # 三条 required 的字符串与 main 分支保护 required_status_checks.contexts 逐字一致
+          # （2026-10-15 用 GET /repos/ipevel/polaris/branches/main/protection 读回核对）。
+          # 改名即读不到 —— 读不到一律 fail-closed。
+          REQUIRED = [
+              "版本门禁自测",
+              "内核 Go 门禁（vet + build + test）",
+              "质量门禁（test + ktlint + lint）",
+          ]
+          WINDOWS = "Windows 离线自检 + 语法检查"
+
+          def fetch(url):
+              req = urllib.request.Request(url, headers={
+                  "Authorization": "Bearer " + TOKEN,
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "polaris-release-precheck",
+              })
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  return json.load(resp)
+
+          runs = []
+          page = 1
+          while True:
+              url = "https://api.github.com/repos/%s/commits/%s/check-runs?per_page=100&page=%d" % (REPO, SHA, page)
+              try:
+                  payload = fetch(url)
+              except Exception as exc:
+                  print("::error::读取 check-runs 失败（fail-closed，不放行）：%s" % exc)
+                  sys.exit(1)
+              batch = payload.get("check_runs") or []
+              runs.extend(batch)
+              if len(batch) < 100:
+                  break
+              page += 1
+              if page > 10:
+                  print("::error::check-runs 分页超过 10 页，拒绝继续（fail-closed）")
+                  sys.exit(1)
+
+          # 同名 check 可能重跑过多次：只认 id 最大（最新一次），避免拿旧绿灯放行。
+          latest = {}
+          for run in runs:
+              name = run.get("name")
+              if name is None:
+                  continue
+              cur = latest.get(name)
+              if cur is None or int(run.get("id") or 0) > int(cur.get("id") or 0):
+                  latest[name] = run
+
+          print("本次构建提交 %s 上的 check（每个名字取最新一次）：" % SHA)
+          for name in sorted(latest):
+              run = latest[name]
+              print("  - %s: status=%s conclusion=%s head_sha=%s" % (name, run.get("status"), run.get("conclusion"), run.get("head_sha")))
+
+          problems = []
+          for name in REQUIRED + [WINDOWS]:
+              run = latest.get(name)
+              if run is None:
+                  problems.append("%s：该提交上找不到这个 check" % name)
+                  continue
+              if run.get("head_sha") != SHA:
+                  problems.append("%s：head_sha=%s 与本次构建提交不一致" % (name, run.get("head_sha")))
+              if run.get("status") != "completed":
+                  problems.append("%s：status=%s（还没跑完）" % (name, run.get("status")))
+                  continue
+              if run.get("conclusion") != "success":
+                  problems.append("%s：conclusion=%s" % (name, run.get("conclusion")))
+
+          if problems:
+              for item in problems:
+                  print("::error::发版前置门禁不通过 —— %s" % item)
+              sys.exit(1)
+          print("::notice::发版前置门禁通过：%d 条 check 全部 success" % (len(REQUIRED) + 1))
+          PRECHECK_PY
+          python3 "$RUNNER_TEMP/check_runs_gate.py"
+
+      - name: 校验 tag 指向（已存在时必须指向本次构建提交）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          VERSION_INPUT: ${{ inputs.versionName }}
+          TAG_INPUT: ${{ inputs.releaseTag }}
+        run: |
+          set -e
+          if [ -z "$VERSION_INPUT" ]; then
+            echo "::error::versionName 为空，请填写本次发布的版本号（形如 1.5.18）"
+            exit 1
+          fi
+          TAG="${TAG_INPUT:-v${VERSION_INPUT}}"
+          case "$TAG" in
+            v*) ;;
+            *) echo "::error::拒绝使用非 v* 标签：$TAG"; exit 1 ;;
+          esac
+          OUT="$(gh api "repos/$REPO/commits/$TAG" --jq .sha 2>&1)" && STATUS=0 || STATUS=$?
+          if [ "$STATUS" = "0" ]; then
+            if [ "$OUT" != "$SHA" ]; then
+              echo "::error::tag $TAG 已存在且指向 $OUT，本次构建的是 $SHA；请核对 versionName / releaseTag"
+              exit 1
+            fi
+            echo "::notice::tag $TAG 已存在且指向本次构建提交，幂等继续"
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404'; then
+            echo "::notice::tag $TAG 尚不存在，将由 release-tag job 创建（指向 $SHA）"
+          else
+            echo "::error::读取 tag $TAG 失败（fail-closed，不放行）：$OUT"
+            exit 1
+          fi
+
   # 版本解析与门禁是所有产物的共同前置：安卓 APK 与 Windows 便携版必须用同一个
   # versionName / versionCode / tag，而且都必须先过同一道门禁。抽成独立 job 输出，
   # 下游用 needs 取用——否则同一段逻辑要在两个 runner 上各写一份，日后必然走偏。
   version:
+    needs: release-precheck
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -194,9 +351,6 @@ jobs:
           python3 .scripts/version_gate_test.py
 
       - name: SemVer 版本门禁
-        if: inputs.gateMode != 'off'
-        env:
-          GATE_MODE: ${{ inputs.gateMode }}
         run: |
           set -e
           python3 .scripts/version_gate.py \
@@ -205,10 +359,9 @@ jobs:
             --version-name "${{ steps.version.outputs.versionName }}" \
             --version-code "${{ steps.version.outputs.versionCode }}" \
             --check-commits \
-            --mode "$GATE_MODE"
+            --mode strict
 
       - name: SemVer 历史审计
-        if: inputs.gateMode == 'strict'
         run: |
           set -e
           # 揪出「版本号写进代码却从未打 tag」的欠账：版本序列出现空洞会让用户
@@ -216,8 +369,52 @@ jobs:
           python3 .scripts/version_gate.py \
             --audit-history app/build.gradle.kts:POLARIS_VERSION_NAME
 
+  # 门禁通过后由流水线自己打 tag：人工不再先打 tag，避免「tag 指向的提交」与
+  # 「实际构建的提交」分叉。只创建 v* 标签；已存在且指向同一 commit 时幂等继续；
+  # 指向别的 commit 直接失败 —— 绝不 force、不移动、不删除任何已有 tag。
+  release-tag:
+    needs: [release-precheck, version]
+    if: inputs.dryRun != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      SHA: ${{ github.sha }}
+    steps:
+      - name: 创建或校验 tag（幂等，不 force）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          case "$TAG" in
+            v*) ;;
+            *) echo "::error::拒绝创建非 v* 标签：$TAG"; exit 1 ;;
+          esac
+          OUT="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>&1)" && STATUS=0 || STATUS=$?
+          if [ "$STATUS" = "0" ]; then
+            if [ "$OUT" != "$SHA" ]; then
+              echo "::error::tag $TAG 已存在且指向 $OUT，本次构建的是 $SHA；拒绝移动/覆盖已有 tag"
+              exit 1
+            fi
+            echo "::notice::tag $TAG 已存在且指向本次构建提交，幂等继续"
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404'; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA" >/dev/null
+            echo "::notice::已创建 tag $TAG → $SHA"
+          else
+            echo "::error::读取 tag $TAG 失败（fail-closed，不打 tag）：$OUT"
+            exit 1
+          fi
+          FINAL="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)"
+          if [ "$FINAL" != "$SHA" ]; then
+            echo "::error::tag $TAG 读回指向 $FINAL，期望 $SHA"
+            exit 1
+          fi
+          echo "::notice::tag $TAG 已确认指向 $SHA"
+
   build:
-    needs: version
+    needs: [version, release-tag]
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.release-tag.result != 'failure' && needs.release-tag.result != 'cancelled' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -327,7 +524,10 @@ jobs:
         with:
           cache-read-only: false
 
-      - name: 单元测试 + 编译
+      # 单测 / ktlint / Android Lint / R8 存活校验不再在这里重复跑：ci.yml 的质量门禁
+      # 已经跑过，而 release-precheck 要求那次结果必须是 success（见 release-precheck job）。
+      # 这里只负责产出可发布的二进制。
+      - name: 编译（:app:assemble${{ inputs.buildType }}）
         env:
           POLARIS_APP_NAME: ${{ inputs.appName }}
           POLARIS_APPLICATION_ID: ${{ inputs.applicationId }}
@@ -366,31 +566,7 @@ jobs:
           # 这里只做转发，避免再出现一份内联的 VC 计算逻辑与发布标签分叉。
           export POLARIS_VERSION_NAME="$POLARIS_RELEASE_VERSION"
           export POLARIS_VERSION_CODE="$POLARIS_RELEASE_CODE"
-          ./gradlew :app:testDebugUnitTest ":app:assemble$POLARIS_BUILD_TYPE"
-
-      - name: 代码风格与静态检查（ktlint + Android Lint + R8 存活校验）
-        env:
-          POLARIS_USE_MIRROR: 'false'
-          POLARIS_RELEASE_STORE_FILE: ${{ runner.temp }}/build-throwaway.keystore
-          POLARIS_RELEASE_STORE_PASSWORD: build-throwaway
-          POLARIS_RELEASE_KEY_ALIAS: build-throwaway
-          POLARIS_RELEASE_KEY_PASSWORD: build-throwaway
-        run: |
-          set -e
-          keytool -genkeypair -v \
-            -keystore "$POLARIS_RELEASE_STORE_FILE" \
-            -alias build-throwaway -keyalg RSA -keysize 2048 -validity 1 \
-            -storepass build-throwaway -keypass build-throwaway \
-            -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN"
-          ./gradlew :app:ktlintCheck :app:lintDebug
-
-          ./gradlew :app:verifyReleaseApiSurvivors
-
-          if rg -n 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
-               app/src/main/java --glob '!**/ui/theme/SlteIcons.kt' --glob '!**/ui/v5/**'; then
-            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（SlteIcons 统一图标规范；ui/v5 设计系统目录除外，其图标为组件自身定义）"
-            exit 1
-          fi
+          ./gradlew ":app:assemble$POLARIS_BUILD_TYPE"
 
       - name: 生成校验文件（SHA-256 + 签名证书指纹）
         if: inputs.buildType == 'release'
@@ -428,17 +604,17 @@ jobs:
           echo "--- 签名证书 ---"
           grep -iE "certificate (SHA-256|SHA-1) digest|Signer #1" dist/SIGNING.txt | head -10 || true
 
-      - name: 上传检查报告
+      - name: 上传失败报告（构建失败时）
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Polaris-reports-${{ inputs.versionName }}
           path: |
-            app/build/reports/ktlint/**
-            app/build/reports/lint-results-debug.html
+            app/build/reports/**
           if-no-files-found: ignore
 
       - name: 上传产物
+        if: inputs.dryRun != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Polaris-${{ inputs.versionName }}
@@ -456,7 +632,8 @@ jobs:
   # Windows 便携版：与安卓 APK 共用同一个 versionName / tag / Release。
   # 版本号只从 version job 取，不在这里重新解析，避免两个产物版本号分叉。
   windows:
-    needs: version
+    needs: [version, release-tag]
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.release-tag.result != 'failure' && needs.release-tag.result != 'cancelled' }}
     runs-on: windows-latest
     permissions:
       contents: read
@@ -515,6 +692,7 @@ jobs:
         run: npm run dist
 
       - name: 上传产物
+        if: inputs.dryRun != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Polaris-portable-${{ inputs.versionName }}
@@ -523,8 +701,8 @@ jobs:
           retention-days: 90
 
   release:
-    needs: [build, windows]
-    if: inputs.buildType == 'release' && inputs.publishRelease == 'true'
+    needs: [build, windows, release-tag]
+    if: inputs.buildType == 'release' && inputs.publishRelease == 'true' && inputs.dryRun != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
