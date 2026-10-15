@@ -839,11 +839,17 @@ jobs:
           if (Test-Path $tmp2) { Remove-Item $tmp2 -Recurse -Force }
           Expand-Archive -LiteralPath $zip -DestinationPath $tmp2 -Force
           node scripts/package-manifest.js verify $tmp2
-          $countAfter = (Get-ChildItem $tmp2 -Recurse -File).Count
-          if ($countAfter -ne ($countBefore + 1)) {
-            Write-Error "重打包后文件数 $countAfter 与预期 $($countBefore + 1) 不一致（原 $countBefore 个 + 清单 1 个），拒绝上传"
-            exit 1
-          }
+          # 重打包后断言（独立 PR ci/win-repack-assertions；决策主管五条要求，全部 fail-closed）：
+          #   ① 条目名：无反斜杠、不以 / 开头、无 .. 段
+          #   ② 文件条目集合与源目录**归一化后**逐一相同（分隔符/大小写统一后比集合，不是只比数量）
+          #   ③ 目录条目差异：只允许「源里是空目录」被丢，并打印结论——空目录丢失可接受（便携包不依赖空目录，
+          #      data/ 由运行期 paths.ensureAll 创建）；将来若包内出现必须存在的空目录，改为放 .keep 占位。
+          #      非空目录被丢 → 红，并要求单独报主管
+          #   ④ 条目名大小写与源**逐字一致**（② 归一化比较抓不到大小写变化）
+          #   ⑤ 判定逻辑在 Node 脚本里，负例可离线复现（scripts/verify-repack-test.js）
+          # 为什么不用 pwsh 直接比：Windows 文件系统大小写不敏感、解压路径天然带反斜杠（按解压路径判会假红），
+          # 条目名的真身只在 zip 中央目录里；放进 Node 也让 ⑤ 的负例能在本地/CI 真跑。
+          node scripts/verify-repack.js --before $tmp --zip $zip
           $after = (Get-FileHash $zip -Algorithm SHA256).Hash
           Write-Host "重打包完成：$zip"
           Write-Host "  重打包前 sha256 = $before"
