@@ -140,7 +140,7 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 
 ## 参与开发
 
-仓库只有 `main` 一条长期分支：所有改动一律走**短命分支 + PR**（模板见 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)），禁止直推 `main`。分支命名 `feat|fix|chore|docs|style|ci/<端>-<简述>`；PR 合并前必须通过「版本门禁自测 / 内核 Go 门禁（vet + build + test）/ 质量门禁（test + ktlint + lint）」三项检查，合并用 squash。
+本仓库以 `main` 为唯一长期分支（平台分支正在退役）：所有改动一律走**短命分支 + PR**（模板见 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)），禁止直推 `main`。分支命名 `feat|fix|chore|docs|style|ci/<端>-<简述>`；PR 合并前必须通过「版本门禁自测 / 内核 Go 门禁（vet + build + test）/ 质量门禁（test + ktlint + lint）」三项检查，合并用 squash。
 
 ## 社区
 
