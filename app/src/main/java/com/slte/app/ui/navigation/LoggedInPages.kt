@@ -234,6 +234,8 @@ internal fun ServerPageContent(
     val isTestingAll by serverViewModel.isTestingAll.collectAsStateWithLifecycle()
     // 折叠态放 ViewModel：切 Tab 会销毁本屏组合，屏幕内 remember/rememberSaveable 都会丢
     val collapsedSections by serverViewModel.collapsedSections.collectAsStateWithLifecycle()
+    // 显示名映射要放过用户自建组（见 groupDisplayName）；只影响标题文本
+    val customGroupNames by serverViewModel.customGroupNames.collectAsStateWithLifecycle()
     // 本地分流开关从设置页迁到节点页；用无 key 的 hiltViewModel()（与 SettingsPageContent 同款），
     // 全仓无 NavHost → 落在同一 Activity store、按类名 key，因此两页拿到**同一实例**，
     // 不会出现"一处拨动另一处显示旧值"的双真相。
@@ -256,6 +258,7 @@ internal fun ServerPageContent(
         onNavSelect = onNavSelect,
         collapsedSections = collapsedSections,
         onToggleSection = serverViewModel::toggleSection,
+        customGroupNames = customGroupNames,
         localRoutingEnabled = settingsData.localRoutingEnabled,
         localRoutingBusy = settingsData.routingSync != com.slte.app.ui.screen.settings.RemindSync.Idle,
         onToggleLocalRouting = { settingsViewModel.setLocalRouting(!settingsData.localRoutingEnabled) },
