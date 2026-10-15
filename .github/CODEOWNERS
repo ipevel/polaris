@@ -1,0 +1,29 @@
+# Polaris CODEOWNERS
+#
+# 说明：团队里的「Bot 分工」不是 GitHub 账号 —— 所有 Bot 都通过同一个账号 @ipevel 操作，
+# 所以这里只能写 @ipevel，无法直接表达 Bot 名。下面用注释记录内部分工约定，
+# 真正的指派发生在团队内部的派单流程里。
+#
+# 内部分工（与 Bot 职责一致）：
+#   design/windows/**        → Polaris-Windows
+#   app/**、kernel-*/**      → Polaris-Android
+#   .github/**、.scripts/**  → Polaris主管
+#
+# ⚠️ 当前 main 分支保护 required_approving_review_count = 0，
+# 因此本文件只起记录与提醒作用，不产生阻塞效果（GitHub 也不允许作者自审）。
+# 人工把关由「决策对话批准 + CI required status checks」承担。
+
+*                         @ipevel
+
+# Windows 端
+/design/windows/          @ipevel
+
+# 安卓端与内核
+/app/                     @ipevel
+/kernel-core/             @ipevel
+/kernel-common/           @ipevel
+/kernel-service/          @ipevel
+
+# CI / 脚本 / 发版门禁
+/.github/                 @ipevel
+/.scripts/                @ipevel

@@ -11,17 +11,21 @@
 # 这个 workflow 就是补这一块：push / PR 都自动跑，只做**不需要凭据、不下载外网、
 # 不碰真安装目录**的离线自检（真面板那两条见 README 的 `test:real` / `test:ui`）。
 #
-# 触发分支：windows-portable（这条分支上才有 design/windows/ 的所有权）。
-# 合并进 main 之后，main 上的 push/PR 由主 ci.yml 负责；这个文件同步过去后
-# 会在 windows-portable 上继续生效，不会和主 ci.yml 打架（不同文件、不同 job 名）。
+# 触发分支：main + windows-portable。
+# 2026-10-15 起 Polaris 改为「单 main + 短命分支 + PR」：main 是唯一集成与发版源，
+# windows-portable 只作过渡保留，因此这条门禁必须跟着 main 的 push / PR 一起跑，
+# 否则 design/windows/app 的改动在 main 上无人扫（主 ci.yml 是纯安卓 + Go）。
+# 不加 paths 过滤：一旦加了 paths，不碰 design/windows/** 的 PR 不会上报这条 check，
+# 而它是要当 required status check 用的 —— required 的 check 不上报会把 PR 永久卡住。
+# 这条 workflow 与主 ci.yml 是不同文件、不同 job 名，互不覆盖、互不打架。
 
 name: Polaris Windows CI
 
 on:
   push:
-    branches: [windows-portable]
+    branches: [main, windows-portable]
   pull_request:
-    branches: [windows-portable]
+    branches: [main, windows-portable]
   workflow_dispatch:
 
 permissions:

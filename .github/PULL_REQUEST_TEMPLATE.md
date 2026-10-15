@@ -1,19 +1,15 @@
 <!--
-感谢你为 Polaris 贡献代码！
-Thank you for contributing to Polaris!
-
-请在提交 PR 前，确保以下清单都已完成，并将未涉及的项删除。
-Before submitting your PR, please ensure the following checklist is complete, and remove items that don't apply.
+Polaris 流程（2026-10-15 起）：单 main + 短命分支 + PR。
+- 任何改动一律走短命分支 + PR，禁止直推 main。
+- 下面六项全部必填，缺一项不予合并。
+- 合并由「决策对话」批准，且 CI required status checks 必须全绿。
 -->
 
-## 描述 / Description
+## 1. 动机 / Motivation（必填）
 
-<!--
-请简要描述这个 PR 做了什么，以及相关的 Issue 编号（如有）。
-Briefly describe what this PR does and reference related issue numbers, if any.
--->
+<!-- 为什么做这个改动：要解决的现象、用户可见的影响、关联 Issue（如有）。 -->
 
-- 关联 Issue / Closes #（填写 Issue 编号）
+- 关联 Issue / Closes #
 - 变更类型 / Type of change:
   - [ ] Bug 修复 / Bug fix
   - [ ] 新功能 / New feature
@@ -21,57 +17,50 @@ Briefly describe what this PR does and reference related issue numbers, if any.
   - [ ] 性能优化 / Performance optimization
   - [ ] 代码重构 / Code refactoring
   - [ ] 文档更新 / Documentation update
-  - [ ] 其他 / Other
+  - [ ] CI / 流程 / Other
 
-## 变更详情 / Changes Made
+## 2. 改动清单 / Changes（必填）
 
-<!--
-请详细描述你做了哪些变更。
-Describe in detail the changes you've made.
--->
+<!-- 逐文件或逐模块列出改了什么，带路径。 -->
 
 1. 
 2. 
 3. 
 
-## 测试 / Testing
+## 3. 影响面 / Impact（必填）
 
-<!--
-请描述你是如何测试这些变更的。
-Describe how you tested these changes.
--->
+<!-- 影响哪个端、哪些用户路径、是否需要发版、有没有碰版本行。 -->
 
-- [ ] 我已在 Android 设备上手动测试通过 / I have manually tested on an Android device
-- [ ] 我已运行现有单元测试 / I have run existing unit tests
-- [ ] 我已添加新的测试用例 / I have added new test cases
-- [ ] 本项不需要测试 / No testing needed for this change
+- 端 / Target: 安卓 / Windows / 内核 Go / CI 流程
+- 用户可见变化: 
+- 是否需要发版: 
+- 版本行（`app/build.gradle.kts:48-49`、`design/windows/app/package.json` 与 `package-lock.json`）: 未动 / 动了（仅发版 PR 允许动）
 
-### 测试环境 / Test Environment
+## 4. 验证证据 / Verification（必填）
 
-- 设备型号 / Device: 
-- Android 版本 / Android version: 
-- Polaris 版本 / Polaris version: 
+<!-- 必须给可复核的证据：命令 + 结果数字 + 日志路径。只写「已测试」不算。 -->
 
-## 清单 / Checklist
+- RED（改动前确实失败的证据）: 
+- GREEN（改动后通过的证据，含用例数与耗时）: 
+- CI: 
 
-<!--
-请在提交 PR 前检查以下各项，符合条件的打勾。
-Please review the following before submitting your PR.
--->
+## 5. 回退方案 / Rollback（必填）
 
-- [ ] 我的代码遵循了项目的代码风格 / My code follows the project's code style
-- [ ] 我已自行检查过代码，没有明显问题 / I have self-reviewed my code
-- [ ] 我已为变更添加了必要的注释 / I have added necessary comments to the changes
-- [ ] 相应的文档已更新（如需要）/ Documentation has been updated accordingly (if needed)
-- [ ] 我的变更没有引入新的警告 / My changes introduce no new warnings
-- [ ] 我已确认变更不会破坏现有功能 / I have confirmed that existing functionality is not broken
+<!-- 合并后怎么撤：squash commit SHA / revert PR / 是否涉及数据或配置迁移。 -->
 
-## 截图 / Screenshots
+## 6. 风险与未覆盖项 / Risks & Gaps（必填）
 
-<!--
-如果涉及 UI 变更，请附上截图。
-If the PR includes UI changes, please attach screenshots.
--->
+<!-- 已知风险、无设备未取证的真机项、有意不做的事。不许把未覆盖写成通过。 -->
+
+## 提交前自查 / Pre-submit checklist
+
+- [ ] 改动都在短命分支上，没有直推 main
+- [ ] 分支名符合规范：`feat|fix|chore|docs|style|ci/<端>-<简述>`
+- [ ] 版本行只在发版 PR 里动
+- [ ] 上面六项都填了，没有留空
+- [ ] 本地跑过对应门禁（安卓 `:app:ktlintCheck` / Windows `npm run test:offline` / Go `go vet`）
+
+## 截图 / Screenshots（涉及 UI 时）
 
 | 变更前 / Before | 变更后 / After |
 | --- | --- |
