@@ -521,6 +521,15 @@ async function download(url, version) {
     throw new Error(S.error);
   }
 
+  // PR #15 补的硬条件：下载/解压完成后**先验一次**包内清单 + sha256（不通过就停在 error，用户当场看到原因）
+  const mf0 = verifyManifest(root);
+  if (!mf0.ok) {
+    set({ phase: 'error', error: '更新包校验失败：' + mf0.reason });
+    log.error('更新包清单校验失败：' + mf0.reason);
+    throw new Error(S.error);
+  }
+  log.info('更新包清单校验通过（' + mf0.count + ' 个文件）');
+
   S.staged_at = Date.now();
   S.extractor = extractor;
   saveStaged();
