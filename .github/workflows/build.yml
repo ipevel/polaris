@@ -263,13 +263,18 @@ jobs:
             *) echo "::error::拒绝使用非 v* 标签：$TAG"; exit 1 ;;
           esac
           OUT="$(gh api "repos/$REPO/commits/$TAG" --jq .sha 2>&1)" && STATUS=0 || STATUS=$?
+          # 这个端点对「ref 不存在」返回 422（body: No commit found for SHA: <ref>），
+          # 只有别的失败路径才回 404：两种都当「尚不存在」，其余一律 fail-closed。
+          # 422 必须同时带 No commit found 才算不存在（措辞/误匹配时不静默放宽）。
+          # 2026-10-15 实测：/commits/v1.12.0 -> 422；/git/ref/tags/v1.12.0 -> 404。
           if [ "$STATUS" = "0" ]; then
             if [ "$OUT" != "$SHA" ]; then
               echo "::error::tag $TAG 已存在且指向 $OUT，本次构建的是 $SHA；请核对 versionName / releaseTag"
               exit 1
             fi
             echo "::notice::tag $TAG 已存在且指向本次构建提交，幂等继续"
-          elif printf '%s' "$OUT" | grep -q 'HTTP 404'; then
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
+            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
             echo "::notice::tag $TAG 尚不存在，将由 release-tag job 创建（指向 $SHA）"
           else
             echo "::error::读取 tag $TAG 失败（fail-closed，不放行）：$OUT"
@@ -392,13 +397,18 @@ jobs:
             *) echo "::error::拒绝创建非 v* 标签：$TAG"; exit 1 ;;
           esac
           OUT="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>&1)" && STATUS=0 || STATUS=$?
+          # 这个端点对「ref 不存在」返回 422（body: No commit found for SHA: <ref>），
+          # 只有别的失败路径才回 404：两种都当「尚不存在」，其余一律 fail-closed。
+          # 422 必须同时带 No commit found 才算不存在（措辞/误匹配时不静默放宽）。
+          # 2026-10-15 实测：/commits/v1.12.0 -> 422；/git/ref/tags/v1.12.0 -> 404。
           if [ "$STATUS" = "0" ]; then
             if [ "$OUT" != "$SHA" ]; then
               echo "::error::tag $TAG 已存在且指向 $OUT，本次构建的是 $SHA；拒绝移动/覆盖已有 tag"
               exit 1
             fi
             echo "::notice::tag $TAG 已存在且指向本次构建提交，幂等继续"
-          elif printf '%s' "$OUT" | grep -q 'HTTP 404'; then
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
+            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA" >/dev/null
             echo "::notice::已创建 tag $TAG → $SHA"
           else
