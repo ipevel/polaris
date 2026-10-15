@@ -86,44 +86,53 @@ constructor(
      * 「UI 显示开启而内核按关闭处理」的期望值/真实值分裂（pitfall #6）。
      * 启用状态由 [ensureDefault] 在订阅导入流程写盘后再被读到。
      *
-     * 读到的**非法自定义组/直连域名会被清掉**（`routing.json` 可能由旧版本或
-     * 其它写入点留下非法值，非法值会让整份内核配置加载失败）。清洗结果会
-     * 立刻回写一次，避免每次启动重复清洗。返回的 [SanitizedRoutingState] 带
-     * 丢弃数量，供 UI 提示。enabled / groups 开关不受影响。
+     * 读到的**非法自定义组/直连域名只在这里被隐藏、不回写磁盘**：`routing.json` 可能由旧版本
+     * 或其它写入点留下非法值，App 侧清单不该用它；但**绝不因为隐藏而回写磁盘**——曾经的
+     * `write(clean)` 会把用户的条目永久删掉（1.12.0「与内置组同名的自定义组被静默删除」就是
+     * 这么来的，磁盘上没有任何备份）。内核自己也会跳过非法项（`native/config/routing/routing_build.go`
+     * 的 `validGroupName` / `validRuleDomain` 都是告警跳过、不影响整体加载），所以磁盘保持原样是安全的。
      *
-     * 注意：本方法**不递归**——只有 [loadSanitized] 会回写，缓存层不会。
+     * 历史组名迁移仍会回写，但**只写归一后的名字**（写 [RoutingState] 里未过滤的 custom/
+     * directDomains），不能写清洗后的 state，否则迁移会顺手删掉被隐藏项。
+     *
+     * [SanitizedRoutingState] 带**被隐藏的条目本身**，UI 因此每次读都能列出「暂时隐藏了什么」
+     * （不能只报「本次读丢了几个」——那样丢弃先由别的路径触发时用户永远看不到）。
+     * enabled / groups 开关不受影响。
+     *
+     * 注意：本方法**不递归**——只有本方法会回写（且仅限迁移），缓存层不会。
      */
     fun loadSanitized(): SanitizedRoutingState = lock.withLock {
         val rawFile = readRaw()
         val raw = migrateLegacyNames(rawFile)
         val custom = raw.custom.filter { RoutingInputValidator.isValidGroupName(it.name) }
         val domains = raw.directDomains.filter { RoutingInputValidator.isValidRuleDomainShape(it) }
-        val droppedCustom = raw.custom.size - custom.size
-        val droppedDomains = raw.directDomains.size - domains.size
+        val hiddenCustom = raw.custom.filterNot { RoutingInputValidator.isValidGroupName(it.name) }
+        val hiddenDomains = raw.directDomains.filterNot { RoutingInputValidator.isValidRuleDomainShape(it) }
         val migrated = raw != rawFile
-        val clean = raw.copy(custom = custom, directDomains = domains)
-        if (droppedCustom > 0 || droppedDomains > 0 || migrated) {
-            if (droppedCustom > 0 || droppedDomains > 0) {
-                AppLog.w(
-                    LOG_TAG,
-                    "load: 已清除非法本地分流项 custom=$droppedCustom domain=$droppedDomains",
-                )
-            }
-            if (migrated) {
-                AppLog.w(LOG_TAG, "load: 已迁移历史分流组名到「$AI_GROUP_NAME」")
-            }
-            write(clean)
+        if (hiddenCustom.isNotEmpty() || hiddenDomains.isNotEmpty()) {
+            // 只告警、不回写：磁盘是用户数据的唯一副本，隐藏不等于删除。
+            AppLog.w(
+                LOG_TAG,
+                "load: 暂时隐藏非法本地分流项 custom=${hiddenCustom.size} domain=${hiddenDomains.size}（磁盘保持原样）",
+            )
         }
-        SanitizedRoutingState(clean, droppedCustom, droppedDomains)
+        if (migrated) {
+            AppLog.w(LOG_TAG, "load: 已迁移历史分流组名到「$AI_GROUP_NAME」")
+            // 迁移照旧落盘，但写的是**未过滤**的 raw：只把名字归一，绝不顺带删掉被隐藏项。
+            write(raw)
+        }
+        SanitizedRoutingState(raw.copy(custom = custom, directDomains = domains), hiddenCustom, hiddenDomains)
     }
 
-    /** [loadSanitized] 的结果：清洗后的状态 + 被丢弃的条目数（供 UI 提示）。 */
+    /** [loadSanitized] 的结果：清洗后的状态 + **被隐藏**的条目（供 UI 列出，名称可读）。 */
     data class SanitizedRoutingState(
         val state: RoutingState,
-        val droppedCustom: Int,
-        val droppedDomains: Int,
+        val hiddenCustom: List<RoutingCustomGroup>,
+        val hiddenDomains: List<String>,
     ) {
-        val hasDropped: Boolean get() = droppedCustom > 0 || droppedDomains > 0
+        val droppedCustom: Int get() = hiddenCustom.size
+        val droppedDomains: Int get() = hiddenDomains.size
+        val hasDropped: Boolean get() = hiddenCustom.isNotEmpty() || hiddenDomains.isNotEmpty()
     }
 
     /**
