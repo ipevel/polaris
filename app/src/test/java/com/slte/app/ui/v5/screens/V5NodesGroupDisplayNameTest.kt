@@ -41,7 +41,7 @@ class V5NodesGroupDisplayNameTest {
     private val microsoftMember = "微软专用节点"
 
     private fun setNodesScreen(
-        customGroupNames: Set<String> = emptySet(),
+        customGroupNames: Set<String>? = emptySet(),
         collapsedSections: Set<String> = setOf(legacyName),
         onToggleSection: (String) -> Unit = {},
         onSelectInGroup: (String, String) -> Unit = { _, _ -> },
@@ -111,6 +111,14 @@ class V5NodesGroupDisplayNameTest {
     @Test
     fun `自建组与旧内置组同名时标题显示原名`() {
         setNodesScreen(customGroupNames = setOf(legacyName))
+
+        composeRule.onNodeWithText(legacyName).assertExists()
+        composeRule.onNodeWithText(currentName).assertDoesNotExist()
+    }
+
+    @Test
+    fun `读不出自建组集合时（null）标题保守显示原名`() {
+        setNodesScreen(customGroupNames = null)
 
         composeRule.onNodeWithText(legacyName).assertExists()
         composeRule.onNodeWithText(currentName).assertDoesNotExist()

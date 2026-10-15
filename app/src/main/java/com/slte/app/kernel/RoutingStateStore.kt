@@ -157,6 +157,22 @@ constructor(
      */
     fun load(): RoutingState = migrateLegacyNames(readRaw())
 
+    /**
+     * 只读、**不清洗、不回写、可失败**的读：文件缺失 → 空 [RoutingState]（确实没有自建组）；
+     * 文件存在但解析失败 → null（调用方据此走保守分支）。
+     *
+     * 与 [load] 的区别：[load] 把解析失败也吞成空状态，调用方无法区分「没有自建组」与
+     * 「读不出来」——对显示映射来说前者照常映射、后者必须保守不映射。
+     */
+    fun readOrNull(): RoutingState? {
+        val file = stateFile()
+        if (!file.exists()) return RoutingState()
+        return runCatching { json.decodeFromString<RoutingState>(file.readText()) }.getOrElse {
+            AppLog.w(LOG_TAG, "readOrNull: 解析失败: ${sanitizeLog(it.message ?: "Unknown")}")
+            null
+        }
+    }
+
     /** 原样读取磁盘内容（不做历史组名归一；供 [loadSanitized] 判断是否需要回写）。 */
     private fun readRaw(): RoutingState = runCatching {
         val file = stateFile()

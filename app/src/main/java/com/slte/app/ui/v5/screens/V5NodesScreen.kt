@@ -150,8 +150,9 @@ internal fun V5NodesScreen(
     collapsedSections: Set<String> = emptySet(),
     onToggleSection: (String) -> Unit = {},
     // 用户自建分流组名：渲染层据此决定「不映射自建组」（见 groupDisplayName）。
-    // 空集 = 没有已知自建组，按当前名显示；折叠键与回调一律不用它。
-    customGroupNames: Set<String> = emptySet(),
+    // null = 读不出来（routing.json 解析失败）→ 保守不映射；空集 = 确实没有自建组 → 照常映射。
+    // 折叠键与回调一律不用它。
+    customGroupNames: Set<String>? = null,
     // 本地分流方案开关（从设置页迁来；状态与写入逻辑仍复用 SettingsViewModel）
     localRoutingEnabled: Boolean = false,
     localRoutingBusy: Boolean = false,
@@ -305,7 +306,7 @@ internal fun V5NodesScreen(
 @Composable
 private fun NodeGroupCard(
     name: String,
-    customGroupNames: Set<String> = emptySet(),
+    customGroupNames: Set<String>? = null,
     nowLabel: String,
     selectedName: String?,
     members: List<KernelProxyMember>,
