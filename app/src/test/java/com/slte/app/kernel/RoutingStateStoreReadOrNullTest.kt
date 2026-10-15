@@ -4,6 +4,7 @@
 package com.slte.app.kernel
 
 import com.slte.app.support.RobolectricTestApplication
+import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -59,5 +60,40 @@ class RoutingStateStoreReadOrNullTest {
         )
 
         assertEquals(listOf("Ⓜ️ 微软"), store.readOrNull()?.custom?.map { it.name })
+    }
+
+    /** 磁盘内容摘要：断言「读入口不改盘」。 */
+    private fun sha256(): String = MessageDigest.getInstance("SHA-256").digest(store.stateFile().readBytes())
+        .joinToString("") { "%02x".format(it) }
+
+    /**
+     * 语义交叉检查（PR #14「清洗只读不回写」合入 main 之后）：
+     * [RoutingStateStore.readOrNull] 读的是**原始未清洗**内容——保留名冲突那条自定义组照样读得到；
+     * 清洗只影响 `loadSanitized` 的返回态与 hidden 列表，两个入口都**不写盘**。
+     */
+    @Test
+    fun `readOrNull 读原始未清洗内容，与 loadSanitized 的 hidden 语义互不影响`() {
+        store.stateFile().parentFile?.mkdirs()
+        store.stateFile().writeText(
+            """{"version":1,"enabled":true,"custom":[""" +
+                """{"name":"我的组","url":"https://x.example.com/a.yaml"},""" +
+                """{"name":"Ⓜ️ 微软云盘","url":"https://x.example.com/b.yaml"}],""" +
+                """"direct_domains":["panel.example.cn","bad domain"]}""",
+        )
+        val before = sha256()
+
+        // readOrNull 不过滤：保留名冲突那条与非法域名都原样读得到
+        val raw = store.readOrNull()
+        assertEquals(listOf("我的组", "Ⓜ️ 微软云盘"), raw?.custom?.map { it.name })
+        assertEquals(listOf("panel.example.cn", "bad domain"), raw?.directDomains)
+
+        // loadSanitized 只在返回态里隐藏，并把被隐藏条目带进 hidden 列表
+        val sanitized = store.loadSanitized()
+        assertEquals(listOf("我的组"), sanitized.state.custom.map { it.name })
+        assertEquals(listOf("Ⓜ️ 微软云盘"), sanitized.hiddenCustom.map { it.name })
+        assertEquals(listOf("bad domain"), sanitized.hiddenDomains)
+
+        assertEquals("两个读入口都不得改盘", before, sha256())
+        assertEquals(listOf("我的组", "Ⓜ️ 微软云盘"), store.readOrNull()?.custom?.map { it.name })
     }
 }

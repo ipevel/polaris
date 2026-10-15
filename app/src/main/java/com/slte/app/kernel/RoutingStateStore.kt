@@ -172,6 +172,9 @@ constructor(
      *
      * 与 [load] 的区别：[load] 把解析失败也吞成空状态，调用方无法区分「没有自建组」与
      * 「读不出来」——对显示映射来说前者照常映射、后者必须保守不映射。
+     *
+     * **本方法是只读入口：读原始文件、不经过任何清洗、不写盘，也不得作为写路径的基础**
+     * （写路径一律走 [load]/[loadSanitized] 那条链，避免有人拿未清洗的 state 去覆盖磁盘）。
      */
     fun readOrNull(): RoutingState? {
         val file = stateFile()
