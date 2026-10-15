@@ -34,6 +34,7 @@ import com.slte.app.kernel.OUTBOUND_DIRECT
 import com.slte.app.kernel.OUTBOUND_REJECT
 import com.slte.app.kernel.PRIMARY_SECTION_KEY
 import com.slte.app.kernel.RoutingReservedNames
+import com.slte.app.kernel.groupDisplayName
 import com.slte.app.kernel.orderMembers
 import com.slte.app.kernel.primaryGroupOf
 import com.slte.app.kernel.visibleGroupMembers
@@ -118,13 +119,15 @@ internal fun offlineMembersOf(nodes: List<NodeItem>): List<KernelProxyMember> = 
 private fun groupExitLabel(
     group: KernelProxyGroupInfo,
     primaryName: String?,
+    // 防御性：出口标签也可能是组名（结构组）。拿不到自建组集合（null）就保守不映射。
+    customNames: Set<String>? = null,
 ): String {
     val now = group.now ?: return stringResource(R.string.v5_group_unset)
     return when (now) {
         primaryName -> stringResource(R.string.v5_group_follow_primary)
         OUTBOUND_DIRECT -> stringResource(R.string.routing_outbound_direct)
         OUTBOUND_REJECT -> stringResource(R.string.routing_outbound_block)
-        else -> now
+        else -> groupDisplayName(now, customNames)
     }
 }
 
@@ -146,6 +149,9 @@ internal fun V5NodesScreen(
     // 给默认值是为了不破坏截图测试等既有调用点。
     collapsedSections: Set<String> = emptySet(),
     onToggleSection: (String) -> Unit = {},
+    // 用户自建分流组名：渲染层据此决定「不映射自建组」（见 groupDisplayName）。
+    // 空集 = 没有已知自建组，按当前名显示；折叠键与回调一律不用它。
+    customGroupNames: Set<String> = emptySet(),
     // 本地分流方案开关（从设置页迁来；状态与写入逻辑仍复用 SettingsViewModel）
     localRoutingEnabled: Boolean = false,
     localRoutingBusy: Boolean = false,
@@ -208,6 +214,7 @@ internal fun V5NodesScreen(
             NodeGroupCard(
                 modifier = Modifier.v5Enter(1),
                 name = primary?.name ?: stringResource(R.string.v5_all_nodes),
+                customGroupNames = customGroupNames,
                 nowLabel = primary?.now ?: stringResource(R.string.v5_group_unset),
                 selectedName = primary?.now,
                 members = members.ifEmpty { offlineMembers },
@@ -236,6 +243,7 @@ internal fun V5NodesScreen(
                     groupsForRouting.forEach { group ->
                         NodeGroupCard(
                             name = group.name,
+                            customGroupNames = customGroupNames,
                             nowLabel = groupExitLabel(group, primary?.name),
                             selectedName = group.now,
                             // 分流组同样过滤「故障转移」，保留 now 命中项；并套用与「节点选择」相同的
@@ -297,6 +305,7 @@ internal fun V5NodesScreen(
 @Composable
 private fun NodeGroupCard(
     name: String,
+    customGroupNames: Set<String> = emptySet(),
     nowLabel: String,
     selectedName: String?,
     members: List<KernelProxyMember>,
@@ -313,6 +322,9 @@ private fun NodeGroupCard(
     modifier: Modifier = Modifier,
 ) {
     val c = V5ThemeColors.current
+    // 唯一一处显示名映射：name 仍是内核原名（调用方用它做折叠键与选组），
+    // 只有标题文本与无障碍标签用映射后的名字。
+    val title = groupDisplayName(name, customGroupNames)
     V5CardFlat(modifier.fillMaxWidth()) {
         Row(
             Modifier
@@ -321,7 +333,7 @@ private fun NodeGroupCard(
                 .then(
                     v5Clickable(
                         role = Role.Button,
-                        label = name,
+                        label = title,
                         onClick = if (enabled) onToggle else null,
                     ),
                 )
@@ -329,7 +341,7 @@ private fun NodeGroupCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                name,
+                title,
                 fontSize = V5Type.sp15,
                 fontWeight = FontWeight.SemiBold,
                 color = c.text,

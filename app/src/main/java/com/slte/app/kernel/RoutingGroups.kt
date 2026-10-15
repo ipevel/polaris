@@ -76,6 +76,26 @@ val LegacyGroupAliases: Map<String, String> =
 fun canonicalGroupName(name: String): String = LegacyGroupAliases[name] ?: name
 
 /**
+ * 节点页卡片标题的**显示名**（只用于渲染）。
+ *
+ * 随包内核（libclash.so）里的组名可能还是旧名——改名只进了 Go 源码、没重建 .so，
+ * 节点页拿到的就是内核返回的「Ⓜ️ 微软」，而设置页读的是 Kotlin 镜像 [RoutingGroups]，
+ * 显示的是「Ⓜ️ 微软云盘」；本函数把两页的显示名对齐。
+ *
+ * 规则：
+ * - [customNames] 命中 → **原样返回**。用户自建组叫什么都归用户：v1.11.6 里
+ *   「Ⓜ️ 微软云盘」还只是别名、不是内置组，那时建的同名自建组不能因为内核还挂着旧名
+ *   就被替他改名；
+ * - 否则按 [canonicalGroupName] 归一（当前名与未知名都恒等返回）；
+ * - [customNames] 传 null = 调用点拿不到自建组集合 → **保守不映射**：宁可不改名，
+ *   也不要误改用户自建组。
+ *
+ * **绝不能**用在折叠键、选组参数、拖动顺序或 routing.json 上——那些一律继续用内核原名
+ * （[KernelProxyGroupInfo.name] 本身就是内核原名，映射只允许出现在渲染表达式里）。
+ */
+fun groupDisplayName(name: String, customNames: Set<String>?): String = if (customNames == null || name in customNames) name else canonicalGroupName(name)
+
+/**
  * 迁移已保存的组开关（纯函数，可单测）：旧组名折叠到当前组名，
  * 三者中任一为开 → 新组为开。
  *

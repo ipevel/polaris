@@ -67,6 +67,20 @@ constructor(
     private val _isLoadingGroups = MutableStateFlow(false)
     val isLoadingGroups: StateFlow<Boolean> = _isLoadingGroups.asStateFlow()
 
+    private val _customGroupNames = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * 用户自建分流组名，**只供渲染层决定显示名**（见 groupDisplayName）。
+     *
+     * 显示映射必须放过自建组：用户完全可以把自建组叫成某个旧内置组名（v1.11.6 里
+     * 「Ⓜ️ 微软云盘」还只是别名、不是内置组，那时建的同名自建组就是这种情况），
+     * 那是他自己的名字，不能因为内核里还挂着旧名就替他改名。
+     *
+     * 读盘用 [com.slte.app.kernel.RoutingStateStore.load] 而不是 loadSanitized：后者会做
+     * 清洗回写，节点页没有理由触发那次写盘（清洗语义是另一条线）。
+     */
+    val customGroupNames: StateFlow<Set<String>> = _customGroupNames.asStateFlow()
+
     private val _testingGroup = MutableStateFlow<String?>(null)
     val testingGroup: StateFlow<String?> = _testingGroup.asStateFlow()
 
@@ -511,9 +525,20 @@ constructor(
 
     private suspend fun refreshGroups() {
         _isLoadingGroups.value = true
+        _customGroupNames.value = customGroupNamesFromStore()
         refreshPrimarySectionState(kernelProxy.proxyGroups())
         _isLoadingGroups.value = false
     }
+
+    /**
+     * 读自建分流组名（只读、不触发清洗回写；见 [customGroupNames] 的注释）。
+     *
+     * 同步读，不切 IO：routing.json 是个小文件，仓库里读它的既有路径
+     * （RoutingRulesViewModel.refresh、SettingsViewModel）也都在主线程同步读；
+     * 这里换成 withContext(Dispatchers.IO) 会把刷新挪出测试调度器，
+     * 让 ServerViewModelTest 的 advanceUntilIdle 抓不到状态更新（实测 5 条用例被拖挂）。
+     */
+    private fun customGroupNamesFromStore(): Set<String> = kernelProxy.config.routingStateStore.load().custom.map { it.name }.toSet()
 
     /**
      * 拉取组列表并把结果同步给折叠集合（避免各调用点各写一份）。
