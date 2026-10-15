@@ -330,6 +330,9 @@ jobs:
           # 说明本 workflow 的拼接没问题，坏的是自由文本输入本身。所以首选仓库里受 PR 审阅的
           # UTF-8 文件 docs/release-notes/<版本>.md，没有该文件才退回 dispatch 输入；两条路径
           # 过同一道编码校验，任一不合格一律不放行（fail-closed，发生在打 tag / 建 Release 之前）。
+          # 能力边界：这里只挡「可判定的损坏」（非 UTF-8 / UTF-8 BOM / 私用区 U+E000-U+F8FF /
+          # U+FFFD / C1 控制字符）；挡不住无损型乱码（例如 锟斤拷 这类双向转换产物，字符本身合法）。
+          # 所以发布前「人工确认说明稿」这一步不能省，本门禁只是下限，不替代人工确认。
           NOTES_FILE="docs/release-notes/${VERSION}.md"
           : > "$RUNNER_TEMP/notes_src.txt"
           if OUT="$(gh api "repos/$REPO/contents/$NOTES_FILE?ref=$SHA" --jq .content 2>&1)"; then
@@ -860,8 +863,14 @@ jobs:
           if OUT="$(gh api "repos/$REPO/contents/$NOTES_FILE?ref=$SHA" --jq .content 2>&1)"; then
             NOTES="$(printf '%s' "$OUT" | tr -d '\n' | base64 -d)"
             echo "::notice::变更说明取自 $NOTES_FILE"
-          else
+          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
+            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
+            # 只有「文件确实不存在」才回退 dispatch 输入；401/403/5xx 等读取失败一律 fail-closed
+            # （release-precheck 第 5 步已拦过一次，这里是纵深防御，避免静默回退到可能被转坏的输入）。
             echo "::notice::仓库无 $NOTES_FILE，变更说明用 dispatch 输入"
+          else
+            echo "::error::读取 $NOTES_FILE 失败（fail-closed，不发布）：$OUT"
+            exit 1
           fi
           {
             echo "## Polaris ${VERSION}"
