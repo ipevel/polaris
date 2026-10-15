@@ -264,6 +264,7 @@
     <string name="update_download_incomplete">下載未成功，請重試</string>
     <string name="update_download_network_error">網路連線失敗</string>
     <string name="update_download_checksum_failed">安裝包校驗失敗，已刪除</string>
+    <string name="update_download_install_failed">無法開啟系統安裝介面，安裝包已刪除</string>
     <string name="about_log_share_failed">無法分享日誌</string>
 
     <!-- Update (检查更新) -->

@@ -261,10 +261,26 @@ constructor(
         }
     }
 
+    /**
+     * 删除自定义规则组并落盘。
+     *
+     * 与 [setEnabled] / [moveGroup] / [resetDefaults] 一致地先立 [RoutingSync.Saving] 门：
+     * 写盘期间重复点击会在 [RoutingStateStore] 层各拿一份旧快照、后写覆盖先写（丢更新）。
+     */
     fun removeCustomGroup(name: String) {
+        if (_data.value.sync == RoutingSync.Saving) return
+        _data.update { it.copy(sync = RoutingSync.Saving, errorMessageRes = null) }
         viewModelScope.launch {
             if (kernelConfig.removeRoutingCustomGroup(name)) {
                 refresh()
+                _data.update { it.copy(sync = RoutingSync.Idle, savedCount = it.savedCount + 1) }
+            } else {
+                _data.update {
+                    it.copy(
+                        sync = RoutingSync.Idle,
+                        errorMessageRes = R.string.settings_local_routing_failed,
+                    )
+                }
             }
         }
     }

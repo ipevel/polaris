@@ -19,8 +19,15 @@ import kotlinx.coroutines.delay
  *
  * 超时用「有界轮询次数 × 每轮 delay」表达而非墙钟比较：生产环境每轮真实
  * 等待 300ms，协程测试（虚拟时钟）下 delay 立即返回，不会热旋真实时间。
+ *
+ * 整个轮询体包在 [KernelProxy.safe] 里：safe → KernelFaultReporter.guard 会用
+ * `withContext(ioDispatcher)` 把协程切到 IO。此前这里是 KernelProxy 里**唯一**
+ * 没切 IO 的内核探测，而调用方 MainViewModel 的 tunnelWatchJob 跑在
+ * viewModelScope.launch（Main.immediate）上，这几个 binder 调用（manager.clash()、
+ * queryTunnelState、queryProxyGroup、queryProxyGroupNames）会直接压在主线程上，
+ * 有 ANR 风险。切换只用 safe 这一种方式，避免与调用方再套一层重复切换。
  */
-suspend fun KernelProxy.awaitTunnelReady(timeoutMs: Long = TUNNEL_READY_TIMEOUT_MS): Boolean {
+suspend fun KernelProxy.awaitTunnelReady(timeoutMs: Long = TUNNEL_READY_TIMEOUT_MS): Boolean = safe(false, "awaitTunnelReady") {
     val maxPolls = (timeoutMs / TUNNEL_READY_POLL_MS).toInt().coerceAtLeast(1)
     var lastMode: String? = null
     repeat(maxPolls) {
@@ -29,13 +36,14 @@ suspend fun KernelProxy.awaitTunnelReady(timeoutMs: Long = TUNNEL_READY_TIMEOUT_
             val state = runCatching { clash.queryTunnelState() }.getOrNull()
             if (state != null) {
                 lastMode = state.mode.name
-                if (isProfileLoaded(clash, state.mode)) return true
+                // repeat 是 inline，return@safe 从这里直接带着 true 返回整个 safe 块
+                if (isProfileLoaded(clash, state.mode)) return@safe true
             }
         }
         delay(TUNNEL_READY_POLL_MS)
     }
     AppLog.w("Polaris-Kernel", "awaitTunnelReady 超时 ${timeoutMs}ms，最后 TunnelState.mode=$lastMode")
-    return false
+    false
 }
 
 /**

@@ -222,14 +222,11 @@ constructor(
                 }
                 keep = true
                 AppLog.i("Polaris-Update", "下载完成，跳转安装")
-                val needsPermission = installApk(destFile)
-                report(
-                    if (needsPermission) {
-                        DownloadResult.NeedsPermission(destFile)
-                    } else {
-                        DownloadResult.Installed(destFile)
-                    },
-                )
+                val outcome = installApk(destFile)
+                // 拉起失败时不能把文件留在外部下载目录（36 MB），交给 finally 删掉；
+                // 也不能报成功——否则用户点一次更新什么都没发生，文件还一直占着空间。
+                if (outcome == InstallOutcome.LAUNCH_FAILED) keep = false
+                report(installResult(outcome, destFile))
             }
         } catch (e: IOException) {
             // 取消也会让 OkHttp 抛 IOException（`Call.cancel()` 的表现形式），
@@ -326,7 +323,8 @@ constructor(
     }.getOrNull()
 
     /**
-     * 有待安装包且已获"安装未知应用"权限时触发安装，返回是否触发。
+     * 有待安装包且已获"安装未知应用"权限时触发安装；返回是否**真的**拉起了安装界面。
+     * 拉起失败时删掉暂存包并回报 [DownloadResult.Failed]，不再静默返回 true。
      * 供用户从系统设置回来后重试。
      */
     fun tryInstallPending(): Boolean {
@@ -337,17 +335,47 @@ constructor(
             pendingApk = null
             return false
         }
-        if (!appContext.packageManager.canRequestPackageInstalls()) return false
+        if (!canRequestPackageInstalls()) return false
         pendingApk = null
-        fireInstallIntent(file)
-        return true
+        if (fireInstallIntent(file)) return true
+        // 拉起失败：包留着也没人会用（pendingApk 已清空），删掉别占用存储，并把原因回报给关于页。
+        // 旧实现无论成败都 return true，用户从设置回来只看到"什么都没发生"。
+        file.delete()
+        report(DownloadResult.Failed(appContext.getString(R.string.update_download_install_failed)))
+        return false
     }
 
-    /** 拉起安装界面。返回 `true` 表示因缺权限而未安装、已跳系统设置、需稍后重试。 */
-    private fun installApk(file: File): Boolean {
+    /**
+     * "是否已获安装未知应用权限"的可注入缝（同 KernelProxySpeed.SpeedTestGate.nowMs 的
+     * internal 测试缝）：单测替换掉它，就不必把 PackageManager 拖进单测。
+     */
+    internal var canRequestPackageInstalls: () -> Boolean = {
+        appContext.packageManager.canRequestPackageInstalls()
+    }
+
+    /**
+     * "把 APK 交给系统安装器"的可注入缝：生产实现是 FileProvider + ACTION_VIEW，
+     * 单测替换成抛异常即可覆盖拉起失败分支。
+     */
+    internal var launchInstallIntent: (File) -> Unit = { file -> openInstallIntent(file) }
+
+    /** 安装动作的结果。 */
+    internal enum class InstallOutcome {
+        /** 已拉起系统安装界面。 */
+        LAUNCHED,
+
+        /** 缺"安装未知应用"权限，包已暂存并跳系统设置，待授权后由 [tryInstallPending] 补装。 */
+        NEEDS_PERMISSION,
+
+        /** 拉起安装界面失败：旧实现会在这里谎报成功，用户"点了更新什么都没发生"。 */
+        LAUNCH_FAILED,
+    }
+
+    /** 发起安装；缺权限时暂存包并跳系统设置，见 [InstallOutcome]。 */
+    internal fun installApk(file: File): InstallOutcome {
         // Android 8+：光有 REQUEST_INSTALL_PACKAGES 还不够，用户必须在系统设置里
         // 给本应用打开"允许安装未知应用"，否则 startActivity 直接失败。
-        if (!appContext.packageManager.canRequestPackageInstalls()) {
+        if (!canRequestPackageInstalls()) {
             AppLog.w("Polaris-Update", "未授予安装未知应用权限，暂存安装包并引导去设置")
             pendingApk = file
             val settingsIntent =
@@ -359,13 +387,35 @@ constructor(
                 }
             runCatching { appContext.startActivity(settingsIntent) }
                 .onFailure { AppLog.w("Polaris-Update", "打开安装权限设置失败: ${sanitizeLog(it.message ?: "Unknown")}") }
-            return true
+            return InstallOutcome.NEEDS_PERMISSION
         }
-        fireInstallIntent(file)
-        return false
+        return if (fireInstallIntent(file)) InstallOutcome.LAUNCHED else InstallOutcome.LAUNCH_FAILED
     }
 
-    private fun fireInstallIntent(file: File) {
+    /**
+     * [InstallOutcome] → 对外终态。
+     *
+     * 单独成函数是为了能被单测直接钉住：[InstallOutcome.LAUNCH_FAILED] 必须是
+     * [DownloadResult.Failed]。旧实现把"拉起失败"和"已拉起"都回报成成功，
+     * 用户点了更新什么都没发生，也没有任何提示。
+     */
+    internal fun installResult(
+        outcome: InstallOutcome,
+        file: File,
+    ): DownloadResult = when (outcome) {
+        InstallOutcome.LAUNCHED -> DownloadResult.Installed(file)
+        InstallOutcome.NEEDS_PERMISSION -> DownloadResult.NeedsPermission(file)
+        InstallOutcome.LAUNCH_FAILED ->
+            DownloadResult.Failed(appContext.getString(R.string.update_download_install_failed))
+    }
+
+    /** 拉起系统安装界面；返回是否真的拉起来了（异常时为 false）。 */
+    private fun fireInstallIntent(file: File): Boolean = runCatching { launchInstallIntent(file) }
+        .onFailure { AppLog.w("Polaris-Update", "跳转安装失败: ${sanitizeLog(it.message ?: "Unknown")}") }
+        .isSuccess
+
+    /** 生产实现：FileProvider 授权 + ACTION_VIEW 拉起系统安装器。 */
+    private fun openInstallIntent(file: File) {
         val uri =
             FileProvider.getUriForFile(
                 appContext,
@@ -377,8 +427,7 @@ constructor(
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-        runCatching { appContext.startActivity(intent) }
-            .onFailure { AppLog.w("Polaris-Update", "跳转安装失败: ${sanitizeLog(it.message ?: "Unknown")}") }
+        appContext.startActivity(intent)
     }
 
     private fun report(result: DownloadResult) {

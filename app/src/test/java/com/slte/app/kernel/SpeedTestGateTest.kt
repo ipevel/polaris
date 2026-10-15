@@ -7,6 +7,9 @@ import com.slte.app.support.RobolectricTestApplication
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -128,5 +131,47 @@ class SpeedTestGateTest {
         assertEquals(mapOf("probe" to 1), first.await())
         assertEquals(mapOf("cached" to 1), second.await())
         assertEquals(1, calls)
+    }
+
+    @Test
+    fun `探测抛异常后时间戳回滚不会把后续入口锁死在缓存上`() = runTest {
+        installClock()
+
+        runCatching {
+            SpeedTestGate.run(cached = { mapOf("cached" to 1) }) {
+                runs++
+                error("拨测崩了")
+            }
+        }
+        assertEquals(1, runs)
+
+        // D4：异常路径若不回滚 lastStartedAtMs，紧随其后的入口会命中 15 秒窗口，
+        // 只回放旧缓存且不再拨测——用户会看到"测速按钮失灵"。
+        clock += 100L
+        assertEquals(mapOf("probe" to 2), probe())
+        assertEquals(2, runs)
+    }
+
+    @Test
+    fun `探测被取消后时间戳回滚`() = runTest {
+        installClock()
+        val entered = CompletableDeferred<Unit>()
+
+        val job =
+            launch {
+                SpeedTestGate.run(cached = { mapOf("cached" to 1) }) {
+                    runs++
+                    entered.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        entered.await()
+        job.cancelAndJoin()
+        assertEquals(1, runs)
+
+        // 取消（用户退到后台/切节点）也必须回滚，否则窗口内所有入口只回放旧缓存。
+        clock += 100L
+        assertEquals(mapOf("probe" to 2), probe())
+        assertEquals(2, runs)
     }
 }

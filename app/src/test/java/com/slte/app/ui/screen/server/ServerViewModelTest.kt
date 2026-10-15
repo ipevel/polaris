@@ -24,6 +24,7 @@ import com.slte.app.support.stubKernelBridge
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -566,6 +567,107 @@ class ServerViewModelTest {
             vm.data.value.nodes.none { it.offline },
         )
     }
+
+    // region D7：测速门标志必须由 finally 复位（异常后按钮不得永久置灰）
+
+    /**
+     * D7 回归：全部测速中途被取消后，[ServerViewModel.isTestingAll] 必须复位。
+     *
+     * 现场：`startSpeedTest` 把门标志置位在协程**外**（点击即进入测速态），复位却写在协程体最后
+     * 一行。协程体中途跳出（取消 / 内核重载中 / binder 死亡）时那一行永远不执行，
+     * 「全部测速」按钮就永久置灰，只能重启 App。
+     *
+     * 注入点是 `speedTestProgressive` 这个 safe 操作，注入的异常是 [CancellationException]：
+     * [KernelProxy.safe] → `KernelFaultReporter.guard` 会把普通 `Exception` 吞成默认值并上报故障
+     * （生产语义，见 KernelFaultReporter.kt:44-50），只有 `CancellationException` 被原样重抛——
+     * 也就是说真实世界里能让门标志卡死的正是取消（页面销毁 / viewModelScope 取消 / 内核调用被取消），
+     * 注入普通异常只会测到测试桩自己，证明不了生产语义。
+     */
+    @Test
+    fun `全部测速被取消后测速门必须复位`() = runTest(mainRule.dispatcher) {
+        val vmRef = arrayOfNulls<ServerViewModel>(1)
+        var gateWhenKernelCalled = false
+        val vm = viewModelWithKernelCancelled("speedTestProgressive") {
+            gateWhenKernelCalled = vmRef[0]!!.isTestingAll.value
+        }
+        vmRef[0] = vm
+
+        vm.startSpeedTest()
+        assertTrue("前置条件：点击后应立刻进入测速态", vm.isTestingAll.value)
+        advanceUntilIdle()
+
+        // 前置条件在内核调用发生的那一刻取样：证明门标志确实被置起过，否则「最后是 false」
+        // 可能只是因为压根没进入测速态，测试就自证了。
+        assertTrue("前置条件：内核调用发生的那一刻测速门应处于置位状态", gateWhenKernelCalled)
+        assertTrue(
+            "测速被取消后必须复位门标志，否则按钮永久置灰（D7）",
+            !vm.isTestingAll.value,
+        )
+    }
+
+    /**
+     * D7 回归（单组测速）：[ServerViewModel.testGroup] 的 `_testingGroup` 同样没有 finally。
+     *
+     * 该标志是「某一行正在转圈」的唯一依据：中途跳出后残留，用户再点任何一组的测速都会被顶部的
+     * `if (_testingGroup.value != null) return` 吃掉，而转圈动画还挂在旧那一行上。
+     */
+    @Test
+    fun `单组测速被取消后测速门必须复位`() = runTest(mainRule.dispatcher) {
+        val vmRef = arrayOfNulls<ServerViewModel>(1)
+        var gateWhenKernelCalled: String? = null
+        val vm = viewModelWithKernelCancelled("testGroup") {
+            gateWhenKernelCalled = vmRef[0]!!.testingGroup.value
+        }
+        vmRef[0] = vm
+
+        vm.testGroup(GROUP_NAME)
+        advanceUntilIdle()
+
+        assertEquals("前置条件：内核调用发生时该组应处于测速态", GROUP_NAME, gateWhenKernelCalled)
+        assertNull(
+            "单组测速被取消后必须复位门标志，否则整页测速按钮全部失效（D7）",
+            vm.testingGroup.value,
+        )
+    }
+
+    /**
+     * 构造一个「指定 safe 操作被取消」的 ViewModel：`safe` 是本用例里**唯一一次**被桩的方法。
+     *
+     * 不能先 [stubKernelBridge] 再把 `safe` 覆盖掉：`safe` 是 suspend 方法，MockK 对已经注册过
+     * `coAnswers` 的同签名方法再录一次桩时会先把新答案求值，异常直接从打桩那一行冒出来
+     * （实测栈顶落在打桩行 `viewModelWithKernelThrowing(...)`，压根走不到被测代码）。
+     * 所以这里手工做 [stubKernelBridge] 除 `safe` 以外的等价桩，让 `safe` 只被注册一次。
+     *
+     * 答案里按操作名分流：只有 [cancelledOperation] 被取消，其余操作照常执行真实块、普通异常吞成
+     * 默认值——init 里的 `refreshSpecialNodes` / `observeKernelReloads` 等后台协程因此不受影响。
+     *
+     * @param cancelledOperation 要注入取消的 safe 操作名（见 KernelProxyGroup.kt / KernelProxySpeed.kt）
+     * @param onKernelCall 该操作真的被调用时回调一次，用于在那一刻取样门标志
+     */
+    private fun viewModelWithKernelCancelled(
+        cancelledOperation: String,
+        onKernelCall: () -> Unit = {},
+    ): ServerViewModel {
+        coEvery { kernelProxy.safe<Any?>(any(), any(), any(), any()) } coAnswers {
+            if (arg<String>(1) == cancelledOperation) {
+                onKernelCall()
+                throw CancellationException("kernel call cancelled")
+            }
+            try {
+                arg<suspend () -> Any?>(3).invoke()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                firstArg<Any?>()
+            }
+        }
+        every { kernelProxy.manager } returns mockk(relaxed = true)
+        every { subscribeRepository.getCachedSubscribeInfo() } returns null
+        every { kernelManager.profileLoaded } returns profileLoadedFlow
+        return ServerViewModel(serverRepository, subscribeRepository, kernelProxy, kernelManager, nodesSectionStore)
+    }
+
+    // endregion
 
     private companion object {
 

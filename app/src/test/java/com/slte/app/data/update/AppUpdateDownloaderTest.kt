@@ -4,6 +4,7 @@
 package com.slte.app.data.update
 
 import android.os.Environment
+import com.slte.app.R
 import com.slte.app.support.RobolectricTestApplication
 import java.io.File
 import java.security.MessageDigest
@@ -16,6 +17,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -221,6 +223,85 @@ class AppUpdateDownloaderTest {
             "比例应按已下载/总长计算",
             0.5f,
             AppUpdateDownloader.Progress(bytesRead = 50, totalBytes = 100).fraction,
+        )
+    }
+
+    @Test
+    fun `缺安装权限时暂存安装包并回报 NeedsPermission`() {
+        val file = apkFile().apply {
+            parentFile?.mkdirs()
+            writeText(payload)
+        }
+        downloader.canRequestPackageInstalls = { false }
+        downloader.launchInstallIntent = { throw IllegalStateException("缺权限时不应拉起安装界面") }
+
+        val outcome = downloader.installApk(file)
+
+        assertEquals(AppUpdateDownloader.InstallOutcome.NEEDS_PERMISSION, outcome)
+        assertTrue("缺权限时应把安装包暂存下来等授权", file.exists())
+        assertTrue(
+            "缺权限是「等授权」而不是失败",
+            downloader.installResult(outcome, file) is AppUpdateDownloader.DownloadResult.NeedsPermission,
+        )
+    }
+
+    @Test
+    fun `拉起安装界面失败会删除安装包并回报失败`() {
+        val file = apkFile().apply {
+            parentFile?.mkdirs()
+            writeText(payload)
+        }
+        downloader.canRequestPackageInstalls = { false }
+        downloader.launchInstallIntent = { throw IllegalStateException("缺权限时不应拉起安装界面") }
+        assertEquals(AppUpdateDownloader.InstallOutcome.NEEDS_PERMISSION, downloader.installApk(file))
+
+        // 用户从系统设置回来补装，但系统安装器起不来（没有可处理 ACTION_VIEW 的 Activity）：
+        // 旧实现在这里吞掉异常并 return true，用户只看到"点了更新什么都没发生"。
+        downloader.canRequestPackageInstalls = { true }
+        downloader.launchInstallIntent = { throw IllegalStateException("no installer activity") }
+
+        assertFalse("拉起失败必须如实返回 false", downloader.tryInstallPending())
+        assertFalse("拉起失败必须删掉已下好的安装包，不能占着下载目录", file.exists())
+        val expected = RuntimeEnvironment.getApplication().getString(R.string.update_download_install_failed)
+        assertTrue("必须回报可展示的失败原因，实际 ${failedReasons()}", failedReasons().contains(expected))
+    }
+
+    @Test
+    fun `授权后补装成功会拉起安装界面并保留安装包`() {
+        val file = apkFile().apply {
+            parentFile?.mkdirs()
+            writeText(payload)
+        }
+        downloader.canRequestPackageInstalls = { false }
+        downloader.launchInstallIntent = { throw IllegalStateException("缺权限时不应拉起安装界面") }
+        assertEquals(AppUpdateDownloader.InstallOutcome.NEEDS_PERMISSION, downloader.installApk(file))
+
+        var launched: File? = null
+        downloader.canRequestPackageInstalls = { true }
+        downloader.launchInstallIntent = { launched = it }
+
+        assertTrue("授权后补装应成功", downloader.tryInstallPending())
+        assertEquals("拉起的必须是暂存的那个包", file, launched)
+        assertTrue("包已交给系统安装器，成功路径不应删除", file.exists())
+        assertTrue("成功路径不应报失败，实际 ${failedReasons()}", failedReasons().isEmpty())
+    }
+
+    @Test
+    fun `安装终态映射：拉起失败绝不能报成功`() {
+        val file = File(RuntimeEnvironment.getApplication().cacheDir, "mapping-test.apk")
+
+        assertTrue(
+            downloader.installResult(AppUpdateDownloader.InstallOutcome.LAUNCHED, file) is
+                AppUpdateDownloader.DownloadResult.Installed,
+        )
+        assertTrue(
+            downloader.installResult(AppUpdateDownloader.InstallOutcome.NEEDS_PERMISSION, file) is
+                AppUpdateDownloader.DownloadResult.NeedsPermission,
+        )
+        assertTrue(
+            "D3：拉起失败必须回报 Failed",
+            downloader.installResult(AppUpdateDownloader.InstallOutcome.LAUNCH_FAILED, file) is
+                AppUpdateDownloader.DownloadResult.Failed,
         )
     }
 

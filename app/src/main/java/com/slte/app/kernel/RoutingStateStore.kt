@@ -8,8 +8,10 @@ import com.slte.app.utils.AppLog
 import com.slte.app.utils.sanitizeLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.concurrent.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -66,6 +68,16 @@ constructor(
             encodeDefaults = true
         }
 
+    /**
+     * 串行化本类全部「读-改-写」序列（load()/readRaw() → copy → write()）。
+     *
+     * 单次 [write] 是「写 .tmp + rename」，本身原子；但两个调用方各自 load 到同一份
+     * 旧状态、再先后 write 时，后写者会用陈旧快照覆盖先写者的结果（丢更新）。本锁把
+     * 整段序列做成临界区；ReentrantLock 可重入，因此 [ensureDefault] →
+     * [syncDirectDomains] 这类类内嵌套调用不会自锁，[write] 也无需自行加锁。
+     */
+    private val lock = ReentrantLock()
+
     fun stateFile(): File = File(context.filesDir, "clash").resolve(FILE_NAME)
 
     /**
@@ -81,7 +93,7 @@ constructor(
      *
      * 注意：本方法**不递归**——只有 [loadSanitized] 会回写，缓存层不会。
      */
-    fun loadSanitized(): SanitizedRoutingState {
+    fun loadSanitized(): SanitizedRoutingState = lock.withLock {
         val rawFile = readRaw()
         val raw = migrateLegacyNames(rawFile)
         val custom = raw.custom.filter { RoutingInputValidator.isValidGroupName(it.name) }
@@ -102,7 +114,7 @@ constructor(
             }
             write(clean)
         }
-        return SanitizedRoutingState(clean, droppedCustom, droppedDomains)
+        SanitizedRoutingState(clean, droppedCustom, droppedDomains)
     }
 
     /** [loadSanitized] 的结果：清洗后的状态 + 被丢弃的条目数（供 UI 提示）。 */
@@ -168,6 +180,9 @@ constructor(
 
     /**
      * 原子写入（temp + rename）。参照 pitfall #13：Windows/部分文件系统上
+     *
+     * 注意：本方法自身不持锁；本类内所有写入口都在 [lock] 临界区内调用它。外部调用方
+     * 需要自行串行化。
      * rename 不允许覆盖已存在目标，先删旧文件再重试一次；中途被杀最多残留
      * 一个 .tmp，routing.json 要么是旧状态要么是新状态。
      */
@@ -191,26 +206,27 @@ constructor(
      * 自家后端域名清单；已存在时仅补域名清单（保留用户的组开关/自定义组）。
      * 仅在订阅导入流程（IO 线程）调用。
      */
-    fun ensureDefault(directDomains: List<String>): Boolean {
+    fun ensureDefault(directDomains: List<String>): Boolean = lock.withLock {
         if (!stateFile().exists()) {
-            return write(RoutingState(enabled = true, directDomains = directDomains))
+            write(RoutingState(enabled = true, directDomains = directDomains))
+        } else {
+            syncDirectDomains(directDomains)
         }
-        return syncDirectDomains(directDomains)
     }
 
     /** 更新自家后端域名清单（App 侧构建期注入清单 → 内核生成直连规则）。 */
-    fun syncDirectDomains(directDomains: List<String>): Boolean = write(load().copy(directDomains = directDomains))
+    fun syncDirectDomains(directDomains: List<String>): Boolean = lock.withLock { write(load().copy(directDomains = directDomains)) }
 
     /** 置总开关并落盘；返回写入是否成功。 */
-    fun setEnabled(enabled: Boolean): Boolean = write(load().copy(enabled = enabled))
+    fun setEnabled(enabled: Boolean): Boolean = lock.withLock { write(load().copy(enabled = enabled)) }
 
     /** 置单组开关并落盘；返回写入是否成功。 */
     fun setGroupEnabled(
         name: String,
         enabled: Boolean,
-    ): Boolean {
+    ): Boolean = lock.withLock {
         val current = load()
-        return write(current.copy(groups = current.groups + (name to enabled)))
+        write(current.copy(groups = current.groups + (name to enabled)))
     }
 
     /**
@@ -219,7 +235,7 @@ constructor(
      * 顺序也必须一起清：拖动过的顺序写进 `routing.json` 后会长期覆盖内置顺序，
      * 只清开关的话，「恢复默认」按下去列表顺序仍旧是用户拖出来的样子。
      */
-    fun resetGroups(): Boolean = write(load().copy(groups = emptyMap(), order = emptyList()))
+    fun resetGroups(): Boolean = lock.withLock { write(load().copy(groups = emptyMap(), order = emptyList())) }
 
     /**
      * 置内置分流组顺序并落盘；返回写入是否成功。
@@ -227,28 +243,28 @@ constructor(
      * 只记录**合法且存在**的组名（去重、保序），避免把未知名写进 `routing.json`；
      * 未列出的组由内核按内置默认顺序补在末尾，因此这里不做补全。
      */
-    fun setGroupOrder(order: List<String>): Boolean {
+    fun setGroupOrder(order: List<String>): Boolean = lock.withLock {
         val known = RoutingGroups.mapTo(HashSet()) { it.name }
         val clean = LinkedHashSet<String>()
         order.forEach { name -> if (name in known) clean += name }
-        return write(load().copy(order = clean.toList()))
+        write(load().copy(order = clean.toList()))
     }
 
     /**
      * 追加自定义规则组（名称非法 / 同名 / 与内置保留组同名一律拒绝）；
      * 返回写入是否成功。
      */
-    fun addCustomGroup(group: RoutingCustomGroup): Boolean {
-        if (!RoutingInputValidator.isValidGroupName(group.name)) return false
+    fun addCustomGroup(group: RoutingCustomGroup): Boolean = lock.withLock {
+        if (!RoutingInputValidator.isValidGroupName(group.name)) return@withLock false
         val current = load()
-        if (current.custom.any { it.name == group.name }) return false
-        return write(current.copy(custom = current.custom + group))
+        if (current.custom.any { it.name == group.name }) return@withLock false
+        write(current.copy(custom = current.custom + group))
     }
 
     /** 删除自定义规则组；返回写入是否成功。 */
-    fun removeCustomGroup(name: String): Boolean {
+    fun removeCustomGroup(name: String): Boolean = lock.withLock {
         val current = load()
-        return write(current.copy(custom = current.custom.filter { it.name != name }))
+        write(current.copy(custom = current.custom.filter { it.name != name }))
     }
 
     companion object {

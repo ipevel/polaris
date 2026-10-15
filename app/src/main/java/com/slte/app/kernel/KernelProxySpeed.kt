@@ -416,12 +416,21 @@ internal object SpeedTestGate {
             return@withLock cached()
         }
         lastStartedAtMs = now
-        val result = block()
-        if (result.isEmpty()) {
-            // 空结果不算一轮（内核未就绪 / 无策略组），别压住后续重试
-            lastStartedAtMs = NOT_STARTED
+        var kept = false
+        try {
+            val result = block()
+            if (result.isEmpty()) {
+                // 空结果不算一轮（内核未就绪 / 无策略组），别压住后续重试
+                return@withLock result
+            }
+            kept = true
+            return@withLock result
+        } finally {
+            // 取消 / 异常 / 空结果一律回滚时间戳：若留下，REUSE_WINDOW_MS 内所有
+            // 非 force 入口都只会回放旧缓存——用户看到的是「点了测速没反应」。
+            // 原先没有 try/finally，block() 被取消或抛异常后 lastStartedAtMs 就永久残留。
+            if (!kept) lastStartedAtMs = NOT_STARTED
         }
-        result
     }
 
     /** 单测用：清掉窗口状态。 */

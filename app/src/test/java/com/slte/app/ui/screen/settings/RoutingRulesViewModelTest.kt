@@ -15,6 +15,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -165,6 +166,33 @@ class RoutingRulesViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { kernelConfig.removeRoutingCustomGroup("x") }
+    }
+
+    @Test
+    fun `删除自定义组写盘期间重复点击被 Saving 门挡住`() = runTest(mainRule.dispatcher) {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Boolean>()
+        coEvery { kernelConfig.removeRoutingCustomGroup("x") } coAnswers {
+            entered.complete(Unit)
+            release.await()
+        }
+        val vm = viewModel()
+
+        vm.removeCustomGroup("x")
+        advanceUntilIdle() // 第一次已进入内核通道并挂在这里
+        assertTrue("第一次删除应真的走到内核通道", entered.isCompleted)
+
+        // D5：写盘期间重复点击必须被挡（此前没有这道门，两次写各自拿旧快照，
+        // 后写覆盖先写 = 丢更新）。
+        vm.removeCustomGroup("x")
+        assertEquals(RoutingSync.Saving, vm.data.value.sync)
+
+        release.complete(true)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { kernelConfig.removeRoutingCustomGroup("x") }
+        assertEquals(RoutingSync.Idle, vm.data.value.sync)
+        assertEquals(1, vm.data.value.savedCount)
     }
 
     @Test

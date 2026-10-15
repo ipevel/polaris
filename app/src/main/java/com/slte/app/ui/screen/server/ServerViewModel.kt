@@ -311,32 +311,37 @@ constructor(
         // 先置位再启协程：点击即进入测速态，重复点击直接被上面的守卫吃掉
         _isTestingAll.value = true
         viewModelScope.launch {
-            // 本地分流下结构组已 include-all，测速只 await 结构组（见 KernelProxySpeed）
-            // force = true：用户手动点测速必须真跑一轮，不能被 15s 去重窗口用缓存结果打发
-            val delays = kernelProxy.speedTestProgressiveAndCache(force = true) { }
-            refreshGroups()
-            // 测速失败的节点再逐个复核一次：只有内核明确说"不可达"才标离线，
-            // 单纯超时可能只是一次抖动，标离线会误伤活节点。
-            // delays 为空 = 内核根本没跑起来，此时不做复核（否则整页节点都会被当成失败）。
-            val offline = if (delays.isEmpty()) null else probeFailedNodes(delays)
-            offline?.let { kernelProxy.saveOfflineNodes(it) }
-            // 同一份 delays 回填节点列表：此前只刷新策略组，导致「全部节点」
-            // 列表停留在旧值、与分组卡片显示两个不同数字
-            _data.update { state ->
-                state.copy(
-                    nodes =
-                    mergeDelays(state.nodes, delays).map { node ->
-                        if (offline == null) node else node.copy(offline = node.name in offline)
-                    },
-                )
-            }
-            _isTestingAll.value = false
-            _speedTestTipRes.value =
-                when (speedTestOutcome(delays, completed = true)) {
-                    SpeedTestOutcome.COMPLETE -> R.string.server_speed_test_done
-                    SpeedTestOutcome.PARTIAL -> R.string.server_speed_test_done
-                    SpeedTestOutcome.EMPTY -> R.string.server_speed_test_failed
+            // 门标志的复位必须走 finally：内核重载中 / binder 死亡 / 远程调用抛异常时，
+            // 协程体会直接跳出，写在末尾的复位永远不执行，按钮就此永久置灰（只能重启 App）。
+            try {
+                // 本地分流下结构组已 include-all，测速只 await 结构组（见 KernelProxySpeed）
+                // force = true：用户手动点测速必须真跑一轮，不能被 15s 去重窗口用缓存结果打发
+                val delays = kernelProxy.speedTestProgressiveAndCache(force = true) { }
+                refreshGroups()
+                // 测速失败的节点再逐个复核一次：只有内核明确说"不可达"才标离线，
+                // 单纯超时可能只是一次抖动，标离线会误伤活节点。
+                // delays 为空 = 内核根本没跑起来，此时不做复核（否则整页节点都会被当成失败）。
+                val offline = if (delays.isEmpty()) null else probeFailedNodes(delays)
+                offline?.let { kernelProxy.saveOfflineNodes(it) }
+                // 同一份 delays 回填节点列表：此前只刷新策略组，导致「全部节点」
+                // 列表停留在旧值、与分组卡片显示两个不同数字
+                _data.update { state ->
+                    state.copy(
+                        nodes =
+                        mergeDelays(state.nodes, delays).map { node ->
+                            if (offline == null) node else node.copy(offline = node.name in offline)
+                        },
+                    )
                 }
+                _speedTestTipRes.value =
+                    when (speedTestOutcome(delays, completed = true)) {
+                        SpeedTestOutcome.COMPLETE -> R.string.server_speed_test_done
+                        SpeedTestOutcome.PARTIAL -> R.string.server_speed_test_done
+                        SpeedTestOutcome.EMPTY -> R.string.server_speed_test_failed
+                    }
+            } finally {
+                _isTestingAll.value = false
+            }
         }
     }
 
@@ -577,21 +582,25 @@ constructor(
         if (_testingGroup.value != null) return
         viewModelScope.launch {
             _testingGroup.value = groupName
-            val delays = kernelProxy.testGroup(groupName)
-            _proxyGroups.value =
-                _proxyGroups.value.map { group ->
-                    if (group.name != groupName) {
-                        group
-                    } else {
-                        group.copy(
-                            members =
-                            group.members.map { member ->
-                                delays[member.name]?.let { member.copy(delay = it) } ?: member
-                            },
-                        )
+            try {
+                val delays = kernelProxy.testGroup(groupName)
+                _proxyGroups.value =
+                    _proxyGroups.value.map { group ->
+                        if (group.name != groupName) {
+                            group
+                        } else {
+                            group.copy(
+                                members =
+                                group.members.map { member ->
+                                    delays[member.name]?.let { member.copy(delay = it) } ?: member
+                                },
+                            )
+                        }
                     }
-                }
-            _testingGroup.value = null
+            } finally {
+                // 与 startSpeedTest 同理：异常后残留会让整页测速按钮全部失效
+                _testingGroup.value = null
+            }
         }
     }
 }
