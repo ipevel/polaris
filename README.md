@@ -15,7 +15,7 @@
 
 ## 简介
 
-Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核的代理客户端，支持 XiaoV2b / Xboard 面板，登录时自动识别，无需换包。Android 为主客户端；另附 **Windows 便携版**（源码在 `windows-portable` 分支的 `design/windows/app/`，免安装、解压即用、共用同一套面板账号与分流方案）。
+Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha) 内核的代理客户端，支持 XiaoV2b / Xboard 面板，登录时自动识别，无需换包。Android 为主客户端；另附 **Windows 便携版**（源码在 `design/windows/app/`，免安装、解压即用、共用同一套面板账号与分流方案）。
 
 
 ## 下载与安装
@@ -37,7 +37,7 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 4. TUN 模式需要管理员权限（设置页里点开关会引导重启为管理员）；仅用系统代理时不需要。
 5. 卸载 = 直接删掉整个目录；`data/` 是唯一会产生写入的地方。
 
-> 包内**不含任何面板地址与账号**，首次启动在登录页填自己的面板网址。源码与开发/打包细节见 `windows-portable` 分支的 `design/windows/app/README.md`。
+> 包内**不含任何面板地址与账号**，首次启动在登录页填自己的面板网址。源码与开发/打包细节见 `design/windows/app/README.md`。
 
 ## 上游仓库
 
@@ -95,7 +95,7 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 
 ### Windows 便携版
 
-源码在 `windows-portable` 分支的 `design/windows/app/`（Electron 工程，与 Android 侧构建互不影响）。
+源码在 `design/windows/app/`（Electron 工程，与 Android 侧构建互不影响）。
 
 > Windows 端的版本号唯一来源是 `design/windows/app/package.json` 的 `version`，发布时必须与 Android 的 `versionName` 一致（同一个 Release、同一个 tag）。
 
@@ -137,6 +137,10 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 - [ClashMetaForAndroid](https://github.com/MetaCubeX/ClashMetaForAndroid) - 内核栈（`kernel-*` 模块）派生自该项目
 - [V2Board (xiaov2b)](https://github.com/wyx2685/v2board/tree/master) - 兼容的机场面板后端
 - [Xboard](https://github.com/cedar2025/Xboard/tree/master) - 兼容的机场面板后端
+
+## 参与开发
+
+仓库只有 `main` 一条长期分支：所有改动一律走**短命分支 + PR**（模板见 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)），禁止直推 `main`。分支命名 `feat|fix|chore|docs|style|ci/<端>-<简述>`；PR 合并前必须通过「版本门禁自测 / 内核 Go 门禁（vet + build + test）/ 质量门禁（test + ktlint + lint）」三项检查，合并用 squash。
 
 ## 社区
 
