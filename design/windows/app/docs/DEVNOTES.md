@@ -1,6 +1,6 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
-> 2026-10-15 新增 §二 7：bettbox 逆向评估 —— 特权服务不采用 + 不可变标识 / 随包二进制版本与哈希两条纪律。
+> 2026-10-15 新增 §二 7：bettbox 逆向评估 —— 特权服务不采用 + 不可变标识 / 随包二进制版本与哈希三条纪律（含签名纪律）。
 > 最后更新：2026-10-14（**A-69 域名落组真内核实测**：`Ⓜ️ 微软` 收窄后逐域名读数 + 换回宽种子的对照实验；同日更早为 **A-68 覆盖安装修复**（`withRetry` 没 await，复制没完成就清理并重启）、**文档追平**、**A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**、第 15 轮 A-57）
 > 追平的数字一律以树为准：`kernel-core/.../routing_table.go` 与 `electron/core/rulesets.js`
 > 都是 **12 组 / 15 个 provider / 252 条内联**（11 组默认开，`🍃 应用净化` 默认关）；
@@ -565,7 +565,7 @@ rules:
   两者互不跨越 —— 自定义永远在内置之前，这是上面的语义决定的，不是 UI 限制。
   「恢复默认开关与顺序」只还原内置，不动用户自己写的组。
 
-### 7. bettbox 式特权服务：**评估过，不采用**（附两条纪律）
+### 7. bettbox 式特权服务：**评估过，不采用**（附三条纪律）
 
 > 来源：bettbox v1.19.5 Windows 端逆向（appshubcc/Bettbox，2026-10-15）§2 / §3.4 / §5.4 / §5.5 / §9 / §10 D1、D3、D4、D5、D10；
 > Polaris 侧现状核对：`elevate.js:1-8/45-77`、`ipc.js:663`、`main.js:31-35/142`、`manager.js:350`。
@@ -589,6 +589,11 @@ Polaris 现状：便携版无安装器，升级靠 zip 覆盖；`appId` 只影�
 - `core/mihomo.exe`：上游预编译二进制（`scripts/fetch-core.py`，`MIHOMO_VERSION=v1.19.32` amd64-compatible，无独立更新路径）。当前**不记录、不显示**它的版本与哈希 → 必须记录来源版本 + SHA256，并写进包内清单与发布摘要。
 - 「设置 → 关于」显示内核版本与 SHA256，便于用户与排障核对。**与发布侧摘要读取是同一数据源，不要各写一套。**
 - 全仓无签名（`package.json:92-101` 无 signing 配置、workflow 无 signtool）→ 代码签名是**发版流程项**，不是代码问题。
+
+**纪律 3：签名纪律。**
+
+- **正面样板（直接引用）**：Polaris 安卓 `app/build.gradle.kts:175-192` 在缺 `POLARIS_RELEASE_STORE_FILE` 时直接 `throw GradleException("禁止使用 debug 签名发布")` —— release 包**绝不静默回落 debug 签名**。对照 bettbox：无 keystore 时静默回落 debug 签名（安卓逆向 §13 A6）。
+- **签名方案**：release 必须**显式**声明 v2 + v3，不要依赖构建工具默认值。实测（apksigner 35.0.0 `verify --verbose`）：Polaris 安卓 1.12.0 的 `Polaris-1.12.0.apk` 报 v1=false / v2=true / **v3=false / v3.1=false / v4=false**；bettbox 1.19.5 同样只有 v2。**缺 v3 = 无法做密钥轮换**：证书一旦丢失或需要更换，所有用户必须卸载重装才能升级 —— v3 的 proof-of-rotation 必须在换证书**之前**就已签上，晚开等于没开。
 
 ---
 
