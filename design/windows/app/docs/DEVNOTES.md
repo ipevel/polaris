@@ -1,5 +1,6 @@
 # Polaris Windows 客户端 · 现状与踩坑记录
 
+> 2026-10-15 新增 §二 7：bettbox 逆向评估 —— 特权服务不采用 + 不可变标识 / 随包二进制版本与哈希两条纪律。
 > 最后更新：2026-10-14（**A-69 域名落组真内核实测**：`Ⓜ️ 微软` 收窄后逐域名读数 + 换回宽种子的对照实验；同日更早为 **A-68 覆盖安装修复**（`withRetry` 没 await，复制没完成就清理并重启）、**文档追平**、**A-67 实测数 / 种子行尾 / v1.11.5 便携包核对**、第 15 轮 A-57）
 > 追平的数字一律以树为准：`kernel-core/.../routing_table.go` 与 `electron/core/rulesets.js`
 > 都是 **12 组 / 15 个 provider / 252 条内联**（11 组默认开，`🍃 应用净化` 默认关）；
@@ -563,6 +564,31 @@ rules:
 - **排序**：分流页**按住手柄拖动**（`⠿`），落 `routing_order`（内置）/ `custom_rulesets` 数组顺序（自定义），
   两者互不跨越 —— 自定义永远在内置之前，这是上面的语义决定的，不是 UI 限制。
   「恢复默认开关与顺序」只还原内置，不动用户自己写的组。
+
+### 7. bettbox 式特权服务：**评估过，不采用**（附两条纪律）
+
+> 来源：bettbox v1.19.5 Windows 端逆向（appshubcc/Bettbox，2026-10-15）§2 / §3.4 / §5.4 / §5.5 / §9 / §10 D1、D3、D4、D5、D10；
+> Polaris 侧现状核对：`elevate.js:1-8/45-77`、`ipc.js:663`、`main.js:31-35/142`、`manager.js:350`。
+
+**为什么不做**（按重要性）：
+
+1. **便携版没有安装器** —— bettbox 的特权链依赖 `PrivilegesRequired=admin` 的安装器注册 SCM 服务；Polaris 注册服务会直接破坏便携性。
+2. **没有代码签名** —— bettbox 信任链第一环是「签名内核 → 算哈希 → 编进已签名服务」；Polaris 缺第一环，照搬只能得到「看起来安全」的复杂度，得不到信任锚。
+3. **该链自身有已知缺陷** —— D3（管道 DACL 对任意认证/交互用户开放，安全全靠 key 保密）、D4（哈希校验与 `spawn` 之间存在 TOCTOU 窗口）、D5（无 nonce，仅 ±5 秒时间窗，5 秒内可重放）。
+4. **已有等价物** —— 凭据保护已由 `panel/credentials.js` 的 `safeStorage`（DPAPI）覆盖，且不可用时**拒绝明文保存**；不需要再引入一套密钥分发。
+5. **现状够用** —— TUN 需要管理员时沿用现有 `elevate.js` 整体提权重启，风险已知、用户可见。
+
+**结论**：不引入 Windows 服务、命名管道 RPC、HMAC 签名链、安装器语义。**协议细节不入仓**（帧格式 / 签名算法 / 方法表 / 错误码留在逆向文档 §5.4、§5.5）—— 一段没有对应实现的协议规范，只会诱导后面真去实现一个已经评估过不做的服务。
+
+**纪律 1：不可变标识首版锁死。** bettbox 的安装器 `AppId` 是损坏 GUID（`...BE70FE1LITES`，§10 D1），而它是卸载注册表键与升级识别的唯一依据 —— 日后修正会让旧版本不再被识别为同一产品，升级 / 卸载链断裂。凡「一旦发布就不能改」的标识（AppId / GUID、更新源 URL、计划任务名、注册表键路径、DPAPI 存储路径、便携包内相对路径如 `core/mihomo.exe`、`resources/polaris-files.sha256`），首版定死并写进清单。
+Polaris 现状：便携版无安装器，升级靠 zip 覆盖；`appId` 只影响任务栏 / 通知身份、**不动数据**（userData 被显式钉在 `<root>/data/electron`，`main.js:31-35`）→ 仅记录，不落地改动。
+
+**纪律 2：随包二进制的版本与哈希必须可辨识。** bettbox 的 HelperService / Core **PE 资源数为 0**（无 VERSIONINFO / MANIFEST / 图标，§10 D10）→ 属性里看不到版本、工具难做版本指纹、「这个 exe 是否被替换过」更难查。
+
+- `Polaris.exe`：electron-builder 从 `package.json` 生成 VERSIONINFO（**待真机读一次属性取证** —— 本容器无 Windows 产物，属 builder 默认行为）。
+- `core/mihomo.exe`：上游预编译二进制（`scripts/fetch-core.py`，`MIHOMO_VERSION=v1.19.32` amd64-compatible，无独立更新路径）。当前**不记录、不显示**它的版本与哈希 → 必须记录来源版本 + SHA256，并写进包内清单与发布摘要。
+- 「设置 → 关于」显示内核版本与 SHA256，便于用户与排障核对。**与发布侧摘要读取是同一数据源，不要各写一套。**
+- 全仓无签名（`package.json:92-101` 无 signing 配置、workflow 无 signtool）→ 代码签名是**发版流程项**，不是代码问题。
 
 ---
 
