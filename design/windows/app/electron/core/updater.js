@@ -911,6 +911,8 @@ async function doApply(stageRoot, appDir, updDir, tempDir, say) {
     const gotAsar = sha256File(path.join(appDir, 'resources', 'app.asar'));
     if (wantAsar !== gotAsar) throw new Error('app.asar 校验不符（新 exe 配旧 asar）');
     say('校验通过：exe + app.asar 与暂存包一致');
+    const mf2 = verifyManifest(stageRoot);
+    if (!mf2.ok) throw new Error('提交后清单复核失败：' + mf2.reason);
 
     // P6 清理 + 拉起
     // 只删环境变量指过来的那个目录（不重新推导 root：helper 算出来的可能与主进程不同）

@@ -141,6 +141,8 @@ check('出口 2 失败后 exe/asar 成对（要么都新、要么都旧）', (re
 const srcText = fs.readFileSync(REPO_UPDATER, 'utf8');
 check('出口 2 源码里有提交后的 asar 校验（新 exe 配旧 asar 会抛）', srcText.indexOf('app.asar 校验不符') > 0);
 check('出口 2 源码里提交是「两个 rename」而不是复制', /renameSync\(curExe, oldExe\)/.test(srcText) && /renameSync\(newExe, curExe\)/.test(srcText));
+check('P5 里有包内清单复核（防提交前后 staged 树被换）', /提交后清单复核失败/.test(srcText));
+check('备份失败是硬失败（不进入 P2）', /备份失败，未开始复制/.test(srcText));
 
 /* ---------- 3. 出口 3：复制中途被杀 → 安装目录永远有可启动 exe ---------- */
 reset({ manyFiles: true });
