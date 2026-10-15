@@ -813,7 +813,14 @@ const commands = {
       log.tail(5000),
     ].join('\n');
     fs.writeFileSync(target, body, 'utf8');
-    return ok({ path: target });
+    // 自救入口（与安卓对齐）：把被隐藏的自定义分流组也导出来，用户可据此手工恢复
+    let hiddenPath = '';
+    try {
+      const st = await core.rulesetState();
+      hiddenPath = path.join(res.filePaths[0], `polaris-routing-hidden-${Date.now()}.json`);
+      fs.writeFileSync(hiddenPath, JSON.stringify({ hidden: st.hidden || [], hidden_count: st.hidden_count || 0, custom_raw: store.get('custom_rulesets') || [] }, null, 2), 'utf8');
+    } catch (e) { log.warn('导出被隐藏分流组失败：' + (e && e.message)); }
+    return ok({ path: target, hidden_path: hiddenPath });
   },
 };
 

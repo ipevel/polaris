@@ -462,6 +462,15 @@
       `<div class="row"><div class="k"><span>新建分流组</span></div>` +
       `<div class="v"><button class="btn btn-outline btn-sm" id="btn-custom-new">新建</button></div></div>` +
       `</div>` +
+      // 被隐藏的自定义分流组：**每次读都可见**（判据是文件里存在 hidden 条目），不删数据
+      (Array.isArray(rs.hidden) && rs.hidden.length
+        ? `<div class="section-label">被隐藏的自定义分流组 · ${rs.hidden.length}</div>` +
+          `<div class="card">` +
+          `<div class="row"><div class="k"><span style="font-size:12px;color:var(--text3)">在 App 列表中暂时隐藏，配置仍保留在本地</span></div></div>` +
+          rs.hidden.map((x) => `<div class="row"><div class="k"><span>${h(x && x.name ? x.name : "(无名)")}</span></div>` +
+            `<div class="v"><span style="font-size:11px;color:var(--text3)">${x && x.reason === "reserved" ? "与内置组同名" : "名字或规则不可用"}</span></div></div>`).join("") +
+          `</div>`
+        : "") +
       `<div class="section-label">内置分流 · 规则库每 12 小时自动更新 · 已启用 ${onCount}/${rs.total || builtin.length}</div>` +
       `<div class="card">` +
       (builtin.length
