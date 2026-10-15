@@ -1,18 +1,18 @@
 # 第三方声明（Third-Party Notices）
 
-本项目（Polaris）基于并使用了下列开源项目与资源。各组件的许可证与来源如下；本项目的许可证见根目录 `LICENSE`（GPL-3.0）。
+本项目（Polaris）包含 Android 客户端与 Windows 便携版客户端。各组件的许可证与来源如下；本项目自身的许可证见根目录 `LICENSE`（GPL-3.0）。
 
 ## 1. 派生项目（GPL-3.0）
 
 - **mihomo（Clash.Meta 内核）** — https://github.com/MetaCubeX/mihomo
   - 内核完整源码位于 `kernel-core/src/foss/golang/clash/`，随本仓库一并提供（GPL-3.0 §6 完整对应源码义务）；其上游 `LICENSE` 全文随该目录保留。
-  - 预编译产物 `libclash.so`（arm64-v8a）为上述源码的本地 fork 构建（见 `kernel-core/src/main/jniLibs/arm64-v8a/VERSION.md`），按 GPL-3.0 分发。
+  - Android 端预编译产物 `libclash.so`（arm64-v8a）为上述源码的本地 fork 构建（见 `kernel-core/src/main/jniLibs/arm64-v8a/VERSION.md`），按 GPL-3.0 分发。
 - **Clash Meta for Android（CMA）** — https://github.com/MetaCubeX/ClashMetaForAndroid
   - `kernel-common`、`kernel-service` 模块及 `kernel-core` 的部分 Android 层代码派生自 CMA（对应上游包名 `com.github.kr328.*`）。这些文件保留其上游 GPL-3.0 授权；上游版权声明由本声明统一保留。
 - **shgnx/slte** — https://github.com/shgnx/slte
   - 本项目的基础代码派生自上游 SLTE 项目，特此致谢并保留其 GPL-3.0 授权。
 
-## 2. 随包分发的数据与美术资源
+## 2. 随包分发的数据与美术资源（Android）
 
 - **GeoIP / ASN 数据**（`app/src/main/assets/geoip.metadb`、`ASN.mmdb`、`geosite.dat`，合计约 25MB）
   - 由 mihomo 生态常用的社区构建数据（MetaCubeX/meta-rules-dat 系）提供，遵循其上游分发条款；其中 MaxMind GeoLite2 派生数据的使用遵循 [MaxMind GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula)（含归属要求）。确切构建版本随内核资源清单管理；再分发本项目时请一并保留本声明。
@@ -23,7 +23,7 @@
 
 ## 3. 主要依赖（Gradle，运行期）
 
-以下为主分支构建的运行期直接依赖及其许可证（仅列关键项；传递依赖请以 POM 为准）：
+以下为 Android 客户端构建的运行期直接依赖及其许可证（仅列关键项；传递依赖请以 POM 为准）：
 
 | 组件 | 许可证 |
 | --- | --- |
@@ -44,6 +44,32 @@
 ## 4. Go 内核传递依赖
 
 `libclash.so` 内嵌 mihomo 的 Go 传递依赖（metacubex fork 系、sing-* 系、quic-go、tailscale、zerotier 等）。逐库许可清单与再分发兼容性核验见仓库审计记录；GPL-3.0 §6 要求的完整对应源码已随 vendored 源码树提供。重点 fork（metacubex/quic-go、metacubex/tailscale、metacubex/zerotier-go）相对上游的许可变更请以各自仓库声明为准。
+
+## 5. Windows 便携版随包分发的组件
+
+Windows 便携版（源码在 `design/windows/app/`）随包分发下列第三方组件：
+
+- **Electron**（MIT）— https://github.com/electron/electron
+  - 便携包内的 Chromium / Node.js 运行时。许可证全文随包提供：`LICENSE.electron`、`LICENSES.chromium.html`。
+- **mihomo（Clash.Meta 内核）**（GPL-3.0）— https://github.com/MetaCubeX/mihomo
+  - 随包分发的 `core/mihomo.exe` 是上游 releases 的 `windows-amd64-compatible` 预编译产物。
+  - 对应源码：本仓库 `kernel-core/src/foss/golang/clash/`（vendored，GPL-3.0 §6 完整对应源码义务）；获取脚本见 `design/windows/app/scripts/fetch-core.py`。
+- **Wintun**（预编译二进制，WireGuard LLC）— https://www.wintun.net/
+  - `core/wintun.dll`，随包保留 `wintun-LICENSE.txt` 与 `wintun-README.md`。
+- **js-yaml**（MIT）— https://github.com/nodeca/js-yaml
+- **ws**（MIT）— https://github.com/websockets/ws
+
+## 6. Windows 便携版的规则库与数据
+
+- **MetaCubeX/meta-rules-dat** — https://github.com/MetaCubeX/meta-rules-dat
+  - `design/windows/app/resources/geo/` 下的 `geoip.metadb`、`geosite.dat`、`ASN.mmdb`（GeoLite2-ASN 派生数据，使用遵循 [MaxMind GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula)）。
+- **ACL4SSR/ACL4SSR** — https://github.com/ACL4SSR/ACL4SSR
+  - `design/windows/app/resources/rules/` 下的规则集种子文件（classical / domain 两种行为）。
+- 运行时规则来源见 `design/windows/app/electron/core/rulesets.js` 里的 `BASE_GEO` / `BASE_ACL`（jsDelivr CDN）；随包种子只用于**冷启动预播种**（只补缺失，不覆盖内核已下载的新版）。
+
+## 7. 兼容的面板后端（非代码依赖）
+
+客户端兼容下列开源机场面板的 API：**V2Board (xiaov2b)**（https://github.com/wyx2685/v2board）与 **Xboard**（https://github.com/cedar2025/Xboard）。客户端不包含它们的任何代码。
 
 ---
 
