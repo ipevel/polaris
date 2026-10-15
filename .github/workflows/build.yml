@@ -839,6 +839,41 @@ jobs:
           if (Test-Path $tmp2) { Remove-Item $tmp2 -Recurse -Force }
           Expand-Archive -LiteralPath $zip -DestinationPath $tmp2 -Force
           node scripts/package-manifest.js verify $tmp2
+          # 决策主管条件 c：离线覆盖不到 Compress-Archive，所以重打包后的三条断言放在这里。
+          # ① zip 条目名必须正斜杠、不得以 / 开头、不得含 .. 段。
+          #    注意：**不能**按「解压出来的相对路径」判——Windows 上解压路径天然带 \，那样永远为真；
+          #    这里直接读 zip 的中央目录（.NET ZipFile），才是条目名的真身。
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          $entryCount = 0
+          try {
+            $entryCount = $z.Entries.Count
+            $badNames = @($z.Entries | Where-Object { $_.FullName.Contains('\') -or $_.FullName.StartsWith('/') -or (($_.FullName -split '/') -contains '..') } | ForEach-Object { $_.FullName })
+          } finally { $z.Dispose() }
+          if ($badNames.Count -gt 0) {
+            Write-Error ("重打包后条目名不合规（含反斜杠/绝对路径/..）：" + ($badNames -join '、'))
+            exit 1
+          }
+          Write-Host "条目名检查通过（$entryCount 个条目，全部正斜杠）"
+          # ② 文件条目集合必须与重打包前**逐一相同**（不只是数量）
+          $relOf = { param($root) Get-ChildItem $root -Recurse -File | ForEach-Object { $_.FullName.Substring($root.Length + 1) } | Sort-Object }
+          $beforeList = @(& $relOf $tmp)
+          $afterList = @(& $relOf $tmp2)
+          $setDiff = @(Compare-Object $beforeList $afterList)
+          $missing = @($setDiff | Where-Object { $_.SideIndicator -eq '<=' } | ForEach-Object { $_.InputObject })
+          $extra = @($setDiff | Where-Object { $_.SideIndicator -eq '=>' } | ForEach-Object { $_.InputObject })
+          if ($missing.Count -gt 0 -or $extra.Count -gt 0) {
+            Write-Error ("重打包后条目集合与重打包前不一致：丢 [" + ($missing -join '、') + "] 多 [" + ($extra -join '、') + "]")
+            exit 1
+          }
+          Write-Host "条目集合逐一比对通过（$($afterList.Count) 个文件）"
+          # ③ 目录条目差异：Compress-Archive 不保留空目录（已知行为，记录留痕，不判失败）
+          $dirOf = { param($root) Get-ChildItem $root -Recurse -Directory | ForEach-Object { $_.FullName.Substring($root.Length + 1) } | Sort-Object }
+          $dirDiff = @(Compare-Object @(& $dirOf $tmp) @(& $dirOf $tmp2))
+          if ($dirDiff.Count -gt 0) {
+            Write-Host '目录条目差异（Compress-Archive 不保留空目录，属已知行为，不判失败）：'
+            $dirDiff | ForEach-Object { Write-Host ('  ' + $_.SideIndicator + ' ' + $_.InputObject) }
+          } else { Write-Host '目录条目与重打包前一致' }
           $countAfter = (Get-ChildItem $tmp2 -Recurse -File).Count
           if ($countAfter -ne ($countBefore + 1)) {
             Write-Error "重打包后文件数 $countAfter 与预期 $($countBefore + 1) 不一致（原 $countBefore 个 + 清单 1 个），拒绝上传"
