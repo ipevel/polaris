@@ -128,7 +128,7 @@ check('旧用户（schema 2）的 routing_order 被归零', () => {
   assert.strictEqual(s.settings_schema, 3);
 });
 check('迁移不碰 routing_rules（用户拨的开关）', () => {
-  const rules = { '🌏 国外穿墙': 'proxy', 'Ⓜ️ 微软': 'direct' };
+  const rules = { '🌏 国外穿墙': 'proxy', 'Ⓜ️ 微软云盘': 'direct' };
   writeSettings({ settings_schema: 2, routing_order: ['🐱 GitHub'], routing_rules: rules });
   const s = store.reload();
   assert.deepStrictEqual(s.routing_rules, rules);

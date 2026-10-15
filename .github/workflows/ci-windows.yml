@@ -102,15 +102,28 @@ jobs:
       # 同时保证「前一条挂了后面的不会假装通过」。
       #
       # 两条 REQUIRED 环境变量把「跳过」堵死：
-      #   POLARIS_GO_TABLE_REQUIRED=1     → 找不到 main 的 Go 表就红，不是绿
+#   POLARIS_GO_TABLE_REQUIRED=1     → 找不到 Go 表就红，不是绿（新口径优先 in-tree，见下）
       #   POLARIS_ANDROID_REQUIRED=1      → 找不到安卓 flags 目录就红，不是绿
+      # Go 表的取数口径（2026-10-15 收紧）：**优先当前检出的 kernel-core**，取不到才回退 .ci-main。
+      # 原来硬指向 .ci-main（ref: main），于是「PR 改了 Go 表、JS 镜像没跟上」反而绿 ——
+      # 门禁要等 main push 之后才红，抓不住漂移本身。改成优先 in-tree 后，PR 路径读到的就是 PR
+      # 自己的 Go 表，两端必须在同一个 PR 里一致（与安卓侧 RoutingTableParityTest 的行为对齐）。
+      # 回退分支只为过渡期的 windows-portable（它只有 design/，没有 kernel-core/）保留。
       - name: 离线自检 13 条（updater / updater-timeout / traffic / geosync / rulesync / routing-sync / flags / flag-row / dns / portowner / config / single-source / routing-view）
+        shell: bash
         env:
-          POLARIS_GO_TABLE: ${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go
           POLARIS_GO_TABLE_REQUIRED: '1'
           POLARIS_ANDROID_DIR: ${{ github.workspace }}/.ci-main
           POLARIS_ANDROID_REQUIRED: '1'
-        run: npm run test:offline
+        run: |
+          set -euo pipefail
+          go_table="${{ github.workspace }}/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+          if [ ! -f "$go_table" ]; then
+            go_table="${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+            echo "::notice::当前检出没有 kernel-core（过渡期分支），回退用 .ci-main 的 Go 表：$go_table"
+          fi
+          echo "[routing-sync] 用 Go 表：$go_table"
+          POLARIS_GO_TABLE="$go_table" npm run test:offline
 
       # 便宜的兜底：语法错误在这里就红，不用等打包才发现。
       - name: 语法检查（所有 js）
