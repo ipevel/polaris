@@ -78,7 +78,13 @@ async function findLeftovers(dataDir, exceptPid) {
 }
 
 /**
- * 结束一个残留内核。**两道守卫都在**：认不出进程名 → 不动；名字不是 mihomo.exe → 不动。
+ * 结束一个残留内核。**动手前三道守卫**：
+ *   ① 认不出进程名 → 不动；② 名字不是 mihomo.exe → 不动；
+ *   ③ **再核一次判据**：这个 pid 必须出现在 findLeftovers() 的名单里（= 命令行里带我们自己的
+ *      data 目录）。名单外的一律不碰 —— 别的 Clash GUI 的 mihomo 即使名字一样也不杀；
+ *      非 Windows（supported:false，一条都不报）同样落到这条，什么都不动。
+ * 每一次拒绝都留 log.warn（可见记录），绝不静默杀进程。
+ * @param {object} [opts] dataDir（默认 paths.data()）/ listForTest（自检注入名单）/ nameForTest / graceMs
  * @returns {Promise<{closed:boolean, forced?:boolean, name?:string, reason:string}>}
  */
 async function killLeftover(pid, opts = {}) {
@@ -87,9 +93,29 @@ async function killLeftover(pid, opts = {}) {
   const name = opts.nameForTest !== undefined ? String(opts.nameForTest || '') : portowner.nameOf(id);
   if (!id) return { closed: false, name: '', reason: 'invalid' };
   if (!name) return { closed: false, name: '', reason: 'unidentified' };
-  if (name.toLowerCase() !== IMAGE) return { closed: false, name: name, reason: 'not-ours' };
+  if (name.toLowerCase() !== IMAGE) {
+    log.warn('残留内核：PID ' + id + ' 的进程名不是 ' + IMAGE + '（' + name + '），不动手');
+    return { closed: false, name: name, reason: 'not-ours' };
+  }
+  let list;
+  if (Array.isArray(opts.listForTest)) {
+    list = opts.listForTest;
+  } else {
+    const dataDir = opts.dataDir || require('../paths').data();
+    let found;
+    try { found = await findLeftovers(dataDir, 0); } catch (e) {
+      log.warn('残留内核：动手前复核名单失败（' + (e && e.message) + '），不动手');
+      return { closed: false, name: name, reason: 'recheck-failed' };
+    }
+    list = (found && found.list) || [];
+  }
+  if (!list.some((x) => Number(x && x.pid) === id)) {
+    log.warn('残留内核：PID ' + id + ' 不在自检名单里（不是我们 data 目录启动的 ' + IMAGE + '），不动手');
+    return { closed: false, name: name, reason: 'not-in-list' };
+  }
   const r = await portowner.close(id, { nameForTest: name, graceMs: opts.graceMs });
-  return Object.assign({ name: name }, r);
+  log.info('残留内核：已请求结束 PID ' + id + '（' + (r && r.closed ? '成功' : '未结束') + (r && r.forced ? '，强制' : '') + '）');
+  return Object.assign({ name: name, pid: id }, r);
 }
 
 module.exports = { findLeftovers, parseProcs, usesDataDir, killLeftover, IMAGE };

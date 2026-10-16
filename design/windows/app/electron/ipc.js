@@ -714,7 +714,8 @@ const commands = {
   kill_leftover_kernel: async ({ pids, pid } = {}) => {
     const list = Array.isArray(pids) && pids.length ? pids : (pid ? [pid] : []);
     const results = [];
-    for (const p of list) results.push(await leftover.killLeftover(p));
+    // 把「我们自己的 data 目录」传下去：leftover.killLeftover 动手前要用它复核判据（名单外的 pid 一律不杀）
+    for (const p of list) results.push(await leftover.killLeftover(p, { dataDir: paths.data() }));
     return { results: results };
   },
 
