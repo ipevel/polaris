@@ -31,14 +31,16 @@ function buildZip(entries) {
     const name = Buffer.from(e.name, 'utf8');
     const data = Buffer.isBuffer(e.data) ? e.data : Buffer.from(String(e.data || ''), 'utf8');
     const crc = crc32(data);
+    // 通用标志位：默认 0x0800（GP bit 11 = 文件名是 UTF-8）。负例要能构造「没打这个标志」的包。
+    const flag = e.flag == null ? 0x0800 : e.flag;
     const lh = Buffer.alloc(30);
-    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x0800, 6); lh.writeUInt16LE(0, 8);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(flag, 6); lh.writeUInt16LE(0, 8);
     lh.writeUInt16LE(0, 10); lh.writeUInt16LE(0, 12); lh.writeUInt32LE(crc, 14);
     lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22);
     lh.writeUInt16LE(name.length, 26); lh.writeUInt16LE(0, 28);
     locals.push(lh, name, data);
     const ch = Buffer.alloc(46);
-    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(0x0800, 8);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(flag, 8);
     ch.writeUInt16LE(0, 10); ch.writeUInt16LE(0, 12); ch.writeUInt16LE(0, 14);
     ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24);
     ch.writeUInt16LE(name.length, 28); ch.writeUInt16LE(0, 30); ch.writeUInt16LE(0, 32);
@@ -61,6 +63,7 @@ const SRC_FILES = [
   ['resources/core/mihomo.exe', 'CORE'],
   ['resources/polaris-files.sha256', 'MANIFEST'],
   ['locales/zh-CN.pak', 'PAK'],
+  ['使用说明.txt', 'README'],          // 非 ASCII 名：真产物里就有，⑥ 拿它做判据
 ];
 function resetSrc() {
   fs.rmSync(BASE, { recursive: true, force: true });
@@ -93,6 +96,7 @@ check('正向：合法 zip 退出码 0', okCase.code === 0, okCase.out.trim().sp
 check('正向：① 条目名合规', /① 条目名合规/.test(okCase.out));
 check('正向：② 集合逐一相同', /② 文件条目集合逐一相同/.test(okCase.out));
 check('正向：④ 大小写逐字一致', /④ 条目名大小写与源逐字一致/.test(okCase.out));
+check('正向：⑥ 非 ASCII 条目名都带 UTF-8 标志（GP bit 11）', /⑥ 非 ASCII 条目名都带 UTF-8 标志/.test(okCase.out), okCase.out.trim().split('\n').slice(-3).join(' | '));
 check('正向：③ 空目录被丢有结论（可接受 + 为什么 + 将来怎么办）',
   /③ 空目录被丢 1 个/.test(okCase.out) && /结论：可接受/.test(okCase.out) && /运行期 paths\.ensureAll 创建/.test(okCase.out) && /\.keep 占位/.test(okCase.out), okCase.out.trim().split('\n').slice(-6).join(' | '));
 
@@ -137,6 +141,30 @@ check('③ 该场景不报「非空目录被丢」', !/非空\*\*目录被丢/.t
 resetSrc();
 const dirLost = runCase('dir-files-lost', goodEntries().filter((e) => e.name.indexOf('resources/core/') !== 0));
 check('③ 某目录文件整批丢失 → 红并点名该目录', dirLost.code === 1 && /③ 有\*\*非空\*\*目录被丢/.test(dirLost.out) && /resources\/core/.test(dirLost.out), dirLost.out.trim().split('\n').slice(0, 5).join(' | '));
+/* ⑥ 非 ASCII 条目名必须带 UTF-8 标志（GP bit 11）—— 2026-10-15 发版事件的回归闸门。
+   编号顺延为 ⑥：#40 已把 ⑤ 用作「负例证据」那条，别再占用。 */
+resetSrc();
+const noUtf8 = runCase('no-utf8-flag', goodEntries().map((e) => (e.name === '使用说明.txt' ? { name: e.name, data: e.data, flag: 0x0000 } : e)));
+check('⑥ 非 ASCII 条目名缺 bit 11 → 红并点名该条目',
+  noUtf8.code === 1 && /⑥ 非 ASCII 条目名缺少 UTF-8 标志/.test(noUtf8.out) && /使用说明\.txt/.test(noUtf8.out),
+  noUtf8.out.trim().split('\n').slice(0, 3).join(' | '));
+resetSrc();
+const utf8Ok = runCase('utf8-flag-ok', goodEntries());
+check('⑥ 同一份带 bit 11 → 绿（对照）', utf8Ok.code === 0, utf8Ok.out.trim().split('\n').slice(-2).join(' | '));
+
+/* ③（issue #24）workflow 同款 fixture：只含一个空目录 + 一个根文件 → 必须绿 + 打印结论 */
+const FX = path.join(BASE, 'fx');
+const FXZ = path.join(BASE, 'fx.zip');
+fs.rmSync(FX, { recursive: true, force: true });
+fs.mkdirSync(path.join(FX, 'empty-dir'), { recursive: true });
+fs.writeFileSync(path.join(FX, 'readme.txt'), 'fixture');
+fs.writeFileSync(FXZ, buildZip([{ name: 'readme.txt', data: 'fixture' }]));   // 故意不写 empty-dir/（Compress-Archive 不写目录条目）
+const fxRun = spawnSync(process.execPath, [CHECKER, '--before', FX, '--zip', FXZ], { encoding: 'utf8' });
+const fxOut = String(fxRun.stdout || '') + String(fxRun.stderr || '');
+check('#24 workflow 同款 fixture（只有空目录 + 一个根文件）→ 绿', fxRun.status === 0, fxOut.trim().split('\n').slice(-3).join(' | '));
+check('#24 该 fixture 的输出必须含「空目录被丢」与那句结论',
+  /空目录被丢 1 个/.test(fxOut) && /结论：可接受/.test(fxOut), fxOut.trim().split('\n').slice(-5).join(' | '));
+
 /* 用法错 → 退出码 2 */
 const usage = spawnSync(process.execPath, [CHECKER], { encoding: 'utf8' });
 check('用法错 → 退出码 2', usage.status === 2);
