@@ -647,7 +647,10 @@ const NEED_RESOLVE_TYPES = new Set(['IP-CIDR', 'IP-CIDR6', 'IP-SUFFIX', 'GEOIP']
 const OUTS = new Set(['proxy', 'direct', 'block']);
 const CUSTOM_MAX = 20;         // 自定义分流组数量上限
 const CUSTOM_RULES_MAX = 200;  // 每组规则条数上限
-const CUSTOM_NAME_MAX = 24;    // 组名长度上限
+const CUSTOM_NAME_MAX = 32;    // 组名长度上限（宽松侧：Windows 原为 24，与安卓 32 对齐；只放宽，不隐藏存量）
+
+/** 名字里会破坏 YAML/JSON 结构或 mihomo 规则串分列的字符（观察名单 | > & * ! % @ ; = 先不禁，等真机实测内核能否加载） */
+const NAME_FORBIDDEN_RE = /[,:{}[\]'"\\#\r\n\t]/;
 
 /** 解析一行用户写的规则 → {type, value, noResolve}；空行/注释返回 null；不合法抛错 */
 function parseRuleLine(line) {
@@ -686,15 +689,29 @@ function ruleLine(rule, target) {
  * 设置文件可能被手改坏，或者旧版本写过不认识的东西 —— 配置组装绝不能因此崩，
  * 所以这里只做"能用的留下、不能用的丢掉"；严格校验在 validateCustom（保存时）。
  */
-function normalizeCustom(list) {
-  if (!Array.isArray(list)) return [];
+/**
+ * 把存储里的自定义分流组分成「可用」与「被隐藏」两类（**永不抛错**）。
+ * 被隐藏 = 名字与保留名冲突 / 名字非法 / 重名 / 规则全废 / 超出数量上限。
+ * **条目不删**：只是不参与配置组装与列表渲染；UI 必须按 hidden 清单每次读都提示。
+ * 判定集合 = 结构组 + 当前内置表名 + mihomo 预注册（旧别名只用于迁移，不参与判定）。
+ */
+function classifyCustom(list) {
   const out = [];
+  const hidden = [];
   const seen = new Set();
-  for (const raw of list.slice(0, CUSTOM_MAX)) {
+  if (!Array.isArray(list)) return { list: out, hidden: hidden };
+  for (const raw of list) {
     if (!raw || typeof raw !== 'object') continue;
-    const name = String(raw.name == null ? '' : raw.name).trim().slice(0, CUSTOM_NAME_MAX);
-    // 与保留名冲突的一律丢弃：内置组/结构组的语义是产品定义的，不能被顶掉
-    if (!name || seen.has(name) || isReservedName(name)) continue;
+    const rawName = String(raw.name == null ? '' : raw.name).trim();
+    // 长度按**原始**名字判：先截断再判会把超长名字静默改名后继续用（旧行为）
+    if (rawName.length > CUSTOM_NAME_MAX) { hidden.push({ name: rawName.slice(0, 64), reason: 'invalid' }); continue; }
+    const name = rawName;
+    if (!name) { hidden.push({ name: String(raw.name || ''), reason: 'invalid' }); continue; }
+    if (seen.has(name)) { hidden.push({ name: name, reason: 'invalid' }); continue; }
+    if (isReservedName(name)) { hidden.push({ name: name, reason: 'reserved' }); continue; }
+    // 存量判据：只看「实测会让内核配置加载失败」的（长度/字符集；观察名单除外）
+    if (name.length > CUSTOM_NAME_MAX || NAME_FORBIDDEN_RE.test(name)) { hidden.push({ name: name, reason: 'invalid' }); continue; }
+    if (out.length >= CUSTOM_MAX) { hidden.push({ name: name, reason: 'invalid' }); continue; }
     const rules = [];
     const lines = Array.isArray(raw.rules) ? raw.rules : String(raw.rules || '').split(/\r?\n/);
     for (const line of lines.slice(0, CUSTOM_RULES_MAX)) {
@@ -708,17 +725,26 @@ function normalizeCustom(list) {
       } catch (_) { r = null; }
       if (r) rules.push(r);
     }
-    if (!rules.length) continue;
+    if (!rules.length) { hidden.push({ name: name, reason: 'invalid' }); continue; }
     seen.add(name);
-    out.push({ name, out: OUTS.has(raw.out) ? raw.out : 'proxy', enabled: raw.enabled !== false, rules });
+    out.push({ name: name, out: OUTS.has(raw.out) ? raw.out : 'proxy', enabled: raw.enabled !== false, rules: rules });
   }
-  return out;
+  return { list: out, hidden: hidden };
 }
 
-/** 规范化结果 → 存储形状（规则回写成文本） */
+/** 只取可用的那一半（配置组装/列表渲染用）；被隐藏条目一律不进内核配置 */
+function normalizeCustom(list) { return classifyCustom(list).list; }
+
+/**
+ * 存储形状的序列化（规则回写成文本）。**绝不过滤**：
+ * 保存路径必须原样保留被隐藏条目，否则「对齐更严的判定」会追溯删掉用户已有的组。
+ */
 function serializeCustom(list) {
-  return normalizeCustom(list).map((g) => ({
-    name: g.name, out: g.out, enabled: g.enabled, rules: g.rules.map(ruleText),
+  return (Array.isArray(list) ? list : []).map((g) => ({
+    name: String((g && g.name) == null ? '' : g.name),
+    out: OUTS.has(g && g.out) ? g.out : 'proxy',
+    enabled: !(g && g.enabled === false),
+    rules: (Array.isArray(g && g.rules) ? g.rules : []).map((r) => (typeof r === 'string' ? r : ruleText(r))),
   }));
 }
 
@@ -844,6 +870,7 @@ module.exports = {
   ruleText,
   ruleLine,
   normalizeCustom,
+  classifyCustom,
   serializeCustom,
   validateCustom,
 };

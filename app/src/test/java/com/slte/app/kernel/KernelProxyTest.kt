@@ -6,6 +6,9 @@ package com.slte.app.kernel
 import android.content.Context
 import com.github.kr328.clash.core.Clash
 import com.github.kr328.clash.core.model.ConfigurationOverride
+import com.github.kr328.clash.core.model.Proxy
+import com.github.kr328.clash.core.model.ProxyGroup
+import com.github.kr328.clash.core.model.ProxySort
 import com.github.kr328.clash.core.model.TunnelState
 import com.github.kr328.clash.service.remote.IClashManager
 import com.slte.app.data.local.InMemoryPreferences
@@ -123,6 +126,26 @@ class KernelProxyTest {
             (RoutingGroups.map { it.name } + PrimaryGroupName + custom.map { it.name }).toSet(),
             names.toSet(),
         )
+    }
+
+    /**
+     * 显示映射只允许待在渲染层：内核返回旧名时，模型里的 name 必须原样保留——
+     * 它同时是节点页的折叠键与 selectInGroup / testGroup 的入参。
+     */
+    @Test
+    fun `proxyGroups 原样保留内核返回的组名`() = runTest(mainRule.dispatcher) {
+        val proxy = proxy()
+        every { clash.queryProxyGroupNames(false) } returns listOf("Ⓜ️ 微软")
+        every { clash.queryProxyGroup("Ⓜ️ 微软", ProxySort.Default) } returns
+            ProxyGroup(
+                type = "Selector",
+                proxies = listOf(Proxy(name = "香港 01", title = "", subtitle = "", type = "Vless", delay = 32, isGroup = false)),
+                now = "香港 01",
+            )
+
+        val groups = proxy.proxyGroups()
+
+        assertEquals(listOf("Ⓜ️ 微软"), groups.map { it.name })
     }
 
     @Test

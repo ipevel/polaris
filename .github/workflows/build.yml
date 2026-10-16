@@ -910,18 +910,62 @@ jobs:
           # 发版前置门禁（第二道，针对**将要发布的那份 zip**）：
           # 更新器把「缺清单 / 哈希不符」当拒绝安装，所以发布前再独立验一次字节，
           # 防产物在下载/搬运环节被改动。这里不依赖仓库文件（release job 没有 checkout）。
-          TMPZ=$(mktemp -d)
-          unzip -q "$ZIP" -d "$TMPZ"
-          MF="$TMPZ/resources/polaris-files.sha256"
-          if [ ! -f "$MF" ]; then echo "::error::便携版 zip 里没有包内清单 resources/polaris-files.sha256"; exit 1; fi
-          grep -q '  Polaris.exe$' "$MF" || { echo "::error::清单里没有 Polaris.exe"; exit 1; }
-          grep -q '  resources/app.asar$' "$MF" || { echo "::error::清单里没有 resources/app.asar"; exit 1; }
-          (cd "$TMPZ" && sha256sum -c --quiet resources/polaris-files.sha256) || { echo "::error::包内清单与产物不一致"; exit 1; }
-          N_FILES=$(find "$TMPZ" -type f ! -name 'polaris-files.sha256' | wc -l)
-          N_MF=$(grep -c . "$MF")
-          if [ "$N_FILES" -ne "$N_MF" ]; then echo "::error::清单条目数 $N_MF 与产物文件数 $N_FILES 不一致"; exit 1; fi
-          rm -rf "$TMPZ"
-          echo "便携版包内清单校验通过（$N_MF 个文件）"
+          #
+          # 2026-10-15 修（run 38774587692 假红）：原实现是 unzip 解压后 sha256sum -c。
+          # 包内 使用说明.txt 是带 UTF-8 标志位（general purpose bit 11）的非 ASCII 条目名，
+          # 而 runner 上的 Info-ZIP unzip 6.00 会在**解压阶段**把名字转成旧字符集
+          # （unzip -U / unzip -UU / LANG=C.UTF-8 都改不了），于是清单里那一行在文件系统上
+          # 找不到 → 假红挡住发版。改成**直接按中央目录的条目名读字节**校验：名字按 bit 11
+          # 正确解码、不经过文件系统往返，断言一条不变（清单存在 / 必含 Polaris.exe 与
+          # resources/app.asar / 逐条 sha256 一致 / 条目数一致 / 缺多不符一律 fail-closed）。
+          # 口径：这是「**打包自洽**」检查，**不是签名**；防篡改靠 Release 的 SHA256SUMS.txt
+          # 与用户侧校验。
+          python3 - "$ZIP" <<'PY'
+          import hashlib
+          import sys
+          import zipfile
+
+          MF = "resources/polaris-files.sha256"
+          zf = zipfile.ZipFile(sys.argv[1])
+          names = [n for n in zf.namelist() if not n.endswith("/")]
+
+          if MF not in names:
+              print("::error::便携版 zip 里没有包内清单 %s" % MF)
+              sys.exit(1)
+
+          entries = []
+          for line in zf.read(MF).decode("utf-8").splitlines():
+              if not line.strip():
+                  continue
+              digest, _, path = line.partition("  ")
+              entries.append((digest.strip(), path.strip()))
+
+          for required in ("Polaris.exe", "resources/app.asar"):
+              if not any(path == required for _, path in entries):
+                  print("::error::清单里没有 %s" % required)
+                  sys.exit(1)
+
+          bad = []
+          for digest, path in entries:
+              try:
+                  data = zf.read(path)
+              except KeyError:
+                  bad.append("%s：包内没有这个条目" % path)
+                  continue
+              if hashlib.sha256(data).hexdigest() != digest:
+                  bad.append("%s：哈希不符" % path)
+          if bad:
+              print("::error::包内清单与产物不一致：%s" % "；".join(bad[:10]))
+              sys.exit(1)
+
+          # 口径：产物文件数**排除清单自身**（清单在包内，不能把自己算进去）。
+          n_files = len([n for n in names if n != MF])
+          if n_files != len(entries):
+              print("::error::清单条目数 %d 与产物文件数 %d 不一致" % (len(entries), n_files))
+              sys.exit(1)
+
+          print("便携版包内清单校验通过（%d 个文件）" % len(entries))
+          PY
           echo "--- SHA256SUMS.txt ---"
           cat out/SHA256SUMS.txt
 
