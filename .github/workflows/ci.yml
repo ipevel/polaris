@@ -97,7 +97,34 @@ jobs:
           SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
           test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT）"; exit 1; }
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          # issue #36：sdkmanager 下载偶发截断（实测报 Error on ZipFile unknown archive），失败一次就红会挡住
+          # 所有合 main / 发版（这是 required check）。这里对**同一条安装命令**最多重试 3 次、指数退避（5s / 15s），
+          # 每次失败打 ::warning:: 说明第几次；3 次都失败仍然红（不静默跳过、不 swallow）。
+          # licenses 那条与 cmake 那条的 `|| true` / `::warning::` 语义保持原样，不动。
+          install_sdk_ndk() {
+            local i delay
+            local delays=(5 15)
+            for i in 1 2 3; do
+              if "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"; then
+                if [ "$i" -gt 1 ]; then echo "::notice::sdkmanager 第 $i 次尝试成功"; fi
+                return 0
+              fi
+              if [ "$i" -ge 3 ]; then
+                echo "::error::sdkmanager 安装 Android SDK/NDK 连续 3 次失败，放弃（required check 不放行）"
+                return 1
+              fi
+              delay="${delays[$((i-1))]}"
+              echo "::warning::sdkmanager 安装 Android SDK/NDK 失败（第 $i/3 次），${delay}s 后重试；常见原因是下载截断（Error on ZipFile unknown archive）"
+              # 尽力清掉 sdkmanager 的临时目录，避免复用下载了一半的 zip；不同版本路径略有差异，清不到不影响重试
+              if [ -n "${ANDROID_SDK_ROOT:-}" ]; then rm -rf "$ANDROID_SDK_ROOT/.temp" 2>/dev/null || true; fi
+              sleep "$delay"
+            done
+            return 1
+          }
+          if ! install_sdk_ndk; then
+            echo "::error::Android SDK/NDK 安装失败（已重试 3 次，每次间隔 5s/15s）"
+            exit 1
+          fi
           "$SDKMANAGER" "cmake;3.22.1" || echo "::warning::cmake 预装失败，交由 AGP 自动下载"
           ls "$ANDROID_SDK_ROOT/cmake" 2>/dev/null || echo "SDK 内暂无可用的 cmake"
 
