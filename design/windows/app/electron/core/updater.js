@@ -117,6 +117,7 @@ function info() {
     extractor: S.extractor,
     install_dir: installDir(),
     last_apply_result: readApplyResult(),
+    apply_incomplete: applyIncomplete(),
     staged_ignored: S.staged_ignored || null,
     portable: paths.isPortable(),
     packaged: paths.isPackaged,
@@ -737,6 +738,68 @@ function readApplyResult() {
   } catch (_) { return null; }
 }
 function clearApplyResult() { try { fs.rmSync(applyResultFile(), { force: true }); } catch (_) {} }
+/**
+ * PR-D：apply 的「意图」与「alive」记录（失败可观测）。
+ *
+ * 主进程在起 helper **之前**写一条意图；helper 一起手写一条 alive。下次启动读回来：
+ *   · 意图在、结果在（且结果不旧） → 这次更新有结论（成功或失败都算）
+ *   · 意图在、结果不在            → **上次更新没跑完**（helper 没起来 / 起手就死 / 被强杀）
+ *   · 意图不在                     → 从没发起过更新
+ * 1.11.6→1.12.0 那次「更新没生效、两分钟一行日志都没有」，就是第二种情况——
+ * 以前它在界面上表现为「什么也没发生」，用户和我们都没有任何可查的痕迹。
+ */
+function applyIntentFile() {
+  return path.join(process.env.POLARIS_APPLY_UPDATEDIR || updateDir(), 'apply-intent.json');
+}
+function applyAliveFile() {
+  return path.join(process.env.POLARIS_APPLY_UPDATEDIR || updateDir(), 'apply-alive.json');
+}
+function writeApplyIntent(obj) {
+  try {
+    fs.mkdirSync(updateDir(), { recursive: true });
+    fs.writeFileSync(applyIntentFile(), JSON.stringify(Object.assign({ ts: Date.now() }, obj || {})), 'utf8');
+  } catch (e) { log.warn('写 apply-intent.json 失败：' + (e && e.message)); }
+}
+function readApplyIntent() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(applyIntentFile(), 'utf8'));
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch (_) { return null; }
+}
+function readApplyAlive() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(applyAliveFile(), 'utf8'));
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch (_) { return null; }
+}
+/** helper 一起手就写：证明「进程真的跑起来了」（apply.log 第一行之前也可能死） */
+function writeApplyAlive(extra) {
+  try {
+    fs.mkdirSync(path.dirname(applyAliveFile()), { recursive: true });
+    fs.writeFileSync(applyAliveFile(), JSON.stringify(Object.assign({ ts: Date.now(), pid: process.pid }, extra || {})), 'utf8');
+  } catch (_) { /* 写不进去也不能因此不干活 */ }
+}
+function clearApplyIntent() {
+  try { fs.rmSync(applyIntentFile(), { force: true }); } catch (_) {}
+  try { fs.rmSync(applyAliveFile(), { force: true }); } catch (_) {}
+}
+/**
+ * 上次更新是否「没跑完」。结果必须**不旧于**意图才算完成 ——
+ * 上一次留下的 apply-result.json 不能拿来给这一次交差。
+ */
+function applyIncomplete() {
+  const intent = readApplyIntent();
+  if (!intent) return null;
+  const res = readApplyResult();
+  if (res && Number(res.ts || 0) >= Number(intent.ts || 0)) { clearApplyIntent(); return null; }
+  return {
+    started_at: Number(intent.ts || 0),
+    version: String(intent.version || ''),
+    helper_pid: Number(intent.helper_pid || 0),
+    alive: !!readApplyAlive(),   // false = helper 进程根本没起来
+    result_missing: true,
+  };
+}
 
 /** 包内清单（发布侧生成）：逐文件 sha256；缺清单 = 拒绝安装 */
 const MANIFEST_REL = 'resources/polaris-files.sha256';
@@ -1056,6 +1119,11 @@ async function applyWorker() {
   const pid = Number(process.env.POLARIS_APPLY_PID || 0);
   const reexec = process.env.POLARIS_APPLY_REEXEC === '1';
   const tempDir = String(process.env.POLARIS_APPLY_TEMPDIR || '');
+  // PR-D②：**第一件事**就写 alive —— 放在任何守卫、任何 say 之前。
+  // 守卫失败会在 say 之后留下 apply.log；而「Node 起来了、还没走到 say 就死」以前一行痕迹都没有。
+  // 有了它，事后能分清「helper 根本没起来」和「起来了但早死」。
+  writeApplyAlive({ stage_root: String(stageRoot || ''), target: String(appDir || ''), reexec: reexec });
+
   const logFile = path.join(updDir || updateDir(), 'apply.log');
   const say = (s) => {
     const line = '[' + log.stamp() + '] ' + s;
@@ -1149,9 +1217,18 @@ function apply() {
   const appDir = installDir();
   // helper 就是同一个 exe 的第二个实例，靠环境变量 POLARIS_APPLY_STAGE 切到 worker 分支。
   // 参数全走环境变量：SEA 单可执行里 argv 被 Node 解析器接管，命令行开关进不去（见文件头注释）。
+  // PR-D①：起 helper **之前**留下意图。helper 若在 Node 启动阶段就死（SEA 环境变量没注入全、
+  // 被杀软拦、exe 被锁），以前是一点痕迹都没有：主进程只写「起了 helper(pid=…)」就退出，
+  // 两分钟后用户看到版本没变、日志空白。有了这条，下次启动能明确说「上次更新没跑完」。
+  writeApplyIntent({ version: String(S.version || ''), stage_root: String(stageRoot), install_dir: String(appDir) });
+
+  // PR-D③：helper 的 stdout/stderr 以前是 'ignore'（全丢）。重定向到文件 —— 它在 Node
+  // 启动阶段就崩的那种情况，唯一能留下的就是它自己吐的错。
+  let outFd = null;
+  try { fs.mkdirSync(updateDir(), { recursive: true }); outFd = fs.openSync(path.join(updateDir(), 'helper.out.log'), 'a'); } catch (_) { outFd = null; }
   const child = spawn(process.execPath, [], {
     detached: true,
-    stdio: 'ignore',
+    stdio: outFd == null ? 'ignore' : ['ignore', outFd, outFd],
     windowsHide: true,
     env: {
       ...process.env,
@@ -1165,7 +1242,9 @@ function apply() {
       POLARIS_DATA_DIR: appDir,
     },
   });
+  if (outFd != null) { try { fs.closeSync(outFd); } catch (_) {} }
   child.unref();
+  writeApplyIntent({ version: String(S.version || ''), stage_root: String(stageRoot), install_dir: String(appDir), helper_pid: child.pid });
   log.info(`起了自更新 helper（pid=${child.pid}），本进程即将退出`);
 
   set({ phase: 'applying' });
@@ -1191,5 +1270,6 @@ module.exports = {
   guardHelperEnv, guardAppPath, pathInside, isTempPath, verifyManifest, verifyManifestEntry,
   verifyDownloadedFile, parseManifest, sha256File,
   backupOverwritten, restoreBackup, copyTreeExcept, writeApplyResult, readApplyResult, clearApplyResult,
+  writeApplyIntent, readApplyIntent, writeApplyAlive, readApplyAlive, clearApplyIntent, applyIncomplete, applyIntentFile, applyAliveFile,
   copyTree, listFiles, canOverwrite, waitOverwritable, rmTolerant,
 };
