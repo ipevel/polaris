@@ -143,7 +143,7 @@ concurrency:
   # SHA 不同，排队挡不住「不同 SHA 发同一个 tag」，也挡不住「台账里已经发过、这次换
   # 一条无关的 run 再发一次」。真正的防线是 release-precheck 最前面那两条 fail-closed
   # 前置校验（同 SHA 已有在跑的发版 run / 目标 tag 的 Release 已发布且未置 allowRepublish）。
-  group: release-${{ github.sha }}
+  group: release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
