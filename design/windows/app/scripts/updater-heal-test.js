@@ -21,6 +21,8 @@ const EXE = path.join(APP, 'Polaris.exe');
 const OLD = EXE + '.old';
 
 process.env.POLARIS_DATA_DIR = DATA;
+// P0：installDir() 现在优先读 POLARIS_APPLY_TARGET（helper 从临时目录运行后这是唯一权威）
+process.env.POLARIS_APPLY_TARGET = APP;
 
 let total = 0; let failed = 0;
 function check(name, cond, detail) {
@@ -28,7 +30,8 @@ function check(name, cond, detail) {
   console.log((cond ? '  [ OK ] ' : '  [FAIL] ') + name + (!cond && detail ? '  ' + detail : ''));
 }
 
-// updater 的 cleanStaleRename 用 process.execPath；自检里指到假安装目录（不碰真实 exe）
+// updater 的 cleanStaleRename 现在按 installDir()（= POLARIS_APPLY_TARGET）定位；
+// 这里仍把 process.execPath 也指到假 exe，防它回退到 exe 目录时碰到真 node.exe
 Object.defineProperty(process, 'execPath', { value: EXE, configurable: true });
 
 const updater = require('../electron/core/updater');

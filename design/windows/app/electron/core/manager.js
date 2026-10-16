@@ -354,6 +354,23 @@ async function startKernel() {
   if (!fs.existsSync(exe)) {
     throw new Error(`未找到内核 mihomo.exe（${paths.core()}），请重新解压完整目录`);
   }
+  // 启动前定点核对内核与包内清单：内核是随包分发的原生 exe，半覆盖 / 被杀软截断时，
+  // 它坏掉的表现是「连不上」这种玄学，在这里换成一句人话。只核内核**一个**文件 ——
+  // 整包（geo / 规则几百 MB）每次启动都算一遍不可接受。清单缺失 / 没有这一条 → 跳过。
+  const integrity = require('./updater').verifyManifestEntry(require('./updater').installDir(), 'resources/core/mihomo.exe');
+  if (!integrity.ok) {
+    throw new Error(`内核 mihomo.exe 与包内清单不符（${integrity.reason}），请重新解压完整的便携目录`);
+  }
+  if (integrity.skipped) {
+    // 硬要求（决策主管）：跳过**不等于通过**，必须留可诊断记录 + 关于页可见，别静默放过。
+    // 「条目在而不符」上面已经拒绝了；这里只是「清单缺失 / 没有这一条」，拒绝启动会把开发态与老包一并挡死，
+    // 所以处理方式是：明确记一条 warn + 落盘给关于页看，状态写成 skipped（不是 ok）。
+    const rec = { state: 'skipped', reason: String(integrity.reason || '未知'), ts: Date.now() };
+    log.warn('内核启动校验未执行（不计为通过）：' + rec.reason + ' —— 包内清单缺失或没有这一条，本次启动按未校验处理');
+    try { store.set('last_kernel_verify', rec); } catch (_) {}
+  } else {
+    try { store.set('last_kernel_verify', { state: 'ok', reason: '', ts: Date.now() }); } catch (_) {}
+  }
   ensureGeodata();
   prepareConfig();
 

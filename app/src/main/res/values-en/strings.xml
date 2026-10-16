@@ -323,7 +323,15 @@
     <string name="routing_custom_invalid_name">Name empty, too long, or clashes with built-ins</string>
     <string name="routing_custom_duplicate_name">A group with the same name already exists</string>
     <string name="routing_custom_invalid_url">Only https URLs pointing to public hosts are allowed</string>
-    <string name="routing_custom_cleaned_invalid">Some custom rule groups had invalid names or domains and were removed</string>
+    <string name="routing_custom_cleaned_invalid">Some custom rule groups or direct domains are invalid (for example the name clashes with a built-in group, or contains illegal characters); they are hidden from the app list but kept on this device</string>
+    <string name="routing_hidden_title">Temporarily hidden items</string>
+    <string name="routing_hidden_desc">These items are not used by the app list, but they are kept as-is in the local config file and are not deleted</string>
+    <string name="routing_hidden_custom_tag">Custom rule group (hidden)</string>
+    <string name="routing_hidden_domain_tag">Direct domain (hidden)</string>
+    <string name="routing_export_backup">Export local routing config</string>
+    <string name="routing_export_backup_desc">Save routing.json to Downloads and share it (includes hidden items)</string>
+    <string name="routing_export_backup_share">Export local routing config</string>
+    <string name="routing_export_backup_failed">Export failed, please retry</string>
     <string name="routing_degraded_notice">Local routing was not applied: subscription node names collide with built-in group names, panel routing is used instead</string>
 
     <!-- V5 UI (v5 redesign additions) -->

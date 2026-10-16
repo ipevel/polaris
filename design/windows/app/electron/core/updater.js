@@ -40,6 +40,7 @@ const https = require('https');
 const { execFile, spawn } = require('child_process');
 
 const paths = require('../paths');
+const fmt = require('../util/format');
 const store = require('../store');
 const log = require('../logger');
 
@@ -115,6 +116,8 @@ function info() {
     staged_at: S.staged_at,
     extractor: S.extractor,
     install_dir: installDir(),
+    last_apply_result: readApplyResult(),
+    staged_ignored: S.staged_ignored || null,
     portable: paths.isPortable(),
     packaged: paths.isPackaged,
     can_apply: canApply(),
@@ -136,6 +139,10 @@ function set(patch) {
 /** 安装目录：打包后就是 exe 所在目录（也就是便携根目录），开发态是 app 目录 */
 function installDir() {
   try {
+    // helper 从临时目录运行时 process.execPath 指向临时副本；安装目录的唯一权威来源
+    // 是父进程传进来的 POLARIS_APPLY_TARGET（守卫 1 已验过它存在、不是临时目录）。
+    const forced = String(process.env.POLARIS_APPLY_TARGET || '').trim();
+    if (forced) return path.resolve(forced);
     const mod = require('electron');
     const app = mod && mod.app;
     if (app && app.isPackaged) return path.dirname(app.getPath('exe'));
@@ -391,15 +398,25 @@ function restoreStaged() {
     const root = resolveStageRoot(stagingDir());
     if (!root || !raw || !raw.version) return;
     if (raw.file && !fs.existsSync(raw.file)) return;
+    const current = String(store.get('version') || '');
+    const staged = String(raw.version);
+    // 硬验收③：暂存包必须比当前版本新才可装；旧的直接忽略并清掉（免得反复重挂）
+    if (current && fmt.cmpVersion(staged, current) <= 0) {
+      log.warn('忽略旧暂存包 ' + staged + '（当前 ' + current + '），已清理');
+      S.staged_ignored = { version: staged, current: current };
+      try { fs.rmSync(stateFile(), { force: true }); } catch (_) {}
+      try { rmTolerant(stagingDir()); } catch (_) {}
+      emitState();
+      return;
+    }
     set({
-      phase: 'staged', version: String(raw.version), file: String(raw.file || ''),
+      phase: 'staged', version: staged, file: String(raw.file || ''),
       staged_at: Number(raw.staged_at) || 0, extractor: String(raw.extractor || ''),
       received: 0, total: 0, percent: 100, error: '',
     });
-    log.info(`发现已下载的更新包 ${S.version}，可直接安装`);
+    log.info('发现已下载的更新包 ' + S.version + '，可直接安装');
   } catch (_) { /* 没有就是没有 */ }
 }
-
 function reset() {
   try { fs.rmSync(stagingDir(), { recursive: true, force: true }); } catch (_) {}
   try { fs.rmSync(stateFile(), { force: true }); } catch (_) {}
@@ -439,7 +456,7 @@ function assertDownloadUrl(url) {
  * 下载 + 校验 + 解压 + 校验，一步到位（UI 上就是一个进度条）。
  * 任何一步失败都会把 phase 设成 error 并抛错，绝不留下半个包当「下载好了」。
  */
-async function download(url, version) {
+async function download(url, version, expectedSha256) {
   const target = String(url || '').trim();
   if (!target) throw new Error('未配置更新地址');
   // 协议校验放在最前面：不合法时连 updateDir 都不碰，不留半个状态
@@ -485,6 +502,18 @@ async function download(url, version) {
     throw new Error(S.error);
   }
 
+  // 发布侧摘要核对（有就 fail-closed，没有只 warn）：PR-A 之前这里只看 zip 头，
+  // 断在半截、或被 CDN 换成别的东西的包，要等解压甚至安装时才暴露。
+  const dg = verifyDownloadedFile(file, expectedSha256);
+  if (!dg.ok) {
+    try { fs.rmSync(file, { force: true }); } catch (_) {}
+    set({ phase: 'error', error: dg.reason });
+    log.error('更新包校验失败：' + dg.reason);
+    throw new Error(dg.reason);
+  }
+  if (dg.skipped) log.warn('没有可核对的发布摘要，跳过摘要校验（' + dg.reason + '）');
+  else log.info(`更新包摘要核对通过 sha256=${dg.actual.slice(0, 12)}…`);
+
   set({ phase: 'extracting', percent: 100, received: size, total: size });
   log.info(`下载完成 ${size} 字节，开始解压到 ${stagingDir()}`);
 
@@ -503,6 +532,15 @@ async function download(url, version) {
     log.error('更新包结构不对：' + stagingDir());
     throw new Error(S.error);
   }
+
+  // PR #15 补的硬条件：下载/解压完成后**先验一次**包内清单 + sha256（不通过就停在 error，用户当场看到原因）
+  const mf0 = verifyManifest(root);
+  if (!mf0.ok) {
+    set({ phase: 'error', error: '更新包校验失败：' + mf0.reason });
+    log.error('更新包清单校验失败：' + mf0.reason);
+    throw new Error(S.error);
+  }
+  log.info('更新包清单校验通过（' + mf0.count + ' 个文件）');
 
   S.staged_at = Date.now();
   S.extractor = extractor;
@@ -624,6 +662,206 @@ function rmTolerant(target, say) {
   return leftovers === 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* P0（2026-10-15）：helper 的 fail-closed 守卫 / 清单校验 / 备份回滚     */
+/* ------------------------------------------------------------------ */
+
+/** 路径 p 是否等于 parent 或在其之下（都先 resolve；Windows 下大小写不敏感） */
+function pathInside(p, parent) {
+  const norm = (x) => {
+    const r = path.resolve(String(x || ''));
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
+  const a = norm(p); const b = norm(parent);
+  return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
+}
+
+/** 是否落在 os.tmpdir() 之下（helper 的安装目录/数据目录都不许在这里） */
+function isTempPath(p) {
+  const tmp = String(require('os').tmpdir() || '');
+  if (!tmp) return false;
+  return pathInside(p, tmp);
+}
+
+/**
+ * 守卫 1（fail-closed）：POLARIS_APPLY_TARGET 与 POLARIS_DATA_DIR 必须同时存在、
+ * 指向真实存在的目录、且都不在 os.tmpdir() 下。任一不满足 → 拒绝运行（不许猜）。
+ * helper 从临时目录运行后，这两个变量是它唯一的「我是谁、在哪」依据；猜错的后果
+ * 是把新文件写进临时目录或孤儿树，而用户那棵树一个字节都没变。
+ */
+function guardHelperEnv(env) {
+  const e = env || process.env;
+  const target = String(e.POLARIS_APPLY_TARGET || '').trim();
+  const data = String(e.POLARIS_DATA_DIR || '').trim();
+  if (!target) return { ok: false, reason: '缺少 POLARIS_APPLY_TARGET' };
+  if (!data) return { ok: false, reason: '缺少 POLARIS_DATA_DIR' };
+  if (!path.isAbsolute(target)) return { ok: false, reason: 'POLARIS_APPLY_TARGET 不是绝对路径：' + target };
+  if (!path.isAbsolute(data)) return { ok: false, reason: 'POLARIS_DATA_DIR 不是绝对路径：' + data };
+  try { if (!fs.statSync(target).isDirectory()) return { ok: false, reason: 'POLARIS_APPLY_TARGET 不是目录：' + target }; }
+  catch (_) { return { ok: false, reason: 'POLARIS_APPLY_TARGET 不存在：' + target }; }
+  try { if (!fs.statSync(data).isDirectory()) return { ok: false, reason: 'POLARIS_DATA_DIR 不是目录：' + data }; }
+  catch (_) { return { ok: false, reason: 'POLARIS_DATA_DIR 不存在：' + data }; }
+  if (isTempPath(target)) return { ok: false, reason: 'POLARIS_APPLY_TARGET 落在临时目录：' + target };
+  if (isTempPath(data)) return { ok: false, reason: 'POLARIS_DATA_DIR 落在临时目录：' + data };
+  return { ok: true, target: path.resolve(target), data: path.resolve(data) };
+}
+
+/**
+ * 守卫 2：对安装目录的任何写 / 删 / rename 之前，断言目标 resolved 绝对路径就在
+ * POLARIS_APPLY_TARGET 之下。不满足 → 抛错中止（宁可不装，也不改错目录）。
+ */
+function guardAppPath(p, op) {
+  const appDir = installDir();
+  if (!pathInside(p, appDir)) {
+    throw new Error('拒绝' + (op || '操作') + '：目标不在安装目录内（' + path.resolve(String(p)) + ' 不在 ' + path.resolve(appDir) + ' 下）');
+  }
+  return path.resolve(String(p));
+}
+
+/** helper 的结构化结果：落在更新目录，下次启动由主进程读出来给 UI 看 */
+function applyResultFile() {
+  // helper 要写进父进程指定的那个更新目录（= 真实安装目录的 data/update），
+  // 主进程下次启动再用 readApplyResult() 从同一处读出来；两者在生产里是同一个目录。
+  return path.join(process.env.POLARIS_APPLY_UPDATEDIR || updateDir(), 'apply-result.json');
+}
+function writeApplyResult(obj) {
+  try {
+    fs.mkdirSync(updateDir(), { recursive: true });
+    fs.writeFileSync(applyResultFile(), JSON.stringify(Object.assign({ ts: Date.now() }, obj || {})), 'utf8');
+  } catch (e) { log.warn('写 apply-result.json 失败：' + (e && e.message)); }
+}
+function readApplyResult() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(applyResultFile(), 'utf8'));
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch (_) { return null; }
+}
+function clearApplyResult() { try { fs.rmSync(applyResultFile(), { force: true }); } catch (_) {} }
+
+/** 包内清单（发布侧生成）：逐文件 sha256；缺清单 = 拒绝安装 */
+const MANIFEST_REL = 'resources/polaris-files.sha256';
+function parseManifest(text) {
+  const out = new Map();
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const m = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(line.trim());
+    if (m) out.set(m[2].replace(/\\/g, '/'), m[1].toLowerCase());
+  }
+  return out;
+}
+function sha256File(file) {
+  return require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+/** 校验整棵 staged 树：缺清单 / 少条目 / 哈希不符 → {ok:false, reason} */
+function verifyManifest(stageRoot) {
+  const mf = path.join(stageRoot, MANIFEST_REL);
+  if (!fs.existsSync(mf)) return { ok: false, reason: '包内缺少清单 ' + MANIFEST_REL + '（拒绝安装）' };
+  let want;
+  try { want = parseManifest(fs.readFileSync(mf, 'utf8')); } catch (e) { return { ok: false, reason: '清单读不了：' + (e && e.message) }; }
+  if (!want.size) return { ok: false, reason: '清单是空的（拒绝安装）' };
+  if (!want.has('Polaris.exe')) return { ok: false, reason: '清单里没有 Polaris.exe' };
+  if (!want.has('resources/app.asar')) return { ok: false, reason: '清单里没有 resources/app.asar' };
+  for (const rel of listFiles(stageRoot)) {
+    const key = rel.replace(/\\/g, '/');
+    if (key === MANIFEST_REL) continue;
+    if (!want.has(key)) return { ok: false, reason: '清单缺少条目：' + key };
+    let got;
+    try { got = sha256File(path.join(stageRoot, rel)); } catch (e) { return { ok: false, reason: '读不了 ' + key + '：' + (e && e.message) }; }
+    if (got !== want.get(key)) return { ok: false, reason: '哈希不符：' + key };
+  }
+  return { ok: true, count: want.size };
+}
+
+/**
+ * 下载完的 zip 摘要核对。expected 为空 / 格式不对 → **跳过（不拦）**：
+ * 镜像与自建 CDN 没有 SHA256SUMS.txt，不能因为拿不到摘要就让用户装不了更新。
+ * 有摘要而不符 → fail-closed（调用方删包并停在 error）。
+ * 口径：这一层防的是**损坏 / 搬运 / CDN 截断**，不是信任锚（摘要与包同源同账号）。
+ */
+function verifyDownloadedFile(file, expected) {
+  const want = String(expected || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(want)) return { ok: true, skipped: true, reason: '没有可核对的发布摘要' };
+  let actual = '';
+  try { actual = sha256File(file); } catch (e) { return { ok: false, reason: '读不了下载到的包：' + (e && e.message) }; }
+  if (actual !== want) {
+    return { ok: false, expected: want, actual, reason: `更新包摘要不符（期望 ${want.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…）` };
+  }
+  return { ok: true, expected: want, actual };
+}
+
+/**
+ * 包内清单的**单文件**定点校验（启动前核内核用）。
+ * 为什么不整包校验：geo / 规则有几百 MB，每次启动都算一遍不可接受；而内核是原生 exe，
+ * 它坏掉的表现是「连不上」这种玄学，最值得在启动前换成一句人话。
+ * 语义：清单缺失 / 清单里没有这一条 → skipped（开发态、老包不因此起不来）；
+ *       条目在而哈希不符 / 文件读不了 → ok:false（fail-closed）。
+ */
+function verifyManifestEntry(root, rel) {
+  const key = String(rel || '').replace(/\\/g, '/');
+  let text = '';
+  try { text = fs.readFileSync(path.join(root, MANIFEST_REL), 'utf8'); }
+  catch (_) { return { ok: true, skipped: true, reason: '没有包内清单（' + MANIFEST_REL + '）' }; }
+  let want;
+  try { want = parseManifest(text); } catch (e) { return { ok: true, skipped: true, reason: '清单读不了：' + (e && e.message) }; }
+  if (!want.has(key)) return { ok: true, skipped: true, reason: '清单里没有 ' + key };
+  let actual = '';
+  try { actual = sha256File(path.join(root, key)); } catch (e) { return { ok: false, reason: '读不了 ' + key + '：' + (e && e.message) }; }
+  if (actual !== want.get(key)) return { ok: false, expected: want.get(key), actual, reason: key + ' 与包内清单不符' };
+  return { ok: true, expected: want.get(key), actual };
+}
+
+/** 备份「将被覆盖且已存在」的文件；返回清单（含原 sha256，供回滚校验） */
+function backupOverwritten(appDir, stageRoot, backupDir, say) {
+  const entries = [];
+  fs.mkdirSync(backupDir, { recursive: true });
+  for (const rel of listFiles(stageRoot)) {
+    if (rel === 'Polaris.exe') continue;            // exe 靠 .old，不进备份
+    if (rel === MANIFEST_REL) continue;
+    const src = path.join(appDir, rel);
+    let st;
+    try { st = fs.statSync(src); } catch (_) { continue; }
+    if (!st.isFile()) continue;
+    const dst = path.join(backupDir, rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    entries.push({ rel: rel.replace(/\\/g, '/'), sha256: sha256File(src) });
+  }
+  if (say) say('已备份 ' + entries.length + ' 个将被覆盖的文件 → ' + backupDir);
+  return entries;
+}
+
+/** 用备份把已覆盖的文件还原回去（逐个校验 sha256） */
+function restoreBackup(appDir, backupDir, entries, say) {
+  let restored = 0; let failed = 0;
+  for (const e of entries || []) {
+    const src = path.join(backupDir, e.rel);
+    const dst = path.join(appDir, e.rel);
+    try {
+      guardAppPath(dst, '回滚');
+      fs.copyFileSync(src, dst);
+      if (sha256File(dst) !== e.sha256) { failed += 1; if (say) say('回滚后校验不符：' + e.rel); }
+      else restored += 1;
+    } catch (err) {
+      failed += 1;
+      if (say) say('回滚失败：' + e.rel + '（' + (err && err.message) + '）');
+    }
+  }
+  return { restored: restored, failed: failed };
+}
+
+/** 复制整棵树，但跳过顶层指定名字（V1a：exe 单独走 .new + rename 提交） */
+async function copyTreeExcept(src, dest, skipNames, say) {
+  const skip = new Set(skipNames || []);
+  fs.mkdirSync(dest, { recursive: true });
+  for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+    if (skip.has(ent.name)) continue;
+    const s = path.join(src, ent.name);
+    const d = path.join(dest, ent.name);
+    if (ent.isDirectory()) { await copyTreeExcept(s, d, null, say); continue; }
+    if (!ent.isFile()) continue;
+    guardAppPath(d, '复制');
+    await withRetry(() => fs.copyFileSync(s, d), say, path.relative(src, s));
+  }
+}
 /**
  * 把 src 整棵树复制进 dest，同名文件覆盖。
  * 只复制不删除：旧版本里有、新版本里没有的文件留着（v2rayN 也是这个策略），
@@ -642,116 +880,212 @@ async function copyTree(src, dest, say) {
   }
 }
 
+/* ---- phase 1：清单校验 → 复制到临时目录 → 从临时目录拉起新 helper ---- */
+async function prepareAndReexec(stageRoot, appDir, updDir, pid, say) {
+  if (!fs.existsSync(path.join(stageRoot, 'Polaris.exe'))) {
+    say('staging 里没有 Polaris.exe，放弃（安装目录未改动）');
+    writeApplyResult({ ok: false, step: 'precheck', reason: 'staging 里没有 Polaris.exe', rolled_back: false });
+    return 2;
+  }
+  const mf = verifyManifest(stageRoot);
+  if (!mf.ok) {
+    say('拒绝安装：' + mf.reason);
+    writeApplyResult({ ok: false, step: 'manifest', reason: mf.reason, rolled_back: false });
+    return 1;
+  }
+  say('包内清单校验通过（' + mf.count + ' 个文件）');
+
+  const deadline = Date.now() + 120000;
+  while (pidAlive(pid)) {
+    if (Date.now() > deadline) {
+      say('父进程 120 秒还没退出，放弃（安装目录未改动）');
+      writeApplyResult({ ok: false, step: 'wait-parent', reason: '父进程 120 秒未退出', rolled_back: false });
+      return 2;
+    }
+    await sleep(1000);
+  }
+  say('父进程已退出');
+
+  let tempDir = '';
+  try {
+    tempDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'polaris-helper-'));
+    await copyTree(stageRoot, tempDir, say);
+  } catch (e) {
+    say('复制到临时目录失败：' + (e && e.message));
+    writeApplyResult({ ok: false, step: 'stage-temp', reason: (e && e.message) || 'copy failed', rolled_back: false });
+    return 1;
+  }
+  say('已把已校验的新包复制到临时目录 ' + tempDir);
+  const childEnv = Object.assign({}, process.env, { POLARIS_APPLY_REEXEC: '1', POLARIS_APPLY_TEMPDIR: tempDir });
+  try {
+    const child = require('child_process').spawn(path.join(tempDir, 'Polaris.exe'), [], {   // 懒 require：自检要能拦 spawn
+      detached: true, stdio: 'ignore', windowsHide: true, cwd: tempDir, env: childEnv,
+    });
+    child.unref();
+    say('已从临时目录拉起 helper（pid=' + child.pid + '）');
+  } catch (e) {
+    say('从临时目录拉起失败：' + (e && e.message));
+    writeApplyResult({ ok: false, step: 'spawn-temp', reason: (e && e.message) || 'spawn failed', rolled_back: false });
+    return 1;
+  }
+  return 0;
+}
+/* ---- phase 2：V1a 真正安装（原顺序 + 全量备份回滚 + 两个 rename 提交）---- */
+async function doApply(stageRoot, appDir, updDir, tempDir, say) {
+  const backupDir = path.join(updDir, 'backup-' + Date.now());
+  let entries = [];
+  let committed = false;
+  try {
+    if (!fs.existsSync(path.join(stageRoot, 'Polaris.exe'))) throw new Error('staging 里没有 Polaris.exe');
+    const mf = verifyManifest(stageRoot);
+    if (!mf.ok) throw new Error('清单校验失败：' + mf.reason);
+
+    await waitOverwritable(appDir, stageRoot, say);
+
+    // P1 备份（失败 = 硬失败，不进入 P2）
+    try { entries = backupOverwritten(appDir, stageRoot, backupDir, say); }
+    catch (e) { throw new Error('备份失败，未开始复制：' + (e && e.message)); }
+
+    // P2 复制除 exe 外的全部文件
+    await copyTreeExcept(stageRoot, appDir, ['Polaris.exe'], say);
+    say('复制完成（除 exe）');
+
+    // P3 staged exe → Polaris.exe.new（旧 exe 仍在，目录全程可启动）
+    const curExe = guardAppPath(path.join(appDir, 'Polaris.exe'), '写');
+    const oldExe = guardAppPath(curExe + '.old', '写');
+    const newExe = guardAppPath(curExe + '.new', '写');
+    await withRetry(() => fs.copyFileSync(path.join(stageRoot, 'Polaris.exe'), newExe), say, 'Polaris.exe.new');
+    say('新 exe 已就位（Polaris.exe.new）');
+
+    // P4 提交：两个 rename（无 exe 窗口只有毫秒级）
+    await withRetry(() => { fs.rmSync(oldExe, { force: true }); fs.renameSync(curExe, oldExe); }, say, '改名自身 exe');
+    say('已把 Polaris.exe 改名成 ' + oldExe);
+    await withRetry(() => fs.renameSync(newExe, curExe), say, 'Polaris.exe.new → Polaris.exe');
+    committed = true;
+    say('已提交：新 exe 落位');
+
+    // P5 校验
+    if (!fs.existsSync(curExe)) throw new Error('提交后安装目录里没有 Polaris.exe');
+    const wantAsar = sha256File(path.join(stageRoot, 'resources', 'app.asar'));
+    const gotAsar = sha256File(path.join(appDir, 'resources', 'app.asar'));
+    if (wantAsar !== gotAsar) throw new Error('app.asar 校验不符（新 exe 配旧 asar）');
+    // 内核也是随包分发的原生 exe：以前只比 app.asar，内核那一步没落地就只能等用户
+    // 点「连接」时才发现，而且报出来的是「连不上」。这里一起比。
+    const coreRel = 'resources/core/mihomo.exe';
+    if (fs.existsSync(path.join(stageRoot, coreRel))) {
+      const wantCore = sha256File(path.join(stageRoot, coreRel));
+      const gotCore = sha256File(path.join(appDir, coreRel));
+      if (wantCore !== gotCore) throw new Error('内核 mihomo.exe 校验不符（复制没落地）');
+    }
+    say('校验通过：exe + app.asar + 内核 与暂存包一致');
+    const mf2 = verifyManifest(stageRoot);
+    if (!mf2.ok) throw new Error('提交后清单复核失败：' + mf2.reason);
+
+    // P6 清理 + 拉起
+    // 只删环境变量指过来的那个目录（不重新推导 root：helper 算出来的可能与主进程不同）
+    try { fs.rmSync(path.join(updDir, 'staged.json'), { force: true }); } catch (_) {}
+    try {
+      for (const name of fs.readdirSync(updDir)) {
+        if (/^Polaris-.*\.zip$/i.test(name)) rmTolerant(path.join(updDir, name), say);
+      }
+    } catch (_) {}
+    rmTolerant(stageRoot, say);
+    rmTolerant(backupDir, say);
+    if (tempDir) rmTolerant(tempDir, say);
+    say('清理完成');
+
+    const childEnv = Object.assign({}, process.env);
+    for (const k of Object.keys(childEnv)) if (k.indexOf('POLARIS_APPLY_') === 0) delete childEnv[k];
+    require('child_process').spawn(path.join(appDir, 'Polaris.exe'), [], {
+      detached: true, stdio: 'ignore', windowsHide: true, cwd: appDir, env: childEnv,
+    }).unref();
+    say('已重新拉起');
+    writeApplyResult({ ok: true, step: 'done', reason: '', rolled_back: false });
+    return 0;
+  } catch (e) {
+    say('失败：' + (e && e.message));
+    let rolled = true;
+    if (entries.length) {
+      const r = restoreBackup(appDir, backupDir, entries, say);
+      if (r.failed) rolled = false;
+      say('回滚：还原 ' + r.restored + ' 个，失败 ' + r.failed + ' 个');
+    }
+    const curExe = path.join(appDir, 'Polaris.exe');
+    const oldExe = curExe + '.old';
+    try {
+      if (committed && fs.existsSync(oldExe)) {
+        const back = path.join(appDir, 'Polaris.exe.rollback');
+        guardAppPath(back, '回滚改名');
+        fs.renameSync(curExe, back);
+        fs.renameSync(oldExe, curExe);
+        fs.rmSync(back, { force: true });
+        say('已把旧 exe 换回（版本回退一致）');
+      } else if (!fs.existsSync(curExe) && fs.existsSync(oldExe)) {
+        guardAppPath(curExe, '回滚改名');
+        fs.renameSync(oldExe, curExe);
+        say('已把旧 exe 改回 Polaris.exe');
+      }
+    } catch (e2) { rolled = false; say('回滚改名失败：' + (e2 && e2.message)); }
+    if (rolled) { rmTolerant(backupDir, say); } else { say('保留备份目录供人工恢复：' + backupDir); }
+    if (tempDir) rmTolerant(tempDir, say);
+    writeApplyResult({ ok: false, step: 'apply', reason: (e && e.message) || 'unknown', rolled_back: rolled });
+    return 1;
+  } finally {
+    try {
+      const curExe = path.join(appDir, 'Polaris.exe');
+      const oldExe = curExe + '.old';
+      const newExe = curExe + '.new';
+      if (!fs.existsSync(curExe)) {
+        if (fs.existsSync(oldExe)) { guardAppPath(curExe, 'finally 兜底'); fs.renameSync(oldExe, curExe); say('finally：已把 .old 改回 Polaris.exe'); }
+        else if (fs.existsSync(newExe)) { guardAppPath(curExe, 'finally 兜底'); fs.renameSync(newExe, curExe); say('finally：已把 .new 提升为 Polaris.exe'); }
+      }
+    } catch (e) { say('finally 兜底失败：' + (e && e.message)); }
+  }
+}
 /**
- * 自更新 worker 的主流程，由「第二个 Polaris.exe 实例」执行。
- * 所有参数都从环境变量读（原因见文件头注释：SEA 下 argv 不可靠）。
- *
- * 返回退出码：0 成功 / 1 失败 / 2 放弃（父进程没退或 staging 不对）。
- * 任何失败都**只记日志、不动安装目录** —— 装一半比不装糟得多。
+ * 自更新 worker 的主流程（P0/V1a）。两个阶段：
+ *   phase 1（由安装目录里的旧 exe 启动）：守卫 1 → 清单校验 → 等父进程退出
+ *            → 把已校验的新包整份复制到 os.tmpdir() → 从临时目录拉起 phase 2
+ *   phase 2（由临时目录里的新 exe 运行）：不加载安装目录的 dll/pak，按 V1a 安装
+ * 返回退出码：0 成功 / 1 失败 / 2 放弃（父进程没退或 staging 不对）/ 3 守卫拒绝
  */
 async function applyWorker() {
   const stageRoot = process.env.POLARIS_APPLY_ROOT;
   const appDir = process.env.POLARIS_APPLY_TARGET;
   const updDir = process.env.POLARIS_APPLY_UPDATEDIR;
   const pid = Number(process.env.POLARIS_APPLY_PID || 0);
+  const reexec = process.env.POLARIS_APPLY_REEXEC === '1';
+  const tempDir = String(process.env.POLARIS_APPLY_TEMPDIR || '');
   const logFile = path.join(updDir || updateDir(), 'apply.log');
   const say = (s) => {
-    // 用 logger 的本地时间戳（以前是 toISOString 的 UTC，跟主日志差 8 小时）
-    try { fs.appendFileSync(logFile, `[${log.stamp()}] ${s}\r\n`); } catch (_) { /* 写不了日志也不能中断 */ }
+    const line = '[' + log.stamp() + '] ' + s;
+    // 硬验收①：apply.log 与主日志都写；写失败要显式报出来，不再静默吞掉
+    try { fs.appendFileSync(logFile, line + '\r\n'); }
+    catch (e) { try { log.error('apply.log 写不进去：' + (e && e.message)); } catch (_) {} }
+    try { log.info('[helper] ' + s); } catch (_) {}
   };
 
+  // 守卫 1（fail-closed）：两阶段都要过，缺一不可
+  const g1 = guardHelperEnv();
+  if (!g1.ok) {
+    say('拒绝运行：' + g1.reason);
+    writeApplyResult({ ok: false, step: 'guard-env', reason: g1.reason, rolled_back: false });
+    return 3;
+  }
+
   try {
-    if (!stageRoot || !appDir || !updDir) throw new Error('helper 参数不全，放弃');
-    say(`helper 启动：父进程 pid=${pid}，staging=${stageRoot}，目标=${appDir}`);
-
-    // 0) 先验 staging。主进程退出到 helper 真正干活之间有空档，用户可能在这期间
-    //    点了「丢弃更新包」、或者清理软件把目录删了。**这种情况下没验就动手是最危险的**：
-    //    会先把唯一的 Polaris.exe 改名，再发现新包里没有，最后安装目录里什么都不剩。
-    //    所以这一条必须在任何写操作之前，且失败时只 return、绝不动安装目录。
-    if (!fs.existsSync(path.join(stageRoot, 'Polaris.exe'))) {
-      say('staging 里没有 Polaris.exe，放弃（安装目录未改动）');
-      return 2;
+    if (reexec) {
+      say('helper 启动（临时目录运行）：pid=' + pid + '，staging=' + stageRoot + '，目标=' + appDir);
+      return await doApply(stageRoot, appDir, updDir, tempDir, say);
     }
-
-    // 1) 等主进程真的退出。它退出前会先停内核（main.js 的 will-quit → shutdown），
-    //    所以走到这里 resources/core/mihomo.exe 已经不被占了
-    const deadline = Date.now() + 120000;
-    while (pidAlive(pid)) {
-      if (Date.now() > deadline) { say('父进程 120 秒还没退出，放弃（安装目录未改动）'); return 2; }
-      await sleep(1000);
-    }
-    say('父进程已退出');
-
-    // 2) 自我改名。Windows 不允许覆盖运行中的 exe，但允许改名 ——
-    //    改名之后安装目录里就没有 Polaris.exe 了，新包才能落进去。
-    //    旧 exe 此刻还被本进程占着，删不掉，交给新进程启动时删（见 cleanStaleRename）。
-    const self = process.execPath;
-    const oldName = self + '.old';
-    await withRetry(() => {
-      fs.rmSync(oldName, { force: true });
-      fs.renameSync(self, oldName);
-    }, say, '改名自身 exe');
-    say(`已把自身改名成 ${oldName}`);
-
-    // 3) 先等「将被覆盖的文件」全部可写（A-68）。主进程退了不代表子进程退了：
-    //    Electron 的 GPU/renderer 还映射着 app.asar / *.pak / *.dll / icudtl.dat，
-    //    直接复制就会拿到一串 EBUSY。先等齐，能避免「复制到一半」的半新半旧状态。
-    await waitOverwritable(appDir, stageRoot, say);
-
-    // 4) 覆盖安装目录（只复制不删除，data/ 是用户数据，staging 里本来就没有它）
-    try {
-      await copyTree(stageRoot, appDir, say);
-    } catch (e) {
-      // 复制失败就**到此为止**：不清理 staging/zip、不拉起、退出码非 0，
-      // 让下次启动还能重试（staging 还在，restoreStaged() 会把它认回来）。
-      // 兜底一条：万一新 exe 还没落位，把旧 exe 改回去，别让用户连旧版都启动不了。
-      if (!fs.existsSync(path.join(appDir, 'Polaris.exe'))) {
-        try {
-          fs.renameSync(oldName, path.join(appDir, 'Polaris.exe'));
-          say('新 exe 没落位，已把旧 exe 改回 Polaris.exe（用户仍能启动旧版）');
-        } catch (e2) {
-          say('旧 exe 改回失败：' + (e2 && e2.message));
-        }
-      }
-      throw new Error('复制失败，已放弃本次安装（不清理、不重启，下次启动会重试）：' + (e && e.message));
-    }
-    say('复制完成');
-
-    // 5) 校验：新 exe 必须在，否则后面拉起的就是空气
-    if (!fs.existsSync(path.join(appDir, 'Polaris.exe'))) {
-      throw new Error('复制完成但安装目录里没有 Polaris.exe');
-    }
-
-    // 6) 清理。**只删环境变量指过来的那个目录**，不用 stateFile()/zipPath()/stagingDir()
-    //    重新推导 —— helper 算出的 root 可能和主进程不一样（安装目录中途变得不可写就会变），
-    //    重新推导会删错地方，或者干脆漏删。漏删的后果是下次启动 restoreStaged() 把 staging
-    //    认成「已就绪」，用户再点一次「重启并安装」就等于拿旧包把自己降级回去。
-    //    清理**必须在所有复制确认完成之后**，而且单个文件删不掉不能中断整棵树（rmTolerant）。
-    try { fs.rmSync(path.join(updDir, 'staged.json'), { force: true }); } catch (_) {}
-    try {
-      for (const f of fs.readdirSync(updDir)) {
-        if (/^Polaris-.*\.zip$/i.test(f)) rmTolerant(path.join(updDir, f), say);
-      }
-    } catch (_) {}
-    rmTolerant(stageRoot, say);
-    say('清理完成');
-
-    // 7) 重新拉起。**环境里必须剔掉 POLARIS_APPLY_\***：新实例要是继承了
-    //    POLARIS_APPLY_STAGE，它会以为自己是 helper 再跑一遍 worker —— 那时 staging
-    //    已经删了，于是打出误导的「staging 里没有 Polaris.exe，放弃（安装目录未改动）」。
-    const childEnv = { ...process.env };
-    for (const k of Object.keys(childEnv)) if (k.startsWith('POLARIS_APPLY_')) delete childEnv[k];
-    require('child_process').spawn(path.join(appDir, 'Polaris.exe'), [], {
-      detached: true, stdio: 'ignore', windowsHide: true, cwd: appDir, env: childEnv,
-    }).unref();
-    say('已重新拉起');
-    return 0;
+    say('helper 启动（阶段 1）：父进程 pid=' + pid + '，staging=' + stageRoot + '，目标=' + appDir);
+    return await prepareAndReexec(stageRoot, appDir, updDir, pid, say);
   } catch (e) {
     say('失败：' + (e && e.message));
+    writeApplyResult({ ok: false, step: 'worker', reason: (e && e.message) || 'unknown', rolled_back: false });
     return 1;
   }
 }
-
 /**
  * 启动自愈（W9）：安装目录里没有 `Polaris.exe`，却留着上次自我替换改名的
  * `Polaris.exe.old`。这是 applyWorker 第 2 步（改名）与第 4 步（复制）之间被强杀 /
@@ -788,17 +1122,19 @@ function healMissingExe(dir) {
  */
 function cleanStaleRename() {
   try {
-    const old = process.execPath + '.old';
+    // P0：helper 从临时目录运行时 process.execPath 是临时副本，必须看安装目录
+    const exe = path.join(installDir(), 'Polaris.exe');
+    const old = exe + '.old';
     if (!fs.existsSync(old)) return;
-    if (!fs.existsSync(process.execPath)) {
+    if (!fs.existsSync(exe)) {
       log.warn('保留 ' + old + '：当前 exe 不存在，它是安装目录里唯一能启动的文件（等自愈改名）');
       return;
     }
+    guardAppPath(old, '清理残留 exe');
     fs.rmSync(old, { force: true });
     log.info('清理了上次更新残留的 ' + old);
   } catch (e) { log.warn('清理残留 exe 失败：' + (e && e.message)); }
 }
-
 /**
  * 退出并安装。起一个「自己」当 helper，然后让调用方退出应用。
  * 返回 {helper_pid, stage_root, install_dir}。
@@ -824,6 +1160,9 @@ function apply() {
       POLARIS_APPLY_ROOT: String(stageRoot),
       POLARIS_APPLY_TARGET: String(appDir),
       POLARIS_APPLY_UPDATEDIR: updateDir(),
+      // helper 从临时目录运行后，paths.root() 会按 exe 位置解析；这个变量把它的
+      // 数据目录钉回安装目录（守卫 1 会校验它存在且不在临时目录）
+      POLARIS_DATA_DIR: appDir,
     },
   });
   child.unref();
@@ -848,5 +1187,9 @@ module.exports = {
   isAllowedDownloadUrl, assertDownloadUrl,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
   safeName, zipPath, isZipFile, resolveStageRoot, extract, pidAlive,
+  // P0 测试钩子
+  guardHelperEnv, guardAppPath, pathInside, isTempPath, verifyManifest, verifyManifestEntry,
+  verifyDownloadedFile, parseManifest, sha256File,
+  backupOverwritten, restoreBackup, copyTreeExcept, writeApplyResult, readApplyResult, clearApplyResult,
   copyTree, listFiles, canOverwrite, waitOverwritable, rmTolerant,
 };

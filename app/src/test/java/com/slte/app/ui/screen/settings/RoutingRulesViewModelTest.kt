@@ -30,10 +30,14 @@ class RoutingRulesViewModelTest {
     private val routingStateStore = mockk<RoutingStateStore>(relaxed = true)
     private val kernelConfig = mockk<KernelConfig>(relaxed = true)
 
-    private fun stubState(state: RoutingState) {
+    private fun stubState(
+        state: RoutingState,
+        hiddenCustom: List<RoutingCustomGroup> = emptyList(),
+        hiddenDomains: List<String> = emptyList(),
+    ) {
         every { routingStateStore.load() } returns state
         every { routingStateStore.loadSanitized() } returns
-            RoutingStateStore.SanitizedRoutingState(state, droppedCustom = 0, droppedDomains = 0)
+            RoutingStateStore.SanitizedRoutingState(state, hiddenCustom = hiddenCustom, hiddenDomains = hiddenDomains)
     }
 
     private fun viewModel(state: RoutingState = RoutingState()): RoutingRulesViewModel {
@@ -54,6 +58,19 @@ class RoutingRulesViewModelTest {
         assertEquals(false, items.first { it.name == "🍎 苹果服务" }.enabled) // 覆盖值优先
         assertEquals(true, items.first { it.name == "🌏 国外穿墙" }.enabled) // 默认开
         assertEquals(false, items.first { it.name == "🍃 应用净化" }.enabled) // 默认关
+    }
+
+    @Test
+    fun `被隐藏的条目每次读都带进 data 供 UI 列出`() {
+        val hidden = listOf(RoutingCustomGroup(name = "Ⓜ️ 微软云盘", url = "https://x.example.com/a.yaml"))
+        stubState(RoutingState(), hiddenCustom = hidden, hiddenDomains = listOf("bad domain"))
+
+        val vm = RoutingRulesViewModel(routingStateStore, kernelConfig)
+
+        // 不能只报「本次读丢了几个」：条目本身要带出来，用户才知道少了什么
+        assertEquals(listOf("Ⓜ️ 微软云盘"), vm.data.value.hiddenCustomNames)
+        assertEquals(listOf("bad domain"), vm.data.value.hiddenDomainNames)
+        assertEquals(R.string.routing_custom_cleaned_invalid, vm.data.value.errorMessageRes)
     }
 
     @Test
