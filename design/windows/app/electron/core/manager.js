@@ -261,7 +261,9 @@ async function doRefreshRules(dir, geoDir) {
   // ② 先只问版本（一次很小的请求），避免"没更新也停内核"
   let latest;
   try {
-    latest = await rulesync.checkLatest({});
+    // 接线（2026-10-16）：本机代理端口只在内核**真的连着**时才有意义；
+    // 没连就是没有代理可用 → 传 0，fetchUrl 保持原直连行为。
+    latest = await rulesync.checkLatest({ proxyPort: S.phase === 'connected' ? S.mixedPort : 0 });
   } catch (e) {
     log.warn('规则探测失败（不影响启动）：', e && e.message);
     return { updated: [], version: null };
@@ -275,21 +277,43 @@ async function doRefreshRules(dir, geoDir) {
     return { updated: [], version: latest.version };
   }
 
-  // ④ 有新版本：**先停内核再换文件**。
+  // ④ 有新版本：**先下载（内核照跑），再停内核换文件**。
+  //    以前是「先停内核再下载」，于是整个传输期间本机 mixed-port 已经关掉，
+  //    规则同步只能直连 —— 隧道写了也白写（国内 jsDelivr / api.github.com 直连不稳）。
+  //    现在下载阶段内核在跑（代理可用），只在**替换文件那一瞬**停内核：
   //    规则清单与 geo 都被运行中的内核抓着（geoip.metadb 是 mmap 的），Windows 上
-  //    覆盖一个被占用的文件会 EBUSY —— 这正是老实现宁可写进安装目录、等下个启动
-  //    才拷贝的原因。停一次内核比"写到别处等下次"简单得多，也确实能立刻生效。
+  //    覆盖被占用的文件会 EBUSY，所以替换前必须停 —— 但不必为此牺牲整个下载阶段。
   const wasConnected = S.phase === 'connected';
-  if (wasConnected) {
-    log.info(`规则有新版本（v${latest.version}），先停内核再更新`);
-    await stopKernel();
-  }
-  let r;
+  const proxyPort = wasConnected ? S.mixedPort : 0;
+  let r = null;
+  let thrown = null;
   try {
-    r = await rulesync.refresh(dir, { providerKeys: rulesets.allProviderKeys(), geoDir, log });
+    r = await rulesync.refresh(dir, {
+      providerKeys: rulesets.allProviderKeys(), geoDir, log, proxyPort,
+      pauseApply: wasConnected,   // 内核在跑：下载与替换分离，替换前才停内核
+    });
+  } catch (e) {
+    thrown = e;
+  }
+  try {
+    const staged = (r && r.staged) || [];
+    if (staged.length) {
+      if (wasConnected) {
+        log.info(`规则已下载完（${staged.length} 份），停内核换文件`);
+        await stopKernel();
+      }
+      const ap = rulesync.applyStaged(staged, { dir, marker: r.marker });
+      if (ap.failed.length) {
+        log.warn('规则替换失败（文件可能仍被内核占着）：' + ap.failed.map((x) => x.name).join('、'));
+      } else {
+        log.info(`规则已生效（${ap.applied.length} 份）`);
+      }
+      return { updated: ap.applied, version: (r && r.version) || null };
+    }
   } finally {
     if (wasConnected) await restartForRules();
   }
+  if (thrown) throw thrown;
   return { updated: (r && r.updated) || [], version: (r && r.version) || null };
 }
 
