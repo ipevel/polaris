@@ -863,6 +863,34 @@ jobs:
           Write-Host "  清单条目数 = $countBefore"
           Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item $tmp2 -Recurse -Force -ErrorAction SilentlyContinue
+      - name: "#24 ③ 空目录允许分支自检（fixture）+ 负例"
+        # issue #24：③ 的「源里是空目录被丢」允许分支在真实便携包里跑不到（真包没有空目录），
+        # 所以在 windows job 里造一个极小 fixture（只含一个空目录 + 一个根文件），用 Compress-Archive
+        # 重打包（它只写文件条目、不写目录条目 → 空目录必被丢），对**它**单独跑一次 verify-repack：
+        # 断言 exit 0 且输出里有「空目录被丢」与那句结论；随后跑仓库自带的 fixture 单测覆盖负例
+        # （非空目录被丢必须红）。
+        # 若哪天这条红且原因是「zip 里开始带目录条目了」，说明打包器行为变了、这条允许分支不再经由
+        # Compress-Archive 触发 —— 那时把 fixture 改成用 Node 造的 zip，而不是放宽断言。
+        shell: pwsh
+        working-directory: design/windows/app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fx = Join-Path $env:RUNNER_TEMP 'polaris-empty-dir-fixture'
+          if (Test-Path $fx) { Remove-Item $fx -Recurse -Force }
+          New-Item -ItemType Directory -Path (Join-Path $fx 'empty-dir') -Force | Out-Null
+          Set-Content -Path (Join-Path $fx 'readme.txt') -Value 'fixture' -NoNewline
+          $fxZip = Join-Path $env:RUNNER_TEMP 'polaris-empty-dir-fixture.zip'
+          if (Test-Path $fxZip) { Remove-Item $fxZip -Force }
+          Compress-Archive -Path (Join-Path $fx '*') -DestinationPath $fxZip
+          $out = (& node scripts/verify-repack.js --before $fx --zip $fxZip 2>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Write-Error "fixture 断言应为 exit 0，实际 $LASTEXITCODE"; exit 1 }
+          if ($out -notmatch '空目录被丢') { Write-Error 'fixture 输出里没有「空目录被丢」：空目录允许分支没被覆盖到'; exit 1 }
+          if ($out -notmatch '结论：可接受') { Write-Error 'fixture 输出里没有那句结论（可接受 / 为什么 / 将来怎么办）'; exit 1 }
+          Write-Host '✅ ③ 空目录允许分支：fixture 实跑通过（exit 0 + 结论行）'
+          # 负例：非空目录被丢必须红（仓库自带 fixture 单测，含三组负例）
+          node scripts/verify-repack-test.js
+          if ($LASTEXITCODE -ne 0) { Write-Error 'verify-repack-test.js 有失败'; exit 1 }
       - name: 上传产物
         if: inputs.dryRun != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
