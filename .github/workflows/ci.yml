@@ -445,14 +445,22 @@ jobs:
       - name: 解析 Android SDK 根目录（缓存 path 要用它）
         run: |
           set -e
-          # 取不到环境变量就退回 GitHub 托管 runner 的已知路径；三条都拿不到才红。
-          root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          if [ ! -d "$root" ]; then
-            echo "::error::找不到 Android SDK 根目录（ANDROID_SDK_ROOT/ANDROID_HOME 未设，兜底路径也不存在：$root）"
-            exit 1
-          fi
-          echo "POLARIS_SDK_ROOT=$root" >> "$GITHUB_ENV"
-          echo "Android SDK 根目录：$root"
+          # 修法 A：解压目标必须是 runner 自有目录，不能用镜像预置的 /usr/local/lib/android/sdk。
+          # 原因：actions/cache 用 tar 解包，tar 要还原每个条目的 mtime/权限，而 utime/chmod
+          # 都要求调用者是属主。镜像预置目录属主是 root，runner 改不了 → Cannot utime /
+          # Cannot change mode → tar 退出码 2 → actions/cache 判 restore 失败 → cache-hit 空
+          # → 按 cache-hit 判定的命中分支永远进不去（实测 run 38929579809 attempt 2）。
+          # 改用 RUNNER_TEMP 下的目录：属主是 runner，tar 能正常还原，命中即可用。
+          # 三个环境变量一起指过来：sdkmanager 装包读 ANDROID_SDK_ROOT/ANDROID_HOME，
+          # AGP 找 SDK 也读它们；只改 POLARIS_SDK_ROOT 会让装出来的包被 AGP 在老路径找不到。
+          root="${RUNNER_TEMP}/polaris-android-sdk"
+          mkdir -p "$root"
+          {
+            echo "POLARIS_SDK_ROOT=$root"
+            echo "ANDROID_HOME=$root"
+            echo "ANDROID_SDK_ROOT=$root"
+          } >> "$GITHUB_ENV"
+          echo "Android SDK 根目录：$root（runner 自有，属主 $(id -un)）"
 
       - name: 缓存 Android SDK / NDK（键含 OS + 三个版本号）
         id: sdk-cache
@@ -467,9 +475,13 @@ jobs:
       - name: 安装 Android SDK / NDK
         run: |
           set -e
-          SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
-          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT）"; exit 1; }
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          # sdkmanager 定位：优先用新根目录里的 cmdline-tools（若已 bootstrap），否则用镜像自带的。
+          # 无论用哪个，都显式传 --sdk_root，把装包目标钉在 runner 自有根目录上
+          # （镜像自带 sdkmanager 的默认根是它自己所在的 /usr/local/lib/android/sdk）。
+          SDKMANAGER="$(command -v sdkmanager || echo "$POLARIS_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（POLARIS_SDK_ROOT=$POLARIS_SDK_ROOT）"; exit 1; }
+          SDK_ROOT_ARG=(--sdk_root="$POLARIS_SDK_ROOT")
+          yes | "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" --licenses >/dev/null 2>&1 || true
 
           # 命中缓存 ≠ 可用：cache-hit 只说明压缩包解出来了，不保证三件套齐全
           # （上一次 job 若在装 NDK 中途被杀，缓存里就是半份）。所以先断言关键文件存在。
@@ -489,9 +501,9 @@ jobs:
           if sdk_ok; then
             echo "::notice::Android SDK/NDK 三件套已就位（cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}），跳过下载"
           else
-            if [ "${{ steps.sdk-cache.outputs.cache-hit }}" = "true" ]; then
-              echo "::warning::缓存报了命中，但关键文件校验不通过 → 视为 miss，重新安装（fail-closed）"
-            fi
+            # 无条件告警：只要关键文件不齐就重新装（fail-closed）。不拿 cache-hit 做门控 ——
+            # restore 失败时 cache-hit 是空串，门控会让这条警告变成死代码。
+            echo "::warning::SDK/NDK 关键文件校验不通过（缓存未命中，或命中但文件不全）→ 重新安装（fail-closed）"
             # issue #36：sdkmanager 下载偶发截断（实测报 Error on ZipFile unknown archive），失败一次就红会挡住
             # 所有合 main / 发版（这是 required check）。这里对**同一条安装命令**最多重试 3 次、指数退避（5s / 15s），
             # 每次失败打 ::warning:: 说明第几次；3 次都失败仍然红（不静默跳过、不 swallow）。
@@ -500,7 +512,7 @@ jobs:
               local i delay
               local delays=(5 15)
               for i in 1 2 3; do
-                if "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"; then
+                if "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"; then
                   if [ "$i" -gt 1 ]; then echo "::notice::sdkmanager 第 $i 次尝试成功"; fi
                   return 0
                 fi
@@ -521,7 +533,7 @@ jobs:
               exit 1
             fi
           fi
-          "$SDKMANAGER" "cmake;3.22.1" || echo "::warning::cmake 预装失败，交由 AGP 自动下载"
+          "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" "cmake;3.22.1" || echo "::warning::cmake 预装失败，交由 AGP 自动下载"
           ls "$ANDROID_SDK_ROOT/cmake" 2>/dev/null || echo "SDK 内暂无可用的 cmake"
 
       - name: 生成 CI 一次性签名（lint 会分析 release 变体，必须存在）
