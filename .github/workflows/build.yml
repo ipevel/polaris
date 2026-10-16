@@ -469,9 +469,14 @@ jobs:
   # 门禁通过后由流水线自己打 tag：人工不再先打 tag，避免「tag 指向的提交」与
   # 「实际构建的提交」分叉。只创建 v* 标签；已存在且指向同一 commit 时幂等继续；
   # 指向别的 commit 直接失败 —— 绝不 force、不移动、不删除任何已有 tag。
+  # issue #25：tag 挪到 build + windows **都成功**之后才创建，避免「build/windows 失败留下孤儿 tag」。
+  # 依赖链变成 release-precheck → version → build → windows → release-tag → release；
+  # build/windows 的 needs 里已去掉 release-tag（否则成环）。dryRun=true 时本 job 仍然 skipped（不打 tag）。
+  # tag 创建逻辑本身一个字没改：不存在则创建、已存在且指向同一 commit 幂等继续、指向别的 commit 直接失败，不 force/不移动/不删除。
   release-tag:
-    needs: [release-precheck, version]
-    if: inputs.dryRun != 'true'
+    needs: [release-precheck, version, build, windows]
+    # 主对话口径（情形 E）：只构建不发布时不该建 tag，否则又是「有 tag、没 Release」。
+    if: inputs.dryRun != 'true' && inputs.publishRelease == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -515,8 +520,10 @@ jobs:
           echo "::notice::tag $TAG 已确认指向 $SHA"
 
   build:
-    needs: [version, release-tag]
-    if: ${{ !cancelled() && needs.version.result == 'success' && needs.release-tag.result != 'failure' && needs.release-tag.result != 'cancelled' }}
+    # issue #25：build 不再依赖 release-tag（否则与「release-tag 依赖 build」成环）。
+    # tag 现在在 build + windows 都成功之后才创建 —— 失败不会再留下「有 tag、没 Release」的孤儿 tag。
+    needs: [version]
+    if: ${{ !cancelled() && needs.version.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -734,8 +741,9 @@ jobs:
   # Windows 便携版：与安卓 APK 共用同一个 versionName / tag / Release。
   # 版本号只从 version job 取，不在这里重新解析，避免两个产物版本号分叉。
   windows:
-    needs: [version, release-tag]
-    if: ${{ !cancelled() && needs.version.result == 'success' && needs.release-tag.result != 'failure' && needs.release-tag.result != 'cancelled' }}
+    # issue #25：同上，windows 也不再依赖 release-tag。
+    needs: [version]
+    if: ${{ !cancelled() && needs.version.result == 'success' }}
     runs-on: windows-latest
     permissions:
       contents: read
