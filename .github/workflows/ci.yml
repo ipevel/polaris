@@ -2,7 +2,7 @@ name: Polaris CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, windows-portable]
   pull_request:
   # issue #42 的排练缝：这两个输入**只在 workflow_dispatch 生效**；push/PR 路径一律按 auto 判定，
   # 任何 dispatch 参数都不会覆盖真 PR 的判定。scopes_override=auto 是缺省；force_changes_failure 是 test-only 插桩。
@@ -26,15 +26,29 @@ permissions:
   contents: read
 
 jobs:
-  # issue #42：秒级「变更判定」。异常 / 超时 / 空列表 / 未匹配路径 → 一律 all=true（fail-closed），
-  # 由重活 job 的 if 读取。输出先写缺省「全跑」，判定成功才覆盖（GITHUB_OUTPUT 后写者生效）。
+  # 2026-10-16 合并 ci-windows.yml（审计 ops/receipts/2026-10-16-ci-waste-audit.md §A2 ①）。
+  # trigger 取两条的并集：push [main,master] ∪ [main,windows-portable] = 下面这条；
+  #   PR —— ci.yml 原本无分支过滤、是 ci-windows.yml 的超集，保持无过滤；
+  #   dispatch options —— ci.yml 原本已是 [auto,all,win,android,go]、是对方的超集，保持不动。
+  # 合并后每条 event 只开 1 条 run（此前 PR→main 会同时开 ci.yml 与 ci-windows.yml 两条）。
+
+  # ★ 判定输出拆成两组、互不串味（这是合并的关键，不是省事）：
+  #     all / android / go  ← ci.yml 原逻辑，喂 go-run、quality-run
+  #     win / winall        ← ci-windows.yml 原逻辑，喂 windows-offline-run
+  #  不能共用：ci.yml 的「UNKNOWN → 全跑」分支会把 WIN 置 true；若直接喂给
+  #  windows-offline-run，就等于在纯安卓 PR 上也跑 Windows 自检，与 ci-windows.yml
+  #  原语义（只有 design/windows/** 才算 Windows 改动）冲突。
+  #  反过来 ci-windows.yml 的 all 也不能叫 all —— 它的意思是「Windows 全跑」，
+  #  与 ci.yml 的 all（安卓+Go 全跑）撞名，所以改名 winall。
+
   changes:
-    name: 变更判定（路径分流）
+    name: 变更判定（双端路径分流）
     runs-on: ubuntu-latest
     outputs:
       android: ${{ steps.scope.outputs.android }}
       go: ${{ steps.scope.outputs.go }}
       win: ${{ steps.scope.outputs.win }}
+      winall: ${{ steps.scope.outputs.winall }}
       all: ${{ steps.scope.outputs.all }}
     steps:
       - name: 检出代码
@@ -53,13 +67,14 @@ jobs:
         run: |
           # 刻意不用 set -e：任何失败都走「全跑」分支（fail-closed），而不是让重活不跑。
           set -uo pipefail
-          { echo "all=true"; echo "android=true"; echo "go=true"; echo "win=true"; } >> "$GITHUB_OUTPUT"
-          ALL=true; ANDROID=true; GO=true; WIN=true
+          # 默认全跑（两组都是），判定成功才用 finish() 覆盖（GITHUB_OUTPUT 后写者生效）。
+          { echo "all=true"; echo "android=true"; echo "go=true"; echo "win=true"; echo "winall=true"; } >> "$GITHUB_OUTPUT"
+          ALL=true; ANDROID=true; GO=true; WIN=true; WINALL=true
           finish() {
-            { echo "all=$ALL"; echo "android=$ANDROID"; echo "go=$GO"; echo "win=$WIN"; } >> "$GITHUB_OUTPUT"
-            echo "判定结果：all=$ALL android=$ANDROID go=$GO win=$WIN"
+            { echo "all=$ALL"; echo "android=$ANDROID"; echo "go=$GO"; echo "win=$WIN"; echo "winall=$WINALL"; } >> "$GITHUB_OUTPUT"
+            echo "判定结果：all=$ALL android=$ANDROID go=$GO win=$WIN winall=$WINALL"
           }
-          alltrue() { ALL=true; ANDROID=true; GO=true; WIN=true; finish; exit 0; }
+          alltrue() { ALL=true; ANDROID=true; GO=true; WIN=true; WINALL=true; finish; exit 0; }
           fallback() { echo "::warning::$1（按 fail-closed 全跑）"; alltrue; }
           if [ "${FORCE_FAIL:-false}" = "true" ]; then
             echo "::warning::test-only：force_changes_failure=true，故意让变更判定失败（重活因 always() 仍会跑）"
@@ -67,11 +82,15 @@ jobs:
             exit 1
           fi
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # options 取两条 workflow 的并集 [auto, all, win, android, go]。
             case "${DISPATCH_SCOPE:-auto}" in
-              all) echo "::notice::排练：强制全跑"; alltrue ;;
-              win) ALL=false; ANDROID=false; GO=false; WIN=true; finish; exit 0 ;;
-              android) ALL=false; ANDROID=true; GO=false; WIN=false; finish; exit 0 ;;
-              go) ALL=false; ANDROID=false; GO=true; WIN=false; finish; exit 0 ;;
+              all) echo "::notice::排练：强制全跑（双端）"; alltrue ;;
+              # ci.yml 原本 win 只置 WIN 位、且安卓/Go 侧没人消费它 → 这里只置 Windows 侧。
+              win) ALL=false; ANDROID=false; GO=false; WIN=true; WINALL=true; finish; exit 0 ;;
+              # ci-windows.yml 原文：android → 不跑 Windows 自检。
+              android) ALL=false; ANDROID=true; GO=false; WIN=false; WINALL=false; finish; exit 0 ;;
+              # ci-windows.yml 原本没有 go 这个 option，会落 *) fallback = 跑（fail-closed），照搬。
+              go) ALL=false; ANDROID=false; GO=true; WIN=true; WINALL=true; finish; exit 0 ;;
               *) fallback "workflow_dispatch 且 scopes_override=auto：没有可比对的 base" ;;
             esac
           fi
@@ -88,27 +107,40 @@ jobs:
           if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
           echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
           printf '%s\n' "$FILES" | head -30
-          ANDROID=false; GO=false; WIN=false; UNKNOWN=false
+          # 分类表 = ci.yml 的三条 ∪ ci-windows.yml 的 design/windows/** 一条。
+          # 安卓/Go 侧沿用 WINHIT 这个名字，只用于「一个平台都没匹配上」这条兜底，
+          # **不**参与 Windows 侧输出（见文件头那段注释）。
+          ANDROID=false; GO=false; WINHIT=false; UNKNOWN=false
           while IFS= read -r f; do
             [ -n "$f" ] || continue
             case "$f" in
               app/*|kernel-service/*|kernel-common/*|gradle/*|gradlew|gradlew.bat|build.gradle.kts|settings.gradle.kts|gradle.properties) ANDROID=true ;;
               kernel-core/*) ANDROID=true; GO=true ;;
-              design/windows/*) WIN=true ;;
+              design/windows/*) WINHIT=true ;;
               *) UNKNOWN=true ;;
             esac
           done <<RWEOF
           $FILES
           RWEOF
+          # ── 安卓/Go 侧：逐字沿用 ci.yml 原逻辑 ────────────────────────────
           if [ "$UNKNOWN" = "true" ]; then
-            ALL=true; ANDROID=true; GO=true; WIN=true
+            ALL=true; ANDROID=true; GO=true
             echo "::notice::有未匹配/基础设施路径（.github/**、根级、docs/**、config/** 等）→ 全跑"
           else
             ALL=false
-            if [ "$ANDROID" = "false" ] && [ "$GO" = "false" ] && [ "$WIN" = "false" ]; then
-              ALL=true; ANDROID=true; GO=true; WIN=true
+            if [ "$ANDROID" = "false" ] && [ "$GO" = "false" ] && [ "$WINHIT" = "false" ]; then
+              ALL=true; ANDROID=true; GO=true
               echo "::notice::一个平台都没匹配上（异常）→ 全跑"
             fi
+          fi
+          # ── Windows 侧：逐字沿用 ci-windows.yml 原逻辑 ────────────────────
+          # 原文：`if UNKNOWN || !WIN → ALL=true; WIN=true else ALL=false`
+          # （它的 ALL 只喂自己那个执行体，所以这里改名 winall，见文件头注释）。
+          if [ "$UNKNOWN" = "true" ] || [ "$WINHIT" = "false" ]; then
+            WIN=true; WINALL=true
+            echo "::notice::有未匹配/基础设施路径或没有 Windows 改动 → Windows 自检照跑（fail-closed）"
+          else
+            WIN=true; WINALL=false
           fi
           finish
 
@@ -116,6 +148,8 @@ jobs:
         run: |
           set -euo pipefail
           # 纯 Node + 极简正则扫描本文件（不引依赖、不新增仓库文件；任何不确定 → 红）
+          # 合并后只保留这一份对账：原来 ci.yml 管两个聚合器、ci-windows.yml 管一个；
+          # 若保留两份，Windows 那份会在合并后的文件里把安卓 job 判成「未覆盖」而必红。
           node - <<'JS'
           const fs = require('fs');
           const raw = fs.readFileSync('.github/workflows/ci.yml', 'utf8');
@@ -129,7 +163,7 @@ jobs:
             return nxt < 0 ? rest : rest.slice(0, nxt + 4);
           };
           const needsOf = (key) => {
-            const m = /^    needs:\s*\[([^\]]*)\]/m.exec(blockOf(key));
+            const m = /^    needs:\s*\[([^\]]*)\]$/m.exec(blockOf(key));
             return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
           };
           const REQUIRED = {
@@ -137,12 +171,23 @@ jobs:
             '内核 Go 门禁（vet + build + test）': 'go-gate',
             '质量门禁（test + ktlint + lint）': 'quality-gate',
           };
-          const AGG = { 'go-gate': 'go-run', 'quality-gate': 'quality-run' };
+          // 这个名字同时被 build.yml 的 release-precheck 硬编码（WINDOWS 常量）：
+          // 改名 → 发版 precheck 读不到 → fail-closed 直接拦住发版。
+          const WIN_NAME = 'Windows 离线自检 + 语法检查';
+          const AGG = { 'go-gate': 'go-run', 'quality-gate': 'quality-run', 'windows-offline': 'windows-offline-run' };
           const problems = [];
           for (const [name, key] of Object.entries(REQUIRED)) {
             const b = blockOf(key);
             if (!b) problems.push('找不到 required 对应的 job：' + key + '（' + name + '）');
             else if (!b.split('\n').some((l) => l.trim() === 'name: ' + name)) problems.push('job ' + key + ' 的 name 不是逐字「' + name + '」');
+          }
+          {
+            const b = blockOf('windows-offline');
+            if (!b) problems.push('找不到聚合 job：windows-offline（' + WIN_NAME + '）');
+            else if (!b.split('\n').some((l) => l.trim() === 'name: ' + WIN_NAME)) problems.push('job windows-offline 的 name 不是逐字「' + WIN_NAME + '」');
+            const needs = needsOf('windows-offline');
+            if (!needs.includes('changes')) problems.push('windows-offline 的 needs 缺 changes：' + JSON.stringify(needs));
+            if (!needs.includes('windows-offline-run')) problems.push('windows-offline 的 needs 缺 windows-offline-run：' + JSON.stringify(needs));
           }
           for (const [agg, heavy] of Object.entries(AGG)) {
             const needs = needsOf(agg);
@@ -155,8 +200,156 @@ jobs:
           const missing = heavyAll.filter((k) => !covered.has(k));
           if (missing.length) problems.push('有重活没被任何聚合 needs 覆盖：' + missing.join(', '));
           if (problems.length) { for (const p of problems) console.error('::error::' + p); process.exit(1); }
-          console.log('对账通过：重活 ' + JSON.stringify(heavyAll) + ' 都被聚合 needs 覆盖；required 三条名字逐字存在');
+          console.log('对账通过：重活 ' + JSON.stringify(heavyAll) + ' 都被聚合 needs 覆盖；required 三条 + Windows 自检名字逐字存在');
           JS
+
+  windows-offline-run:
+    name: Windows 离线自检 + 语法检查 · 执行体
+    needs: [changes]
+    # ci-windows.yml 原来读的是自己的 outputs.all；合并后那个名字被 ci.yml 占用了
+    # （含义是「安卓+Go 全跑」），所以 Windows 侧改读改名叫 winall 的那个。
+    if: ${{ always() && (needs.changes.outputs.win == 'true' || needs.changes.outputs.winall == 'true') }}
+    # 为什么跑 windows-latest 而不是 ubuntu（更贵、更慢，是权衡后的选择）：
+    #   1. 这个产品只有 Windows 版。updater 的 extract() 就是 Windows 实现
+    #      （`tar -xf` 走 Windows 自带 bsdtar，失败再回退 `powershell Expand-Archive`）。
+    #      在 ubuntu 上跑到解压那一步必然 `spawn powershell ENOENT` —— 第一次提交
+    #      就是 ubuntu，离线自检当场 19/4 红（用例 5、6 全挂）。那不是产品 bug，
+    #      是拿错平台的运行时去验一个 Windows-only 的模块。
+    #   2. 顺带把 Windows 专有假设（路径分隔符、bsdtar、PowerShell 回退）也纳入验证，
+    #      这些在 ubuntu 上永远验不到。
+    # 代价：Windows runner 计费更高。所以只跑离线自检，不装 Electron、不打包。
+    runs-on: windows-latest
+    # 离线自检里 updater-self-test 有一段故意等满 120 秒（验「父进程不退」），
+    # 加上 npm ci 与 Windows runner 的启动开销，给足余量。
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: design/windows/app
+
+    steps:
+      - name: 检出代码（当前分支）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # ------------------------------------------------------------------
+      # 一次 checkout 同时解决两个「CI 上永远绿」的隐患：
+      #
+      # 1. routing-sync：这条自检要拿 main 的
+      #    kernel-core/src/main/golang/native/config/routing/routing_table.go
+      #    跟 Windows 的 electron/core/rulesets.js 逐条比对；而 windows-portable
+      #    分支只有 design/，没有 kernel-core/ —— 本地跑会打印「跳过」并 exit 0。
+      #    跳过在 CI 里就等于一个永远绿的假通过，所以**不能**这么放过。
+      #    理由：main 是分流表的事实来源，windows-portable 是镜像；要防的正是
+      #    「main 改了表、Windows 镜像没跟上」。
+      # 2. flags：flag-codes-test 里有一段「与安卓端 257 张图名集合比对」，
+      #    安卓仓库不在本仓库里，不 checkout 就永远打印 skip。
+      #
+      # 成本很低：只取两个目录，不装 Go、不编译。
+      # ------------------------------------------------------------------
+      - name: 取 main 的 kernel-core + 安卓 flags（两条自检要用它真跑）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .ci-main
+          sparse-checkout: |
+            kernel-core
+            app/src/main/assets/flags
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+
+      # 离线自检本身只用 Node 内置模块，不需要依赖；但 `node --check` 要能解析
+      # 每条 require，缺了 node_modules 会误报，所以照常装。
+      - name: 安装依赖
+        run: npm ci
+
+      # 13 条离线自检：不需要 Electron、不需要网络、不碰真安装目录。
+      # 用链式命令而不是 13 个 step，是为了失败时一眼看出是哪条断的，
+      # 同时保证「前一条挂了后面的不会假装通过」。
+      #
+      # 两条 REQUIRED 环境变量把「跳过」堵死：
+#   POLARIS_GO_TABLE_REQUIRED=1     → 找不到 Go 表就红，不是绿（新口径优先 in-tree，见下）
+      #   POLARIS_ANDROID_REQUIRED=1      → 找不到安卓 flags 目录就红，不是绿
+      # Go 表的取数口径（2026-10-15 收紧）：**优先当前检出的 kernel-core**，取不到才回退 .ci-main。
+      # 原来硬指向 .ci-main（ref: main），于是「PR 改了 Go 表、JS 镜像没跟上」反而绿 ——
+      # 门禁要等 main push 之后才红，抓不住漂移本身。改成优先 in-tree 后，PR 路径读到的就是 PR
+      # 自己的 Go 表，两端必须在同一个 PR 里一致（与安卓侧 RoutingTableParityTest 的行为对齐）。
+      # 回退分支只为过渡期的 windows-portable（它只有 design/，没有 kernel-core/）保留。
+      - name: 离线自检 13 条（updater / updater-timeout / traffic / geosync / rulesync / routing-sync / flags / flag-row / dns / portowner / config / single-source / routing-view）
+        shell: bash
+        env:
+          POLARIS_GO_TABLE_REQUIRED: '1'
+          POLARIS_ANDROID_DIR: ${{ github.workspace }}/.ci-main
+          POLARIS_ANDROID_REQUIRED: '1'
+        run: |
+          set -euo pipefail
+          go_table="${{ github.workspace }}/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+          if [ ! -f "$go_table" ]; then
+            go_table="${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+            echo "::notice::当前检出没有 kernel-core（过渡期分支），回退用 .ci-main 的 Go 表：$go_table"
+          fi
+          echo "[routing-sync] 用 Go 表：$go_table"
+          POLARIS_GO_TABLE="$go_table" npm run test:offline
+
+      # 便宜的兜底：语法错误在这里就红，不用等打包才发现。
+      - name: 语法检查（所有 js）
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --check 只解析不执行，所以不依赖 Electron 运行时；
+          # 但 preload.js / tray.js 等文件里 require('electron') 不会被执行，安全。
+          mapfile -t files < <(git ls-files '*.js' | grep -v '^design/windows/app/node_modules/')
+          echo "待检查 ${#files[@]} 个文件"
+          for f in "${files[@]}"; do
+            node --check "$f" || { echo "::error::语法错误：$f"; exit 1; }
+          done
+          echo "全部通过"
+
+      # 上面两条 REQUIRED 是真跑的前提：checkout 成功不代表 sparse-checkout
+      # 真取到了文件，所以显式确认一次，取不到就红。
+      - name: 确认跨仓库输入真的取到了
+        shell: bash
+        run: |
+          set -euo pipefail
+          go="${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+          flags="${{ github.workspace }}/.ci-main/app/src/main/assets/flags"
+          if [ ! -f "$go" ]; then
+            echo "::error::没取到 main 的 routing_table.go：$go"
+            echo "::error::请检查上面的 sparse-checkout 是否还匹配得上 main 的目录结构。"
+            exit 1
+          fi
+          n=$(find "$flags" -maxdepth 1 -name '*.svg' | wc -l)
+          if [ "$n" -lt 100 ]; then
+            echo "::error::安卓 flags 只取到 $n 张（预期 257）：$flags"
+            exit 1
+          fi
+          echo "routing_table.go 与 $n 张安卓 flags 都在"
+  # issue #42：聚合 job —— 沿用原 check 名字（逐字），if: always()；唯一绿条件 = needs 全 success/skipped。
+  windows-offline:
+    name: Windows 离线自检 + 语法检查
+    needs: [changes, windows-offline-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
   # 门禁是 CI 的裁判，而裁判坏掉时没人会发现：2026-10-03 的历史审计把
   # Gradle 声明点当成 JSON 解析，异常被吞掉，于是每次都打印「通过」而
   # 实际一个提交都没扫。所以每次推送都先验证裁判本身。
