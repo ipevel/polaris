@@ -163,4 +163,55 @@ function disable(before) {
   log.info('system proxy restored');
 }
 
-module.exports = { enable, disable, snapshot, restore, broadcast, bypassList };
+/**
+ * 解析 Windows 的 ProxyServer 字符串 → { host, port, scheme } | null。
+ *
+ * 同一台机器上可能混着多种，分号分隔：
+ *   host:port
+ *   http=host:port;https=host:port;ftp=host:port
+ *   socks=host:port
+ * 本模块只做 HTTP CONNECT 隧道，所以优先 https=，其次 http=，再退到裸 host:port；
+ * 只有 socks= 项时返回 null（不假装能走，调用方会退直连）。
+ */
+function parseProxyServer(raw) {
+  const text = String(raw == null ? '' : raw).trim();
+  if (!text) return null;
+  const parts = text.split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+  const byScheme = new Map();
+  let bare = '';
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const eq = p.indexOf('=');
+    if (eq > 0) byScheme.set(p.slice(0, eq).trim().toLowerCase(), p.slice(eq + 1).trim());
+    else if (!bare) bare = p;
+  }
+  const scheme = byScheme.has('https') ? 'https' : (byScheme.has('http') ? 'http' : '');
+  const pick = scheme ? byScheme.get(scheme) : bare;
+  if (!pick) return null;
+  let host = '';
+  let port = 0;
+  let m = /^\[(.+)\]:(\d+)$/.exec(pick);      // IPv6: [::1]:8080
+  if (m) { host = m[1]; port = Number(m[2]); }
+  else {
+    m = /^([^:]+):(\d+)$/.exec(pick);         // host:port
+    if (m) { host = m[1]; port = Number(m[2]); }
+    else { host = pick; port = 80; }          // 没写端口：Windows 的默认是 80
+  }
+  if (!host || !(port > 0) || port > 65535) return null;
+  return { host: host, port: port, scheme: scheme || 'http' };
+}
+
+/**
+ * 读当前 WinINET 系统代理（只读注册表，不改任何设置）。
+ * 非 Windows / 没开 / 解析不出（例如只配了 socks 或 PAC）→ null（调用方按「没有系统代理」处理）。
+ */
+function readSystemProxy() {
+  if (process.platform !== 'win32') return null;
+  if (!(Number(regQuery('ProxyEnable')) || 0)) return null;
+  const raw = regQuery('ProxyServer');
+  const parsed = parseProxyServer(raw);
+  if (!parsed) return null;
+  return { host: parsed.host, port: parsed.port, scheme: parsed.scheme, raw: String(raw || '') };
+}
+
+module.exports = { enable, disable, snapshot, restore, broadcast, bypassList, parseProxyServer, readSystemProxy };
