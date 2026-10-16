@@ -12,6 +12,7 @@ import com.slte.app.R
 import com.slte.app.kernel.KernelProxyMember
 import com.slte.app.kernel.KernelProxyMemberKind
 import com.slte.app.kernel.PrimaryGroupName
+import com.slte.app.kernel.groupDisplayName
 import com.slte.app.ui.theme.V5ThemeColors
 import com.slte.app.ui.theme.V5Type
 import com.slte.app.ui.v5.ChipTone
@@ -53,13 +54,17 @@ internal fun delayDisplayOf(delay: Int?): Triple<DelayMark, ChipTone, String?> {
 }
 
 @Composable
-internal fun memberLabel(member: KernelProxyMember): String = when (member.kind) {
+internal fun memberLabel(
+    member: KernelProxyMember,
+    // 防御性：成员里也可能是组名。拿不到自建组集合（null）就保守不映射。
+    customNames: Set<String>? = null,
+): String = when (member.kind) {
     KernelProxyMemberKind.GROUP ->
         if (member.name == PrimaryGroupName) {
             stringResource(R.string.v5_group_follow_primary)
         } else {
-            // 自动选择 / 故障转移 是独立组，也是主组的成员，原样显示组名
-            member.name
+            // 自动选择 / 故障转移 是独立组，也是主组的成员，按显示名渲染
+            groupDisplayName(member.name, customNames)
         }
     KernelProxyMemberKind.DIRECT -> stringResource(R.string.routing_outbound_direct)
     KernelProxyMemberKind.REJECT -> stringResource(R.string.routing_outbound_block)
@@ -72,6 +77,8 @@ internal fun MemberRow(
     selected: Boolean,
     // 探测确认不可达（不是"这次超时"）：节点页据此显示离线角标。
     offline: Boolean = false,
+    // 用户自建分流组名；null = 调用点拿不到集合，按保守行为原样显示（见 memberLabel）。
+    customGroupNames: Set<String>? = null,
     // 可为 null：内核未运行时的只读兜底名单没有任何可切换目标，
     // 传 null 让整行不可点且无涟漪（V5RowItem 的 v5Clickable 语义），
     // 避免"点得动但什么都没发生"的假交互。
@@ -87,7 +94,7 @@ internal fun MemberRow(
             KernelProxyMemberKind.NODE -> null
         }
     V5RowItem(
-        title = memberLabel(member),
+        title = memberLabel(member, customGroupNames),
         sub = memberSubtitle(member),
         leading = { RadioDot(on = selected) },
         trailing = {

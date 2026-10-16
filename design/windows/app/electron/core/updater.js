@@ -456,7 +456,7 @@ function assertDownloadUrl(url) {
  * 下载 + 校验 + 解压 + 校验，一步到位（UI 上就是一个进度条）。
  * 任何一步失败都会把 phase 设成 error 并抛错，绝不留下半个包当「下载好了」。
  */
-async function download(url, version) {
+async function download(url, version, expectedSha256) {
   const target = String(url || '').trim();
   if (!target) throw new Error('未配置更新地址');
   // 协议校验放在最前面：不合法时连 updateDir 都不碰，不留半个状态
@@ -501,6 +501,18 @@ async function download(url, version) {
     log.error(`更新包校验失败：${file}（${size} 字节）`);
     throw new Error(S.error);
   }
+
+  // 发布侧摘要核对（有就 fail-closed，没有只 warn）：PR-A 之前这里只看 zip 头，
+  // 断在半截、或被 CDN 换成别的东西的包，要等解压甚至安装时才暴露。
+  const dg = verifyDownloadedFile(file, expectedSha256);
+  if (!dg.ok) {
+    try { fs.rmSync(file, { force: true }); } catch (_) {}
+    set({ phase: 'error', error: dg.reason });
+    log.error('更新包校验失败：' + dg.reason);
+    throw new Error(dg.reason);
+  }
+  if (dg.skipped) log.warn('没有可核对的发布摘要，跳过摘要校验（' + dg.reason + '）');
+  else log.info(`更新包摘要核对通过 sha256=${dg.actual.slice(0, 12)}…`);
 
   set({ phase: 'extracting', percent: 100, received: size, total: size });
   log.info(`下载完成 ${size} 字节，开始解压到 ${stagingDir()}`);
@@ -759,6 +771,44 @@ function verifyManifest(stageRoot) {
   return { ok: true, count: want.size };
 }
 
+/**
+ * 下载完的 zip 摘要核对。expected 为空 / 格式不对 → **跳过（不拦）**：
+ * 镜像与自建 CDN 没有 SHA256SUMS.txt，不能因为拿不到摘要就让用户装不了更新。
+ * 有摘要而不符 → fail-closed（调用方删包并停在 error）。
+ * 口径：这一层防的是**损坏 / 搬运 / CDN 截断**，不是信任锚（摘要与包同源同账号）。
+ */
+function verifyDownloadedFile(file, expected) {
+  const want = String(expected || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(want)) return { ok: true, skipped: true, reason: '没有可核对的发布摘要' };
+  let actual = '';
+  try { actual = sha256File(file); } catch (e) { return { ok: false, reason: '读不了下载到的包：' + (e && e.message) }; }
+  if (actual !== want) {
+    return { ok: false, expected: want, actual, reason: `更新包摘要不符（期望 ${want.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…）` };
+  }
+  return { ok: true, expected: want, actual };
+}
+
+/**
+ * 包内清单的**单文件**定点校验（启动前核内核用）。
+ * 为什么不整包校验：geo / 规则有几百 MB，每次启动都算一遍不可接受；而内核是原生 exe，
+ * 它坏掉的表现是「连不上」这种玄学，最值得在启动前换成一句人话。
+ * 语义：清单缺失 / 清单里没有这一条 → skipped（开发态、老包不因此起不来）；
+ *       条目在而哈希不符 / 文件读不了 → ok:false（fail-closed）。
+ */
+function verifyManifestEntry(root, rel) {
+  const key = String(rel || '').replace(/\\/g, '/');
+  let text = '';
+  try { text = fs.readFileSync(path.join(root, MANIFEST_REL), 'utf8'); }
+  catch (_) { return { ok: true, skipped: true, reason: '没有包内清单（' + MANIFEST_REL + '）' }; }
+  let want;
+  try { want = parseManifest(text); } catch (e) { return { ok: true, skipped: true, reason: '清单读不了：' + (e && e.message) }; }
+  if (!want.has(key)) return { ok: true, skipped: true, reason: '清单里没有 ' + key };
+  let actual = '';
+  try { actual = sha256File(path.join(root, key)); } catch (e) { return { ok: false, reason: '读不了 ' + key + '：' + (e && e.message) }; }
+  if (actual !== want.get(key)) return { ok: false, expected: want.get(key), actual, reason: key + ' 与包内清单不符' };
+  return { ok: true, expected: want.get(key), actual };
+}
+
 /** 备份「将被覆盖且已存在」的文件；返回清单（含原 sha256，供回滚校验） */
 function backupOverwritten(appDir, stageRoot, backupDir, say) {
   const entries = [];
@@ -919,7 +969,15 @@ async function doApply(stageRoot, appDir, updDir, tempDir, say) {
     const wantAsar = sha256File(path.join(stageRoot, 'resources', 'app.asar'));
     const gotAsar = sha256File(path.join(appDir, 'resources', 'app.asar'));
     if (wantAsar !== gotAsar) throw new Error('app.asar 校验不符（新 exe 配旧 asar）');
-    say('校验通过：exe + app.asar 与暂存包一致');
+    // 内核也是随包分发的原生 exe：以前只比 app.asar，内核那一步没落地就只能等用户
+    // 点「连接」时才发现，而且报出来的是「连不上」。这里一起比。
+    const coreRel = 'resources/core/mihomo.exe';
+    if (fs.existsSync(path.join(stageRoot, coreRel))) {
+      const wantCore = sha256File(path.join(stageRoot, coreRel));
+      const gotCore = sha256File(path.join(appDir, coreRel));
+      if (wantCore !== gotCore) throw new Error('内核 mihomo.exe 校验不符（复制没落地）');
+    }
+    say('校验通过：exe + app.asar + 内核 与暂存包一致');
     const mf2 = verifyManifest(stageRoot);
     if (!mf2.ok) throw new Error('提交后清单复核失败：' + mf2.reason);
 
@@ -1130,7 +1188,8 @@ module.exports = {
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
   safeName, zipPath, isZipFile, resolveStageRoot, extract, pidAlive,
   // P0 测试钩子
-  guardHelperEnv, guardAppPath, pathInside, isTempPath, verifyManifest, parseManifest, sha256File,
+  guardHelperEnv, guardAppPath, pathInside, isTempPath, verifyManifest, verifyManifestEntry,
+  verifyDownloadedFile, parseManifest, sha256File,
   backupOverwritten, restoreBackup, copyTreeExcept, writeApplyResult, readApplyResult, clearApplyResult,
   copyTree, listFiles, canOverwrite, waitOverwritable, rmTolerant,
 };

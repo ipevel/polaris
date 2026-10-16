@@ -354,6 +354,23 @@ async function startKernel() {
   if (!fs.existsSync(exe)) {
     throw new Error(`未找到内核 mihomo.exe（${paths.core()}），请重新解压完整目录`);
   }
+  // 启动前定点核对内核与包内清单：内核是随包分发的原生 exe，半覆盖 / 被杀软截断时，
+  // 它坏掉的表现是「连不上」这种玄学，在这里换成一句人话。只核内核**一个**文件 ——
+  // 整包（geo / 规则几百 MB）每次启动都算一遍不可接受。清单缺失 / 没有这一条 → 跳过。
+  const integrity = require('./updater').verifyManifestEntry(require('./updater').installDir(), 'resources/core/mihomo.exe');
+  if (!integrity.ok) {
+    throw new Error(`内核 mihomo.exe 与包内清单不符（${integrity.reason}），请重新解压完整的便携目录`);
+  }
+  if (integrity.skipped) {
+    // 硬要求（决策主管）：跳过**不等于通过**，必须留可诊断记录 + 关于页可见，别静默放过。
+    // 「条目在而不符」上面已经拒绝了；这里只是「清单缺失 / 没有这一条」，拒绝启动会把开发态与老包一并挡死，
+    // 所以处理方式是：明确记一条 warn + 落盘给关于页看，状态写成 skipped（不是 ok）。
+    const rec = { state: 'skipped', reason: String(integrity.reason || '未知'), ts: Date.now() };
+    log.warn('内核启动校验未执行（不计为通过）：' + rec.reason + ' —— 包内清单缺失或没有这一条，本次启动按未校验处理');
+    try { store.set('last_kernel_verify', rec); } catch (_) {}
+  } else {
+    try { store.set('last_kernel_verify', { state: 'ok', reason: '', ts: Date.now() }); } catch (_) {}
+  }
   ensureGeodata();
   prepareConfig();
 
@@ -941,7 +958,8 @@ async function rulesetState() {
       live: !!p,
     };
   });
-  const custom = rulesets.normalizeCustom(store.get('custom_rulesets')).map((g) => {
+  const cls = rulesets.classifyCustom(store.get('custom_rulesets'));
+  const custom = cls.list.map((g) => {
     const p = live ? live[g.name] : null;
     return {
       name: g.name,
@@ -964,6 +982,9 @@ async function rulesetState() {
     total: rulesets.TABLE.length,
     custom,
     custom_total: custom.length,
+    // 被隐藏条目：每次读都返回（判据是「文件里存在」而不是「本次丢了几条」）
+    hidden: cls.hidden,
+    hidden_count: cls.hidden.length,
   };
 }
 
@@ -978,6 +999,11 @@ async function setLocalRouting(on) {
   return { ok: true, on: !!on };
 }
 
+/** 存储里的自定义分流组**原始**列表（不过滤、不删条目）—— 四条保存路径必须基于它 */
+function rawCustomList() {
+  const raw = store.get('custom_rulesets');
+  return Array.isArray(raw) ? raw.map((g) => (g && typeof g === 'object' ? Object.assign({}, g) : g)) : [];
+}
 /** 开关一个分流组（内置或自定义）：写设置 → 重新生成配置 → 在线时热重载 */
 async function setRuleset(name, on) {
   const group = rulesets.TABLE.find((g) => g.name === name);
@@ -988,8 +1014,9 @@ async function setRuleset(name, on) {
     const r = await reloadConfig();
     return { ok: true, enabled: next.has(name), applied: !!r.applied };
   }
-  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
-  const mine = list.find((g) => g.name === name);
+  // 基于**原始**列表改：被隐藏条目原样保留，不因为判定变严而追溯删除
+  const list = rawCustomList();
+  const mine = list.find((g) => g && g.name === name);
   if (!mine) throw new Error(`分流组「${name}」不存在`);
   mine.enabled = !!on;
   store.set('custom_rulesets', rulesets.serializeCustom(list));
@@ -1006,7 +1033,7 @@ async function reorderRuleset(name, to) {
   const builtin = rulesets.TABLE.some((g) => g.name === name);
   const cur = builtin
     ? rulesets.orderedTable(store.get('routing_order')).map((g) => g.name)
-    : rulesets.normalizeCustom(store.get('custom_rulesets')).map((g) => g.name);
+    : rawCustomList().map((g) => g && g.name).filter(Boolean);
   const i = cur.indexOf(name);
   if (i < 0) throw new Error(`分流组「${name}」不存在`);
   const j = Math.max(0, Math.min(cur.length - 1, Number(to) || 0));
@@ -1016,8 +1043,9 @@ async function reorderRuleset(name, to) {
   next.splice(j, 0, name);
   if (builtin) store.set('routing_order', next);
   else {
-    const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
-    const it = list.find((g) => g.name === name);
+    const list = rawCustomList();
+    const it = list.find((g) => g && g.name === name);
+    if (!it) throw new Error(`分流组「${name}」不存在`);
     list.splice(list.indexOf(it), 1);
     list.splice(j, 0, it);
     store.set('custom_rulesets', rulesets.serializeCustom(list));
@@ -1030,10 +1058,11 @@ async function reorderRuleset(name, to) {
 async function saveCustomRuleset(input) {
   const clean = rulesets.validateCustom(input);   // 会抛错：行号 + 原因
   const original = String((input && input.original) || '').trim();
-  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
-  const at = original ? list.findIndex((g) => g.name === original) : -1;
+  // 基于**原始**列表改（被隐藏条目保留）；新建/改名仍受 validateCustom 的保留名校验约束
+  const list = rawCustomList();
+  const at = original ? list.findIndex((g) => g && g.name === original) : -1;
   if (original && at < 0) throw new Error(`要修改的分流组「${original}」已经不在了`);
-  const clash = list.findIndex((g) => g.name === clean.name);
+  const clash = list.findIndex((g) => g && g.name === clean.name);
   if (clash >= 0 && clash !== at) throw new Error(`已经有同名的分流组「${clean.name}」了`);
   if (at < 0 && list.length >= rulesets.CUSTOM_MAX) {
     throw new Error(`自定义分流组最多 ${rulesets.CUSTOM_MAX} 个`);
@@ -1046,8 +1075,8 @@ async function saveCustomRuleset(input) {
 
 /** 删除一个自定义分流组 */
 async function deleteCustomRuleset(name) {
-  const list = rulesets.normalizeCustom(store.get('custom_rulesets'));
-  const at = list.findIndex((g) => g.name === name);
+  const list = rawCustomList();
+  const at = list.findIndex((g) => g && g.name === name);
   if (at < 0) throw new Error(`分流组「${name}」不存在`);
   list.splice(at, 1);
   store.set('custom_rulesets', rulesets.serializeCustom(list));

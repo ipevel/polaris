@@ -4,6 +4,19 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # issue #42 的排练缝：这两个输入**只在 workflow_dispatch 生效**；push/PR 路径一律按 auto 判定，
+  # 任何 dispatch 参数都不会覆盖真 PR 的判定。scopes_override=auto 是缺省；force_changes_failure 是 test-only 插桩。
+  workflow_dispatch:
+    inputs:
+      scopes_override:
+        description: '仅排练用：强制改动范围（auto=正常判定；all/win/android/go=强制该范围）'
+        type: choice
+        options: [auto, all, win, android, go]
+        default: auto
+      force_changes_failure:
+        description: 'test-only：故意让变更判定失败，验证「判定失败 → 重活仍全跑」'
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -13,9 +26,134 @@ permissions:
   contents: read
 
 jobs:
+  # issue #42：秒级「变更判定」。异常 / 超时 / 空列表 / 未匹配路径 → 一律 all=true（fail-closed），
+  # 由重活 job 的 if 读取。输出先写缺省「全跑」，判定成功才覆盖（GITHUB_OUTPUT 后写者生效）。
+  changes:
+    name: 变更判定（路径分流）
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.scope.outputs.android }}
+      go: ${{ steps.scope.outputs.go }}
+      win: ${{ steps.scope.outputs.win }}
+      all: ${{ steps.scope.outputs.all }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: 判定改动范围（异常/未匹配 → 全跑）
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DISPATCH_SCOPE: ${{ inputs.scopes_override }}
+          FORCE_FAIL: ${{ inputs.force_changes_failure }}
+        run: |
+          # 刻意不用 set -e：任何失败都走「全跑」分支（fail-closed），而不是让重活不跑。
+          set -uo pipefail
+          { echo "all=true"; echo "android=true"; echo "go=true"; echo "win=true"; } >> "$GITHUB_OUTPUT"
+          ALL=true; ANDROID=true; GO=true; WIN=true
+          finish() {
+            { echo "all=$ALL"; echo "android=$ANDROID"; echo "go=$GO"; echo "win=$WIN"; } >> "$GITHUB_OUTPUT"
+            echo "判定结果：all=$ALL android=$ANDROID go=$GO win=$WIN"
+          }
+          alltrue() { ALL=true; ANDROID=true; GO=true; WIN=true; finish; exit 0; }
+          fallback() { echo "::warning::$1（按 fail-closed 全跑）"; alltrue; }
+          if [ "${FORCE_FAIL:-false}" = "true" ]; then
+            echo "::warning::test-only：force_changes_failure=true，故意让变更判定失败（重活因 always() 仍会跑）"
+            finish
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            case "${DISPATCH_SCOPE:-auto}" in
+              all) echo "::notice::排练：强制全跑"; alltrue ;;
+              win) ALL=false; ANDROID=false; GO=false; WIN=true; finish; exit 0 ;;
+              android) ALL=false; ANDROID=true; GO=false; WIN=false; finish; exit 0 ;;
+              go) ALL=false; ANDROID=false; GO=true; WIN=false; finish; exit 0 ;;
+              *) fallback "workflow_dispatch 且 scopes_override=auto：没有可比对的 base" ;;
+            esac
+          fi
+          if [ "$EVENT_NAME" != "pull_request" ]; then alltrue; fi
+          if [ -z "${BASE_SHA:-}" ]; then fallback "PR 事件没拿到 base.sha"; fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1 || fallback "取 base 提交失败：$BASE_SHA"
+          FILES=$(git diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}...HEAD"
+          if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
+          echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
+          printf '%s\n' "$FILES" | head -30
+          ANDROID=false; GO=false; WIN=false; UNKNOWN=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              app/*|kernel-service/*|kernel-common/*|gradle/*|gradlew|gradlew.bat|build.gradle.kts|settings.gradle.kts|gradle.properties) ANDROID=true ;;
+              kernel-core/*) ANDROID=true; GO=true ;;
+              design/windows/*) WIN=true ;;
+              *) UNKNOWN=true ;;
+            esac
+          done <<RWEOF
+          $FILES
+          RWEOF
+          if [ "$UNKNOWN" = "true" ]; then
+            ALL=true; ANDROID=true; GO=true; WIN=true
+            echo "::notice::有未匹配/基础设施路径（.github/**、根级、docs/**、config/** 等）→ 全跑"
+          else
+            ALL=false
+            if [ "$ANDROID" = "false" ] && [ "$GO" = "false" ] && [ "$WIN" = "false" ]; then
+              ALL=true; ANDROID=true; GO=true; WIN=true
+              echo "::notice::一个平台都没匹配上（异常）→ 全跑"
+            fi
+          fi
+          finish
+
+      - name: needs 与重活 对账（漏一个重活就红）
+        run: |
+          set -euo pipefail
+          # 纯 Node + 极简正则扫描本文件（不引依赖、不新增仓库文件；任何不确定 → 红）
+          node - <<'JS'
+          const fs = require('fs');
+          const raw = fs.readFileSync('.github/workflows/ci.yml', 'utf8');
+          const src = raw.slice(raw.indexOf('\njobs:') + 1);   // 只在 jobs: 段里扫，别把 on: 下的键当 job
+          const jobKeys = [...src.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
+          const blockOf = (key) => {
+            const i = src.indexOf('\n  ' + key + ':\n');
+            if (i < 0) return '';
+            const rest = src.slice(i + 1);
+            const nxt = rest.slice(4).search(/^  [A-Za-z0-9_-]+:\s*$/m);
+            return nxt < 0 ? rest : rest.slice(0, nxt + 4);
+          };
+          const needsOf = (key) => {
+            const m = /^    needs:\s*\[([^\]]*)\]/m.exec(blockOf(key));
+            return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+          };
+          const REQUIRED = {
+            '版本门禁自测': 'version-gate',
+            '内核 Go 门禁（vet + build + test）': 'go-gate',
+            '质量门禁（test + ktlint + lint）': 'quality-gate',
+          };
+          const AGG = { 'go-gate': 'go-run', 'quality-gate': 'quality-run' };
+          const problems = [];
+          for (const [name, key] of Object.entries(REQUIRED)) {
+            const b = blockOf(key);
+            if (!b) problems.push('找不到 required 对应的 job：' + key + '（' + name + '）');
+            else if (!b.split('\n').some((l) => l.trim() === 'name: ' + name)) problems.push('job ' + key + ' 的 name 不是逐字「' + name + '」');
+          }
+          for (const [agg, heavy] of Object.entries(AGG)) {
+            const needs = needsOf(agg);
+            if (!needs.includes('changes')) problems.push(agg + ' 的 needs 缺 changes：' + JSON.stringify(needs));
+            if (!needs.includes(heavy)) problems.push(agg + ' 的 needs 缺 ' + heavy + '：' + JSON.stringify(needs));
+          }
+          const covered = new Set();
+          for (const agg of Object.keys(AGG)) needsOf(agg).forEach((n) => covered.add(n));
+          const heavyAll = jobKeys.filter((k) => k !== 'changes' && !Object.keys(AGG).includes(k) && k !== 'version-gate');
+          const missing = heavyAll.filter((k) => !covered.has(k));
+          if (missing.length) problems.push('有重活没被任何聚合 needs 覆盖：' + missing.join(', '));
+          if (problems.length) { for (const p of problems) console.error('::error::' + p); process.exit(1); }
+          console.log('对账通过：重活 ' + JSON.stringify(heavyAll) + ' 都被聚合 needs 覆盖；required 三条名字逐字存在');
+          JS
   # 门禁是 CI 的裁判，而裁判坏掉时没人会发现：2026-10-03 的历史审计把
   # Gradle 声明点当成 JSON 解析，异常被吞掉，于是每次都打印「通过」而
   # 实际一个提交都没扫。所以每次推送都先验证裁判本身。
+  # （issue #42：本 job 永远跑、名字不改；重活由 changes 判定后条件化，required 名字由聚合 job 沿用。）
   version-gate:
     name: 版本门禁自测
     runs-on: ubuntu-latest
@@ -27,8 +165,10 @@ jobs:
       - name: 运行门禁自测（23 个用例）
         run: python3 .scripts/version_gate_test.py
 
-  go:
-    name: 内核 Go 门禁（vet + build + test）
+  go-run:
+    name: 内核 Go 门禁（vet + build + test） · 执行体
+    needs: [changes]
+    if: ${{ always() && (needs.changes.outputs.go == 'true' || needs.changes.outputs.all == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -64,8 +204,10 @@ jobs:
         working-directory: kernel-core/src/main/golang
         run: go test -v -count=1 ./native/config/routing/...
 
-  quality:
-    name: 质量门禁（test + ktlint + lint）
+  quality-run:
+    name: 质量门禁（test + ktlint + lint） · 执行体
+    needs: [changes]
+    if: ${{ always() && (needs.changes.outputs.android == 'true' || needs.changes.outputs.all == 'true') }}
     runs-on: ubuntu-latest
 
     env:
@@ -97,7 +239,34 @@ jobs:
           SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
           test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT）"; exit 1; }
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          # issue #36：sdkmanager 下载偶发截断（实测报 Error on ZipFile unknown archive），失败一次就红会挡住
+          # 所有合 main / 发版（这是 required check）。这里对**同一条安装命令**最多重试 3 次、指数退避（5s / 15s），
+          # 每次失败打 ::warning:: 说明第几次；3 次都失败仍然红（不静默跳过、不 swallow）。
+          # licenses 那条与 cmake 那条的 `|| true` / `::warning::` 语义保持原样，不动。
+          install_sdk_ndk() {
+            local i delay
+            local delays=(5 15)
+            for i in 1 2 3; do
+              if "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"; then
+                if [ "$i" -gt 1 ]; then echo "::notice::sdkmanager 第 $i 次尝试成功"; fi
+                return 0
+              fi
+              if [ "$i" -ge 3 ]; then
+                echo "::error::sdkmanager 安装 Android SDK/NDK 连续 3 次失败，放弃（required check 不放行）"
+                return 1
+              fi
+              delay="${delays[$((i-1))]}"
+              echo "::warning::sdkmanager 安装 Android SDK/NDK 失败（第 $i/3 次），${delay}s 后重试；常见原因是下载截断（Error on ZipFile unknown archive）"
+              # 尽力清掉 sdkmanager 的临时目录，避免复用下载了一半的 zip；不同版本路径略有差异，清不到不影响重试
+              if [ -n "${ANDROID_SDK_ROOT:-}" ]; then rm -rf "$ANDROID_SDK_ROOT/.temp" 2>/dev/null || true; fi
+              sleep "$delay"
+            done
+            return 1
+          }
+          if ! install_sdk_ndk; then
+            echo "::error::Android SDK/NDK 安装失败（已重试 3 次，每次间隔 5s/15s）"
+            exit 1
+          fi
           "$SDKMANAGER" "cmake;3.22.1" || echo "::warning::cmake 预装失败，交由 AGP 自动下载"
           ls "$ANDROID_SDK_ROOT/cmake" 2>/dev/null || echo "SDK 内暂无可用的 cmake"
 
@@ -199,3 +368,49 @@ jobs:
             app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
           retention-days: 30
+
+  # issue #42：聚合 job —— 沿用 branch protection 的 required 名字（逐字），if: always()；
+  # 唯一绿条件 = needs 里所有重活 result ∈ {success, skipped}；failure / cancelled 一律红。
+  # changes 也在 needs 里：判定失败 → 聚合红（fail-closed），但重活因 always() 仍会跑。
+  go-gate:
+    name: 内核 Go 门禁（vet + build + test）
+    needs: [changes, go-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游重活未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
+
+  quality-gate:
+    name: 质量门禁（test + ktlint + lint）
+    needs: [changes, quality-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游重活未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
+

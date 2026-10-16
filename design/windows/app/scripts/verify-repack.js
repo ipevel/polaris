@@ -11,7 +11,7 @@
  *   ③ 目录差异：目录「存在」= 有目录条目 或 有文件落在它下面（打包器可不写目录条目）；
  *      只有「源里非空 + 新 zip 里既无目录条目也无文件落其下」才算真丢 → 红；空目录被丢 → 结论输出
  *   ④ 条目名大小写与源**逐字一致**（② 归一化比较抓不到大小写变化，这条单独抓）
- *   ⑤ 非 ASCII 条目名必须带 UTF-8 标志（GP bit 11）：丢了的包在 Linux / macOS 上会解出乱码文件名
+ *   ⑥ 非 ASCII 条目名必须带 UTF-8 标志（GP bit 11）：丢了的包在 Linux / macOS 上会解出乱码文件名（编号顺延为 ⑥：#40 已把 ⑤ 用作「负例证据」）
  *   ⑥ 负例证据：本文件的判定逻辑可被纯 Node 单测直接喂坏 zip（见 test 文件）
  *
  * 为什么读 zip 中央目录而不是解压后比：Windows 文件系统大小写不敏感，解压出来的树看不出大小写变化；
@@ -142,7 +142,7 @@ function main() {
     console.log('       被丢清单：' + emptyDropped.join('、'));
   } else console.log('  [ OK ] ③ 无目录丢失（打包器可以不写目录条目；文件落点已覆盖全部源目录）');
 
-  /* ⑤ 非 ASCII 条目名必须带 UTF-8 标志（GP bit 11 = 0x0800）—— fail-closed。
+  /* ⑥ 非 ASCII 条目名必须带 UTF-8 标志（GP bit 11 = 0x0800）—— fail-closed。
      为什么有这条：2026-10-15 的 1.12.1 发版，release job 在 Linux 侧 sha256sum -c 报
      「使用说明.txt: No such file or directory」，一度被判成「Compress-Archive 没打标志位」。
      复核真产物 flag_bits=0x0800 是**置位**的、名字也是合法 UTF-8，坏在 runner 上 Info-ZIP unzip 6.0
@@ -152,10 +152,10 @@ function main() {
   const nonAscii = zipEntries.filter((e) => /[^\x00-\x7F]/.test(e.name));
   const noBit11 = nonAscii.filter((e) => (e.flag & 0x0800) === 0);
   if (noBit11.length) {
-    ok = fail('⑤ 非 ASCII 条目名缺少 UTF-8 标志（GP bit 11）：' + noBit11.length + ' 个',
+    ok = fail('⑥ 非 ASCII 条目名缺少 UTF-8 标志（GP bit 11）：' + noBit11.length + ' 个',
       noBit11.slice(0, 20).map((e) => e.name + '  flag=0x' + e.flag.toString(16).padStart(4, '0')).join('\n')) && ok;
   } else {
-    console.log('  [ OK ] ⑤ 非 ASCII 条目名都带 UTF-8 标志（GP bit 11）：' + nonAscii.length + ' 个' +
+    console.log('  [ OK ] ⑥ 非 ASCII 条目名都带 UTF-8 标志（GP bit 11）：' + nonAscii.length + ' 个' +
       (nonAscii.length ? '（如 ' + nonAscii[0].name + ' flag=0x' + nonAscii[0].flag.toString(16).padStart(4, '0') + '）' : ''));
   }
 

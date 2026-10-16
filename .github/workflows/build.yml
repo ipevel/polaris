@@ -423,14 +423,12 @@ jobs:
             echo "::error::versionName '${VERSION_INPUT}' 不是合法的 SemVer（必须为 X.Y.Z，无前导零）"
             exit 1
           fi
-          if [ -n "$CODE_INPUT" ]; then
-            VC="$CODE_INPUT"
-            case "$VC" in
-              ''|*[!0-9]*) echo "::error::versionCode '${CODE_INPUT}' 必须是纯数字"; exit 1 ;;
-            esac
-          else
-            VC=$(( $(date +%s) / 60 ))
-          fi
+          # versionCode（issue #30）：显式传值 / 未传 都交给 .scripts/resolve_version_code.sh 统一解析 ——
+          #   未传 → 用仓库声明值（app/build.gradle.kts 的 slteVersionCode），并打 notice；
+          #   读不到声明 → 先 warn 回退 epoch 分钟，然后照样红（缺声明不许发版）；
+          #   无论哪条路径，最终断言「本次 VC == 仓库声明值」，不等即红（不许实际值覆盖声明值）。
+          # 纯数字校验也在脚本里（保留原语义）。
+          VC=$(bash .scripts/resolve_version_code.sh --gradle app/build.gradle.kts --input "$CODE_INPUT")
           TAG="${TAG_INPUT:-v${VERSION_INPUT}}"
           if [ "$TAG" != "v${VERSION_INPUT}" ]; then
             echo "::error::releaseTag '${TAG}' 必须等于 v${VERSION_INPUT}（SemVer 要求 tag 与版本号一一对应）"
@@ -471,9 +469,14 @@ jobs:
   # 门禁通过后由流水线自己打 tag：人工不再先打 tag，避免「tag 指向的提交」与
   # 「实际构建的提交」分叉。只创建 v* 标签；已存在且指向同一 commit 时幂等继续；
   # 指向别的 commit 直接失败 —— 绝不 force、不移动、不删除任何已有 tag。
+  # issue #25：tag 挪到 build + windows **都成功**之后才创建，避免「build/windows 失败留下孤儿 tag」。
+  # 依赖链变成 release-precheck → version → build → windows → release-tag → release；
+  # build/windows 的 needs 里已去掉 release-tag（否则成环）。dryRun=true 时本 job 仍然 skipped（不打 tag）。
+  # tag 创建逻辑本身一个字没改：不存在则创建、已存在且指向同一 commit 幂等继续、指向别的 commit 直接失败，不 force/不移动/不删除。
   release-tag:
-    needs: [release-precheck, version]
-    if: inputs.dryRun != 'true'
+    needs: [release-precheck, version, build, windows]
+    # 主对话口径（情形 E）：只构建不发布时不该建 tag，否则又是「有 tag、没 Release」。
+    if: inputs.dryRun != 'true' && inputs.publishRelease == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -517,8 +520,10 @@ jobs:
           echo "::notice::tag $TAG 已确认指向 $SHA"
 
   build:
-    needs: [version, release-tag]
-    if: ${{ !cancelled() && needs.version.result == 'success' && needs.release-tag.result != 'failure' && needs.release-tag.result != 'cancelled' }}
+    # issue #25：build 不再依赖 release-tag（否则与「release-tag 依赖 build」成环）。
+    # tag 现在在 build + windows 都成功之后才创建 —— 失败不会再留下「有 tag、没 Release」的孤儿 tag。
+    needs: [version]
+    if: ${{ !cancelled() && needs.version.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -736,8 +741,9 @@ jobs:
   # Windows 便携版：与安卓 APK 共用同一个 versionName / tag / Release。
   # 版本号只从 version job 取，不在这里重新解析，避免两个产物版本号分叉。
   windows:
-    needs: [version, release-tag]
-    if: ${{ !cancelled() && needs.version.result == 'success' && needs.release-tag.result != 'failure' && needs.release-tag.result != 'cancelled' }}
+    # issue #25：同上，windows 也不再依赖 release-tag。
+    needs: [version]
+    if: ${{ !cancelled() && needs.version.result == 'success' }}
     runs-on: windows-latest
     permissions:
       contents: read
@@ -857,6 +863,34 @@ jobs:
           Write-Host "  清单条目数 = $countBefore"
           Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item $tmp2 -Recurse -Force -ErrorAction SilentlyContinue
+      - name: "#24 ③ 空目录允许分支自检（fixture）+ 负例"
+        # issue #24：③ 的「源里是空目录被丢」允许分支在真实便携包里跑不到（真包没有空目录），
+        # 所以在 windows job 里造一个极小 fixture（只含一个空目录 + 一个根文件），用 Compress-Archive
+        # 重打包（它只写文件条目、不写目录条目 → 空目录必被丢），对**它**单独跑一次 verify-repack：
+        # 断言 exit 0 且输出里有「空目录被丢」与那句结论；随后跑仓库自带的 fixture 单测覆盖负例
+        # （非空目录被丢必须红）。
+        # 若哪天这条红且原因是「zip 里开始带目录条目了」，说明打包器行为变了、这条允许分支不再经由
+        # Compress-Archive 触发 —— 那时把 fixture 改成用 Node 造的 zip，而不是放宽断言。
+        shell: pwsh
+        working-directory: design/windows/app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fx = Join-Path $env:RUNNER_TEMP 'polaris-empty-dir-fixture'
+          if (Test-Path $fx) { Remove-Item $fx -Recurse -Force }
+          New-Item -ItemType Directory -Path (Join-Path $fx 'empty-dir') -Force | Out-Null
+          Set-Content -Path (Join-Path $fx 'readme.txt') -Value 'fixture' -NoNewline
+          $fxZip = Join-Path $env:RUNNER_TEMP 'polaris-empty-dir-fixture.zip'
+          if (Test-Path $fxZip) { Remove-Item $fxZip -Force }
+          Compress-Archive -Path (Join-Path $fx '*') -DestinationPath $fxZip
+          $out = (& node scripts/verify-repack.js --before $fx --zip $fxZip 2>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Write-Error "fixture 断言应为 exit 0，实际 $LASTEXITCODE"; exit 1 }
+          if ($out -notmatch '空目录被丢') { Write-Error 'fixture 输出里没有「空目录被丢」：空目录允许分支没被覆盖到'; exit 1 }
+          if ($out -notmatch '结论：可接受') { Write-Error 'fixture 输出里没有那句结论（可接受 / 为什么 / 将来怎么办）'; exit 1 }
+          Write-Host '✅ ③ 空目录允许分支：fixture 实跑通过（exit 0 + 结论行）'
+          # 负例：非空目录被丢必须红（仓库自带 fixture 单测，含三组负例）
+          node scripts/verify-repack-test.js
+          if ($LASTEXITCODE -ne 0) { Write-Error 'verify-repack-test.js 有失败'; exit 1 }
       - name: 上传产物
         if: inputs.dryRun != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -910,18 +944,62 @@ jobs:
           # 发版前置门禁（第二道，针对**将要发布的那份 zip**）：
           # 更新器把「缺清单 / 哈希不符」当拒绝安装，所以发布前再独立验一次字节，
           # 防产物在下载/搬运环节被改动。这里不依赖仓库文件（release job 没有 checkout）。
-          TMPZ=$(mktemp -d)
-          unzip -q "$ZIP" -d "$TMPZ"
-          MF="$TMPZ/resources/polaris-files.sha256"
-          if [ ! -f "$MF" ]; then echo "::error::便携版 zip 里没有包内清单 resources/polaris-files.sha256"; exit 1; fi
-          grep -q '  Polaris.exe$' "$MF" || { echo "::error::清单里没有 Polaris.exe"; exit 1; }
-          grep -q '  resources/app.asar$' "$MF" || { echo "::error::清单里没有 resources/app.asar"; exit 1; }
-          (cd "$TMPZ" && sha256sum -c --quiet resources/polaris-files.sha256) || { echo "::error::包内清单与产物不一致"; exit 1; }
-          N_FILES=$(find "$TMPZ" -type f ! -name 'polaris-files.sha256' | wc -l)
-          N_MF=$(grep -c . "$MF")
-          if [ "$N_FILES" -ne "$N_MF" ]; then echo "::error::清单条目数 $N_MF 与产物文件数 $N_FILES 不一致"; exit 1; fi
-          rm -rf "$TMPZ"
-          echo "便携版包内清单校验通过（$N_MF 个文件）"
+          #
+          # 2026-10-15 修（run 38774587692 假红）：原实现是 unzip 解压后 sha256sum -c。
+          # 包内 使用说明.txt 是带 UTF-8 标志位（general purpose bit 11）的非 ASCII 条目名，
+          # 而 runner 上的 Info-ZIP unzip 6.00 会在**解压阶段**把名字转成旧字符集
+          # （unzip -U / unzip -UU / LANG=C.UTF-8 都改不了），于是清单里那一行在文件系统上
+          # 找不到 → 假红挡住发版。改成**直接按中央目录的条目名读字节**校验：名字按 bit 11
+          # 正确解码、不经过文件系统往返，断言一条不变（清单存在 / 必含 Polaris.exe 与
+          # resources/app.asar / 逐条 sha256 一致 / 条目数一致 / 缺多不符一律 fail-closed）。
+          # 口径：这是「**打包自洽**」检查，**不是签名**；防篡改靠 Release 的 SHA256SUMS.txt
+          # 与用户侧校验。
+          python3 - "$ZIP" <<'PY'
+          import hashlib
+          import sys
+          import zipfile
+
+          MF = "resources/polaris-files.sha256"
+          zf = zipfile.ZipFile(sys.argv[1])
+          names = [n for n in zf.namelist() if not n.endswith("/")]
+
+          if MF not in names:
+              print("::error::便携版 zip 里没有包内清单 %s" % MF)
+              sys.exit(1)
+
+          entries = []
+          for line in zf.read(MF).decode("utf-8").splitlines():
+              if not line.strip():
+                  continue
+              digest, _, path = line.partition("  ")
+              entries.append((digest.strip(), path.strip()))
+
+          for required in ("Polaris.exe", "resources/app.asar"):
+              if not any(path == required for _, path in entries):
+                  print("::error::清单里没有 %s" % required)
+                  sys.exit(1)
+
+          bad = []
+          for digest, path in entries:
+              try:
+                  data = zf.read(path)
+              except KeyError:
+                  bad.append("%s：包内没有这个条目" % path)
+                  continue
+              if hashlib.sha256(data).hexdigest() != digest:
+                  bad.append("%s：哈希不符" % path)
+          if bad:
+              print("::error::包内清单与产物不一致：%s" % "；".join(bad[:10]))
+              sys.exit(1)
+
+          # 口径：产物文件数**排除清单自身**（清单在包内，不能把自己算进去）。
+          n_files = len([n for n in names if n != MF])
+          if n_files != len(entries):
+              print("::error::清单条目数 %d 与产物文件数 %d 不一致" % (len(entries), n_files))
+              sys.exit(1)
+
+          print("便携版包内清单校验通过（%d 个文件）" % len(entries))
+          PY
           echo "--- SHA256SUMS.txt ---"
           cat out/SHA256SUMS.txt
 
