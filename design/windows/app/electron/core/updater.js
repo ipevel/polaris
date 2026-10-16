@@ -43,6 +43,7 @@ const paths = require('../paths');
 const fmt = require('../util/format');
 const store = require('../store');
 const log = require('../logger');
+const proxyTunnel = require('../net/proxy-tunnel');
 
 const ZIP_MAGIC = [0x50, 0x4b]; // "PK"
 
@@ -94,6 +95,8 @@ const S = {
   error: '',
   staged_at: 0,
   extractor: '',
+  download_via: '',       // 'core' | 'system' | 'direct'（本次下载实际走的路）
+  download_route: '',     // 人话（如「核心 mixed-port 127.0.0.1:7890」）
 };
 
 const listeners = new Set();
@@ -122,6 +125,9 @@ function info() {
     portable: paths.isPortable(),
     packaged: paths.isPackaged,
     can_apply: canApply(),
+    download_via: S.download_via || '',
+    download_route: S.download_route || '',
+    last_download_error: readDownloadError(),
   };
 }
 
@@ -231,7 +237,67 @@ function resolveStageRoot(dir) {
  * 另外两层保护：显式建连看门狗（CONNECT_TIMEOUT_MS，给一句人话），
  * 以及 downloadTo 里的空闲/整体计时器。
  */
-function fetchStream(url, redirects = 0) {
+/* ---------------- 下载代理（2026-10-16：修「开着代理仍直连」） ----------------
+ * 两条来源，按优先级取第一条可用的：
+ *   ① 核心在跑（manager.S.phase === 'connected'）→ 127.0.0.1:<mixed_port>
+ *   ② 核心不在 → Windows 系统代理（HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings）
+ * 两条都没有 → 直连（老行为）。
+ * 走代理失败 → 记一条 warn，**回退直连**（代理不能变成新的单点）。
+ * 无论走哪条都 log.info 一行：日志里必须能看出这次是直连还是代理，不许静默。
+ *
+ * 为什么是可注入 provider，而不是直接 require('./manager')：
+ *   - manager 的依赖图里有 js-yaml / ws（builder/controller/traffic），纯 Node 自检
+ *     没装 node_modules，静态 require 会把 updater 整个带崩；
+ *   - Linux 容器里要造「核心在跑 + mixed_port」和「系统代理」，只能靠注入。
+ *   注入不改变生产：main.js 注入 phase==='connected' 的真实端口；默认实现是兜底。
+ */
+const PROXY = {
+  corePortProvider: defaultCorePort,
+  systemProxyProvider: defaultSystemProxy,
+  tlsOptions: {},   // 自检注入自签 CA 用；生产保持空 = Node 默认严格校验
+};
+
+function setCoreProxyProvider(fn) { PROXY.corePortProvider = typeof fn === 'function' ? fn : defaultCorePort; }
+function setSystemProxyProvider(fn) { PROXY.systemProxyProvider = typeof fn === 'function' ? fn : defaultSystemProxy; }
+function setProxyTlsOptions(opts) { PROXY.tlsOptions = opts && typeof opts === 'object' ? opts : {}; }
+/** 兼容旧接线名（main.js 早先只注入这个）：等价 setCoreProxyProvider */
+function setProxyPortProvider(fn) { setCoreProxyProvider(fn); }
+
+/** 默认「核心在跑」：懒 require manager，只有 phase=connected 且 mixedPort>0 才算。 */
+function defaultCorePort() {
+  try {
+    const manager = require('./manager');
+    const port = Number(manager && manager.mixedPort ? manager.mixedPort() : 0) || 0;
+    const phase = manager && manager.S && manager.S.phase;
+    return port > 0 && phase === 'connected' ? port : 0;
+  } catch (_) { return 0; }
+}
+
+/** 默认「系统代理」：非 Windows / 没开 / 解析不出 → null。 */
+function defaultSystemProxy() {
+  if (process.platform !== 'win32') return null;
+  try { return require('../net/sysproxy').readSystemProxy(); } catch (_) { return null; }
+}
+
+/** 这一次下载该走哪条路；null = 直连。 */
+function resolveProxy() {
+  let corePort = 0;
+  try { corePort = Number(PROXY.corePortProvider && PROXY.corePortProvider()) || 0; } catch (_) { corePort = 0; }
+  if (corePort > 0) return { host: '127.0.0.1', port: corePort, via: 'core' };
+  let sys = null;
+  try { sys = PROXY.systemProxyProvider && PROXY.systemProxyProvider(); } catch (_) { sys = null; }
+  const sysPort = (sys && Number(sys.port)) || 0;
+  if (sys && sys.host && sysPort > 0) return { host: String(sys.host), port: sysPort, via: 'system' };
+  return null;
+}
+
+/** 给日志/落盘用的一句人话。 */
+function describeRoute(route) {
+  if (!route) return '直连';
+  return (route.via === 'core' ? '核心 mixed-port' : '系统代理') + ' ' + route.host + ':' + route.port;
+}
+
+function fetchStream(url, redirects = 0, agent = null) {
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(url); } catch (_) { return reject(new Error('更新地址不是合法 URL')); }
@@ -250,10 +316,12 @@ function fetchStream(url, redirects = 0) {
       if (gotResponse) return;
       req.destroy(new Error(`连接超时（${fmtDuration(TIMEOUTS.connect)}内没有连上 ${u.host}）`));
     };
-    req = mod.get(u, {
+    const reqOpts = {
       headers: { 'User-Agent': 'Polaris-Windows' },
       timeout: TIMEOUTS.idle,
-    }, (res) => {
+    };
+    if (agent) reqOpts.agent = agent;
+    req = mod.get(u, reqOpts, (res) => {
       gotResponse = true;
       clearConnect();
       req.removeListener('timeout', onTimeout);
@@ -270,7 +338,7 @@ function fetchStream(url, redirects = 0) {
         if (redirects >= 5) return reject(new Error('重定向次数过多'));
         let next;
         try { next = new URL(res.headers.location, u).toString(); } catch (_) { return reject(new Error('重定向地址不合法')); }
-        return resolve(fetchStream(next, redirects + 1));
+        return resolve(fetchStream(next, redirects + 1, agent));
       }
       if (code !== 200) {
         res.resume();
@@ -290,10 +358,9 @@ function fetchStream(url, redirects = 0) {
   });
 }
 
-function downloadTo(url, dest, onProgress) {
-  // 进度回调是可选的：自检（scripts/updater-timeout-test.js）只关心超时行为
-  const progress = typeof onProgress === 'function' ? onProgress : () => {};
-  return fetchStream(url).then((res) => new Promise((resolve, reject) => {
+/** 把响应流写进 dest：空闲看门狗 / 整体硬上限 / 进度回调，逻辑与原来一致。 */
+function pumpResponse(res, dest, progress, via) {
+  return new Promise((resolve, reject) => {
     const total = Number(res.headers['content-length'] || 0);
     const out = fs.createWriteStream(dest);
     let received = 0;
@@ -318,7 +385,7 @@ function downloadTo(url, dest, onProgress) {
     const armIdle = () => {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(
-        () => fail(new Error(`下载超时（${fmtDuration(TIMEOUTS.idle)}没有收到数据）`)),
+        () => fail(new Error('下载超时（' + fmtDuration(TIMEOUTS.idle) + '没有收到数据）')),
         TIMEOUTS.idle,
       );
     };
@@ -332,7 +399,7 @@ function downloadTo(url, dest, onProgress) {
     // 硬上限：服务端每隔几十秒挤一点数据就能一直把空闲计时器喂饱，
     // 没有这一条就可能「看起来在下、其实永远下不完」。
     hardTimer = setTimeout(
-      () => fail(new Error(`下载超时（超过 ${fmtDuration(TIMEOUTS.total)}还没下完，已放弃）`)),
+      () => fail(new Error('下载超时（超过 ' + fmtDuration(TIMEOUTS.total) + '还没下完，已放弃）')),
       TIMEOUTS.total,
     );
     res.on('data', (c) => { received += c.length; armIdle(); tick(false); });
@@ -343,10 +410,65 @@ function downloadTo(url, dest, onProgress) {
       done = true;
       clearTimers();
       tick(true);
-      resolve({ size: received, total });
+      resolve({ size: received, total: total, via: via });
     });
     res.pipe(out);
-  }));
+  });
+}
+
+/**
+ * 下载到 dest。代理优先、失败回退直连，并把实际走的路记进 S.download_via
+ * 且 log.info 一行（不许静默）。
+ */
+async function downloadTo(url, dest, onProgress) {
+  // 进度回调是可选的：自检（scripts/updater-timeout-test.js）只关心超时行为
+  const progress = typeof onProgress === 'function' ? onProgress : () => {};
+  const route = resolveProxy();
+  S.download_route = describeRoute(route);
+  let res = null;
+  let via = 'direct';
+  let proxyError = null;
+  let agent = null;
+  if (route) {
+    try {
+      const proto = String(url).indexOf('http:') === 0 ? 'http:' : 'https:';
+      agent = proxyTunnel.createTunnelAgent(proto, {
+        proxyHost: route.host,
+        proxyPort: route.port,
+        timeout: TIMEOUTS.connect,
+        tlsOptions: PROXY.tlsOptions,
+      });
+      res = await fetchStream(url, 0, agent);
+      via = route.via;
+    } catch (e) {
+      proxyError = e;
+      log.warn('更新下载：走代理失败（' + describeRoute(route) + '）：' + ((e && e.message) || e) + '，回退直连');
+      if (agent) { try { agent.destroy(); } catch (_) {} agent = null; }
+      res = null;
+    }
+  }
+  if (!res) {
+    try {
+      res = await fetchStream(url);
+      via = 'direct';
+    } catch (e) {
+      if (agent) { try { agent.destroy(); } catch (_) {} }
+      if (proxyError) {
+        const both = new Error('下载失败：直连失败（' + ((e && e.message) || e) + '）；此前走代理（' + describeRoute(route) + '）也失败（' + ((proxyError && proxyError.message) || proxyError) + '）');
+        both.proxy_error = (proxyError && proxyError.message) || String(proxyError);
+        both.proxy_route = describeRoute(route);
+        throw both;
+      }
+      throw e;
+    }
+  }
+  S.download_via = via;
+  log.info('更新下载：本次走' + (via === 'direct' ? '直连' : '代理（' + describeRoute(route) + '）'));
+  try {
+    return await pumpResponse(res, dest, progress, via);
+  } finally {
+    if (agent) { try { agent.destroy(); } catch (_) {} }
+  }
 }
 
 function psQuote(s) { return `'${String(s).replace(/'/g, "''")}'`; }
@@ -474,7 +596,8 @@ async function download(url, version, expectedSha256) {
   try { fs.rmSync(stagingDir(), { recursive: true, force: true }); } catch (_) {}
   try { fs.rmSync(stateFile(), { force: true }); } catch (_) {}
 
-  set({ phase: 'downloading', version: ver, url: target, file, received: 0, total: 0, percent: 0, error: '', staged_at: 0, extractor: '' });
+  clearDownloadError();
+  set({ phase: 'downloading', version: ver, url: target, file, received: 0, total: 0, percent: 0, error: '', staged_at: 0, extractor: '', download_via: '', download_route: '' });
   log.info(`开始下载更新 ${ver}：${target}`);
 
   let size = 0;
@@ -488,8 +611,17 @@ async function download(url, version, expectedSha256) {
     });
     size = r.size;
   } catch (e) {
-    set({ phase: 'error', error: (e && e.message) || '下载失败' });
-    log.error('更新下载失败：' + S.error);
+    const msg = (e && e.message) || '下载失败';
+    set({ phase: 'error', error: msg });
+    log.error('更新下载失败：' + msg + '（计划路线：' + (S.download_route || '直连') + '；实际：' + (S.download_via || '未走通') + '）');
+    writeDownloadError({
+      version: ver,
+      url: target,
+      via: S.download_via || '',
+      route: S.download_route || '直连',
+      proxy_error: (e && e.proxy_error) || '',
+      reason: msg,
+    });
     throw e;
   }
 
@@ -738,6 +870,26 @@ function readApplyResult() {
   } catch (_) { return null; }
 }
 function clearApplyResult() { try { fs.rmSync(applyResultFile(), { force: true }); } catch (_) {} }
+
+/**
+ * 下载失败了要留痕（沿用 #48「失败必须可见」的口径）：日志一行 + 落盘一份，
+ * 跨重启也能查到这次到底走的是直连还是代理、代理错在哪。
+ * 成功不写（download 起手 clear），避免「假绿」。
+ */
+function downloadErrorFile() { return path.join(updateDir(), 'download-error.json'); }
+function writeDownloadError(obj) {
+  try {
+    fs.mkdirSync(updateDir(), { recursive: true });
+    fs.writeFileSync(downloadErrorFile(), JSON.stringify(Object.assign({ ts: Date.now() }, obj || {})), 'utf8');
+  } catch (e) { log.warn('写 download-error.json 失败：' + (e && e.message)); }
+}
+function readDownloadError() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(downloadErrorFile(), 'utf8'));
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch (_) { return null; }
+}
+function clearDownloadError() { try { fs.rmSync(downloadErrorFile(), { force: true }); } catch (_) {} }
 /**
  * PR-D：apply 的「意图」与「alive」记录（失败可观测）。
  *
@@ -1261,7 +1413,10 @@ function quit() {
 }
 
 module.exports = {
-  S, TIMEOUTS, APPLY, info, onChange, download, downloadTo, fetchStream, apply, applyWorker,
+  S, TIMEOUTS, APPLY, info, onChange, download, downloadTo, fetchStream,
+  setCoreProxyProvider, setSystemProxyProvider, setProxyPortProvider, setProxyTlsOptions, resolveProxy,
+  readDownloadError, clearDownloadError, writeDownloadError,
+  apply, applyWorker,
   cleanStaleRename, healMissingExe, quit, reset, restoreStaged,
   isAllowedDownloadUrl, assertDownloadUrl,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,

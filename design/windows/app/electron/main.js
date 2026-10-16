@@ -67,6 +67,12 @@ try {
 // 不 await：启动路径不能等网络。
 try {
   const mgr = require('./core/manager');
+  // 自更新下载走本机代理：核心在跑（connected）→ 注入运行中的 mixed-port（来源①）；
+  // 核心不在 → updater 读 Windows 系统代理（来源②，见 updater.resolveProxy）。
+  try {
+    const updater = require('./core/updater');
+    updater.setCoreProxyProvider(() => (mgr.S && mgr.S.phase === 'connected' ? mgr.mixedPort() : 0));
+  } catch (_) {}
   mgr.refreshRules();
   mgr.scheduleRules();
 } catch (_) { /* 离线照常启动 */ }
