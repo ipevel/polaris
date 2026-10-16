@@ -67,6 +67,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           DISPATCH_SCOPE: ${{ inputs.scopes_override }}
           FORCE_FAIL: ${{ inputs.force_changes_failure }}
         run: |
@@ -90,8 +91,13 @@ jobs:
           fi
           if [ "$EVENT_NAME" != "pull_request" ]; then alltrue; fi
           if [ -z "${BASE_SHA:-}" ]; then fallback "PR 事件没拿到 base.sha"; fi
+          if [ -z "${HEAD_SHA:-}" ]; then fallback "PR 事件没拿到 head.sha"; fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1 || fallback "取 base 提交失败：$BASE_SHA"
-          FILES=$(git diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}...HEAD"
+          git fetch --no-tags --depth=1 origin "$HEAD_SHA" >/dev/null 2>&1 || fallback "取 head 提交失败：$HEAD_SHA"
+          # 浅克隆（depth=1）没有 merge base：三点 diff 会 `fatal: no merge base` → 被兜成全跑（PR 场景永远全跑）。
+          # 这里改成两点 diff（base 与 head 直接比）；分支落后 main 时会把 main 侧改动也过包含进来 —— 安全方向（多跑不少跑），不会漏判。
+          # diff 命令失败仍走 fail-closed 全跑（这条一个字不改）。
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}..${HEAD_SHA}"
           if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
           echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
           printf '%s\n' "$FILES" | head -30
