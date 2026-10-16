@@ -459,13 +459,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${env.POLARIS_SDK_ROOT}/platforms/android-36
-            ${env.POLARIS_SDK_ROOT}/build-tools/36.0.0
-            ${env.POLARIS_SDK_ROOT}/ndk/28.2.13676358
-          key: android-sdk-${runner.os}-p-android-36_bt-36.0.0_ndk-28.2.13676358
+            ${{ env.POLARIS_SDK_ROOT }}/platforms/android-36
+            ${{ env.POLARIS_SDK_ROOT }}/build-tools/36.0.0
+            ${{ env.POLARIS_SDK_ROOT }}/ndk/28.2.13676358
+          key: android-sdk-${{ runner.os }}-p-android-36_bt-36.0.0_ndk-28.2.13676358
 
       - name: 安装 Android SDK / NDK
-
         run: |
           set -e
           SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
@@ -488,9 +487,9 @@ jobs:
           }
 
           if sdk_ok; then
-            echo "::notice::Android SDK/NDK 三件套已就位（cache-hit=${steps.sdk-cache.outputs.cache-hit}），跳过下载"
+            echo "::notice::Android SDK/NDK 三件套已就位（cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}），跳过下载"
           else
-            if [ "${steps.sdk-cache.outputs.cache-hit}" = "true" ]; then
+            if [ "${{ steps.sdk-cache.outputs.cache-hit }}" = "true" ]; then
               echo "::warning::缓存报了命中，但关键文件校验不通过 → 视为 miss，重新安装（fail-closed）"
             fi
             # issue #36：sdkmanager 下载偶发截断（实测报 Error on ZipFile unknown archive），失败一次就红会挡住
