@@ -1256,6 +1256,14 @@
         ? ("上次更新失败，已回滚到旧版本：" + String(last.reason || "未知原因"))
         : ("上次更新失败且回滚未完成，请查看 data\\update 里的 apply-result.json：" + String(last.reason || "未知原因")));
     }
+    // PR-D④：上次更新「没跑完」也要看得见 —— 意图在、结果不在 = helper 起不来或起手就死。
+    // 这正是 1.11.6→1.12.0 那次的形态（两分钟一行日志都没有），以前界面上什么也不显示。
+    const inc = st.apply_incomplete;
+    if (inc && shownApplyIncomplete !== String(inc.started_at || '')) {
+      shownApplyIncomplete = String(inc.started_at || '');
+      toast("上次更新没跑完（" + (inc.alive ? "helper 起来了但没留下结果" : "helper 根本没起来") +
+        (inc.version ? "，目标版本 " + inc.version : "") + "），安装目录未改动，可重新下载");
+    }
     const ign = st.staged_ignored;
     if (ign && ign.version && shownIgnored !== String(ign.version)) {
       shownIgnored = String(ign.version);
@@ -1277,6 +1285,7 @@
 
   let shownApplyTs = '';
   let shownIgnored = '';
+  let shownApplyIncomplete = '';
 
   function updateLabel(st) {
     const mb = (n) => (Number(n) / 1048576).toFixed(1) + " MB";

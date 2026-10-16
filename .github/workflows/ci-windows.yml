@@ -15,9 +15,10 @@
 # 2026-10-15 起 Polaris 改为「单 main + 短命分支 + PR」：main 是唯一集成与发版源，
 # windows-portable 只作过渡保留，因此这条门禁必须跟着 main 的 push / PR 一起跑，
 # 否则 design/windows/app 的改动在 main 上无人扫（主 ci.yml 是纯安卓 + Go）。
-# 不加 paths 过滤：一旦加了 paths，不碰 design/windows/** 的 PR 不会上报这条 check，
-# 而它是要当 required status check 用的 —— required 的 check 不上报会把 PR 永久卡住。
-# 这条 workflow 与主 ci.yml 是不同文件、不同 job 名，互不覆盖、互不打架。
+# issue #42：改成「变更判定 + always-report 聚合」——重活 windows-offline-run 只在 design/windows/** 变动时跑，
+# 但同名 check（Windows 离线自检 + 语法检查）由聚合 job **永远上报**（跳过时绿），所以不会出现
+# 「check 不上报把 PR 卡住」的问题。当前它**不在** branch protection 的 required 名单（名单只有主 ci.yml 的三条），
+# 本 workflow 与主 ci.yml 是不同文件、不同 job 名，互不覆盖、互不打架。
 
 name: Polaris Windows CI
 
@@ -26,7 +27,19 @@ on:
     branches: [main, windows-portable]
   pull_request:
     branches: [main, windows-portable]
+  # issue #42 的排练缝（与 ci.yml 同口径）：这两个输入**只在 workflow_dispatch 生效**；
+  # push/PR 路径一律按 auto 判定。scopes_override=auto 缺省；force_changes_failure 是 test-only 插桩。
   workflow_dispatch:
+    inputs:
+      scopes_override:
+        description: '仅排练用：强制范围（auto=正常判定；all/win=跑；android=跳过 Windows 自检）'
+        type: choice
+        options: [auto, all, win, android]
+        default: auto
+      force_changes_failure:
+        description: 'test-only：故意让变更判定失败，验证「判定失败 → Windows 自检仍跑」'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,8 +49,113 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  windows-offline:
-    name: Windows 离线自检 + 语法检查
+  # issue #42：秒级「变更判定」（本 workflow 只看 Windows 范围）。异常/未匹配 → 全跑（fail-closed）。
+  changes:
+    name: 变更判定（Windows 路径分流）
+    runs-on: ubuntu-latest
+    outputs:
+      win: ${{ steps.scope.outputs.win }}
+      all: ${{ steps.scope.outputs.all }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: 判定改动范围（异常/未匹配 → 全跑）
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DISPATCH_SCOPE: ${{ inputs.scopes_override }}
+          FORCE_FAIL: ${{ inputs.force_changes_failure }}
+        run: |
+          set -uo pipefail
+          { echo "all=true"; echo "win=true"; } >> "$GITHUB_OUTPUT"
+          ALL=true; WIN=true
+          finish() { { echo "all=$ALL"; echo "win=$WIN"; } >> "$GITHUB_OUTPUT"; echo "判定结果：all=$ALL win=$WIN"; }
+          alltrue() { ALL=true; WIN=true; finish; exit 0; }
+          fallback() { echo "::warning::$1（按 fail-closed 全跑）"; alltrue; }
+          if [ "${FORCE_FAIL:-false}" = "true" ]; then
+            echo "::warning::test-only：force_changes_failure=true，故意让变更判定失败（Windows 自检因 always() 仍会跑）"
+            finish
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            case "${DISPATCH_SCOPE:-auto}" in
+              all|win) echo "::notice::排练：强制跑 Windows 自检"; alltrue ;;
+              android) ALL=false; WIN=false; finish; exit 0 ;;
+              *) fallback "workflow_dispatch 且 scopes_override=auto：没有可比对的 base" ;;
+            esac
+          fi
+          if [ "$EVENT_NAME" != "pull_request" ]; then alltrue; fi
+          if [ -z "${BASE_SHA:-}" ]; then fallback "PR 事件没拿到 base.sha"; fi
+          if [ -z "${HEAD_SHA:-}" ]; then fallback "PR 事件没拿到 head.sha"; fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1 || fallback "取 base 提交失败：$BASE_SHA"
+          git fetch --no-tags --depth=1 origin "$HEAD_SHA" >/dev/null 2>&1 || fallback "取 head 提交失败：$HEAD_SHA"
+          # 浅克隆（depth=1）没有 merge base：三点 diff 会 `fatal: no merge base` → 被兜成全跑（PR 场景永远全跑）。
+          # 这里改成两点 diff（base 与 head 直接比）；分支落后 main 时会把 main 侧改动也过包含进来 —— 安全方向（多跑不少跑），不会漏判。
+          # diff 命令失败仍走 fail-closed 全跑（这条一个字不改）。
+          # --no-renames：重命名检测只列新路径会漏掉老路径（例如 app/** 搬到 design/windows/**），那一侧就判不出来 → 漏跑。
+          FILES=$(git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}..${HEAD_SHA}"
+          if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
+          echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
+          printf '%s\n' "$FILES" | head -30
+          WIN=false; UNKNOWN=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              design/windows/*) WIN=true ;;
+              *) UNKNOWN=true ;;
+            esac
+          done <<RWEOF
+          $FILES
+          RWEOF
+          if [ "$UNKNOWN" = "true" ] || [ "$WIN" = "false" ]; then
+            ALL=true; WIN=true
+            echo "::notice::有未匹配/基础设施路径或没有 Windows 改动 → 全跑（fail-closed）"
+          else
+            ALL=false
+          fi
+          finish
+
+      - name: needs 与重活 对账（漏一个重活就红）
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const fs = require('fs');
+          const raw = fs.readFileSync('.github/workflows/ci-windows.yml', 'utf8');
+          const src = raw.slice(raw.indexOf('\njobs:') + 1);   // 只在 jobs: 段里扫
+          const jobKeys = [...src.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
+          const blockOf = (key) => {
+            const i = src.indexOf('\n  ' + key + ':\n');
+            if (i < 0) return '';
+            const rest = src.slice(i + 1);
+            const nxt = rest.slice(4).search(/^  [A-Za-z0-9_-]+:\s*$/m);
+            return nxt < 0 ? rest : rest.slice(0, nxt + 4);
+          };
+          const needsOf = (key) => {
+            const m = /^    needs:\s*\[([^\]]*)\]/m.exec(blockOf(key));
+            return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+          };
+          const problems = [];
+          const REQUIRED_NAME = 'Windows 离线自检 + 语法检查';
+          if (!blockOf('windows-offline').split('\n').some((l) => l.trim() === 'name: ' + REQUIRED_NAME)) problems.push('聚合 job windows-offline 的 name 不是逐字「' + REQUIRED_NAME + '」');
+          const needs = needsOf('windows-offline');
+          if (!needs.includes('changes')) problems.push('windows-offline 的 needs 缺 changes：' + JSON.stringify(needs));
+          if (!needs.includes('windows-offline-run')) problems.push('windows-offline 的 needs 缺 windows-offline-run：' + JSON.stringify(needs));
+          const heavyAll = jobKeys.filter((k) => k !== 'changes' && k !== 'windows-offline');
+          const covered = new Set(needs);
+          const missing = heavyAll.filter((k) => !covered.has(k));
+          if (missing.length) problems.push('有重活没被聚合 needs 覆盖：' + missing.join(', '));
+          if (problems.length) { for (const p of problems) console.error('::error::' + p); process.exit(1); }
+          console.log('对账通过：重活 ' + JSON.stringify(heavyAll) + ' 都被聚合 needs 覆盖；check 名字逐字存在');
+          JS
+  windows-offline-run:
+    name: Windows 离线自检 + 语法检查 · 执行体
+    needs: [changes]
+    if: ${{ always() && (needs.changes.outputs.win == 'true' || needs.changes.outputs.all == 'true') }}
     # 为什么跑 windows-latest 而不是 ubuntu（更贵、更慢，是权衡后的选择）：
     #   1. 这个产品只有 Windows 版。updater 的 extract() 就是 Windows 实现
     #      （`tar -xf` 走 Windows 自带 bsdtar，失败再回退 `powershell Expand-Archive`）。
@@ -158,3 +276,24 @@ jobs:
             exit 1
           fi
           echo "routing_table.go 与 $n 张安卓 flags 都在"
+  # issue #42：聚合 job —— 沿用原 check 名字（逐字），if: always()；唯一绿条件 = needs 全 success/skipped。
+  windows-offline:
+    name: Windows 离线自检 + 语法检查
+    needs: [changes, windows-offline-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
