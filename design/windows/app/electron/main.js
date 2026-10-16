@@ -67,6 +67,8 @@ try {
 // 不 await：启动路径不能等网络。
 try {
   const mgr = require('./core/manager');
+  // 自更新下载走本机代理：把运行中的 mixed-port 注入 updater（核心没跑时返回 0 → 保持直连）。
+  try { require('./core/updater').setProxyPortProvider(() => mgr.mixedPort()); } catch (_) {}
   mgr.refreshRules();
   mgr.scheduleRules();
 } catch (_) { /* 离线照常启动 */ }

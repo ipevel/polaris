@@ -43,6 +43,7 @@ const paths = require('../paths');
 const fmt = require('../util/format');
 const store = require('../store');
 const log = require('../logger');
+const proxyTunnel = require('../net/proxy-tunnel');
 
 const ZIP_MAGIC = [0x50, 0x4b]; // "PK"
 
@@ -231,7 +232,23 @@ function resolveStageRoot(dir) {
  * 另外两层保护：显式建连看门狗（CONNECT_TIMEOUT_MS，给一句人话），
  * 以及 downloadTo 里的空闲/整体计时器。
  */
+/**
+ * 本机代理端口提供者（由 main.js 注入 `manager.mixedPort`）。
+ * 核心在跑 → 更新下载走 CONNECT 隧道（127.0.0.1:<mixed-port>）；核心没跑 → 保持原直连路径。
+ * **不做「代理失败就悄悄直连」的兜底**：用户开着代理却静默直连，正是这个缺陷本身。
+ */
+let proxyPortProvider = () => 0;
+function setProxyPortProvider(fn) { proxyPortProvider = typeof fn === 'function' ? fn : () => 0; }
+
 function fetchStream(url, redirects = 0) {
+  const proxyPort = Number(proxyPortProvider() || 0);
+  if (proxyPort > 0) {
+    return proxyTunnel.fetchStreamVia(url, proxyPort, {
+      timeoutMs: TIMEOUTS.connect,
+      userAgent: 'Polaris-Windows',
+      maxRedirects: Math.max(0, 5 - redirects),
+    });
+  }
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(url); } catch (_) { return reject(new Error('更新地址不是合法 URL')); }
@@ -1261,7 +1278,7 @@ function quit() {
 }
 
 module.exports = {
-  S, TIMEOUTS, APPLY, info, onChange, download, downloadTo, fetchStream, apply, applyWorker,
+  S, TIMEOUTS, APPLY, info, onChange, download, downloadTo, fetchStream, setProxyPortProvider, apply, applyWorker,
   cleanStaleRename, healMissingExe, quit, reset, restoreStaged,
   isAllowedDownloadUrl, assertDownloadUrl,
   canApply, applyBlockedReason, installDir, updateDir, stagingDir,
