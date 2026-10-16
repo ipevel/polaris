@@ -50,8 +50,8 @@ Polaris 是一款基于 [mihomo](https://github.com/MetaCubeX/mihomo/tree/Alpha)
 
 | 平台 | 版本 | Version Code |
 |------|------|-------------|
-| Android | 1.12.1 | 29867917 |
-| Windows 便携版 | 1.12.1 | — |
+| Android | 1.12.2 | 29868607 |
+| Windows 便携版 | 1.12.2 | — |
 
 > 两个平台共用同一版本号与同一个 [Release](https://github.com/ipevel/polaris/releases/latest)（Android 为 `Polaris-<版本>.apk`，Windows 为 `Polaris-portable-<版本>.zip`）。
 
@@ -111,6 +111,8 @@ export POLARIS_RELEASE_KEY_PASSWORD=<密码>
 ```
 
 > **推送即出包**：每次推送到 main，CI 会把调试包作为 artifact 上传（Actions → run → Artifacts，保留 7 天）。它是 **debug 签名**，无法覆盖已装的正式版；正式分发走 [Releases](https://github.com/ipevel/polaris/releases)（手动触发 `Polaris Build`）。
+
+> **发版 dispatch 的 versionCode（issue #30）**：必须**显式传仓库声明值**，或**留空由 workflow 读** `app/build.gradle.kts` 的 `slteVersionCode`；两者不相等、或读不到声明值都会**直接红**。不允许 workflow 静默用「epoch 分钟」造一个和仓库不一样的 versionCode（那会让 README 的版本表与实际发布值不一致）。
 
 ### Windows 便携版
 

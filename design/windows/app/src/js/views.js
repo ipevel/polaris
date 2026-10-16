@@ -530,6 +530,9 @@
       ${(s.update_state && s.update_state.last_apply_result && s.update_state.last_apply_result.ok === false)
         ? err("上次更新失败" + (s.update_state.last_apply_result.rolled_back === true ? "，已回滚到旧版本：" : "，回滚未完成：") + (s.update_state.last_apply_result.reason || "未知原因"))
         : ""}
+      ${(s.update_state && s.update_state.apply_incomplete)
+        ? err("上次更新没跑完（" + (s.update_state.apply_incomplete.alive ? "helper 起来了但没留下结果" : "helper 根本没起来") + "，安装目录未改动）")
+        : ""}
       ${row("检查更新", s.settings.update_available
         ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.settings.update_version) + "</span>"
         : (s.updateInfo && s.updateInfo.staged
