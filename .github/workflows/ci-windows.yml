@@ -97,7 +97,8 @@ jobs:
           # 浅克隆（depth=1）没有 merge base：三点 diff 会 `fatal: no merge base` → 被兜成全跑（PR 场景永远全跑）。
           # 这里改成两点 diff（base 与 head 直接比）；分支落后 main 时会把 main 侧改动也过包含进来 —— 安全方向（多跑不少跑），不会漏判。
           # diff 命令失败仍走 fail-closed 全跑（这条一个字不改）。
-          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}..${HEAD_SHA}"
+          # --no-renames：重命名检测只列新路径会漏掉老路径（例如 app/** 搬到 design/windows/**），那一侧就判不出来 → 漏跑。
+          FILES=$(git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}..${HEAD_SHA}"
           if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
           echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
           printf '%s\n' "$FILES" | head -30
