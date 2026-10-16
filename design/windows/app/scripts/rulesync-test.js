@@ -537,6 +537,137 @@ async function withEnv(base, fn) {
     assert.strictEqual(rulesync.FALLBACK_BASE, `${rulesync.RAW_BASE}/main`);
   });
 
+
+  // ---- ⑮ 代理接线自证：走**真实取数链**（refresh → resolveSha/fetchManifest/fetchUrl → getViaProxy） ----
+  // 为什么不用上面的 http fixture：getViaProxy 只支持 https 目标（CONNECT 之后要 TLS）。
+  // 这一节自己起「本地 https 源站 + 本地 CONNECT 直通代理」，源站主机名用 rules.invalid
+  // （直连必然 DNS 失败）→ 强制走「直连失败 → 本机代理」那条路，与生产同一条代码。
+  // 自签证书只在本节用；getViaProxy 没有注入 CA 的口子（生产也不需要），所以本节临时关掉
+  // TLS 校验（NODE_TLS_REJECT_UNAUTHORIZED=0），**只影响本测试进程，产品代码一行没改**。
+  const https = require('https');
+  const net = require('net');
+  const TEST_CERT = "-----BEGIN CERTIFICATE-----\nMIIDKzCCAhOgAwIBAgIUXYygzhR9cdfe6hM1p8iPfsKlMEAwDQYJKoZIhvcNAQEL\nBQAwGDEWMBQGA1UEAwwNcnVsZXMuaW52YWxpZDAeFw0yNjEwMTYxMTI5NTVaFw0z\nNjEwMTMxMTI5NTVaMBgxFjAUBgNVBAMMDXJ1bGVzLmludmFsaWQwggEiMA0GCSqG\nSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCZ+XwcOpYkwh31ECtXqkDMbGycB/dyml9w\nPbvjAfOMGKyeRE+DTLwVoU0IIPomEkqHHMCCktnh9qVUwWW6kH69iJA4gKyR+IRN\nDi1zuX9KLUcwr2jUQyfkdxAOEo0k09sRDCSBZ+wOUH3T9ma/FZrEBOixZIptbhtZ\nvJ9Bfm64//qc7P1b1+fbonhNeKJgfSJ3sd//ybprcPlAODREBX7GtocgzMCyHYqt\n3XhgmQ+FoLPRL5ubBp2kWj7HMTIKWEBgn9vmf2UfWOg6asmSax36UygNL92bQx2l\nz6PYZ4KgZl8Q+wGwbPR+9SmM8VnOFTQ7VzX8IXLViH5wSj/bNbvVAgMBAAGjbTBr\nMB0GA1UdDgQWBBR2y7hZA5PTQ8mDCkU6IuZ6hXYFmzAfBgNVHSMEGDAWgBR2y7hZ\nA5PTQ8mDCkU6IuZ6hXYFmzAPBgNVHRMBAf8EBTADAQH/MBgGA1UdEQQRMA+CDXJ1\nbGVzLmludmFsaWQwDQYJKoZIhvcNAQELBQADggEBAAzElfXgUdg9W5fvicETzfmM\nr1JTCJtwc/izjzsX4xuSZObAte2aT3VNBEzeRKZC+tmCHOfQTroRrJ9Yizp8NeIb\nwDW/BtgAQ8KThH7V75bUhmyGqXt97YqmkupGcJQOfpGA7+4Q9s8MfjKGnhb+YxNd\nqLVfhy5qVF1HZ+fMaDBALZU7+qQMam95HOMSGnbGWNUSG0Y0lZ2a3n+TFGy1mtO8\nbTbpZHMjl3d5rTKXnOLT2RZqNSPnU76AMSny2hEZaSaFnWoCh0at6iseYKWntt+l\nua8Hpvhp9pC15V2zq/aIXCchE55JTOfVbnhJJCxKEqTKvcKc8tH7HhAPlZQaFvc=\n-----END CERTIFICATE-----";
+  const TEST_KEY = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCZ+XwcOpYkwh31\nECtXqkDMbGycB/dyml9wPbvjAfOMGKyeRE+DTLwVoU0IIPomEkqHHMCCktnh9qVU\nwWW6kH69iJA4gKyR+IRNDi1zuX9KLUcwr2jUQyfkdxAOEo0k09sRDCSBZ+wOUH3T\n9ma/FZrEBOixZIptbhtZvJ9Bfm64//qc7P1b1+fbonhNeKJgfSJ3sd//ybprcPlA\nODREBX7GtocgzMCyHYqt3XhgmQ+FoLPRL5ubBp2kWj7HMTIKWEBgn9vmf2UfWOg6\nasmSax36UygNL92bQx2lz6PYZ4KgZl8Q+wGwbPR+9SmM8VnOFTQ7VzX8IXLViH5w\nSj/bNbvVAgMBAAECggEAOOYCwQO9XBQHsfmpqpmVnHUspXQkMsttHTMS7U5ZS5oK\nn+mqYGDI2E1lA+37wnnb5JXxZc8SiPf2HJ3jE9A1paCDev3Bx6dIbJkinrMboLOe\nrRUE7ftrEHgXDLw6QDOxrlkIXHGkv51rAhr52P8I1ArkWjlHFi0sGjsjtrYcAGy0\nTMimuxxHho3JVnDra9zIJ+hBuHWhEvu7k94YvG7r9rBWun7lkYE1GJtiDPYk2YDQ\nu7k0dvyXaUnHqv7OqcojJF7yVbaroiFhI7HOpc7K8JQAi3JN0JJEXqhwkjtmfFy7\noIIJnNEHQiFvCnCEVKuKIqIwCGXC7T5bBlr3F4a5eQKBgQDYfUk/GWpranLr87Au\n8QFn12qzwl4kW9eCzR8wR7VH5pyqQjOeBERY0OiqxydK6afQKLKm1ovAaZP6usUp\nQSMnu8xhhCSeDmwrEbD/4ON7JYzLPohuUbD+cMv9GRp3Qhl3jFx/jpzhUV5Apbln\n3+zS4/u59n6jkkZUn2s+6hmHqwKBgQC2E2ju6HtehLTYZMCsINB7+iUz4rBM4ml3\nTKqRKV57BJZ0YWHZrIeKbQzgSN9zeQIP5rUl0DPDBAGDyAZekjB021k7SqUC+Nry\nFeZkc60iALJPB2jSbkrYOdjZLu1kwZv+fEsFIrx55DNiotos3BVSy1Bg0/+VtJrD\ngXF/YfxKfwKBgQCiT8zK8lNHldfz8BD4INnc8TWe8OuEdxdtij0IBbt03QI45Mmu\nf6R+sqK+5/IdyHF5MApB7Dl7Wa0JH18TPzMMZ1ElC94oYsfWwrziG8pyWgTlnUzM\n6ZK6Mfe/G0MshvJxH1t6h4I3rLnt3lLT/p+gvi3Nj3IDUXhJmfzefsYFYQKBgBcK\nK7wXlQzn1A6R6UOev2MAy1ZeeBqyh8/91pOZ3YfJk9RUQlKOH3SnyfpTnlr5VAZ5\nFjEbwIEL77kiRZQQAau32fnDv0+599KsbMQHU0A7QFT5xgziwfvMjiElbArU6Q1x\n4vhaZekytEHmA5+rldMtQRWPngbunKripV8OIiO3AoGAY7LD9bxGjiz/Rp1BuUra\n9sHkYdDaSWPUKpAQz4QLbhwtd/hqz0f/vU/41bmtPcSj7j4rKIhpFwnV4qaTp24z\nP2cmTasRnPCmLeTNA8/2rmnYVRjfOQXCEwQWw4y4i8f/ATaE+GIOtyh4AtYpwxP6\nmNm5GXCzrQoDZFtBc06owLM=\n-----END PRIVATE KEY-----";
+
+  function startProxyStub() {
+    const stats = { connects: [], bytes: 0 };
+    const srv = http.createServer();
+    srv.on('connect', (req, clientSocket, head) => {
+      stats.connects.push(req.url);
+      const i = req.url.lastIndexOf(':');
+      const host = req.url.slice(0, i);
+      const port = Number(req.url.slice(i + 1)) || 443;
+      const dst = host === 'rules.invalid' ? '127.0.0.1' : host;   // 只把假域名映射到本机源站
+      const up = net.connect(port, dst, () => {
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head && head.length) { up.write(head); stats.bytes += head.length; }
+        clientSocket.pipe(up); up.pipe(clientSocket);
+      });
+      clientSocket.on('data', (c) => { stats.bytes += c.length; });
+      up.on('data', (c) => { stats.bytes += c.length; });
+      clientSocket.on('error', () => { try { up.destroy(); } catch (_) {} });
+      up.on('error', () => { try { clientSocket.destroy(); } catch (_) {} });
+    });
+    srv.on('clientError', () => {});
+    return new Promise((r) => srv.listen(0, '127.0.0.1', () => r({ srv, port: srv.address().port, stats })));
+  }
+
+  function startHttpsOrigin(files) {
+    const srv = https.createServer({ key: TEST_KEY, cert: TEST_CERT }, (req, res) => {
+      const p = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
+      const body = files[p];
+      if (!body) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': body.length });
+      res.end(body);
+    });
+    return new Promise((r) => srv.listen(0, '127.0.0.1', () => r({ srv, port: srv.address().port })));
+  }
+
+  function freePort() {
+    return new Promise((r) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
+  }
+
+  async function withNoTlsVerify(fn) {
+    const old = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    try { return await fn(); } finally {
+      if (old === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED; else process.env.NODE_TLS_REJECT_UNAUTHORIZED = old;
+    }
+  }
+
+  await check('代理接线：refresh 走真实取数链，且确实经本机代理（via=proxy）', async () => {
+    const repo = makeRepo({ version: 7, ruleKeys: KEYS, geoBlobs: GEO });
+    const origin = await startHttpsOrigin(repo.files);
+    const proxy = await startProxyStub();
+    const dir = freshDir('proxy-ok');
+    const geoDir = freshDir('proxy-ok-geo');
+    try {
+      await withNoTlsVerify(async () => {
+        const base = `https://rules.invalid:${origin.port}`;
+        const r = await withEnv(base, () => rulesync.refresh(dir, { providerKeys: KEYS, geoDir, log: silent, proxyPort: proxy.port, timeout: 8000 }));
+        assert.strictEqual(r.via, 'proxy', '本轮应经代理（via=' + r.via + '）');
+        assert.ok(proxy.stats.connects.length >= 1, '代理侧应收到 CONNECT：' + JSON.stringify(proxy.stats.connects));
+        assert.ok(proxy.stats.connects.every((s) => s === `rules.invalid:${origin.port}`), 'CONNECT 目标应为源站：' + JSON.stringify(proxy.stats.connects));
+        assert.ok(proxy.stats.bytes > 0, '代理应转发过字节');
+        assert.ok(fs.existsSync(path.join(dir, 'social.yaml')), 'social.yaml 应已就位（本地名是 <键>.yaml）');
+        assert.ok(fs.existsSync(path.join(geoDir, 'geosite.dat')), 'geo 应落到 geoDir');
+        assert.ok(rulesync.isFresh(dir, { geoDir }), '全部成功后应写 marker');
+      });
+    } finally { origin.srv.close(); proxy.srv.close(); }
+  });
+
+  await check('代理接线：代理不可用 + 直连失败 → 文案同时点出两条路（退路可见，不静默）', async () => {
+    const dir = freshDir('proxy-dead');
+    const dead = await freePort();
+    const msgs = [];
+    const say = { info() {}, warn: (m) => msgs.push(String(m)) };
+    await withNoTlsVerify(async () => {
+      const r = await withEnv('https://rules.invalid:9', () => rulesync.refresh(dir, { providerKeys: KEYS, log: say, proxyPort: dead, timeout: 3000 }));
+      const all = msgs.join(' | ');
+      assert.strictEqual(r.reason, 'manifest', '拿不到 manifest 应记 reason=manifest');
+      assert.ok(/直连失败/.test(all), '文案应点出直连失败：' + all);
+      assert.ok(/走代理也失败/.test(all), '文案应点出代理也失败：' + all);
+      assert.ok(!rulesync.isFresh(dir), '失败不该写 marker');
+    });
+  });
+
+  await check('下载/替换分离：pauseApply 只落 .part，applyStaged 才替换并写 marker', async () => {
+    const repo = makeRepo({ version: 9, ruleKeys: KEYS, geoBlobs: GEO });
+    const srv = await makeServer(repo.files);
+    const dir = freshDir('pause-apply');
+    const geoDir = freshDir('pause-apply-geo');
+    try {
+      const r = await withEnv(srv.url, () => rulesync.refresh(dir, { providerKeys: KEYS, geoDir, log: silent, pauseApply: true }));
+      assert.ok(Array.isArray(r.staged) && r.staged.length === r.updated.length, 'staged 应带回全部文件：' + JSON.stringify((r.staged || []).map((x) => x.name)));
+      assert.ok(!fs.existsSync(path.join(dir, 'social.yaml')), '暂停应用时目标文件不该出现');
+      assert.ok(fs.existsSync(path.join(dir, 'social.yaml.part')), '应留下 .part');
+      assert.ok(!rulesync.isFresh(dir, { geoDir }), '还没替换 → 不该写 marker');
+      const ap = rulesync.applyStaged(r.staged, { dir, marker: r.marker });
+      assert.strictEqual(ap.failed.length, 0, 'applyStaged 不该失败：' + JSON.stringify(ap.failed));
+      assert.ok(fs.existsSync(path.join(dir, 'social.yaml')), '替换后目标文件应在');
+      assert.ok(!fs.existsSync(path.join(dir, 'social.yaml.part')), '.part 应被消费掉');
+      assert.ok(rulesync.isFresh(dir, { geoDir }), '替换后应写 marker');
+    } finally { srv.srv.close(); }
+  });
+
+  await check('下载/替换分离：部分失败 → 不写 marker、不留 .part、不替换任何文件', async () => {
+    const repo = makeRepo({ version: 11, ruleKeys: KEYS, geoBlobs: GEO });
+    const files = Object.assign({}, repo.files);
+    files['dist/rules/ai.list'] = Buffer.from('corrupted-bytes', 'utf8');   // 坏一份
+    const srv = await makeServer(files);
+    const dir = freshDir('pause-partial');
+    const geoDir = freshDir('pause-partial-geo');
+    try {
+      const r = await withEnv(srv.url, () => rulesync.refresh(dir, { providerKeys: KEYS, geoDir, log: silent, pauseApply: true }));
+      assert.strictEqual(r.reason, 'partial', '应记 partial：' + JSON.stringify(r));
+      assert.ok(!r.staged || r.staged.length === 0, '部分失败不该带回可应用的 staged');
+      assert.ok(!rulesync.isFresh(dir, { geoDir }), '部分失败不该写 marker');
+      assert.ok(!fs.existsSync(path.join(dir, 'social.yaml')), '不该有文件被替换');
+      const left = fs.readdirSync(dir).filter((n) => n.endsWith('.part'));
+      assert.strictEqual(left.length, 0, '不该留 .part：' + JSON.stringify(left));
+    } finally { srv.srv.close(); }
+  });
+
   if (savedBase === undefined) delete process.env.POLARIS_RULES_BASE;
   else process.env.POLARIS_RULES_BASE = savedBase;
   if (savedNoFallback === undefined) delete process.env.POLARIS_RULES_NO_FALLBACK;

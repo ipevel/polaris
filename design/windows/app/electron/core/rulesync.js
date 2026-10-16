@@ -568,6 +568,11 @@ async function doRefresh(dir, opts) {
   }
 
   const updated = [];
+  // pauseApply：只把下好的字节落到 .part，**替换与写 marker 交给调用方**（applyStaged）。
+  // 为什么必须分开：替换前要停内核（Windows 上覆盖被 mmap 的文件会 EBUSY），
+  // 而**下载**必须在内核还在跑时做 —— 否则本机 mixed-port 已经关掉，代理接线等于白接。
+  const pauseApply = !!opts.pauseApply;
+  const staged = [];
   for (const f of plan) {
     const target = f.kind === 'geo' ? geoDir : dir;
     const tmp = path.join(target, `${f.name}.part`);
@@ -584,7 +589,8 @@ async function doRefresh(dir, opts) {
         throw new Error(`sha256 不匹配：期望 ${f.sha256}，实际 ${actual}`);
       }
       fs.writeFileSync(tmp, body);
-      fs.renameSync(tmp, dest); // 原子替换：内核正开着旧文件也不会看到半份内容
+      if (pauseApply) staged.push({ tmp, dest, name: f.name });
+      else fs.renameSync(tmp, dest); // 原子替换：内核正开着旧文件也不会看到半份内容
       updated.push(f.name);
       say.info(`rules sync: updated ${f.name} (${body.length} bytes, ${r.via})`);
     } catch (e) {
@@ -593,18 +599,56 @@ async function doRefresh(dir, opts) {
     }
   }
 
-  // 只有全部成功才写 marker —— 差一份就下次再来，避免"看着新鲜其实缺文件"
+  const markerDoc = { version, sha: sha || null, at: Date.now(), via, files: entriesOf(plan) };
+  // 只有全部成功才推进 —— 差一份就下次再来，避免"看着新鲜其实缺文件"
   if (updated.length === plan.length) {
-    writeMarker(dir, { version, sha: sha || null, at: Date.now(), via, files: entriesOf(plan) });
-    clearTry(dir);
+    if (pauseApply) {
+      // 下载完了，但**还没换**：marker 与替换一起交给 applyStaged()（内核停下的那一刻）
+      result.staged = staged;
+      result.marker = markerDoc;
+    } else {
+      writeMarker(dir, markerDoc);
+      clearTry(dir);
+    }
     result.updated = updated;
   } else {
     say.warn(`rules sync: 本次只成功 ${updated.length}/${plan.length} 份，不推进版本标记，下次继续`);
+    // 不应用就把 .part 清掉：别在规则目录里留半份文件
+    for (const s of staged) { try { fs.unlinkSync(s.tmp); } catch (_) {} }
     writeTry(dir);
     result.updated = updated;
     result.reason = 'partial';
   }
   return result;
+}
+
+/**
+ * 应用 `pauseApply` 阶段下好的文件：逐个原子替换，全成功才写 marker。
+ *
+ * **调用方必须在「内核已停」时调用**：Windows 上覆盖被内核占着的文件（geoip.metadb 是 mmap 的）
+ * 会 EBUSY —— 这正是把下载与替换拆成两步的原因（下载时内核必须在跑，替换时内核必须停）。
+ *
+ * @returns {{applied:string[], failed:Array<{name:string,error:string}>}}
+ */
+function applyStaged(staged, opts) {
+  const o = opts || {};
+  const list = Array.isArray(staged) ? staged : [];
+  const applied = [];
+  const failed = [];
+  for (const it of list) {
+    try {
+      fs.renameSync(it.tmp, it.dest);
+      applied.push(it.name);
+    } catch (e) {
+      failed.push({ name: it.name, error: (e && e.message) || String(e) });
+      try { fs.unlinkSync(it.tmp); } catch (_) {}
+    }
+  }
+  if (o.dir) {
+    if (failed.length) writeTry(o.dir);
+    else if (o.marker) { writeMarker(o.dir, o.marker); clearTry(o.dir); }
+  }
+  return { applied, failed };
 }
 
 function writeMarker(dir, doc) {
@@ -646,6 +690,7 @@ async function checkLatest(opts) {
 
 module.exports = {
   refresh,
+  applyStaged,
   checkLatest,
   isFresh,
   planFiles,
