@@ -344,6 +344,12 @@
         // 上次下好了没装：版本没变也要让用户能装
         lastUpdate = Object.assign({ current: state.settings.version, has_update: true, version: u.version }, u);
         openDialog("update", lastUpdate);
+      } else if (u.check_failed) {
+        // 「假绿」修正：GitHub 失败、远程配置也没说话 → 这次**没查成**，
+        // 不许显示成「已是最新版本」（用户会以为自己最新，其实什么都没查到）。
+        const t = (window.PolarisViews && window.PolarisViews.checkFailText)
+          ? window.PolarisViews.checkFailText(u.check_failed) : "检查更新失败（原因未知），可导出日志查看";
+        toast(t);
       } else toast("已是最新版本 " + state.settings.version);
     } else if (action === "logout") openDialog("logoutConfirm", state);
     else if (action === "change-password") openDialog("changePassword", state);

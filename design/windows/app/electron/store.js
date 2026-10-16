@@ -32,6 +32,8 @@ const DEFAULTS = {
   // 与 update_url 成对：发布侧 SHA256SUMS.txt 里那个 zip 的 sha256（空串 = 没有可核对的摘要）。
   // 只在地址与上面这个完全一致时才拿来核对下载物，见 ipc.js 的 download_update。
   update_sha256: '',
+  // 上次「检查更新」失败的分档码（'' = 查成了）：'net' / 'http:403' / 'parse' / 'config'
+  update_check_failed: '',
   // 摘要连续取不到的次数（硬要求②：连续 N 次要升级成显式错误/醒目提示；取到一次就归零）
   update_sha_missing_streak: 0,
   // 上次内核启动定点核对的结果（硬要求①：跳过也要可诊断、关于页可见）
