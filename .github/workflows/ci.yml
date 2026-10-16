@@ -77,7 +77,9 @@ jobs:
           if [ "$EVENT_NAME" != "pull_request" ]; then alltrue; fi
           if [ -z "${BASE_SHA:-}" ]; then fallback "PR 事件没拿到 base.sha"; fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1 || fallback "取 base 提交失败：$BASE_SHA"
-          FILES=$(git diff --name-only "${BASE_SHA}...HEAD" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}...HEAD"
+          # 浅克隆（depth=1）里没有 merge base：三点 diff 会 `fatal: no merge base` → 被兜成全跑（PR 场景永远全跑）。
+          # 这里用两点 diff：base 与当前检出树直接比。分支落后时会把 main 的新文件也算进来 —— 只会更保守（全跑），不会漏跑。
+          FILES=$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}..HEAD"
           if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
           echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
           printf '%s\n' "$FILES" | head -30
