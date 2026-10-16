@@ -137,6 +137,19 @@ check('③ 该场景不报「非空目录被丢」', !/非空\*\*目录被丢/.t
 resetSrc();
 const dirLost = runCase('dir-files-lost', goodEntries().filter((e) => e.name.indexOf('resources/core/') !== 0));
 check('③ 某目录文件整批丢失 → 红并点名该目录', dirLost.code === 1 && /③ 有\*\*非空\*\*目录被丢/.test(dirLost.out) && /resources\/core/.test(dirLost.out), dirLost.out.trim().split('\n').slice(0, 5).join(' | '));
+/* ③（issue #24）workflow 同款 fixture：只含一个空目录 + 一个根文件 → 必须绿 + 打印结论 */
+const FX = path.join(BASE, 'fx');
+const FXZ = path.join(BASE, 'fx.zip');
+fs.rmSync(FX, { recursive: true, force: true });
+fs.mkdirSync(path.join(FX, 'empty-dir'), { recursive: true });
+fs.writeFileSync(path.join(FX, 'readme.txt'), 'fixture');
+fs.writeFileSync(FXZ, buildZip([{ name: 'readme.txt', data: 'fixture' }]));   // 故意不写 empty-dir/（Compress-Archive 不写目录条目）
+const fxRun = spawnSync(process.execPath, [CHECKER, '--before', FX, '--zip', FXZ], { encoding: 'utf8' });
+const fxOut = String(fxRun.stdout || '') + String(fxRun.stderr || '');
+check('#24 workflow 同款 fixture（只有空目录 + 一个根文件）→ 绿', fxRun.status === 0, fxOut.trim().split('\n').slice(-3).join(' | '));
+check('#24 该 fixture 的输出必须含「空目录被丢」与那句结论',
+  /空目录被丢 1 个/.test(fxOut) && /结论：可接受/.test(fxOut), fxOut.trim().split('\n').slice(-5).join(' | '));
+
 /* 用法错 → 退出码 2 */
 const usage = spawnSync(process.execPath, [CHECKER], { encoding: 'utf8' });
 check('用法错 → 退出码 2', usage.status === 2);
