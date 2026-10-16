@@ -63,6 +63,7 @@
     registerConfig: { email_verify: 0, invite_force: 0 },
     email: "",
     updateInfo: null,      // 最近一次 check_update 的结果（设置页那行要显示「有新版本 x.y.z」）
+    leftoverKernel: null,  // PR-B：启动自检发现的残留内核（命令行指向我们自己 data 目录的 mihomo.exe）
     checkingUpdate: false,
   };
 
@@ -364,6 +365,13 @@
     else if (action === "cleanup-tun") {
       const r = await guard("清理虚拟网卡", () => api.invoke("cleanup_tun"));
       if (r) { toast(r.msg || "已处理"); loadTunStatus(true); }
+    }
+    else if (action === "cleanup-leftover") {
+      const r = await guard("结束残留内核", () => api.invoke("kill_leftover_kernel", { pids: (state.leftoverKernel || []).map((x) => x.pid) }));
+      const ok = r && Array.isArray(r.results) && r.results.some((x) => x.closed);
+      toast(ok ? "已结束残留内核" : "没能结束（可能仍被占用或权限不足）");
+      state.leftoverKernel = null;
+      scheduleRender();
     }
     else if (action === "open-telegram") {
       // 链接由主进程现取现校验（域名白名单），渲染层不传 URL
@@ -1527,6 +1535,15 @@
   async function boot() {
     state.settings = await api.getSettings().catch(() => ({}));
     state.appInfo = await api.getAppInfo().catch(() => ({}));
+    // PR-B：残留内核自检（不阻塞启动）。只报「命令行里带我们自己 data 目录的 mihomo.exe」，
+    // 别的代理软件的 mihomo 一律不碰 —— 用户 2026-10-14 的铁律：认不出是谁就不许动。
+    api.invoke("check_leftover_kernel").then((r) => {
+      const list = (r && Array.isArray(r.list)) ? r.list : [];
+      if (!list.length) return;
+      state.leftoverKernel = list;
+      toast("检测到上次退出残留的内核（" + list.map((x) => "PID " + x.pid).join("、") + "），可能在占端口或虚拟网卡；设置页可以结束它");
+      scheduleRender();
+    }).catch(() => {});
     applyTheme(state.settings.theme || "system");
 
     if (!state.settings.authed) {

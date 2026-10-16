@@ -23,6 +23,7 @@ const panel = require('./panel/client');
 const autostart = require('./net/autostart');
 const elevate = require('./net/elevate');
 const portowner = require('./net/portowner');
+const leftover = require('./net/leftover');
 const sysproxy = require('./net/sysproxy');
 const fmt = require('./util/format');
 const ui = require('./ui');
@@ -706,6 +707,19 @@ const commands = {
     // 硬要求①：内核启动校验「跳过」也要能在关于页看见（不是静默通过）
     last_kernel_verify: store.get('last_kernel_verify') || null,
   }),
+
+  // PR-B：残留内核自检 / 清理。自检只读进程列表；清理前还要再核一次进程名。
+  check_leftover_kernel: async () => {
+    const S = require('./core/manager').S || {};
+    return leftover.findLeftovers(paths.data(), (S.proc && S.proc.pid) || 0);
+  },
+  kill_leftover_kernel: async ({ pids, pid } = {}) => {
+    const list = Array.isArray(pids) && pids.length ? pids : (pid ? [pid] : []);
+    const results = [];
+    // 把「我们自己的 data 目录」传下去：leftover.killLeftover 动手前要用它复核判据（名单外的 pid 一律不杀）
+    for (const p of list) results.push(await leftover.killLeftover(p, { dataDir: paths.data() }));
+    return { results: results };
+  },
 
   is_admin: async () => elevate.isAdmin(),
 
