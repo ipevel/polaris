@@ -544,6 +544,9 @@
       ${row("运行模式", s.appInfo.portable ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
       ${row("数据目录", h(s.appInfo.data_dir || ""), { chev: false })}
       ${row("管理员权限", s.appInfo.is_admin ? "已获得" : "未获得（TUN 模式需要）", { chev: false, vcls: s.appInfo.is_admin ? "strong" : "" })}
+      ${(s.leftoverKernel && s.leftoverKernel.length)
+        ? row("残留内核", s.leftoverKernel.map((x) => "PID " + x.pid).join("、") + "（上次退出没清掉）", { chev: true, click: "cleanup-leftover" })
+        : ""}
     </div>
     <div style="text-align:center;font-size:12px;color:var(--text3);margin:18px 0 6px">Polaris ${h(s.settings.version)} · 不采集任何用户数据</div>
   </div>`;
