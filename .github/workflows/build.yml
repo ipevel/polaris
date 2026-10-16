@@ -423,14 +423,12 @@ jobs:
             echo "::error::versionName '${VERSION_INPUT}' 不是合法的 SemVer（必须为 X.Y.Z，无前导零）"
             exit 1
           fi
-          if [ -n "$CODE_INPUT" ]; then
-            VC="$CODE_INPUT"
-            case "$VC" in
-              ''|*[!0-9]*) echo "::error::versionCode '${CODE_INPUT}' 必须是纯数字"; exit 1 ;;
-            esac
-          else
-            VC=$(( $(date +%s) / 60 ))
-          fi
+          # versionCode（issue #30）：显式传值 / 未传 都交给 .scripts/resolve_version_code.sh 统一解析 ——
+          #   未传 → 用仓库声明值（app/build.gradle.kts 的 slteVersionCode），并打 notice；
+          #   读不到声明 → 先 warn 回退 epoch 分钟，然后照样红（缺声明不许发版）；
+          #   无论哪条路径，最终断言「本次 VC == 仓库声明值」，不等即红（不许实际值覆盖声明值）。
+          # 纯数字校验也在脚本里（保留原语义）。
+          VC=$(bash .scripts/resolve_version_code.sh --gradle app/build.gradle.kts --input "$CODE_INPUT")
           TAG="${TAG_INPUT:-v${VERSION_INPUT}}"
           if [ "$TAG" != "v${VERSION_INPUT}" ]; then
             echo "::error::releaseTag '${TAG}' 必须等于 v${VERSION_INPUT}（SemVer 要求 tag 与版本号一一对应）"
