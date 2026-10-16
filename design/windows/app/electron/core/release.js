@@ -26,11 +26,26 @@ function apiBase() {
   return String(store.get('release_api_base') || DEFAULT_API).replace(/\/+$/, '');
 }
 
+/**
+ * 带分档的错误：UI 要按 net / http / parse 分开说 —— 否则一律退化成「已是最新版本」，
+ * 用户以为自己是最新的，其实根本没查成（用户报的「点击更新检测失败」就是这么被吞掉的）。
+ *   net    = 连不上 / 超时 / 重定向打转
+ *   http   = 拿到了响应但不是 200（403 = 限流）
+ *   parse  = 200 但不是合法发布信息（被劫持、代理落地页）
+ *   config = 地址本身不合法（远程配置写坏）
+ */
+function checkError(kind, msg, status) {
+  const e = new Error(msg);
+  e.kind = kind;
+  if (status) e.status = Number(status) || 0;
+  return e;
+}
+
 /** 取一个 URL 的文本内容；`label` 只影响报错话术（摘要文件与发布接口各自成句）。 */
 function getRaw(url, label, timeoutMs = 10000, redirects = 0) {
   return new Promise((resolve, reject) => {
     let u;
-    try { u = new URL(url); } catch (_) { reject(new Error(label + '地址不合法')); return; }
+    try { u = new URL(url); } catch (_) { reject(checkError('config', label + '地址不合法')); return; }
     const mod = u.protocol === 'https:' ? https : http;
     const req = mod.get(u, {
       timeout: timeoutMs,
@@ -43,23 +58,23 @@ function getRaw(url, label, timeoutMs = 10000, redirects = 0) {
       const code = res.statusCode || 0;
       if (code >= 300 && code < 400 && res.headers.location) {
         res.resume();
-        if (redirects >= 5) { reject(new Error('重定向次数过多')); return; }
+        if (redirects >= 5) { reject(checkError('net', '重定向次数过多')); return; }
         getRaw(new URL(res.headers.location, u).toString(), label, timeoutMs, redirects + 1).then(resolve, reject);
         return;
       }
-      if (code !== 200) { res.resume(); reject(new Error(`${label} HTTP ${code}`)); return; }
+      if (code !== 200) { res.resume(); reject(checkError('http', `${label} HTTP ${code}`, code)); return; }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     });
-    req.on('timeout', () => req.destroy(new Error(label + '超时')));
-    req.on('error', (e) => reject(new Error(label + '连不上：' + (e && e.message))));
+    req.on('timeout', () => req.destroy(checkError('net', label + '超时')));
+    req.on('error', (e) => reject(checkError('net', label + '连不上：' + (e && e.message))));
   });
 }
 
 function getJson(url, timeoutMs = 10000, redirects = 0) {
   return getRaw(url, '发布接口', timeoutMs, redirects).then((text) => {
-    try { return JSON.parse(text); } catch (e) { throw new Error('发布信息不是合法 JSON'); }
+    try { return JSON.parse(text); } catch (e) { throw checkError('parse', '发布信息不是合法 JSON'); }
   });
 }
 
@@ -113,7 +128,7 @@ async function checkLatest(currentVersion) {
   const url = `${apiBase()}/repos/${REPO}/releases/latest`;
   const json = await getJson(url);
   const latest = String(json.tag_name || '').replace(/^v/i, '').trim();
-  if (!latest) throw new Error('发布信息里没有 tag_name');
+  if (!latest) throw checkError('parse', '发布信息里没有 tag_name');
 
   const assets = Array.isArray(json.assets) ? json.assets : [];
   const pick = (re) => assets.find((a) => re.test(String((a && a.name) || '')));
@@ -141,6 +156,8 @@ async function checkLatest(currentVersion) {
     url: zip ? String(zip.browser_download_url || '') : String(json.html_url || ''),
     notes: String(json.body || '').trim(),
     title: String(json.name || '').trim(),
+    // 有 release 但没有 zip 资产：url 退化成发布页（还能让用户手动下），但要让 UI 说清
+    asset_missing: !zip,
     // 下载后用它逐字节核对 zip（空串 = 没有可核对的摘要，客户端只 warn 不拦）
     sha256: sha256,
     // 硬条件：'missing' = 本次没做包校验，UI 必须显示出来（不许静默）
@@ -152,4 +169,4 @@ async function checkLatest(currentVersion) {
   return info;
 }
 
-module.exports = { checkLatest, apiBase, REPO, DEFAULT_API, parseSums, sumsUrlFor, getText, shaStateFor };
+module.exports = { checkLatest, apiBase, REPO, DEFAULT_API, parseSums, sumsUrlFor, getText, shaStateFor, checkError };

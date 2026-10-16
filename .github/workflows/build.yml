@@ -112,6 +112,14 @@ on:
           - 'false'
           - 'true'
         default: 'false'
+      allowRepublish:
+        description: |
+          仅在有意识地重发同一 tag 时置 true；默认拒绝已发布 Release 的重发。
+          false（默认）：同一提交已有在跑的 workflow_dispatch 发版 run，或目标 tag 的
+          Release 已存在且 draft=false 时，release-precheck 直接拒绝本次发版（fail-closed）。
+          true：明确知晓要覆盖已发布 Release 时才会放行，仅供人工有意识重发使用。
+        type: boolean
+        default: false
       releaseNotes:
         description: |
           Release 变更说明（留空则不输出「变更说明」小节；填 auto 会写成「见 git log」）。
@@ -128,8 +136,14 @@ permissions:
   contents: read
 
 concurrency:
-  # 发布构建按分支串行：同分支重复触发时排队等待，不打断进行中的发布（避免产生半成品 Release）
-  group: build-${{ github.ref }}
+  # 发布构建按本次构建的 commit 串行：同一 SHA 重复触发时排队等待，不打断进行中的发布
+  # （避免产生半成品 Release）。
+  #
+  # ⚠️ 这只是**串行化补充**，不是防重复发布的保证：手动 dispatch 的目标 tag 可以与构建
+  # SHA 不同，排队挡不住「不同 SHA 发同一个 tag」，也挡不住「台账里已经发过、这次换
+  # 一条无关的 run 再发一次」。真正的防线是 release-precheck 最前面那两条 fail-closed
+  # 前置校验（同 SHA 已有在跑的发版 run / 目标 tag 的 Release 已发布且未置 allowRepublish）。
+  group: release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -141,17 +155,51 @@ jobs:
       contents: read
       # 读 check-runs API 需要 checks: read；显式声明，避免仓库默认权限收紧后静默变成 403。
       checks: read
+      # 防重复发布守卫要列 workflow_dispatch 发版 run（GET /actions/runs），需要 actions: read；
+      # 同样显式声明，否则仓库默认权限收紧后会静默 403 —— 那也按 fail-closed 拒绝发版。
+      actions: read
     steps:
-      - name: 校验触发 ref（只允许 main 或 v* 标签）
+      # 守卫脚本随仓库文件走，先检出本次构建提交（与其它 job 用同一个 pin）。
+      - name: 检出代码（防重复发布守卫脚本来自本次构建提交）
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # fail-closed 的第一道门：放在所有断言之前。两条判定见 tools/release-duplicate-guard.mjs：
+      #   (a) 同一 SHA 已有在跑的发版 run（排除自己、限定 workflow_dispatch）；
+      #   (b) 目标 tag 的 Release 已存在且 draft=false（仅 allowRepublish=true 时放行）。
+      # 读不到 Actions/Release 一律判不通过，不允许「读不到就放行」。
+      - name: 防重复发布守卫（同 SHA 在跑的 run / 目标 tag 的 Release，fail-closed）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          ALLOW_REPUBLISH: ${{ inputs.allowRepublish }}
+          RELEASE_TAG: ${{ inputs.releaseTag }}
+          VERSION_NAME: ${{ inputs.versionName }}
+        run: node tools/release-duplicate-guard.mjs
+
+      - name: 校验触发 ref（只允许 main / v* / rc tag）
         env:
           REF: ${{ github.ref }}
         run: |
           set -e
+          # workflow_dispatch 的 ref 参数**不接受裸 commit SHA**（实测 API 返回 422 No ref found）；
+          # 想按某个 commit 触发必须先有 ref（分支或 tag）。rc tag 显式放行：
+          #   - rc tag（v<版本>-rc*）只作 dispatch 的 ref 用，**不算发布 tag**；
+          #     发布 tag 始终由 release-tag job 按 versionName/releaseTag 创建，本流水线不发布 rc。
+          #     rc 演练（dryRun=true）常用它把流水线钉在某个候选提交上。
+          #   - 已发布的 v* tag 也允许作为 ref，但会被上面的防重复发布守卫与 tag 指向校验拦住重发。
           case "$REF" in
-            refs/heads/main|refs/tags/v*)
+            refs/heads/main)
+              echo "触发 ref 合法：$REF" ;;
+            refs/tags/v*-rc*)
+              echo "触发 ref 合法（rc tag，仅作 ref、不是发布 tag）：$REF" ;;
+            refs/tags/v*)
               echo "触发 ref 合法：$REF" ;;
             *)
-              echo "::error::发版只能从 refs/heads/main 或 refs/tags/v* 触发，当前为 $REF"
+              echo "::error::发版只能从 refs/heads/main、v* tag 或 rc tag（refs/tags/v*-rc*）触发，当前为 $REF"
               exit 1 ;;
           esac
 

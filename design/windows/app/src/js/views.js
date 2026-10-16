@@ -153,7 +153,30 @@
     return err("本次未做包校验：取不到发布侧摘要 ≠ 包有问题，但本次没有校验" + why);
   }
 
+  /**
+   * 「检查更新失败」怎么跟用户说（分档）。空值 → ''（没有失败）。
+   * 接受两种输入：IPC 返回的 {kind,status}，或落盘的码字符串 'net' / 'http:403' / 'parse' / 'config'。
+   * 为什么要分档：以前四条来源的失败都被吞掉，界面只会说「已是最新版本」——
+   * 用户以为自己是最新的，其实这次根本没查成（假绿）。
+   */
+  function checkFailText(cf) {
+    if (!cf) return '';
+    let kind = ''; let status = 0;
+    if (typeof cf === 'string') {
+      const p = String(cf).split(':');
+      kind = p[0] || ''; status = Number(p[1]) || 0;
+    } else {
+      kind = String(cf.kind || ''); status = Number(cf.status || 0);
+    }
+    if (kind === 'http' && status === 403) return '检查更新失败：GitHub 接口限流（403），等几分钟或换个网络再试';
+    if (kind === 'http') return '检查更新失败：更新接口返回 HTTP ' + (status || '未知');
+    if (kind === 'parse') return '检查更新失败：拿到的不是合法发布信息（可能被代理页或劫持页替换）';
+    if (kind === 'net') return '检查更新失败：连不上 GitHub —— 多半是当前节点或网络导致，换个网络或断开代理再试';
+    if (kind === 'config') return '检查更新失败：更新接口地址不合法（远程配置可能被写坏）';
+    return '检查更新失败：原因未知，可在「关于」里导出日志';
+  }
   const Views = {};
+  Views.checkFailText = checkFailText;   // app.js 弹 toast 用同一份文案
 
   /* ---------------- 首页 ---------------- */
   Views.home = (s) => {
@@ -538,6 +561,9 @@
         : (s.updateInfo && s.updateInfo.staged
           ? '<span class="dot-new"></span><span style="color:var(--blue)">有新版本 ' + h(s.updateInfo.version) + "（已下载）</span>"
           : '<span style="color:var(--blue)">检查更新</span>'), { chev: false, click: "check-update" })}
+      ${s.settings.update_check_failed
+        ? err(checkFailText(s.settings.update_check_failed) + "（上次检查于 " + new Date(Number(s.settings.update_checked_at) || Date.now()).toLocaleString() + "）")
+        : ""}
       ${s.settings.update_available ? shaNotice(s.settings.update_sha_state, s.settings.update_sha_reason, s.settings.update_sha_missing_streak) : ""}
       ${(s.appInfo && s.appInfo.last_kernel_verify && s.appInfo.last_kernel_verify.state && s.appInfo.last_kernel_verify.state !== "ok")
         ? err("内核启动校验未执行（不计为通过）：" + (s.appInfo.last_kernel_verify.reason || "未知原因"))

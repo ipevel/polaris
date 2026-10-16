@@ -635,6 +635,8 @@ const commands = {
       // 存的是"上次查到的线上最新版"，与当前版本现算，所以装完新版本自己会灭。
       update_available: cmpVersion(s.update_latest, s.version) > 0,
       update_version: s.update_latest || '',
+      // 上次检查失败的分档码（'' = 上次查成了）。设置页据此显示失败态，重启后也还在。
+      update_check_failed: s.update_check_failed || '',
       // 本次有没有做包校验（摘要取不到时 UI 要显示「本次未做包校验」）
       update_sha_state: s.update_sha_state || 'ok',
       update_sha_reason: s.update_sha_reason || '',
@@ -750,14 +752,27 @@ const commands = {
     // 以前只有远程配置，而它的 update_version 一直是空的 —— 红点永远不会亮（第 13 轮发现）。
     // 并发是为了不让"远程配置那台机器连不上"拖慢"检查更新"（它自己带 8 秒超时）。
     const cfgP = remote.load(true).catch(() => {}).then(() => remote.updateInfo());
-    const ghP = release.checkLatest(String(store.get('version') || '')).catch((e) => {
-      // GitHub 连不上不该把"检查更新"整个弄失败：留着远程配置的结果，最差就是"没更新"
-      log.warn('release check failed: ' + (e && e.message));
-      return null;
-    });
-    const [cfg, gh] = await Promise.all([cfgP, ghP]);
+    // GitHub 通道失败**不再吞成 null**：带上分档交回上层。以前一律 null → has_update:false →
+    // 界面显示「已是最新版本」——用户以为自己是最新的，其实这次根本没查成（假绿）。
+    const ghP = release.checkLatest(String(store.get('version') || '')).then(
+      (info) => ({ ok: true, info: info }),
+      (e) => {
+        const kind = String((e && e.kind) || 'unknown');
+        const status = Number((e && e.status) || 0);
+        log.warn('release check failed: kind=' + kind + (status ? ' status=' + status : '') + ' ' + ((e && e.message) || ''));
+        return { ok: false, kind: kind, status: status, msg: String((e && e.message) || '') };
+      },
+    );
+    const [cfg, ghRes] = await Promise.all([cfgP, ghP]);
+    const gh = ghRes.ok ? ghRes.info : null;
     const picked = pickUpdateInfo(cfg, gh);
     const u = picked.info;
+    // 「假绿」修正：GitHub 失败 **且** 远程配置也没给出任何版本信息 → 这次**没查成**。
+    // 只要有一条来源说话了（有更新，或声明了版本号），就按正常结果走，不误报失败。
+    const remoteUsable = !!(cfg && (cfg.has_update || String(cfg.declared || '').trim()));
+    const checkFailed = (!ghRes.ok && !remoteUsable)
+      ? { kind: ghRes.kind, status: ghRes.status, msg: ghRes.msg, checked_at: Date.now() }
+      : null;
     const st = updater.info();
     // 硬要求②：摘要取不到的降级路径写死边界 —— 连续 SHA_MISSING_ESCALATE 次 → 显式 error 日志 + 界面醒目提示；
     // 取到一次就归零（streak 落盘，跨重启累计，界面事后也能复查）。
@@ -779,11 +794,16 @@ const commands = {
       update_sha_state: u.has_update ? String(u.sha_state || 'ok') : '',
       update_sha_reason: u.has_update ? String(u.sha_reason || '') : '',
       update_sha_missing_streak: shaStreak,
+      // 「上次检查失败了」也要跨重启看得见（存分档码，如 'net' / 'http:403'）
+      update_check_failed: checkFailed ? String(checkFailed.kind + (checkFailed.status ? ':' + checkFailed.status : '')) : '',
       update_checked_at: Date.now(),
     });
     return {
       has_update: u.has_update, version: u.version, size: u.size, notes: u.notes, url: u.url,
       source: picked.source,
+      // check_failed 非空 = 这次**没查成**，界面必须说「检查更新失败」而不是「已是最新版本」
+      check_failed: checkFailed,
+      checked: { github: ghRes.ok ? 'ok' : ghRes.kind, remote: remoteUsable ? 'ok' : 'empty' },
       sha256: u.sha256 || '',
       sha_state: u.sha_state || 'ok',
       sha_reason: u.sha_reason || '',

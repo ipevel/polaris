@@ -147,6 +147,8 @@ function updateInfo() {
     // 必须比当前版本**新**才算更新（以前只判"不相等"，配置里写了旧版本号也会亮红点）
     has_update: !!version && fmt.cmpVersion(version, store.get('version')) > 0,
     version: version || store.get('version'),
+    // 原始声明值（空串 = 这份远程配置根本没给版本信息）。调用方据此判断「这条来源到底有没有说话」。
+    declared: version,
     size: String(cfg.update_windows_size || cfg.update_size || ''),
     url: winUrl || fallback,
     android_url: String(cfg.update_url || cfg.update_apk_url || ''),
