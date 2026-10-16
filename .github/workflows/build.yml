@@ -477,7 +477,8 @@ jobs:
   # tag 创建逻辑本身一个字没改：不存在则创建、已存在且指向同一 commit 幂等继续、指向别的 commit 直接失败，不 force/不移动/不删除。
   release-tag:
     needs: [release-precheck, version, build, windows]
-    if: inputs.dryRun != 'true'
+    # 主对话口径（情形 E）：只构建不发布时不该建 tag，否则又是「有 tag、没 Release」。
+    if: inputs.dryRun != 'true' && inputs.publishRelease == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
