@@ -99,5 +99,20 @@ check('关闭本地分流时给出提示，且内置组仍可配置（开关照�
 const none = Views.routing({ rulesets: { on: true, groups: [], custom: [] } });
 check('没有内置规则集时给出空状态文案', /缺少 resources\/rules 规则集/.test(none));
 
+/* D 单：被隐藏的自定义分流组必须每次读都可见（清单 + 固定文案），且不进列表/配置 */
+const hid = Views.routing({
+  rulesets: {
+    on: true, total: 1, groups: [groups[1]], custom: [],
+    hidden: [{ name: 'Ⓜ️ 微软云盘', reason: 'reserved' }, { name: '坏名字,带逗号', reason: 'invalid' }],
+    hidden_count: 2,
+  },
+});
+check('被隐藏条目：段落与固定文案都在', /被隐藏的自定义分流组 · 2/.test(hid) && hid.includes('在 App 列表中暂时隐藏，配置仍保留在本地'));
+check('被隐藏条目：清单里能看到名字（不是只给个数）', hid.includes('Ⓜ️ 微软云盘') && hid.includes('坏名字,带逗号'));
+check('被隐藏条目：reason 分支文案', hid.includes('与内置组同名') && hid.includes('名字或规则不可用'));
+check('被隐藏条目：不当作可用的组行渲染', !/data-ruleset-row="坏名字,带逗号"/.test(hid));
+const noHid = Views.routing({ rulesets: { on: true, total: 1, groups: [groups[1]], custom: [] } });
+check('没有 hidden 时不渲染该段（不留空壳）', !noHid.includes('被隐藏的自定义分流组'));
+
 console.log(`\n分流规则页视图自测：通过 ${pass} 项，失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);
