@@ -4156,3 +4156,15 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
    它用在 `.page-sub` / `.section-label` / `.node-line` / `.acc-sub` / `.login-card .sub` 等提示性文字上。
    压到 4.5:1 需要 ≈`#6e6e73`，也就是和 `--text2` 同色、文字层级消失。
    **本端不擅自改设计稿的调色板**，请设计方定：要么接受 3:1，要么把 `--text2`/`--text3` 重新拉开。
+
+## versionCode 确定性（issue #30，2026-10-16）
+
+**问题**：`build.yml` 的 `version` job 在 dispatch 未传 `versionCode` 时用 `VC=$(( $(date +%s) / 60 ))`，
+于是实际发布的 APK versionCode 会覆盖仓库声明值（1.12.1 实测 `29868123`、仓库声明 `29867917`），README 的版本表因此不准；
+而版本门禁只要求严格递增，不会红。
+
+**改法**：新增 `.scripts/resolve_version_code.sh`（纯 bash，可本地跑），`version` job 的「解析发布版本号」步统一调它：
+未传 → 用仓库声明值（`app/build.gradle.kts` 的 `slteVersionCode`）并打 notice；读不到声明 → 先 warn 回退 epoch 分钟、
+随后照旧红；**无论哪条路径都断言「本次 VC == 仓库声明值」**，不等或读不到声明一律红。纯数字校验保留在脚本里。
+自检 `.scripts/resolve_version_code_test.sh`（8 项：传值 / 不传 / 非法 / 空串 / 不等 / 文件不存在 / 无声明行 / 参数错）。
+README 的「推送即出包」下面补了这条口径。
