@@ -242,7 +242,9 @@ function setProxyPortProvider(fn) { proxyPortProvider = typeof fn === 'function'
 
 function fetchStream(url, redirects = 0) {
   const proxyPort = Number(proxyPortProvider() || 0);
+  if (proxyPort <= 0) log.info(`更新下载：核心未运行（无本机代理端口），走直连 → ${url}`);
   if (proxyPort > 0) {
+    log.info(`更新下载：经本机代理 127.0.0.1:${proxyPort} 建 CONNECT 隧道 → ${url}`);
     return proxyTunnel.fetchStreamVia(url, proxyPort, {
       timeoutMs: TIMEOUTS.connect,
       userAgent: 'Polaris-Windows',
