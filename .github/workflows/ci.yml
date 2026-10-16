@@ -461,6 +461,10 @@ jobs:
             echo "ANDROID_SDK_ROOT=$root"
           } >> "$GITHUB_ENV"
           echo "Android SDK 根目录：$root（runner 自有，属主 $(id -un)）"
+          # 保存镜像原始 SDK 根目录：sdkmanager 可执行文件本体在镜像预置目录里，
+          # 新根目录是空的（runner 自有、归缓存管），所以下一步定位 sdkmanager 要靠它。
+          orig="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "POLARIS_ORIG_SDK_ROOT=$orig" >> "$GITHUB_ENV"
 
       - name: 缓存 Android SDK / NDK（键含 OS + 三个版本号）
         id: sdk-cache
@@ -478,8 +482,19 @@ jobs:
           # sdkmanager 定位：优先用新根目录里的 cmdline-tools（若已 bootstrap），否则用镜像自带的。
           # 无论用哪个，都显式传 --sdk_root，把装包目标钉在 runner 自有根目录上
           # （镜像自带 sdkmanager 的默认根是它自己所在的 /usr/local/lib/android/sdk）。
-          SDKMANAGER="$(command -v sdkmanager || echo "$POLARIS_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
-          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（POLARIS_SDK_ROOT=$POLARIS_SDK_ROOT）"; exit 1; }
+          # 按优先级在候选路径里找 sdkmanager：PATH → 新根目录 → 镜像原始根目录。
+          # 镜像原始根目录由步骤 5 写进 $POLARIS_ORIG_SDK_ROOT（新根目录是空的，装完才有）。
+          SDKMANAGER=""
+          for candidate in \
+            "$(command -v sdkmanager || true)" \
+            "$POLARIS_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$POLARIS_ORIG_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"; do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（POLARIS_SDK_ROOT=$POLARIS_SDK_ROOT, POLARIS_ORIG_SDK_ROOT=$POLARIS_ORIG_SDK_ROOT）"; exit 1; }
           SDK_ROOT_ARG=(--sdk_root="$POLARIS_SDK_ROOT")
           yes | "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" --licenses >/dev/null 2>&1 || true
 
