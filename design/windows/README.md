@@ -34,3 +34,5 @@ python3 shot_all.py       # 需 Chromium CDP，输出 shots/
 - me 我的 / login 登录 / plans 购买套餐 / orders 我的订单
 - tickets 我的工单 / invite 邀请好友 / giftcard 礼品卡兑换 / notices 公告
 - proxy 代理模式弹窗 / routing 分流规则 / update 检查更新弹窗 / tray 托盘菜单
+
+<!-- rehearsal win-only #3: --no-renames 版本后的真 PR 反证；跑完即删 -->
