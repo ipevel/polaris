@@ -1,7 +1,7 @@
 {
   "name": "polaris-windows",
   "productName": "Polaris",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "description": "北辰 Polaris Windows 客户端（便携版）",
   "license": "GPL-3.0",
   "author": "Polaris Contributors",
@@ -29,19 +29,19 @@
     "test:updater-heal": "node scripts/updater-heal-test.js",
     "test:updater-url": "node scripts/updater-url-test.js",
     "test:custom-ruleset": "node scripts/custom-ruleset-reserved-test.js",
+    "test:package-manifest": "node scripts/package-manifest-test.js",
+    "test:repack-assertions": "node scripts/verify-repack-test.js",
+    "test:updater-atomic": "node scripts/updater-atomic-test.js",
+    "test:updater-integrity": "node scripts/updater-integrity-test.js",
     "test:version-compare": "node scripts/version-compare-test.js",
-    "test:offline": "npm run test:updater && npm run test:updater-timeout && npm run test:traffic && npm run test:geosync && npm run test:rulesync && npm run test:routing-sync && npm run test:flags && npm run test:flag-row && npm run test:dns && npm run test:portowner && npm run test:config && npm run test:single-source && npm run test:routing-view && npm run test:panel-client && npm run test:dialog-render && npm run test:tray && npm run test:updater-heal && npm run test:updater-url && npm run test:package-manifest && npm run test:repack-assertions && npm run test:updater-atomic && npm run test:updater-integrity && npm run test:version-compare && npm run test:custom-ruleset",
+    "test:offline": "npm run test:updater && npm run test:updater-timeout && npm run test:traffic && npm run test:geosync && npm run test:rulesync && npm run test:routing-sync && npm run test:flags && npm run test:flag-row && npm run test:dns && npm run test:portowner && npm run test:config && npm run test:single-source && npm run test:routing-view && npm run test:panel-client && npm run test:dialog-render && npm run test:tray && npm run test:updater-heal && npm run test:updater-url && npm run test:package-manifest && npm run test:repack-assertions && npm run test:updater-atomic && npm run test:updater-integrity && npm run test:custom-ruleset && npm run test:version-compare",
     "test:real": "node scripts/preflight-creds.js real -- && electron scripts/real-test.js --",
     "test:ui": "node scripts/preflight-creds.js ui -- && electron . --uitest --",
     "core": "python scripts/fetch-core.py",
     "geo": "python scripts/fetch-geo.py",
     "pack": "electron-builder --win --x64 --dir",
     "dist": "electron-builder --win --x64",
-    "clean": "node scripts/clean.js",
-    "test:package-manifest": "node scripts/package-manifest-test.js",
-    "test:repack-assertions": "node scripts/verify-repack-test.js",
-    "test:updater-atomic": "node scripts/updater-atomic-test.js",
-    "test:updater-integrity": "node scripts/updater-integrity-test.js"
+    "clean": "node scripts/clean.js"
   },
   "dependencies": {
     "js-yaml": "5.4.3",
@@ -74,23 +74,17 @@
       {
         "from": "core",
         "to": "core",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "resources/geo",
         "to": "geo",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "resources/rules",
         "to": "rules",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "build/portable-readme.txt",
@@ -101,9 +95,7 @@
       "target": [
         {
           "target": "zip",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "artifactName": "Polaris-portable-${version}.zip",
