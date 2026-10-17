@@ -486,11 +486,42 @@ function run(cmd, args, timeoutMs) {
 }
 
 /**
+ * 清空一个「要复用的」目录并让它回到「空」状态，给下一次解压用。
+ *
+ * 背景（2026-10-17 实机 D:\\软件安装\\Polaris-portable\\data\\update 现场）：
+ * 下载完整、zip 字节与资产一致，但 download() 停在解压前、无 staged.json。
+ * 真因是上一次的**残留 staging 清不掉**（Windows 上任一子文件被杀软/索引器/
+ * 残留 helper 占住即 EBUSY/EPERM）。旧代码两处都是裸 `rmSync(recursive)`：
+ *   - download() 起手那处还被 `catch(_){}` **静默吞掉** → 卡住无信号；
+ *   - extract() 里那处**无保护单发** → 撞锁直接抛裸 EBUSY 打断整次更新。
+ * 于是每次重试报不同的错（不是这错就是那错），且失败不留任何诊断文件。
+ *
+ * 这里复用**已有的** rmTolerant()（逐项容错删，不抛）；仍删不净就**改名让路**
+ * （dir → dir-<ts>）并返回空目录 —— 残留永远挡不住这一次更新。
+ * 改名也失败（目录被独占锁住）才返回 ok:false，并给一句人能看懂的原因。
+ */
+function clearDirForReuse(dir) {
+  rmTolerant(dir);                                  // 1) 容错删（复用，不抛）
+  if (!fs.existsSync(dir)) return { ok: true, renamed: false, reason: '' };
+  const aside = dir + '-' + Date.now();             // 2) 删不净 → 改名让路
+  try {
+    fs.renameSync(dir, aside);
+    log.warn('目录清不干净，已改名让路：' + dir + ' → ' + aside + '（多半是杀软或上一次 helper 还占着）');
+    return { ok: true, renamed: true, reason: '' };
+  } catch (e) {
+    return { ok: false, renamed: false, reason: '被占用且无法改名让路（' + ((e && e.message) || e) + '）' };
+  }
+}
+
+/**
  * 解压。优先用系统自带的 bsdtar（Win10 1803+ 就有，快且不怕长路径），
  * 没有 tar 再退回 PowerShell 的 Expand-Archive（慢，但几乎哪都有）。
  */
 async function extract(zipFile, dest) {
-  fs.rmSync(dest, { recursive: true, force: true });
+  const cleared = clearDirForReuse(dest);            // 不再裸 rmSync：撞锁→改名让路
+  if (!cleared.ok) {
+    throw new Error('无法清空解压目标 ' + dest + '：' + cleared.reason + '（请关闭占用该目录的程序/杀软后重试）');
+  }
   fs.mkdirSync(dest, { recursive: true });
   try {
     await run('tar', ['-xf', zipFile, '-C', dest], 600000);
@@ -593,10 +624,19 @@ async function download(url, version, expectedSha256) {
   const ver = String(version || '').trim() || 'latest';
   const file = zipPath(ver);
   fs.mkdirSync(updateDir(), { recursive: true });
-  try { fs.rmSync(stagingDir(), { recursive: true, force: true }); } catch (_) {}
-  try { fs.rmSync(stateFile(), { force: true }); } catch (_) {}
 
+  // 清空 staging 排在 clearDownloadError **之后**：否则这里失败时写的诊断会被下一行抹掉。
+  // 不再 catch(_){} 静默吞——残留 staging 清不掉是本次更新的真因，必须落到 phase=error + 诊断。
   clearDownloadError();
+  const cleared = clearDirForReuse(stagingDir());
+  if (!cleared.ok) {
+    const msg = '暂存目录清不掉：' + cleared.reason + '。请关闭占用 ' + stagingDir() + ' 的程序/杀软后重试，或手动删除该目录。';
+    set({ phase: 'error', error: msg });
+    log.error(msg);
+    writeDownloadError({ step: 'clear-staging', version: ver, url: target, reason: msg });
+    throw new Error(msg);
+  }
+  try { fs.rmSync(stateFile(), { force: true }); } catch (_) {}
   set({ phase: 'downloading', version: ver, url: target, file, received: 0, total: 0, percent: 0, error: '', staged_at: 0, extractor: '', download_via: '', download_route: '' });
   log.info(`开始下载更新 ${ver}：${target}`);
 
@@ -654,8 +694,10 @@ async function download(url, version, expectedSha256) {
   try {
     extractor = await extract(file, stagingDir());
   } catch (e) {
-    set({ phase: 'error', error: (e && e.message) || '解压失败' });
-    log.error('更新解压失败：' + S.error);
+    const msg = (e && e.message) || '解压失败';
+    set({ phase: 'error', error: msg });
+    log.error('更新解压失败：' + msg);
+    writeDownloadError({ step: 'extract', version: ver, url: target, reason: msg });
     throw e;
   }
 
@@ -663,6 +705,7 @@ async function download(url, version, expectedSha256) {
   if (!root) {
     set({ phase: 'error', error: '更新包里没有找到 Polaris.exe，已放弃（安装目录未改动）' });
     log.error('更新包结构不对：' + stagingDir());
+    writeDownloadError({ step: 'stage-root', version: ver, url: target, reason: S.error });
     throw new Error(S.error);
   }
 
@@ -671,6 +714,7 @@ async function download(url, version, expectedSha256) {
   if (!mf0.ok) {
     set({ phase: 'error', error: '更新包校验失败：' + mf0.reason });
     log.error('更新包清单校验失败：' + mf0.reason);
+    writeDownloadError({ step: 'manifest', version: ver, url: target, reason: S.error });
     throw new Error(S.error);
   }
   log.info('更新包清单校验通过（' + mf0.count + ' 个文件）');
