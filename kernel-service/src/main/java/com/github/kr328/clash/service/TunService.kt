@@ -31,7 +31,12 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
     private val self: TunService
         get() = this
 
+    @Volatile
     private var reason: String? = null
+
+    /** CLASH_STARTED 只允许发一次，且只在内核真正就绪（TUN + 配置）之后发。 */
+    @Volatile
+    private var startedBroadcast = false
 
     /** 运行时循环：Restart 用于切换 TUN 堆栈模式时原地重建 */
     private enum class RuntimeAction { Continue, Quit, Restart }
@@ -41,7 +46,7 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
 
         val close = install(CloseModule(self))
         val tun = install(TunModule(self))
-        val config = install(ConfigurationModule(self))
+        val config = install(ConfigurationModule(self) { onProfileLoaded() })
         val network = install(NetworkObserveModule(self))
         val restart = install(TunRestartModule(self))
 
@@ -65,6 +70,7 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
                     }
                     config.onEvent {
                         reason = it.message
+                        KernelState.failed(it.message)
 
                         RuntimeAction.Quit
                     }
@@ -86,6 +92,8 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
                     RuntimeAction.Restart -> {
                         Log.i("Restart tun with stack: ${store.tunStackMode}")
                         // 同步停掉旧 TUN（原生调用不挂起，避免与新 TUN 竞争），再按新堆栈重建
+                        // 重建期间状态退回 Starting：旧 TUN 作废，重新等 attach 才算就绪
+                        KernelState.restartingTun()
                         TunModule.requestStop()
                         tun.open()
                     }
@@ -112,6 +120,9 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
 
         StatusProvider.serviceRunning = true
 
+        KernelState.starting()
+        startedBroadcast = false
+
         StaticNotificationModule.createNotificationChannel(this)
         StaticNotificationModule.notifyLoadingNotification(this)
 
@@ -119,8 +130,8 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        sendClashStarted()
-
+        // 不在这里发 CLASH_STARTED：此时 TUN 与配置都未必就绪，发早了就是假连接。
+        // 由 onTunAttached / onProfileLoaded 在 KernelState.isRunning() 后广播。
         return super.onStartCommand(intent, flags, startId)
     }
 
@@ -128,6 +139,12 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
         TunModule.requestStop()
 
         StatusProvider.serviceRunning = false
+
+        KernelState.stopping()
+
+        cancelAndJoinBlockingAsync(this)
+
+        KernelState.destroyed(reason)
 
         sendClashStopped(reason)
 
@@ -239,6 +256,26 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
         }
 
         attach(device)
+        onTunAttached()
+    }
+
+    private fun onTunAttached() {
+        KernelState.tunAttached()
+        broadcastStartedIfRunning()
+    }
+
+    private fun onProfileLoaded() {
+        KernelState.profileLoaded()
+        broadcastStartedIfRunning()
+    }
+
+    @Synchronized
+    private fun broadcastStartedIfRunning() {
+        if (!startedBroadcast && KernelState.isRunning()) {
+            startedBroadcast = true
+
+            sendClashStarted()
+        }
     }
 
     companion object {

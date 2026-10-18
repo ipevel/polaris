@@ -66,6 +66,9 @@ constructor(
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
+    private val _vpnStatus = MutableStateFlow(KernelVpnStatus())
+    val vpnStatus: StateFlow<KernelVpnStatus> = _vpnStatus.asStateFlow()
+
     private val _profileLoaded = MutableStateFlow(0)
 
     val profileLoaded: StateFlow<Int> = _profileLoaded.asStateFlow()
@@ -95,7 +98,7 @@ constructor(
                     runCatching { remote?.clash()?.setLogObserver(kernelLogObserver) }
                         .onFailure { AppLog.w("Polaris-Kernel", "setLogObserver failed: ${sanitizeLog(it.message ?: "Unknown")}") }
                 }
-                syncConnectedState()
+                syncVpnState()
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -116,7 +119,8 @@ constructor(
         remote = null
         bound = false
         rebindAttempts = 0
-        _connected.value = false
+        ++syncSeq
+        updateVpnStatus(KernelVpnStatus(KernelVpnState.STOPPED))
         unbindQuietly()
         scheduleRebind()
     }
@@ -136,8 +140,20 @@ constructor(
                 intent: Intent?,
             ) {
                 when (intent?.action) {
-                    Intents.ACTION_CLASH_STARTED -> _connected.value = true
-                    Intents.ACTION_CLASH_STOPPED -> _connected.value = false
+                    Intents.ACTION_CLASH_STARTED -> {
+                        ++syncSeq
+                        updateVpnStatus(KernelVpnStatus(KernelVpnState.RUNNING))
+                    }
+                    Intents.ACTION_CLASH_STOPPED -> {
+                        val stopReason = intent.getStringExtra(Intents.EXTRA_STOP_REASON)
+                        ++syncSeq
+                        updateVpnStatus(
+                            KernelVpnStatus(
+                                state = if (stopReason.isNullOrBlank()) KernelVpnState.STOPPED else KernelVpnState.FAILED,
+                                reason = stopReason,
+                            ),
+                        )
+                    }
                     Intents.ACTION_PROFILE_LOADED -> _profileLoaded.value += 1
                 }
             }
@@ -153,7 +169,7 @@ constructor(
             bound = true
             rebindAttempts = 0
             registerStatusReceiver()
-            syncConnectedState()
+            syncVpnState()
         } else {
             scheduleRebind()
         }
@@ -213,28 +229,43 @@ constructor(
         if (!bound) bind()
     }
 
-    private fun syncConnectedState() {
+    private fun updateVpnStatus(status: KernelVpnStatus) {
+        _vpnStatus.value = status
+        _connected.value = status.state == KernelVpnState.RUNNING
+    }
+
+    private fun syncVpnState() {
         val seq = ++syncSeq
         scope.launch {
-            val result =
-                try {
-                    context.contentResolver.call(
-                        Uri
-                            .Builder()
-                            .scheme("content")
-                            .authority(Authorities.STATUS_PROVIDER)
-                            .build(),
-                        StatusProvider.METHOD_CURRENT_PROFILE,
-                        null,
-                        null,
-                    ) != null
-                } catch (e: Exception) {
-                    AppLog.w("Polaris-Kernel", "syncConnectedState 查询失败: ${sanitizeLog(e.message ?: "Unknown")}")
-                    false
-                }
-
-            if (seq == syncSeq) _connected.value = result
+            val status = queryVpnStatus()
+            if (seq == syncSeq) updateVpnStatus(status)
         }
+    }
+
+    private fun queryVpnStatus(): KernelVpnStatus = try {
+        val result =
+            context.contentResolver.call(
+                Uri
+                    .Builder()
+                    .scheme("content")
+                    .authority(Authorities.STATUS_PROVIDER)
+                    .build(),
+                StatusProvider.METHOD_KERNEL_STATE,
+                null,
+                null,
+            )
+        val state =
+            when (result?.getString(StatusProvider.KEY_STATE)) {
+                "Starting" -> KernelVpnState.STARTING
+                "Running" -> KernelVpnState.RUNNING
+                "Stopping" -> KernelVpnState.STOPPING
+                "Failed" -> KernelVpnState.FAILED
+                else -> KernelVpnState.STOPPED
+            }
+        KernelVpnStatus(state, result?.getString(StatusProvider.KEY_REASON))
+    } catch (e: Exception) {
+        AppLog.w("Polaris-Kernel", "queryVpnStatus 查询失败: ${sanitizeLog(e.message ?: "Unknown")}")
+        KernelVpnStatus()
     }
 
     fun vpnRequestIntent(): Intent? = VpnService.prepare(context)
