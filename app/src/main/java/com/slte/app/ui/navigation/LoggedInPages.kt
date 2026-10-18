@@ -65,6 +65,8 @@ internal fun OrdersPageContent(
     pendingPaymentTradeNo: String?,
     onPendingPaymentConsumed: () -> Unit,
 ) {
+    // 进程重建恢复到本页时兜底首拉（正常进入由预加载负责）
+    LaunchedEffect(Unit) { ordersViewModel.ensureLoaded() }
     OrdersScreen(
         onBack = onBack,
         onPay = { tradeNo -> purchaseViewModel.loadPaymentForOrder(tradeNo) },
@@ -273,6 +275,8 @@ internal fun InvitePageContent(
     inviteViewModel: InviteViewModel,
     onBack: () -> Unit,
 ) {
+    // 进程重建恢复到本页时兜底首拉（正常进入由预加载负责）
+    LaunchedEffect(Unit) { inviteViewModel.ensureLoaded() }
     InviteScreen(
         onBack = onBack,
         viewModel = inviteViewModel,
@@ -284,6 +288,8 @@ internal fun NoticePageContent(
     noticeViewModel: NoticeViewModel,
     onBack: () -> Unit,
 ) {
+    // 进程重建恢复到本页时兜底首拉（正常进入由预加载负责）
+    LaunchedEffect(Unit) { noticeViewModel.ensureLoaded() }
     NoticeScreen(
         onBack = onBack,
         viewModel = noticeViewModel,
@@ -309,6 +315,8 @@ internal fun PlansPageContent(
     onBack: () -> Unit,
     onGoToOrders: () -> Unit,
 ) {
+    // 进程重建恢复到本页时兜底首拉（正常进入由预加载负责）
+    LaunchedEffect(Unit) { plansViewModel.ensureLoaded() }
     PlansScreen(
         onBack = onBack,
         viewModel = plansViewModel,

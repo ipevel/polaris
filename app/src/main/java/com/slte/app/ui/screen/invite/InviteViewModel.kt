@@ -59,9 +59,19 @@ constructor(
 
     private var generateJob: Job? = null
 
+    private var loadedOnce = false
+
     fun enterAndRefresh() {
+        loadedOnce = true
         _data.update { it.copy(isEntering = true) }
         refresh()
+    }
+
+    /** 进程重建恢复到本页时的兜底首拉：正常进入由 [enterAndRefresh] 负责，这里只在从未加载过时补一次。 */
+    fun ensureLoaded() {
+        if (loadedOnce) return
+        loadedOnce = true
+        enterAndRefresh()
     }
 
     fun refresh() {
