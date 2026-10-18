@@ -20,6 +20,7 @@ import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.service.remote.IFetchObserver
 import com.github.kr328.clash.service.store.ServiceStore
 import com.github.kr328.clash.service.util.importedDir
+import com.github.kr328.clash.service.util.AtomicFs
 import com.github.kr328.clash.service.util.pendingDir
 import com.github.kr328.clash.service.util.processingDir
 import com.github.kr328.clash.service.util.sendProfileChanged
@@ -65,8 +66,16 @@ object ProfileProcessor {
 
                 profileLock.withLock {
                     if (PendingDao().queryByUUID(snapshot.uuid) == snapshot) {
-                        context.importedDir.resolve(snapshot.uuid.toString()).deleteRecursively()
-                        context.processingDir.copyRecursively(context.importedDir.resolve(snapshot.uuid.toString()))
+                        val imported = context.importedDir.resolve(snapshot.uuid.toString())
+                        val staging = context.importedDir.resolve("${snapshot.uuid}.tmp")
+
+                        context.importedDir.mkdirs()
+                        staging.deleteRecursively()
+                        if (!context.processingDir.renameTo(staging)) {
+                            context.processingDir.copyRecursively(staging, overwrite = true)
+                            context.processingDir.deleteRecursively()
+                        }
+                        AtomicFs.replaceDirectory(staging, imported)
 
                         val old = ImportedDao().queryByUUID(snapshot.uuid)
                         val updateInterval = subscriptionInfo?.subUpdateInterval
@@ -125,8 +134,16 @@ object ProfileProcessor {
                 profileLock.withLock {
                     val imported = ImportedDao().queryByUUID(snapshot.uuid)
                     if (imported != null) {
-                        context.importedDir.resolve(snapshot.uuid.toString()).deleteRecursively()
-                        context.processingDir.copyRecursively(context.importedDir.resolve(snapshot.uuid.toString()))
+                        val importedDir = context.importedDir.resolve(snapshot.uuid.toString())
+                        val staging = context.importedDir.resolve("${snapshot.uuid}.tmp")
+
+                        context.importedDir.mkdirs()
+                        staging.deleteRecursively()
+                        if (!context.processingDir.renameTo(staging)) {
+                            context.processingDir.copyRecursively(staging, overwrite = true)
+                            context.processingDir.deleteRecursively()
+                        }
+                        AtomicFs.replaceDirectory(staging, importedDir)
 
                         val upload = subscriptionInfo?.subUpload
                         if (upload != null) {
