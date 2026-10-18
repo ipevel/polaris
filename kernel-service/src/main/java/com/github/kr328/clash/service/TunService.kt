@@ -41,12 +41,17 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
     /** 运行时循环：Restart 用于切换 TUN 堆栈模式时原地重建 */
     private enum class RuntimeAction { Continue, Quit, Restart }
 
-    private val runtime = clashRuntime {
+    private val runtime = clashRuntime(
+        onCriticalFailure = {
+            reason = it
+            KernelState.failed(it)
+        },
+    ) {
         val store = ServiceStore(self)
 
         val close = install(CloseModule(self))
-        val tun = install(TunModule(self))
-        val config = install(ConfigurationModule(self) { onProfileLoaded() })
+        val tun = install(TunModule(self), critical = true)
+        val config = install(ConfigurationModule(self) { onProfileLoaded() }, critical = true)
         val network = install(NetworkObserveModule(self))
         val restart = install(TunRestartModule(self))
 
