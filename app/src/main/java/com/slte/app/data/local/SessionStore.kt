@@ -48,8 +48,15 @@ constructor(
             putString(KEY_AUTH_DATA, authData)
             putString(KEY_EMAIL, email)
             putString(KEY_SUBSCRIBE_TOKEN, subscribeToken)
+            // 记录缓存归属账号：同账号重新登录保留本地数据，换账号才清（见 AuthRepository）
+            putString(KEY_CACHE_OWNER, normalizeOwner(email))
         }
     }
+
+    /** 本地缓存的归属账号（小写邮箱）；null = 未知，按「需要清理」处理。 */
+    fun cacheOwner(): String? = prefs.getString(KEY_CACHE_OWNER, null)
+
+    private fun normalizeOwner(email: String): String = email.trim().lowercase()
 
     private inline fun <reified T> readCached(
         key: String,
@@ -147,6 +154,7 @@ constructor(
             remove(KEY_SPEED_RESULTS)
             remove(KEY_OFFLINE_NODES)
             remove(KEY_TRAFFIC_LOG)
+            remove(KEY_CACHE_OWNER)
         }
     }
 
@@ -197,6 +205,7 @@ constructor(
         private const val KEY_SPEED_RESULTS = "speed_results"
         private const val KEY_OFFLINE_NODES = "offline_nodes"
         private const val KEY_TRAFFIC_LOG = "traffic_log"
+        private const val KEY_CACHE_OWNER = "cache_owner"
         private const val KEY_CONNECTED_SINCE = "connected_since_elapsed"
     }
 }

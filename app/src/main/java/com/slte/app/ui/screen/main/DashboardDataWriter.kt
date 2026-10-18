@@ -32,12 +32,14 @@ constructor(
         }
     }
 
+    /** [force] = true 时绕过 TTL 直接拉取新节点；成功后原地覆盖，旧列表在刷新期间保持可见。 */
     fun loadServers(
         scope: CoroutineScope,
         data: MutableStateFlow<DashboardData>,
+        force: Boolean = false,
     ) {
         scope.launch {
-            serverRepository.fetchServers().fold(
+            serverRepository.fetchServers(force = force).fold(
                 onSuccess = { servers ->
                     if (servers.isNotEmpty()) {
                         data.update { it.copy(serverName = servers.first().name) }

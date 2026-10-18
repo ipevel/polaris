@@ -65,8 +65,8 @@ constructor(
                     val kernelOk = kernelResult != ProfileUpdateResult.FAILED
                     if (kernelOk) {
                         refreshSiteInfoFromPanel()
-                        serverRepository.invalidateCache()
-                        dataWriter.loadServers(scope, data)
+                        // 不清缓存，强制拉新节点原地覆盖：刷新期间旧列表保持可见
+                        dataWriter.loadServers(scope, data, force = true)
 
                         scope.launch { autoSpeedTestAfterUpdate(configChanged = profileReloaded(kernelResult)) }
                     }
@@ -112,8 +112,7 @@ constructor(
                     val result = kernelConfig.updateProfile()
                     if (result != ProfileUpdateResult.FAILED) {
                         refreshSiteInfoFromPanel()
-                        serverRepository.invalidateCache()
-                        dataWriter.loadServers(scope, data)
+                        dataWriter.loadServers(scope, data, force = true)
                         scope.launch { autoSpeedTestAfterUpdate(configChanged = profileReloaded(result)) }
                         dataWriter.applySubscribeInfo(data, info, errorMessageRes = null)
                     }
@@ -164,7 +163,6 @@ constructor(
             }
             val hasPlan = info?.hasPlan == true
             val kernelResult = if (hasPlan) kernelConfig.updateProfile() else ProfileUpdateResult.FAILED
-            serverRepository.invalidateCache()
             var servers = serverRepository.fetchServers(force = true).getOrNull().orEmpty()
             if (servers.isEmpty() && hasPlan) {
                 delay(3000)

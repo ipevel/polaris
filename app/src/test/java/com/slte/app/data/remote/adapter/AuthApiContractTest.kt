@@ -45,6 +45,8 @@ interface BackendContract {
 
     fun stubSubscribeInfo()
 
+    fun stubSubscribeInfoEmptyData()
+
     fun stubOrderDetail()
 }
 
@@ -102,6 +104,10 @@ private class XboardContract : BackendContract {
             )
     }
 
+    override fun stubSubscribeInfoEmptyData() {
+        coEvery { user.fetchSubscribe() } returns XboardResponse(data = null)
+    }
+
     override fun stubOrderDetail() {
         coEvery { user.getOrderDetail(any()) } returns
             XboardResponse(data = XboardOrderData(id = 1, tradeNo = TRADE_NO, totalAmount = TOTAL_AMOUNT, status = 3))
@@ -153,6 +159,10 @@ private class XiaoV2bContract : BackendContract {
                     subscribeUrl = SUBSCRIBE_URL,
                 ),
             )
+    }
+
+    override fun stubSubscribeInfoEmptyData() {
+        coEvery { user.fetchSubscribe() } returns XiaoV2bResponse(data = null)
     }
 
     override fun stubOrderDetail() {
@@ -215,6 +225,15 @@ class AuthApiContractTest(private val backend: BackendContract) {
         assertEquals(EXPIRED_AT, info.expiredAt)
         assertEquals(TRANSFER, info.transferEnable)
         assertEquals(SUBSCRIBE_URL, info.subscribeUrl)
+    }
+
+    @Test
+    fun `订阅 data 为空时按失败处理而不是空订阅`() {
+        backend.stubSubscribeInfoEmptyData()
+
+        assertThrows(ApiException::class.java) {
+            runBlocking { backend.authApi().fetchSubscribeInfo() }
+        }
     }
 
     @Test
