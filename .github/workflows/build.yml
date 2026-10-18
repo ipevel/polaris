@@ -676,41 +676,15 @@ jobs:
           done
           rm -f /tmp/_fg.png /tmp/_fg_mask.png /tmp/_fg_cut.png
 
-      - name: 安装 Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.22'
-
-      # ckbox 式：PR 阶段已跳过内核 Go 门禁与质量门禁，这里在发版前统一兜住。
-      - name: Go 内核门禁（vet + build + test）
-        working-directory: kernel-core/src/main/golang
-        env:
-          GOOS: linux
-          GOARCH: arm64
-          CGO_ENABLED: '0'
-        run: |
-          set -e
-          go vet -tags "android cmfa with_gvisor" ./native/...
-          go build -tags "android cmfa with_gvisor" ./native/...
-          go test -count=1 ./native/config/routing/...
-
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           cache-read-only: false
 
-      # ckbox 式：PR 阶段已跳过质量门禁（test + ktlint + lint），这里在发版前统一兜住，
-      # 保证 release-precheck 要求的「过审 main commit 已验证」这件事仍然成立。
-      - name: 质量门禁（test + ktlint + lint）
-        run: |
-          set -e
-          chmod +x gradlew
-          export POLARIS_VERSION_NAME="$POLARIS_RELEASE_VERSION"
-          export POLARIS_VERSION_CODE="$POLARIS_RELEASE_CODE"
-          export POLARIS_USE_MIRROR='false'
-          ./gradlew :app:testDebugUnitTest :app:ktlintCheck :app:lintDebug
-
-      # 单测 / ktlint / Android Lint 已在上一步跑过；这里只负责产出可发布的二进制。
+      # ckbox 式：发版流程只负责产出可发布的二进制，不在 CI 里跑单测 / ktlint / lint /
+      # Go 门禁。验证由本地与 PR 阶段承担（PR 阶段已按 ci.yml 跳过重活门禁，见 #74）。
+      # 曾经在这里加过 Go 门禁 + 质量门禁兜底，但 go test 在 GOARCH=arm64 下编出的
+      # 测试二进制无法在 x86 runner 上执行（exec format error），已整步移除。
       - name: 编译（:app:assemble${{ inputs.buildType }}）
         env:
           POLARIS_APP_NAME: ${{ inputs.appName }}
