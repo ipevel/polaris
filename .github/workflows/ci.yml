@@ -142,6 +142,14 @@ jobs:
           else
             WIN=true; WINALL=false
           fi
+          # ── ckbox 式：PR 不跑重活（质量门禁 test+ktlint+lint+R8 / 内核 Go 门禁 vet+build+test）──
+          # 这两条是最重的（质量门禁约 10 分钟），发版时由 build.yml 的 build job 统一兜住，
+          # 所以 PR 阶段跳过它们，只留永远跑的「版本门禁自测」。
+          # 例外：改了 .github/**（CI 自身）的 PR 仍跑重活，避免 CI 改动未经验证就合入。
+          if [ "$EVENT_NAME" = "pull_request" ] && ! printf '%s\n' "$FILES" | grep -q '^\.github/'; then
+            ALL=false; ANDROID=false; GO=false
+            echo "::notice::PR 不跑重活门禁（质量门禁/内核 Go 门禁），只跑版本门禁自测；重活由发版 build 兜底"
+          fi
           finish
 
       - name: needs 与重活 对账（漏一个重活就红）
