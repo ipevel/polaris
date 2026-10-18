@@ -22,7 +22,15 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.selects.select
 import java.util.*
 
-class ConfigurationModule(service: Service) : Module<ConfigurationModule.LoadException>(service) {
+class ConfigurationModule(
+    service: Service,
+    /**
+     * 配置**真正加载成功**后的回调。用于把 [com.github.kr328.clash.service.KernelState]
+     * 推进到「配置已就绪」——只有 TUN 与配置都就绪才允许广播 CLASH_STARTED，
+     * 避免界面显示已连接但内核其实还没起好。
+     */
+    private val onLoaded: () -> Unit = {},
+) : Module<ConfigurationModule.LoadException>(service) {
     data class LoadException(val message: String)
 
     private val store = ServiceStore(service)
@@ -105,6 +113,8 @@ class ConfigurationModule(service: Service) : Module<ConfigurationModule.LoadExc
                 StatusProvider.currentProfile = active.name
 
                 service.sendProfileLoaded(current)
+
+                onLoaded()
 
                 Log.d("ConfigurationModule: reload done")
                 Log.d("Profile ${active.name} loaded")
