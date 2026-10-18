@@ -104,10 +104,13 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("Create clash runtime: ${e.message}", e)
 
-            reason = e.message
+            // 关键模块失败已经由 onCriticalFailure 写了 reason，这里只兜底，不覆盖
+            reason = reason ?: e.message
         } finally {
             withContext(NonCancellable) {
                 tun.close()
