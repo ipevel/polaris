@@ -16,6 +16,7 @@ import com.github.kr328.clash.service.StatusProvider
 import com.github.kr328.clash.service.data.ImportedDao
 import com.github.kr328.clash.service.data.SelectionDao
 import com.github.kr328.clash.service.store.ServiceStore
+import com.github.kr328.clash.service.util.AtomicFs
 import com.github.kr328.clash.service.util.importedDir
 import com.github.kr328.clash.service.util.sendProfileLoaded
 import kotlinx.coroutines.channels.Channel
@@ -55,6 +56,8 @@ class ConfigurationModule(
     }
 
     override suspend fun run() {
+        // 恢复被中断的目录替换残留（原子替换中途崩溃留下的 .old/.tmp）
+        AtomicFs.recover(service.importedDir)
         val broadcasts = receiveBroadcast {
             addAction(Intents.ACTION_PROFILE_CHANGED)
             addAction(Intents.ACTION_OVERRIDE_CHANGED)
