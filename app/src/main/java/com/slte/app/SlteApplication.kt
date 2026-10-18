@@ -42,8 +42,9 @@ class SlteApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Thread { extractGeoFiles() }.start()
+        // Geo 仅主进程安装，避免 :background 进程重复解包与刷新。
         if (getProcessName() == packageName) {
+            Thread { extractGeoFiles() }.start()
             remoteConfig.startFetch()
             remoteConfig.startProbeLoop()
             kernelManager.bind()
