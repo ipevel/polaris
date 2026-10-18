@@ -133,4 +133,22 @@ class SessionStoreTest {
         assertTrue("会话凭证必须保留", store.hasSession())
         assertNull(store.getSubscribeInfo())
     }
+
+    @Test
+    fun `保存会话时记录缓存归属账号`() {
+        store.save(authData = "jwt", email = " User@Example.com ", subscribeToken = "sub")
+
+        assertEquals("归属账号归一化为小写去空格", "user@example.com", store.cacheOwner())
+    }
+
+    @Test
+    fun `清数据缓存保留归属账号 登出全清才移除`() {
+        store.save(authData = "jwt", email = "a@b.c", subscribeToken = "sub")
+
+        store.clearDataCache()
+        assertEquals("换账号判断依赖 owner，清数据缓存不能带走它", "a@b.c", store.cacheOwner())
+
+        store.clear()
+        assertNull(store.cacheOwner())
+    }
 }

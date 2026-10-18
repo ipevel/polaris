@@ -165,7 +165,8 @@ class SubscriptionUpdaterTest {
         assertTrue(value.hasPlan)
         assertFalse("更新完成后不应仍标记更新中", value.isUpdating)
         assertTrue(value.dataLoaded)
-        coVerify { serverRepository.invalidateCache() }
+        // 新行为：不再先清缓存再拉，改为 force 原地覆盖——此处断言「不再同步清缓存」
+        coVerify(exactly = 0) { serverRepository.invalidateCache() }
     }
 
     @Test
@@ -250,7 +251,8 @@ class SubscriptionUpdaterTest {
         assertEquals("进阶套餐", state.value.planName)
         assertTrue(state.value.hasPlan)
         assertEquals(49, state.value.daysUntilExpired)
-        coVerify { serverRepository.invalidateCache() }
+        // 新行为：不再先清缓存再拉，改为 force 原地覆盖——此处断言「不再同步清缓存」
+        coVerify(exactly = 0) { serverRepository.invalidateCache() }
     }
 
     @Test
@@ -377,7 +379,7 @@ class SubscriptionUpdaterTest {
         // 订阅内容一致：内核返回 UNCHANGED 并跳过重载，profileLoaded 永远不会推进，
         // 旧写法会在这里白等满 10s（运行日志 08:24:41.371→52.025 正是如此）
         coEvery { kernelConfig.updateProfile() } returns ProfileUpdateResult.UNCHANGED
-        coEvery { serverRepository.fetchServers() } returns Result.success(emptyList())
+        coEvery { serverRepository.fetchServers(force = true) } returns Result.success(emptyList())
         kernelProxy.stubKernelBridge(ready = false)
 
         updater().maybeSilentUpdate(state, this)
@@ -398,7 +400,7 @@ class SubscriptionUpdaterTest {
         every { kernelManager.connected } returns MutableStateFlow(true)
         // profileLoaded 停在 0：内核迟迟未广播重载完成
         every { kernelManager.profileLoaded } returns MutableStateFlow(0)
-        coEvery { serverRepository.fetchServers() } returns Result.success(emptyList())
+        coEvery { serverRepository.fetchServers(force = true) } returns Result.success(emptyList())
         kernelProxy.stubKernelBridge(ready = false)
 
         updater().maybeSilentUpdate(state, this)

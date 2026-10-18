@@ -53,14 +53,25 @@ constructor(
 
     private val revokeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * 换账号才清缓存：同账号重新登录（token 刷新）保留本地数据，避免「无套餐/空节点」闪动。
+     * 必须在 setLoggedIn 之前调用——setLoggedIn 会把 owner 写成新账号。
+     */
+    private fun invalidateCacheIfAccountChanged(email: String) {
+        val owner = sessionStore.cacheOwner()
+        if (owner == null || owner != email.trim().lowercase()) {
+            subscribeRepository.invalidateCache()
+        }
+    }
+
     suspend fun login(
         email: String,
         password: String,
     ): Result<User> = runApi {
         val response = authApi.login(email.trim(), password)
         val user = response.toDomainUser(email.trim())
+        invalidateCacheIfAccountChanged(email)
         sessionManager.setLoggedIn(user)
-        subscribeRepository.invalidateCache()
         // 登录后站点信息可能变更（新面板地址），清缓存以便下次取最新
         cachedSiteInfo = null
         user
@@ -74,8 +85,8 @@ constructor(
     ): Result<User> = runApi {
         val response = authApi.register(email.trim(), password, emailCode, inviteCode)
         val user = response.toDomainUser(email.trim())
+        invalidateCacheIfAccountChanged(email)
         sessionManager.setLoggedIn(user)
-        subscribeRepository.invalidateCache()
         user
     }
 
@@ -157,8 +168,8 @@ constructor(
                     throw e
                 }
             val user = response.toDomainUser(email.trim())
+            invalidateCacheIfAccountChanged(email)
             sessionManager.setLoggedIn(user)
-            subscribeRepository.invalidateCache()
             if (credentialStore.getSavedEmail() != null) {
                 credentialStore.save(email.trim(), newPassword)
             }
