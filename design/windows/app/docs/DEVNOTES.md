@@ -4239,3 +4239,17 @@ version-compare）全绿。`custom-ruleset-reserved-test` 与 updater 系列在�
 
 **图标纪律**：渲染层 CSP 严格（`script-src 'self'`），禁止行内事件；图标一律内联 SVG（字形符号如 ◈▤▦
 依赖字体，缺字会变空白方块，已全部替换）。
+
+### 附：UI 重写踩到的两个布局陷阱（2026-10-23，PR #77）
+
+1. **两列 grid 里隐藏侧栏会把内容挤进第一列**
+   `.app-frame` 是 `grid-template-columns: 205px minmax(0,1fr)`。登录态 `sidebar.style.display = "none"` 之后，
+   `main` 变成 grid 的第一个子元素，被自动放进第 1 列 —— 登录页宽度变成 205px，登录卡实测约 150px，
+   标题与链接全部折行。修法：登录态给 `#content` 设 `grid-column: 1 / -1`，非登录态重置。
+   **任何"隐藏某列"的做法都要同时处理自动放置，否则内容会掉进那一列。**
+2. **`display:grid; place-items:center` 不能用来居中一个 `width:100%` 的块**
+   居中的项宽高按 `max-content` 参与轨道计算，`width:100%` 在轨道尺寸未定时退化为 `auto`，
+   于是"居中"变成"缩到内容宽度"。登录页 `.login-wrap` 因此由 grid 改成 `flex` + `align/justify-items:center`。
+
+窄窗口（Murge 基准最小 848×640）另有一条：仪表盘两列时右列速率卡只剩约 190px 内宽，
+40px 的 `41.7 MB/s` 会在数字与单位之间折行，故 `<1280px` 断点改单列。
