@@ -178,45 +178,203 @@
   const Views = {};
   Views.checkFailText = checkFailText;   // app.js 弹 toast 用同一份文案
 
-  /* ---------------- 首页 ---------------- */
+  /* ---------------- 活动（首页） ---------------- */
+  /** 本机采样点（取最近 24 个），首页的迷你曲线与柱状图都用它 */
+  function recentPoints(s) {
+    const pts = ((s.trafficSeries || {}).points) || [];
+    return pts.slice(-24);
+  }
+
+  /** 迷你折线：把数值序列映射成 SVG path（y 轴自适应，底部留 3px） */
+  function sparkPath(values, w, h) {
+    if (!values.length) return "";
+    const max = Math.max.apply(null, values.concat([1])) || 1;
+    const step = values.length > 1 ? w / (values.length - 1) : w;
+    return values
+      .map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)} ${(h - ((Number(v) || 0) / max) * (h - 8) - 3).toFixed(1)}`)
+      .join(" ");
+  }
+
+  function sparkSvg(values, cls) {
+    const W = 300; const H = 60;
+    const line = sparkPath(values, W, H);
+    const area = line ? `${line} L${W} ${H} L0 ${H} Z` : "";
+    return `<svg class="sparkline" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">`
+      + (area ? `<path class="${cls}-area" d="${area}"></path>` : "")
+      + (line ? `<path class="${cls}" d="${line}"></path>` : "")
+      + "</svg>";
+  }
+
+  /** 首页顶部的运行态胶囊（系统代理 / TUN）：状态来自主进程回读的设置 */
+  function pills(s) {
+    const st = s.settings || {};
+    return `<div class="status-pills">
+      <div class="status-pill"><i class="${st.sys_proxy ? "on" : ""}"></i>系统代理</div>
+      <div class="status-pill"><i class="${st.tun_mode ? "on" : ""}"></i>TUN</div>
+    </div>`;
+  }
+
   Views.home = (s) => {
-    // 没有节点时不能点连接：点了只会弹「还没有节点数据，请先在「节点」页点「刷新订阅」」
-    // （用户日志里连着出现好几次）。直接把按钮禁掉并把原因写在状态行上，比让用户去撞错误更好。
+    const st = s.settings || {};
     const noNodes = !(s.nodes && s.nodes.length);
     const stText = s.busy ? "连接中…" : noNodes ? "还没有节点" : s.connected ? "已连接" : "未连接";
-    const stHint = !s.busy && noNodes
-      ? '<div class="node-line">先在「节点」页点「刷新订阅」拉取节点</div>'
-      : s.connected ? '<div class="node-line">' + h(s.node || "未选择节点") + (s.latency ? " · " + s.latency + "ms" : "") + "</div>" : "";
+    const nodeText = s.connected
+      ? (s.node || "未选择节点")
+      : (noNodes ? "先在「策略」页刷新订阅" : "点右侧按钮开始连接");
+    const latency = s.connected && s.latency ? s.latency + " ms" : "—";
+    const pts = recentPoints(s);
+    const downs = pts.map((p) => Number(p.down) || 0);
+    const ups = pts.map((p) => Number(p.up) || 0);
+    const plan = planReady(s);
+    const pct = plan ? fmt.percent(s.plan.used, s.plan.total) : 0;
+    const panelHost = String(st.panel_url || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const peak = Math.max.apply(null, downs.concat(ups).concat([0])) || 1;
+    const bars = pts.length
+      ? pts.map((p) => {
+        const v = (Number(p.down) || 0) + (Number(p.up) || 0);
+        const hgt = v > 0 ? Math.max(4, Math.round((v / peak) * 100)) : 3;
+        return `<i class="${v > 0 ? "" : "zero"}" style="height:${hgt}%" title="${h(p.label || "")}"></i>`;
+      }).join("")
+      : "";
     return `
-  <div class="col-narrow">
-    <div class="hero">
-      <button class="power-btn${s.busy ? " busy" : ""}" id="power" title="${noNodes ? "还没有节点，请先刷新订阅" : s.connected ? "断开" : "连接"}"${s.busy || noNodes ? " disabled" : ""}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>
-      </button>
-      <div class="status-line">${s.connected ? '<span class="dot"></span>' : ""}<span class="t">${stText}</span></div>
-      ${stHint}
+  <div class="page-head">
+    <div>
+      <div class="page-title">活动</div>
+      <div class="page-sub">${s.connected ? "已连接到 " + h(s.node || "节点") : "当前未连接，代理未生效"}</div>
     </div>
-    <div class="speed-row">
-      <div class="speed-tile up"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2.4" stroke-linecap="round"><path d="M12 4v14"/><path d="M6 12l6 6 6-6"/></svg></span><span><div class="lb">下载</div><div class="vl" id="down-speed">${fmt.speed(s.down_speed)}</div></span></div>
-      <div class="speed-tile dn"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e07b00" stroke-width="2.4" stroke-linecap="round"><path d="M12 20V6"/><path d="M6 12l6-6 6 6"/></svg></span><span><div class="lb">上传</div><div class="vl" id="up-speed">${fmt.speed(s.up_speed)}</div></span></div>
-    </div>
-    <div class="section-label">会话</div>
-    <div class="card">
-      ${row("代理模式", h(s.mode), { click: "proxy-mode" })}
-      ${row("本次上传", h(s.up_total), { chev: false, vcls: "strong", id: "live-up-total" })}
-      ${row("本次下载", h(s.down_total), { chev: false, vcls: "strong", id: "live-down-total" })}
-      ${row("运行时间", h(s.uptime), { chev: false, vcls: "strong", id: "live-uptime" })}
-    </div>
-    <div class="section-label">当前套餐</div>
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:14px">已使用 <b>${h(planReady(s) ? planUsed(s) : "—")}</b> / ${h(planReady(s) ? planTotal(s) : "—")}</div>
-        <button class="btn btn-primary btn-sm" data-nav="plans">续费</button>
+    ${pills(s)}
+  </div>
+  <div class="runtime-context">
+    <div class="runtime-cell"><span>面板</span><strong>${h(panelHost || "未配置")}</strong></div>
+    <div class="runtime-cell"><span>订阅更新</span><strong>${h(fmt.relativeTime(st.subscription_updated_at))}</strong></div>
+    <div class="runtime-cell"><span>出站模式</span><strong>${h(s.mode || "规则模式")}</strong></div>
+    <div class="runtime-cell"><span>本次会话</span><strong id="live-uptime">${h(s.uptime)}</strong></div>
+  </div>
+  <div class="dash-grid">
+    <div class="dash-col">
+      <div class="card metric-card">
+        <div class="metric-head">
+          <div>
+            <div class="metric-label">连接状态</div>
+            <div class="metric-big" style="font-size:24px;line-height:30px">${stText}</div>
+            <div class="metric-sub">${h(nodeText)}</div>
+          </div>
+          <button class="power-btn${s.connected ? " on" : ""}${s.busy ? " busy" : ""}" id="power" title="${noNodes ? "还没有节点，请先在「策略」页刷新订阅" : s.connected ? "断开" : "连接"}"${s.busy || noNodes ? " disabled" : ""}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>
+          </button>
+        </div>
+        <div class="split-stats">
+          <div><span>延迟</span><strong id="live-latency">${h(latency)}</strong></div>
+          <div><span>本次上传</span><strong id="live-up-total">${h(s.up_total)}</strong></div>
+          <div><span>本次下载</span><strong id="live-down-total">${h(s.down_total)}</strong></div>
+        </div>
       </div>
-      <div class="progress"><div style="width:${planReady(s) ? fmt.percent(s.plan.used, s.plan.total) : 0}%"></div></div>
-      <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(planReady(s) ? (s.plan.expire || "—") : "读取中…")}</div>
-      ${!s.plan.name && s.panelError ? `<div style="font-size:13px;color:var(--orange);margin-top:6px">${h(s.panelError)}</div>` : ""}
+      <div class="card metric-card">
+        <div class="metric-head">
+          <div>
+            <div class="metric-label">当前套餐</div>
+            <div class="metric-big" style="font-size:20px;line-height:26px">${h(plan ? s.plan.name : (st.authed ? "读取中…" : "未登录"))}</div>
+          </div>
+          <button class="btn btn-sm btn-primary" data-nav="plans">续费</button>
+        </div>
+        <div class="plan-line"><b>${h(plan ? planUsed(s) : "—")}</b><span>/ ${h(plan ? planTotal(s) : "—")}</span></div>
+        <div class="progress" style="margin-top:8px"><div style="width:${pct}%"></div></div>
+        <div class="metric-sub">到期时间 ${h(plan ? (s.plan.expire || "—") : "—")}</div>
+      </div>
+      <div class="card metric-card">
+        <div class="metric-label">快捷入口</div>
+        <div class="row" data-click="nav-nodes" style="padding-left:0;padding-right:0">
+          <div class="k"><span>策略组与节点</span></div>
+          <div class="v"><span>${(s.groups || []).length} 个分组</span><span class="chev">›</span></div>
+        </div>
+        <div class="row" data-click="nav-traffic" style="padding-left:0;padding-right:0">
+          <div class="k"><span>流量明细</span></div><div class="v"><span class="chev">›</span></div>
+        </div>
+        <div class="row" data-click="nav-routing" style="padding-left:0;padding-right:0">
+          <div class="k"><span>分流规则</span></div>
+          <div class="v"><span>${(s.rulesets && s.rulesets.total) || 0} 组内置</span><span class="chev">›</span></div>
+        </div>
+      </div>
     </div>
+    <div class="dash-col">
+      <div class="dash-row">
+        <div class="card speed-card">
+          <div class="metric-label">下载</div>
+          <div class="speed-value" id="down-speed">${h(fmt.speed(s.down_speed))}</div>
+          <span class="speed-unit">实时</span>
+          ${sparkSvg(downs, "spark-down")}
+        </div>
+        <div class="card speed-card">
+          <div class="metric-label">上传</div>
+          <div class="speed-value" id="up-speed">${h(fmt.speed(s.up_speed))}</div>
+          <span class="speed-unit">实时</span>
+          ${sparkSvg(ups, "spark-up")}
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-head">
+          <div class="metric-label">流量趋势（近 ${pts.length || 24} 个采样点 · 下载 + 上传）</div>
+        </div>
+        <div class="bar-chart">${bars || '<i class="zero" style="height:3%"></i>'}</div>
+        <div class="chart-axis"><span>较早</span><span>${h((pts.length ? (pts[pts.length - 1].label || "") : "") || "现在")}</span></div>
+      </div>
+    </div>
+  </div>`;
+  };
+
+  /* ---------------- 概览 ---------------- */
+  /**
+   * 一张开关卡片：标题 + 说明 + 尾部开关 + 底部状态。
+   * 视觉开关不是"操作系统设置已成功"的证明 —— 状态文案只描述主进程回读到的设置值。
+   */
+  function settingCard(title, desc, key, on, statusText, clickAction, value) {
+    // value 非空 = 这一项是"取值的"，不是布尔开关（例如出站模式），
+    // 不给假开关 —— 开关必须对应一个真的布尔设置。
+    const ctl = value
+      ? `<span class="setting-value${clickAction ? "" : ""}"${clickAction ? ` data-click="${clickAction}"` : ""}>${h(value)}<span class="chev">›</span></span>`
+      : (key
+        ? `<div class="switch${on ? " on" : ""}" data-setting="${key}"></div>`
+        : `<div class="switch${on ? " on" : ""}"${clickAction ? ` data-click="${clickAction}"` : ""}></div>`);
+    const chev = (clickAction && !value)
+      ? `<span class="chev" data-click="${clickAction}" style="margin-left:auto">›</span>`
+      : "";
+    return `<div class="card setting-card">
+      <div class="setting-head"><div><h3>${h(title)}</h3><p>${h(desc)}</p></div>${ctl}</div>
+      <div class="setting-status"><i class="${on ? "active" : ""}"></i><span>${h(statusText)}</span>${chev}</div>
+    </div>`;
+  }
+
+  Views.overview = (s) => {
+    const st = s.settings || {};
+    const sysOn = !!st.sys_proxy;
+    const tunOn = !!st.tun_mode;
+    const localOn = (s.rulesets || {}).on !== false;
+    const port = st.running_port || st.mixed_port;
+    return `
+  <div class="page-head">
+    <div><div class="page-title">概览</div>
+    <div class="page-sub">接管方式与常用开关；状态取主进程回读值，不是开关的视觉状态</div></div>
+  </div>
+  <div class="section-label">网络接管</div>
+  <div class="overview-grid">
+    ${settingCard("系统代理", "把系统 HTTP 代理指向本机 mixed-port，应用与浏览器自动走代理。", "sys_proxy", sysOn,
+      sysOn ? "已启用 · 127.0.0.1:" + (port || "—") : "未启用", "set-port")}
+    ${settingCard("TUN 模式", "虚拟网卡接管全部流量，不依赖应用是否支持代理；需要管理员权限。", "tun_mode", tunOn,
+      tunOn ? "已启用" : "未启用（需管理员）")}
+  </div>
+  <div class="section-label">代理策略</div>
+  <div class="overview-grid">
+    ${settingCard("出站模式", "规则模式按分流规则判定；全局模式全部走代理；直连模式全部不走代理。", null, true,
+      "点击切换", "proxy-mode", s.mode || "规则模式")}
+    ${settingCard("使用本地分流方案", "屏蔽面板下发的分流规则，只用下面内置的 12 组本地方案。", null, localOn,
+      localOn ? "本地方案生效中" : "面板方案生效中", "local-routing")}
+  </div>
+  <div class="section-label">运行环境</div>
+  <div class="card">
+    ${row("本机代理端口", port ? `127.0.0.1:${h(port)}` : "自动（未运行）", { click: "set-port", icon: ["⇲", "#5ac8fa"] })}
+    ${row("管理员权限", (s.appInfo && s.appInfo.is_admin) ? "已获得" : "未获得（TUN 需要）", { chev: false, vcls: (s.appInfo && s.appInfo.is_admin) ? "strong" : "" })}
+    ${row("运行模式", (s.appInfo && s.appInfo.portable) ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
+    ${row("数据目录", h((s.appInfo && s.appInfo.data_dir) || ""), { chev: false })}
   </div>`;
   };
 
@@ -300,7 +458,7 @@
               : empty("还没有节点数据", s.subError || "点右上角「刷新订阅」拉取节点"))}
         </div>`;
 
-    return head("节点", `${s.nodes.length} 个节点${groups.length ? " · " + groups.length + " 个分组" : ""}`,
+    return head("策略", `${s.nodes.length} 个节点${groups.length ? " · " + groups.length + " 个分组" : ""}`,
       `<span class="search-wrap"><input class="search" id="node-search" placeholder="搜索节点" value="${h(s.nodeFilter)}"></span>` +
       `<button class="btn btn-outline btn-sm" style="height:40px" data-click="nav-routing">分流规则</button>` +
       `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-speedtest"${s.testing ? " disabled" : ""}>${s.testing ? "测试中…" : "延迟测试"}</button>` +
@@ -421,13 +579,14 @@
       ${notice}
       <div class="section-label">${mo + 1} 月 1 日起 · 共 ${n} 天${srcLabel ? ` · ${h(srcLabel)}` : ""}</div>
       ${useSite ? `<div class="section-label" style="margin-top:-8px;color:var(--text3)">面板区间 ${h(siteFrom)} ~ ${h(siteTo)}${siteFrom !== key0(1) ? ` · ${h(key0(1))} 起无明细` : ""}</div>` : ""}
-      <div class="card" style="margin-bottom:14px">
-        <div class="speed-row" style="margin:0 0 4px">
-          <div class="speed-tile dn"><span><div class="lb">下载</div><div class="vl">${h(fmt.bytes(totDown))}</div></span></div>
-          <div class="speed-tile up"><span><div class="lb">上传</div><div class="vl">${h(fmt.bytes(totUp))}</div></span></div>
+      <div class="card metric-card" style="margin-bottom:14px">
+        <div class="metric-label">本月合计</div>
+        <div class="metric-big" style="font-size:24px;line-height:30px">${h(fmt.bytes(totAll))}</div>
+        <div class="split-stats">
+          <div><span>下载</span><strong>${h(fmt.bytes(totDown))}</strong></div>
+          <div><span>上传</span><strong>${h(fmt.bytes(totUp))}</strong></div>
+          <div><span>区间</span><strong style="font-size:13px">${key0(1).slice(5)} ~ ${key0(dom).slice(5)}</strong></div>
         </div>
-        ${row("本月合计", h(fmt.bytes(totAll)), { chev: false, vcls: "strong" })}
-        ${row("区间", `${key0(1)} ~ ${key0(dom)}`, { chev: false })}
       </div>
       <div class="section-label">每日用量</div>
       <div class="card" style="margin-bottom:14px">${chart}</div>
@@ -480,7 +639,7 @@
     const onCount = builtin.filter((g) => g.enabled).length;
     const customOn = custom.filter((g) => g.enabled).length;
     const localOn = rs.on !== false;
-    return backHead("分流规则", "与手机端同一套本地方案，自定义规则优先于内置分类",
+    return head("分流规则", "与手机端同一套本地方案，自定义规则优先于内置分类",
       `<button class="btn btn-outline btn-sm" style="height:40px" id="btn-routing-reset">恢复出口</button>`) +
       `<div class="section-label">分流方案</div>` +
       `<div class="card">` +
@@ -586,33 +745,70 @@
   // Telegram 入口只在面板真下发了链接时才出现（安卓端同样取不到就隐藏）。
   // 分流规则在节点页（顶部分流规则按钮）、重新拉取订阅在节点页（刷新订阅），
   // 所以这里不再重复给入口；到期/流量提醒从设置页搬到了这里（提醒是"我的"自己的事）。
-  Views.me = (s) => head("我的") + `<div class="col-narrow">
-    <div class="card" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
-      <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-soft);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--blue);font-weight:700">${h((s.email || "?").slice(0, 1).toUpperCase())}</div>
-      <div style="min-width:0"><div style="font-size:16px;font-weight:700;word-break:break-all">${h(s.email || (s.settings.authed ? "已登录" : "未登录"))}</div>
-      <span class="badge b-blue" style="margin-top:6px;display:inline-block">${h(planReady(s) ? s.plan.name : (s.settings.authed ? "读取中…" : "未订阅"))}</span></div>
-    </div></div>
-    <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:14px;font-weight:700">当前套餐</div><button class="btn btn-primary btn-sm" data-nav="plans">续费</button></div>
-      <div style="font-size:14px;margin-bottom:10px">已使用 <b>${h(planReady(s) ? planUsed(s) : "—")}</b> / ${h(planReady(s) ? planTotal(s) : "—")}</div>
-      <div class="progress"><div style="width:${planReady(s) ? fmt.percent(s.plan.used, s.plan.total) : 0}%"></div></div>
-      <div style="font-size:13px;color:var(--text3);margin-top:10px">到期时间 ${h(planReady(s) ? (s.plan.expire || "—") : "读取中…")}</div>
+  /* ---------------- 我的 ---------------- */
+  // 与安卓端「我的」逐项对齐：订阅套餐 / 礼品卡兑换 / 我的订单 / 邀请返利 / 我的工单 / 公告通知 / Telegram。
+  // 入口以卡片网格呈现（Murge「更多」页的做法），点击目标与旧版 data-click 完全一致。
+  Views.me = (s) => {
+    const st = s.settings || {};
+    const plan = planReady(s);
+    const mail = s.email || (st.authed ? "已登录" : "未登录");
+    const initial = (mail || "?").slice(0, 1).toUpperCase();
+    // 图标用内联 SVG：字形符号（◈▤▦）依赖字体，缺字时会变成空白方块。
+    const menuIcon = (name) => {
+      const p = {
+        plan: "<rect x=\"3\" y=\"4\" width=\"18\" height=\"14\" rx=\"2.5\"/><path d=\"M3 9h18\"/>",
+        gift: "<rect x=\"3\" y=\"8\" width=\"18\" height=\"12\" rx=\"2\"/><path d=\"M3 12h18M12 8v12M8.5 8C7 8 6 7 6 6a2 2 0 0 1 3.6-1.2L12 8M15.5 8C17 8 18 7 18 6a2 2 0 0 0-3.6-1.2L12 8\"/>",
+        order: "<path d=\"M6 3h12a1 1 0 0 1 1 1v17l-7-3-7 3V4a1 1 0 0 1 1-1z\"/><path d=\"M9 8h6M9 12h4\"/>",
+        invite: "<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3.5 20c0-3.2 2.6-5 5.5-5s5.5 1.8 5.5 5\"/><path d=\"M18 8v6M15 11h6\"/>",
+        ticket: "<path d=\"M4 5h16a1 1 0 0 1 1 1v4a2 2 0 0 0 0 4v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a2 2 0 0 0 0-4V6a1 1 0 0 1 1-1z\"/><path d=\"M9 9h6M9 13h4\"/>",
+        notice: "<path d=\"M18 9a6 6 0 1 0-12 0c0 4-2 5-2 5h16s-2-1-2-5\"/><path d=\"M10.5 19a2 2 0 0 0 3 0\"/>",
+        telegram: "<path d=\"M21 4L3 11l6 2 2 6 3-4 5 3 2-14z\"/>",
+      }[name] || "";
+      return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+    };
+    const entry = (label, desc, action, icon) => `<button class="menu-card" data-click="${action}">
+      <i>${menuIcon(icon)}</i>
+      <span><strong>${h(label)}</strong><small>${h(desc)}</small></span>
+      <span class="chev">›</span>
+    </button>`;
+    return `
+  <div class="page-head">
+    <div><div class="page-title">我的</div>
+    <div class="page-sub">账户、套餐与服务入口</div></div>
+  </div>
+  <div class="card account-card" style="margin-bottom:6px">
+    <div class="avatar">${h(initial)}</div>
+    <div style="min-width:0">
+      <div class="account-name">${h(mail)}</div>
+      <div class="account-meta">
+        <span class="badge b-blue">${h(plan ? s.plan.name : (st.authed ? "读取中…" : "未订阅"))}</span>
+        <span>${plan ? "已用 " + h(planUsed(s)) + " / " + h(planTotal(s)) : "尚未获取到套餐信息"}</span>
+      </div>
     </div>
-    <div class="section-label">提醒</div><div class="card" style="margin-bottom:14px">
-      ${rowSwitch("到期提醒", "expire_notify", s.settings.expire_notify, ["⏰", "#ff9f43"])}
-      ${rowSwitch("流量提醒", "traffic_notify", s.settings.traffic_notify, ["📶", "#34c759"])}
-      ${row("订阅链接", "查看", { icon: ["🔗", "#8e8e93"], click: "show-subscribe-url" })}
-    </div>
-    <div class="card">
-      ${row("订阅套餐", "", { icon: ["◈", "#1a73e8"], click: "nav-plans" })}
-      ${row("礼品卡兑换", "", { icon: ["💳", "#af8cf8"], click: "nav-giftcard" })}
-      ${row("我的订单", "", { icon: ["🧾", "#ffb340"], click: "nav-orders" })}
-      ${row("邀请返利", "", { icon: ["🎁", "#34c759"], click: "nav-invite" })}
-      ${row("我的工单", "", { icon: ["🎫", "#7aa5f8"], click: "nav-tickets" })}
-      ${row("公告通知", s.unreadNotices ? badge(s.unreadNotices + " 条未读", "b-red") : "", { icon: ["📢", "#ff9f43"], click: "nav-notices" })}
-      ${s.siteInfo && s.siteInfo.telegramUrl ? row("Telegram", "", { icon: ["✈", "#29b6f6"], click: "open-telegram" }) : ""}
-      <div class="row" style="justify-content:center;cursor:pointer" data-click="logout"><span style="color:var(--red);font-weight:600">退出登录</span></div>
-    </div></div>`;
+    <button class="btn btn-sm btn-primary" data-nav="plans" style="margin-left:auto">续费</button>
+  </div>
+  <div class="section-label">账户服务</div>
+  <div class="settings-menu">
+    ${entry("订阅套餐", "购买或续费套餐", "nav-plans", "plan")}
+    ${entry("礼品卡兑换", "输入卡密兑换流量或时长", "nav-giftcard", "gift")}
+    ${entry("我的订单", "查看订单与支付状态", "nav-orders", "order")}
+    ${entry("邀请返利", "分享链接获取返佣", "nav-invite", "invite")}
+    ${entry("我的工单", "联系客服、查看回复", "nav-tickets", "ticket")}
+    ${entry("公告通知", s.unreadNotices ? s.unreadNotices + " 条未读" : "站点公告与维护通知", "nav-notices", "notice")}
+    ${(s.siteInfo && s.siteInfo.telegramUrl) ? entry("Telegram", "加入用户交流群", "open-telegram", "telegram") : ""}
+  </div>
+  <div class="section-label">提醒与链接</div>
+  <div class="card">
+    ${rowSwitch("到期提醒", "expire_notify", st.expire_notify, [`<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`, "#d8881e"])}
+    ${rowSwitch("流量提醒", "traffic_notify", st.traffic_notify, [`<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 18V8m0 0L5 11m3-3 3 3"/><path d="M16 6v10m0 0 3-3m-3 3-3-3"/></svg>`, "#31c95a"])}
+    ${row("订阅链接", "查看", { icon: ["⛓", "#858b95"], click: "show-subscribe-url" })}
+  </div>
+  <div class="section-label">账号</div>
+  <div class="card">
+    ${row("当前套餐", plan ? `${h(planUsed(s))} / ${h(planTotal(s))}${s.plan.expire ? " · " + h(s.plan.expire) + " 到期" : ""}` : "—", { chev: false })}
+    <div class="row" data-click="logout"><div class="k"><span style="color:var(--danger);font-weight:var(--fw-semibold)">退出登录</span></div><div class="v"><span class="chev">›</span></div></div>
+  </div>`;
+  };
 
   /* ---------------- 登录 / 注册 / 找回 ---------------- */
   function authShell(inner) {

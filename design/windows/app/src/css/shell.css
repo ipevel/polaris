@@ -1,72 +1,41 @@
-/* 真窗口外壳 —— 把 design.css 里"网页里画一个假窗口"的写法改造成真正的应用窗口。
+/* 真窗口外壳 —— 无边框窗口的拖动区、窗口按钮与滚动行为。
  *
- * design.css 是设计系统，也是 16 张静态设计稿的样式源。那些稿子是画在浏览器里的，
- * 所以有 body 居中 + 渐变背景 + .window 写死 1400×880 + 圆角阴影。真窗口不需要这些，
- * 且会让「最大化」彻底失效（内容永远 1400×880 居中）。
- *
- * 这里只做"外壳"层面的覆盖，不碰设计系统本身的字号/间距/配色。 */
+ * 设计系统（design.css）只描述视觉；这里描述「真窗口」才需要的东西：
+ *  · 顶部 42px 是拖动区（与 Murge 一致，窗口控件浮在右上角）；
+ *  · 拖动区里不能放可交互元素，否则点不动 —— 用 -webkit-app-region: no-drag 例外；
+ *  · 内容区自己滚动，body 不滚（避免双滚动条与整窗抖动）。 */
 
-html, body {
-  height: 100%;
-  overflow: hidden;
-}
+html, body { height: 100%; overflow: hidden; }
 
-body {
-  display: block;
-  background: var(--bg);
-}
-
-/* 窗口铺满，去掉"模拟窗口"的边框、圆角、投影 */
-.window {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
+.app-window { position: relative; }
 
 /* ---- 拖动：无边框窗口必须显式声明可拖区域 ---- */
-.titlebar {
-  -webkit-app-region: drag;
-}
-.titlebar .drag {
-  -webkit-app-region: drag;
-  height: 100%;
-}
-/* 拖动区域内不能放可交互元素，否则点不动 */
+.window-drag-region,
+.app-sidebar,
+.page-head { -webkit-app-region: no-drag; }
+
 .win-btns,
 .win-btn,
-.titlebar button,
-.titlebar input,
-.titlebar a {
-  -webkit-app-region: no-drag;
-}
+.nav-link,
+.btn,
+.switch,
+.row,
+.field,
+.search,
+.power-btn { -webkit-app-region: no-drag; }
+
+/* 顶栏（拖动区）覆盖在内容之上，但不能挡住右上角窗口按钮的点击 */
+.window-drag-region { pointer-events: auto; }
 
 /* ---- 内容区滚动 ---- */
-.content {
-  overflow-y: auto;
-  overflow-x: hidden;
-}
+.app-content { overflow-y: auto; overflow-x: hidden; }
 
-/* ---- 弹窗遮罩铺满整窗，不留圆角 ---- */
-.overlay {
-  position: fixed;
-  inset: 0;
-  border-radius: 0;
-}
-
-/* ---- 登录页：同样铺满 ---- */
-.login-wrap {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
+/* ---- 弹窗遮罩铺满整窗 ---- */
+.overlay { border-radius: 0; }
 
 /* ---- 可点击元素给出手型光标（无障碍与可发现性）---- */
+.nav-link,
 .nav-item,
-.win-btn,
 .btn,
 .row[data-click],
 .node-row,
@@ -78,22 +47,26 @@ body {
 [data-click],
 [data-group],
 [data-ticket],
-[data-pay],
-[data-buy],
-.auth-links span,
-.switch {
-  cursor: pointer;
-}
-.win-btn { cursor: pointer; }
-.btn:disabled,
-.btn[disabled] {
-  opacity: .55;
-  cursor: defaults;
-}
+[data-notice],
+[data-mode],
+[data-pick],
+[data-pay-method],
+[data-pick-value],
+[data-tk-level],
+[data-cr-out],
+.auth-links span { cursor: pointer; }
 
-/* ---- 窄窗口保护：侧边栏收窄，避免内容被挤没 ---- */
-@media (max-width: 1120px) {
-  .sidebar { width: 172px; padding: 14px 10px; }
-  .nav-item { padding: 0 12px; gap: 10px; font-size: 14px; }
-  .content { padding: 20px 22px; }
+/* ---- 长文本换行（节点名、订阅地址、工单正文）---- */
+.code-box,
+.md,
+.dialog p { overflow-wrap: anywhere; }
+
+/* ---- 无障碍：可见焦点 ---- */
+.nav-link:focus-visible,
+.btn:focus-visible,
+.acc-head:focus-visible,
+.node-row:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
 }
