@@ -7,7 +7,7 @@
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
 
-  const MAIN_ROUTES = ["home", "nodes", "traffic", "routing", "settings", "me"];
+  const MAIN_ROUTES = ["home", "overview", "nodes", "traffic", "routing", "settings", "me"];
   const AUTH_ROUTES = ["login", "register", "forgot"];
   /** 有实时速率/连接态可刷新的页面（paintLive 只改这两个元素的文本） */
   const LIVE_ROUTES = ["home", "nodes", "traffic", "me"];
@@ -148,26 +148,29 @@
       return;
     }
     sidebar.style.display = "";
-    swap((Views[state.route] || Views.home)(state), () => {
+    const shellClass = "page-shell" + (state.route === "home" ? " is-dashboard" : "");
+    swap(`<div class="${shellClass}">` + (Views[state.route] || Views.home)(state) + "</div>", () => {
       $$(".nav-item").forEach((el) => {
         const r = el.dataset.route;
         const on = r === state.route || (state.route === "routing" && r === "nodes");
         el.classList.toggle("active", on);
       });
       syncUpdateDot();
+      const verEl = $("#side-ver");
+      if (verEl) verEl.textContent = state.settings && state.settings.version ? "Polaris " + state.settings.version : "";
       bindCommon();
       ({
         nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
         orders: bindOrders, tickets: bindTickets, invite: bindInvite,
         giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting,
-        home: bindHome,
+        home: bindHome, overview: bindOverview,
       }[state.route] || (() => {}))();
     });
   }
 
   // 返回栈：二级页面（套餐/订单/工单/邀请/礼品卡/公告/分流规则）的返回键回到
   // 进来的那一页。只记"主页面"，避免 我的→订单→购买套餐→礼品卡 之后要按四次。
-  const PRIMARY_ROUTES = ["home", "nodes", "traffic", "me", "settings"];
+  const PRIMARY_ROUTES = ["home", "overview", "nodes", "traffic", "routing", "me", "settings"];
   let navStack = [];
 
   /**
@@ -1118,6 +1121,11 @@
     bindSettingSwitches();
   }
 
+  /** 概览页：开关与设置页同一套绑定（data-setting），不需要额外逻辑 */
+  function bindOverview() {
+    bindSettingSwitches();
+  }
+
   function bindMe() { bindSettingSwitches(); }
 
   function bindPlans() {
@@ -1314,14 +1322,19 @@
     // 会话三个数字（本次上传/下载、运行时间）原来只有整页 render() 才刷新，
     // 而 render() 只在「连接态或阶段变化」时触发 —— 连上之后它们会一直停在
     // 最后一次重绘的值（收进托盘再恢复也一样）。状态每秒都推，这里逐个补上。
+    // 首页仪表盘里这些数字是卡片里的 <strong>，不再包在 .row .v 里；
+    // 保留 .v span 的兼容分支，免得其它页面复用同一 id 时又被改坏。
     const set = (id, v) => {
       if (v === undefined || v === null) return;
-      const el = document.querySelector("#" + id + " .v span");
+      const host = document.getElementById(id);
+      if (!host) return;
+      const el = host.querySelector(".v span") || host;
       if (el) el.textContent = String(v);
     };
     set("live-up-total", state.up_total);
     set("live-down-total", state.down_total);
     set("live-uptime", state.uptime);
+    set("live-latency", state.connected && state.latency ? state.latency + " ms" : "—");
   }
 
   /* ---------------- 数据装载 ---------------- */
@@ -1442,6 +1455,7 @@
     nodes: ["nodes", "groups"],
     traffic: ["plan", "siteInfo"],
     me: ["plan", "orders", "tickets", "invite", "giftHistory", "notices"],
+    overview: [],
   };
   function ensurePageData(route) {
     if (!state.settings.authed) return;

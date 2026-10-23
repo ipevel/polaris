@@ -4200,3 +4200,42 @@ copy 一份 win-unpacked 到临时目录 → 在副本里删掉 resources\rules\
 随后照旧红；**无论哪条路径都断言「本次 VC == 仓库声明值」**，不等或读不到声明一律红。纯数字校验保留在脚本里。
 自检 `.scripts/resolve_version_code_test.sh`（8 项：传值 / 不传 / 非法 / 空串 / 不等 / 文件不存在 / 无声明行 / 参数错）。
 README 的「推送即出包」下面补了这条口径。
+
+## 渲染层 UI 迁移：对齐 Murge 视觉语言（2026-10-23，分支 feat/win-murge-ui）
+
+用户要求把桌面端 UI 按 [Murge](https://github.com/RoaycL/Murge) 的视觉语言重做，同时保留 polaris
+自身功能。本次只动渲染层（`src/` 下 6 个文件），不碰内核 / 数据钩子 / 版本号行。
+
+**视觉来源**：Murge 的 `docs/UI_SPEC.md` + `src/renderer/src/styles/tokens.css` + 官方截图。
+关键令牌：基准视口 934×672、侧栏 205px；卡片 19px 圆角半透明白（`rgba(255,255,255,.82)`）+ 低阴影；
+背景冷灰→淡紫渐变；导航行 38px / 10px 圆角 / 选中 `rgba(215,220,228,.76)`；标题 28px；区块小标题洋红
+`#c32bbf`；强调紫 `#6652ed`、主操作蓝 `#1587f8`、青 `#19bdd6`、绿 `#31c95a`；开关 37×20 胶囊、打开为紫；
+字阶 10/11/12/13/14/15/16/20/24/28/34，正文 14px。
+
+**页面映射**（polaris 功能 ↔ Murge 布局）：
+- 活动（home）→ 仪表盘：状态胶囊 + runtime 四格 + 连接卡 + 下载/上传 speed-card（带 sparkline）+ 流量趋势柱状 + 套餐卡 + 快捷入口。
+- 概览（overview，新增一级页）→ 网络接管（系统代理 / TUN）+ 代理策略（出站模式取值卡 / 本地分流）+ 运行环境。
+- 策略（原「节点」改名）→ 分组卡片 + 节点行。
+- 流量（traffic）→ metric-card 合计 + 每日柱状 + 明细列表。
+- 分流规则（routing）→ 一级页（去掉返回键）+ 分流方案 / 自定义分组 / 内置分流。
+- 设置（settings）→ 通用 / 连接 / 启动与更新。
+- 我的（me）→ 账户卡 + 服务入口卡片网格 + 提醒与链接 + 账号。
+
+**侧栏分组**：无标题组（活动 / 概览 / 策略 / 流量）、代理（分流规则）、配置（设置）、底部「我的」+ 版本号。
+顶部 42px 拖动区，窗口按钮浮右上（内联 SVG，不依赖字体字形）。
+
+**兼容性**：`design.css` 保留旧内联变量别名（`--text3/--bg/--line/--card/--blue-soft/--green-soft/--orange/
+--orange-soft/--red/--red-soft`），旧页面（登录 / 弹窗 / 托盘菜单）不受影响；新增 `:root[data-theme="dark"]`
+暗色主题。导航项同时保留 `nav-item` 类以兼容 `scripts/ui-test.js`。
+
+**数据钩子全部保留**：`#power`、`#down-speed`、`#up-speed`、`#node-search`、`data-setting`、`data-click`、
+`data-nav`、`data-acc`、`data-ruleset*`、`data-ticket`、`#btn-refresh-sub`、`#btn-speedtest`、`#btn-routing-reset` 等。
+
+**验证**：离线渲染 harness（Playwright + 假宿主数据）逐页截图核对；纯 node 测试脚本
+（dialog-render / traffic-view / routing-view / flag-row / config-defaults / single-source / flag-codes /
+dns-config / rulesync / geosync / routing-sync / panel-client / tray-menu / package-manifest / verify-repack /
+version-compare）全绿。`custom-ruleset-reserved-test` 与 updater 系列在本容器缺 `js-yaml`/electron 依赖，
+属环境阻塞（base 上同样失败），非本次引入。
+
+**图标纪律**：渲染层 CSP 严格（`script-src 'self'`），禁止行内事件；图标一律内联 SVG（字形符号如 ◈▤▦
+依赖字体，缺字会变空白方块，已全部替换）。
