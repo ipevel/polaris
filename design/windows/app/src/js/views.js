@@ -268,6 +268,10 @@
           <div><span>本次上传</span><strong id="live-up-total">${h(s.up_total)}</strong></div>
           <div><span>本次下载</span><strong id="live-down-total">${h(s.down_total)}</strong></div>
         </div>
+        <div class="row" data-click="proxy-mode" style="padding-left:0;padding-right:0;margin-top:10px">
+          <div class="k"><span>出站模式</span></div>
+          <div class="v"><span>${h(s.mode || "规则模式")}</span><span class="chev">›</span></div>
+        </div>
       </div>
       <div class="card metric-card">
         <div class="metric-head">
@@ -319,62 +323,6 @@
         <div class="chart-axis"><span>较早</span><span>${h((pts.length ? (pts[pts.length - 1].label || "") : "") || "现在")}</span></div>
       </div>
     </div>
-  </div>`;
-  };
-
-  /* ---------------- 概览 ---------------- */
-  /**
-   * 一张开关卡片：标题 + 说明 + 尾部开关 + 底部状态。
-   * 视觉开关不是"操作系统设置已成功"的证明 —— 状态文案只描述主进程回读到的设置值。
-   */
-  function settingCard(title, desc, key, on, statusText, clickAction, value) {
-    // value 非空 = 这一项是"取值的"，不是布尔开关（例如出站模式），
-    // 不给假开关 —— 开关必须对应一个真的布尔设置。
-    const ctl = value
-      ? `<span class="setting-value${clickAction ? "" : ""}"${clickAction ? ` data-click="${clickAction}"` : ""}>${h(value)}<span class="chev">›</span></span>`
-      : (key
-        ? `<div class="switch${on ? " on" : ""}" data-setting="${key}"></div>`
-        : `<div class="switch${on ? " on" : ""}"${clickAction ? ` data-click="${clickAction}"` : ""}></div>`);
-    const chev = (clickAction && !value)
-      ? `<span class="chev" data-click="${clickAction}" style="margin-left:auto">›</span>`
-      : "";
-    return `<div class="card setting-card">
-      <div class="setting-head"><div><h3>${h(title)}</h3><p>${h(desc)}</p></div>${ctl}</div>
-      <div class="setting-status"><i class="${on ? "active" : ""}"></i><span>${h(statusText)}</span>${chev}</div>
-    </div>`;
-  }
-
-  Views.overview = (s) => {
-    const st = s.settings || {};
-    const sysOn = !!st.sys_proxy;
-    const tunOn = !!st.tun_mode;
-    const localOn = (s.rulesets || {}).on !== false;
-    const port = st.running_port || st.mixed_port;
-    return `
-  <div class="page-head">
-    <div><div class="page-title">概览</div>
-    <div class="page-sub">接管方式与常用开关；状态取主进程回读值，不是开关的视觉状态</div></div>
-  </div>
-  <div class="section-label">网络接管</div>
-  <div class="overview-grid">
-    ${settingCard("系统代理", "把系统 HTTP 代理指向本机 mixed-port，应用与浏览器自动走代理。", "sys_proxy", sysOn,
-      sysOn ? "已启用 · 127.0.0.1:" + (port || "—") : "未启用", "set-port")}
-    ${settingCard("TUN 模式", "虚拟网卡接管全部流量，不依赖应用是否支持代理；需要管理员权限。", "tun_mode", tunOn,
-      tunOn ? "已启用" : "未启用（需管理员）")}
-  </div>
-  <div class="section-label">代理策略</div>
-  <div class="overview-grid">
-    ${settingCard("出站模式", "规则模式按分流规则判定；全局模式全部走代理；直连模式全部不走代理。", null, true,
-      "点击切换", "proxy-mode", s.mode || "规则模式")}
-    ${settingCard("使用本地分流方案", "屏蔽面板下发的分流规则，只用下面内置的 12 组本地方案。", null, localOn,
-      localOn ? "本地方案生效中" : "面板方案生效中", "local-routing")}
-  </div>
-  <div class="section-label">运行环境</div>
-  <div class="card">
-    ${row("本机代理端口", port ? `127.0.0.1:${h(port)}` : "自动（未运行）", { click: "set-port", icon: ["⇲", "#5ac8fa"] })}
-    ${row("管理员权限", (s.appInfo && s.appInfo.is_admin) ? "已获得" : "未获得（TUN 需要）", { chev: false, vcls: (s.appInfo && s.appInfo.is_admin) ? "strong" : "" })}
-    ${row("运行模式", (s.appInfo && s.appInfo.portable) ? "便携版（数据在程序目录）" : "标准版", { chev: false })}
-    ${row("数据目录", h((s.appInfo && s.appInfo.data_dir) || ""), { chev: false })}
   </div>`;
   };
 
@@ -702,6 +650,11 @@
         { chev: s.tunStatus.exists && s.tunStatus.state !== "Up", click: s.tunStatus.exists && s.tunStatus.state !== "Up" ? "cleanup-tun" : undefined, vcls: "" }) : ""}
       ${rowSwitch("允许局域网连接", "allow_lan", s.settings.allow_lan)}
       ${rowSwitch("IPv6", "ipv6", s.settings.ipv6, null, "关闭后 IPv6 站点会直接打不开（直连域名解析到 IPv6 时整条失败），部分移动/教育网络尤其明显。默认保持打开。")}
+      ${row("订阅链接", "查看", { icon: ["⛓", "#858b95"], click: "show-subscribe-url" })}
+    </div>
+    <div class="section-label">提醒</div><div class="card">
+      ${rowSwitch("到期提醒", "expire_notify", s.settings.expire_notify, [`<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`, "#d8881e"])}
+      ${rowSwitch("流量提醒", "traffic_notify", s.settings.traffic_notify, [`<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 18V8m0 0L5 11m3-3 3 3"/><path d="M16 6v10m0 0 3-3m-3 3-3-3"/></svg>`, "#31c95a"])}
     </div>
     <div class="section-label">启动与更新</div><div class="card">
       ${rowSwitch("开机自启动", "autostart", s.settings.autostart)}
@@ -796,12 +749,6 @@
     ${entry("我的工单", "联系客服、查看回复", "nav-tickets", "ticket")}
     ${entry("公告通知", s.unreadNotices ? s.unreadNotices + " 条未读" : "站点公告与维护通知", "nav-notices", "notice")}
     ${(s.siteInfo && s.siteInfo.telegramUrl) ? entry("Telegram", "加入用户交流群", "open-telegram", "telegram") : ""}
-  </div>
-  <div class="section-label">提醒与链接</div>
-  <div class="card">
-    ${rowSwitch("到期提醒", "expire_notify", st.expire_notify, [`<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`, "#d8881e"])}
-    ${rowSwitch("流量提醒", "traffic_notify", st.traffic_notify, [`<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 18V8m0 0L5 11m3-3 3 3"/><path d="M16 6v10m0 0 3-3m-3 3-3-3"/></svg>`, "#31c95a"])}
-    ${row("订阅链接", "查看", { icon: ["⛓", "#858b95"], click: "show-subscribe-url" })}
   </div>
   <div class="section-label">账号</div>
   <div class="card">
