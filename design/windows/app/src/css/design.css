@@ -380,6 +380,12 @@ h2, h3 { font-weight: var(--fw-bold); }
 .dash-col { display: flex; flex-direction: column; gap: var(--gutter); min-width: 0; }
 .dash-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gutter); min-width: 0; }
 
+/* 窄窗口改单列：两列时右列每张速率卡只剩 ~190px 内宽，40px 的 "41.7 MB/s"
+   会在数字与单位之间折行（Murge 最小窗口 848×640 实测）。单列后每卡约 300px。 */
+@media (max-width: 1280px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 .metric-card { display: flex; flex-direction: column; padding: 16px; min-width: 0; }
 .metric-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); }
 .metric-label { color: var(--muted); font-size: var(--fs-xs); }
@@ -591,7 +597,9 @@ h2, h3 { font-weight: var(--fw-bold); }
 .err { padding: 6px 0; color: var(--danger); font-size: var(--fs-sm); }
 
 /* ============================ 登录 ============================ */
-.login-wrap { width: 100%; height: 100%; display: grid; place-items: center; }
+/* 用 flex 居中：grid + place-items:center 会让 100% 宽的项退化成 max-content，
+   实测把登录卡压到约 150px、标题和链接全部折行。 */
+.login-wrap { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .login-body { width: 100%; max-width: 420px; padding: 30px; }
 .login-card {
   padding: 28px; border: 1px solid var(--surface-border); border-radius: var(--radius-large);
@@ -601,6 +609,8 @@ h2, h3 { font-weight: var(--fw-bold); }
 .login-card h1 { font-size: var(--fs-2xl); text-align: center; letter-spacing: -0.4px; }
 .login-card .sub { margin: 8px 0 22px; text-align: center; color: var(--muted); font-size: var(--fs-sm); }
 .auth-links { display: flex; justify-content: space-between; margin-top: 16px; color: var(--blue); font-size: var(--fs-sm); }
+/* 注册 / 找回密码只有一个链接，space-between 会把它顶在左边 */
+.auth-links span:only-child { margin: 0 auto; }
 .auth-links span { cursor: pointer; }
 .auth-ver { margin-top: 22px; text-align: center; color: var(--faint); font-size: var(--fs-2xs); }
 

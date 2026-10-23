@@ -895,7 +895,7 @@
   /* ---------------- 邀请返利 ---------------- */
   // 标题与「我的」页入口「邀请返利」保持一致
   Views.invite = (s) => backHead("邀请返利") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
-    <div style="font-size:40px;margin-bottom:10px">🎁</div>
+    <div style="display:flex;justify-content:center"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 12h18M12 8v12"/><path d="M8.5 8C7 8 6 7 6 6a2 2 0 0 1 3.6-1.2L12 8M15.5 8C17 8 18 7 18 6a2 2 0 0 0-3.6-1.2L12 8"/></svg></div>
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">邀请好友得奖励</div>
     <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px">${s.invite.rate ? "好友消费返佣 " + h(s.invite.rate) + "%" : "把链接分享给好友，双方都有奖励"}</div>
     ${s.invite.link ? `<div style="display:flex;gap:10px"><div class="field" style="margin:0;text-align:left;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h(s.invite.link)}</div><button class="btn btn-primary" style="flex:none" id="btn-copy-invite">复制</button></div>`
@@ -915,7 +915,7 @@
 
   /* ---------------- 礼品卡 ---------------- */
   Views.giftcard = (s) => backHead("礼品卡兑换") + `<div class="col-narrow"><div class="card" style="text-align:center;padding:34px 30px">
-    <div style="font-size:40px;margin-bottom:10px">💳</div>
+    <div style="display:flex;justify-content:center"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></svg></div>
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">兑换礼品卡</div>
     <div style="font-size:13.5px;color:var(--text2);margin-bottom:18px">输入卡密，流量或时长即时到账</div>
     <input class="field" id="gift-code" placeholder="请输入卡密" style="text-align:center" autocomplete="off">

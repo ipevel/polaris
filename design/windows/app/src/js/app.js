@@ -144,10 +144,14 @@
     if (AUTH_ROUTES.includes(state.route)) {
       state.loggedIn = false;
       sidebar.style.display = "none";
+      // .app-frame 是「侧栏 + 内容」两列 grid：侧栏隐藏后 main 会自动落进第 1 列，
+      // 登录页因此被压成 205px 宽（实测卡片约 150px、标题折行）。登录态让它跨满两列。
+      content.style.gridColumn = "1 / -1";
       swap((Views[state.route] || Views.login)(state), bindAuth);
       return;
     }
     sidebar.style.display = "";
+    content.style.gridColumn = "";
     const shellClass = "page-shell" + (state.route === "home" ? " is-dashboard" : "");
     swap(`<div class="${shellClass}">` + (Views[state.route] || Views.home)(state) + "</div>", () => {
       $$(".nav-item").forEach((el) => {
