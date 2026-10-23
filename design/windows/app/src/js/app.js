@@ -7,7 +7,7 @@
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
 
-  const MAIN_ROUTES = ["home", "overview", "nodes", "traffic", "routing", "settings", "me"];
+  const MAIN_ROUTES = ["home", "nodes", "traffic", "routing", "settings", "me"];
   const AUTH_ROUTES = ["login", "register", "forgot"];
   /** 有实时速率/连接态可刷新的页面（paintLive 只改这两个元素的文本） */
   const LIVE_ROUTES = ["home", "nodes", "traffic", "me"];
@@ -167,14 +167,14 @@
         nodes: bindNodes, settings: bindSettings, me: bindMe, plans: bindPlans,
         orders: bindOrders, tickets: bindTickets, invite: bindInvite,
         giftcard: bindGiftcard, notices: bindNotices, routing: bindRouting,
-        home: bindHome, overview: bindOverview,
+        home: bindHome,
       }[state.route] || (() => {}))();
     });
   }
 
   // 返回栈：二级页面（套餐/订单/工单/邀请/礼品卡/公告/分流规则）的返回键回到
   // 进来的那一页。只记"主页面"，避免 我的→订单→购买套餐→礼品卡 之后要按四次。
-  const PRIMARY_ROUTES = ["home", "overview", "nodes", "traffic", "routing", "me", "settings"];
+  const PRIMARY_ROUTES = ["home", "nodes", "traffic", "routing", "me", "settings"];
   let navStack = [];
 
   /**
@@ -1125,11 +1125,6 @@
     bindSettingSwitches();
   }
 
-  /** 概览页：开关与设置页同一套绑定（data-setting），不需要额外逻辑 */
-  function bindOverview() {
-    bindSettingSwitches();
-  }
-
   function bindMe() { bindSettingSwitches(); }
 
   function bindPlans() {
@@ -1459,7 +1454,6 @@
     nodes: ["nodes", "groups"],
     traffic: ["plan", "siteInfo"],
     me: ["plan", "orders", "tickets", "invite", "giftHistory", "notices"],
-    overview: [],
   };
   function ensurePageData(route) {
     if (!state.settings.authed) return;

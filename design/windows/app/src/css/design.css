@@ -499,26 +499,6 @@ h2, h3 { font-weight: var(--fw-bold); }
 .menu-card small { display: block; margin-top: 3px; color: var(--muted); font-size: var(--fs-2xs); }
 .menu-card .chev { justify-self: end; }
 
-/* 两列卡片网格（概览页与设置页同款） */
-.overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gutter); }
-.setting-card { display: flex; flex-direction: column; min-height: 132px; padding: 16px; }
-.setting-head { display: flex; align-items: flex-start; gap: var(--sp-5); }
-.setting-head .switch { margin-left: auto; }
-.setting-head > div:not(.switch) { flex: 1; min-width: 0; }
-.setting-head h3 { margin: 0 0 5px; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
-.setting-head p { color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
-.setting-status {
-  display: flex; align-items: center; gap: var(--sp-3);
-  margin-top: auto; padding-top: 14px; font-size: var(--fs-sm); color: var(--text2);
-}
-.setting-status i { width: 8px; height: 8px; border-radius: 50%; background: #a6abb4; }
-.setting-status i.active { background: var(--green); box-shadow: 0 0 0 4px rgba(49, 201, 90, 0.08); }
-.setting-status .chev { margin-left: auto; }
-.setting-value {
-  display: inline-flex; align-items: center; gap: 4px; flex: none;
-  color: var(--text2); font-size: var(--fs-md); cursor: pointer;
-}
-
 /* 状态胶囊 */
 .status-pills { display: flex; gap: var(--sp-5); }
 .status-pill {
