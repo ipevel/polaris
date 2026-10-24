@@ -38,7 +38,8 @@ class RoutingStateStoreContractTest {
                 ),
             )
 
-        assertTrue(text.contains("\"version\":1"))
+        // 版本号取值随内置表结构走（ROUTING_TABLE_SCHEMA），这里校验的是字段名与编码形态
+        assertTrue(text.contains("\"version\":$ROUTING_TABLE_SCHEMA"))
         assertTrue(text.contains("\"enabled\":true"))
         assertTrue(text.contains("\"groups\":"))
         assertTrue(text.contains("\"order\":[\"📺 哔哩哔哩\"]"))
