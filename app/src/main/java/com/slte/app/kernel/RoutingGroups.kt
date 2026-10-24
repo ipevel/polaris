@@ -185,8 +185,7 @@ const val ROUTING_TABLE_SCHEMA: Int = 2
  * 语义与 Windows 侧 `store.js` 的 migrate 一致：**表结构落后即重置顺序，绝不丢组**
  * （[orderedGroups] 会用内置顺序补齐未出现的组）；开关与自定义组不受影响。
  */
-fun migrateOrderForTableSchema(version: Int, order: List<String>): List<String> =
-    if (version < ROUTING_TABLE_SCHEMA) emptyList() else order
+fun migrateOrderForTableSchema(version: Int, order: List<String>): List<String> = if (version < ROUTING_TABLE_SCHEMA) emptyList() else order
 
 /** 主选择组名：唯一真源，必须与内核 GroupNameSelector（routing_table.go）逐字一致。 */
 const val PrimaryGroupName: String = "🚀 节点选择"
