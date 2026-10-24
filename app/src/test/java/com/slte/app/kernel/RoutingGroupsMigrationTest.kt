@@ -43,7 +43,7 @@ class RoutingGroupsMigrationTest {
         listOf("🐱 GitHub", "🌏 Google Play", "🌏 Google", "Ⓜ️ 微软Bing")
 
     @Test
-    fun `内置表是 12 组且顺序与内核表一致`() {
+    fun `内置表是 13 组且顺序与内核表一致`() {
         assertEquals(
             listOf(
                 "📲 电报消息",
@@ -54,6 +54,7 @@ class RoutingGroupsMigrationTest {
                 "🎮 游戏平台",
                 "Ⓜ️ 微软云盘",
                 "🍎 苹果服务",
+                "☁️ PikPak",
                 "🎯 国内直连",
                 "🌏 国外穿墙",
                 "🍃 应用净化",
@@ -218,5 +219,28 @@ class RoutingGroupsMigrationTest {
     @Test
     fun `AI 组名落在内核保留名里`() {
         assertTrue("自定义组不得占用 AI 组名", AI_GROUP_NAME in RoutingInputValidator.reservedNames)
+    }
+
+    @Test
+    fun `表结构版本落后时重置自定义顺序（新组才能排到国内直连之前）`() {
+        val saved = listOf("🛑 广告拦截", "🎯 国内直连", "🌏 国外穿墙")
+        assertEquals(emptyList<String>(), migrateOrderForTableSchema(1, saved))
+    }
+
+    @Test
+    fun `表结构版本已是当前时保留自定义顺序`() {
+        val saved = listOf("🛑 广告拦截", "🌏 国外穿墙")
+        assertEquals(saved, migrateOrderForTableSchema(ROUTING_TABLE_SCHEMA, saved))
+    }
+
+    @Test
+    fun `新组 PikPak 排在国内直连之前且默认走代理`() {
+        val names = RoutingGroups.map { it.name }
+        val pik = names.indexOf("☁️ PikPak")
+        val cn = names.indexOf("🎯 国内直连")
+        assertTrue("内置表里必须有「☁️ PikPak」", pik >= 0)
+        assertTrue("PikPak 必须排在国内直连之前（否则 CDN 被 GEOSITE,cn 先吃掉）", pik < cn)
+        assertEquals("proxy", RoutingGroups[pik].defaultOut)
+        assertTrue("PikPak 默认打开", RoutingGroups[pik].defaultOn)
     }
 }

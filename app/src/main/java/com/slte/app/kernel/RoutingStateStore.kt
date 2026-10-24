@@ -37,7 +37,11 @@ data class RoutingCustomGroup(
 
 @Serializable
 data class RoutingState(
-    val version: Int = 1,
+    // 默认值 = 当前表结构版本：新写的文件天然带当前版本，读盘不会再触发顺序重置
+    // （否则用户升级后新拖的顺序会被下一次读盘当成「旧版本」清掉）。老文件里由旧版
+    // App 显式写入的 "version":1 才是迁移判据（本类序列化设置了 encodeDefaults = true，
+    // 旧文件一定带这个字段）。
+    val version: Int = ROUTING_TABLE_SCHEMA,
     val enabled: Boolean = false,
     val groups: Map<String, Boolean> = emptyMap(),
     val custom: List<RoutingCustomGroup> = emptyList(),
@@ -198,12 +202,18 @@ constructor(
         RoutingState()
     }
 
-    /** 历史组名归一：`groups` 折叠旧组名，`order` 归一后去重保序；无变化时原样返回。 */
+    /**
+     * 历史组名归一 + 表结构版本迁移：`groups` 折叠旧组名，`order` 归一后去重保序。
+     *
+     * **只在真的改动了东西时才返回新对象**（调用方的回写判据是 `raw != rawFile`）：
+     * 版本号本身落后但内容无需变（例如老文件本来就没拖动过顺序），不做无意义的整文件
+     * 重写——[loadSanitized] 的「隐藏非法条目不回写磁盘」契约定在这里。
+     */
     private fun migrateLegacyNames(state: RoutingState): RoutingState {
         val groups = migrateLegacyGroups(state.groups)
-        val order = migrateLegacyOrder(state.order)
+        val order = migrateOrderForTableSchema(state.version, migrateLegacyOrder(state.order))
         if (groups == state.groups && order == state.order) return state
-        return state.copy(groups = groups, order = order)
+        return state.copy(version = maxOf(state.version, ROUTING_TABLE_SCHEMA), groups = groups, order = order)
     }
 
     /**
@@ -213,12 +223,16 @@ constructor(
      * 需要自行串行化。
      * rename 不允许覆盖已存在目标，先删旧文件再重试一次；中途被杀最多残留
      * 一个 .tmp，routing.json 要么是旧状态要么是新状态。
+     *
+     * 落盘一律盖当前表结构版本 [ROUTING_TABLE_SCHEMA]：这次写入之后，磁盘上的顺序
+     * 就是按当前内置表保存的，不能再被下一次读盘当成「旧版本顺序」清掉。
      */
     fun write(state: RoutingState): Boolean = runCatching {
         val file = stateFile()
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, "$FILE_NAME.tmp")
-        tmp.writeText(json.encodeToString(RoutingState.serializer(), state))
+        val stamped = state.copy(version = ROUTING_TABLE_SCHEMA)
+        tmp.writeText(json.encodeToString(RoutingState.serializer(), stamped))
         if (!tmp.renameTo(file)) {
             file.delete()
             if (!tmp.renameTo(file)) error("rename failed: $FILE_NAME")

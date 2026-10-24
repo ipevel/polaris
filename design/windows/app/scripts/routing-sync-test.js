@@ -162,6 +162,25 @@ jsKeys.forEach((k) => {
   if ('interval' in c) fails.push(`providerConfig(${k}) 不该带 interval`);
 });
 
+/* ---------- ④ 规则顺序不变量：PikPak 必须排在国内直连之前 ---------- */
+// 组顺序 = 规则顺序（builder.js 按 orderedTable 的顺序逐组追加规则）。「☁️ PikPak」的
+// 下载 CDN 是 *.sandai.net（与迅雷共用后缀）且解析到国内 IP，一旦排到「🎯 国内直连」
+// 之后，GEOSITE,cn / GEOIP,CN / china-domain 会先命中 → 下载流量被判直连而失败。
+// 这条约束 2026-10-24 随该组引入，这里钉死，防止以后调组顺序时静默改回去。
+const PIKPAK_GROUP = '☁️ PikPak';
+const CHINA_GROUP = '🎯 国内直连';
+function assertGroupBefore(table, earlier, later, label) {
+  const i = table.findIndex((g) => g.name === earlier);
+  const j = table.findIndex((g) => g.name === later);
+  if (i < 0) { fails.push(`${label}：找不到组「${earlier}」`); return; }
+  if (j < 0) { fails.push(`${label}：找不到组「${later}」`); return; }
+  if (!(i < j)) {
+    fails.push(`${label}：「${earlier}」必须排在「${later}」之前（当前 ${i} vs ${j}）——组顺序即规则匹配优先级`);
+  }
+}
+assertGroupBefore(rulesets.TABLE, PIKPAK_GROUP, CHINA_GROUP, 'JS 表');
+assertGroupBefore(goTable, PIKPAK_GROUP, CHINA_GROUP, 'Go 表');
+
 /* ---------- 结果 ---------- */
 const goRules = goTable.reduce((n, g) => n + g.inlineRules.length, 0);
 console.log(`[routing-sync] Go 表 ${goTable.length} 组 / ${goKeys.length} 个 provider / ${goRules} 条内联规则`);

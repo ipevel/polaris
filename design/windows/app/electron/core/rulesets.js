@@ -150,7 +150,7 @@ const LAN_DIRECT_RULES = [
  * 改：
  *   「🛑 广告拦截」默认打开（用户 2026-10-13 定）
  *
- * 分组数量：12 个内置组 + 4 个结构组（🚀 节点选择 / 自动选择 / 故障转移 /
+ * 分组数量：13 个内置组 + 4 个结构组（🚀 节点选择 / 自动选择 / 故障转移 /
  * 🐟 漏网之鱼，见文件头）。
  *
  * 规则数据源全部本地的原因：旧方案每个 RULE-SET 都是 type:http，启动后 24h 内
@@ -405,6 +405,20 @@ const TABLE = [
   { name: '🍎 苹果服务', defaultOn: true, defaultOut: 'direct',
     inlineRules: ['GEOSITE,apple,{t}'],
     providers: ['apple'] },
+  // 「☁️ PikPak」：网盘下载 CDN 是 *.sandai.net（与迅雷共用后缀）且解析到国内 IP，
+  // 会被下面的「🎯 国内直连」（GEOSITE,cn / GEOIP,CN / china-domain）先命中而判直连，
+  // 所以本组必须排在它前面。品牌域名用 keyword 一次覆盖（含 pikpak.com / mypikpak.com）。
+  // 规则与 polaris-rules 仓库 c1a402b 注入的 7 条一致（proxy-gfwlist 6890-6896 行）。
+  { name: '☁️ PikPak', defaultOn: true, defaultOut: 'proxy',
+    inlineRules: [
+      'DOMAIN-KEYWORD,pikpak,{t}',
+      'DOMAIN-SUFFIX,dlandroid.rcv.sandai.net,{t}',
+      'DOMAIN-SUFFIX,hub5idx.v6.shub.sandai.net,{t}',
+      'DOMAIN-SUFFIX,hub5pn.wap.sandai.net,{t}',
+      'DOMAIN-SUFFIX,hub5pnc.sandai.net,{t}',
+      'DOMAIN-SUFFIX,hub5pr.v6.phub.sandai.net,{t}',
+      'DOMAIN-SUFFIX,hubciddata.sandai.net,{t}',
+    ] },
   {
     name: '🎯 国内直连',
     defaultOn: true,
@@ -530,8 +544,9 @@ const TABLE = [
  * 消费方是 `electron/store.js` 的 migrate() —— settings.json 里记着上次见到的这个值，
  * 对不上就重置用户自定义的组顺序（开关不重置，靠 LEGACY_GROUP_ALIASES 迁移）。
  * 2026-10-13：23 组 → 12 组，2 → 3。
+ * 2026-10-24：新增「☁️ PikPak」组（12 → 13 组），3 → 4。
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const BY_NAME = new Map(TABLE.map((g) => [g.name, g]));
 

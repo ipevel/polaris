@@ -377,6 +377,20 @@ var Table = []RuleGroup{
 	{Name: "🍎 苹果服务", DefaultOn: true, DefaultOut: "direct",
 		InlineRules: []string{"GEOSITE,apple,{t}"},
 		Providers:   []string{"apple"}},
+	// 「☁️ PikPak」：网盘下载 CDN 是 *.sandai.net（与迅雷共用后缀）且解析到国内 IP，
+	// 会被下面的「🎯 国内直连」（GEOSITE,cn / GEOIP,CN / china-domain）先命中而判直连，
+	// 所以本组必须排在它前面。品牌域名用 keyword 一次覆盖（含 pikpak.com / mypikpak.com）。
+	// 规则与 polaris-rules 仓库 c1a402b 注入的 7 条一致（proxy-gfwlist 6890-6896 行）。
+	{Name: "☁️ PikPak", DefaultOn: true, DefaultOut: "proxy",
+		InlineRules: []string{
+			"DOMAIN-KEYWORD,pikpak,{t}",
+			"DOMAIN-SUFFIX,dlandroid.rcv.sandai.net,{t}",
+			"DOMAIN-SUFFIX,hub5idx.v6.shub.sandai.net,{t}",
+			"DOMAIN-SUFFIX,hub5pn.wap.sandai.net,{t}",
+			"DOMAIN-SUFFIX,hub5pnc.sandai.net,{t}",
+			"DOMAIN-SUFFIX,hub5pr.v6.phub.sandai.net,{t}",
+			"DOMAIN-SUFFIX,hubciddata.sandai.net,{t}",
+		}},
 	{Name: "🎯 国内直连", DefaultOn: true, DefaultOut: "direct",
 		InlineRules: []string{
 			"DOMAIN-SUFFIX,douyin.com,{t}",

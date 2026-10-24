@@ -3345,6 +3345,30 @@ routing-sync / **flags(11)** / **flag-row(15)**。`FLAG_CODES` 与
 - 迁移**只动 `routing_order`**：`routing_rules`（用户拨的开关）与 `custom_rulesets`
   （用户自己写的组）一个都不许碰，三条断言写在 `scripts/config-defaults-test.js`。
 
+### 1.1 分组 12 → 13：新增「☁️ PikPak」（2026-10-24）
+
+- **为什么需要独立组**：PikPak 网盘下载 CDN 是 `*.sandai.net`（与迅雷共用后缀）且解析到
+  **国内 IP**（`dlandroid.rcv.sandai.net` → 139.224.204.61 等）。规则仓在 `proxy-gfwlist`
+  里加规则对这层无效——「🎯 国内直连」排在「🌏 国外穿墙」之前，`GEOSITE,cn` / `GEOIP,CN`
+  会先命中并判直连。所以必须有一个排在「🎯 国内直连」**之前**的组。
+- **规则**（与 `polaris-rules` `c1a402b` 的 7 条一致）：`DOMAIN-KEYWORD,pikpak` 覆盖品牌域名，
+  另加 6 个 `*.sandai.net` CDN 子域；`defaultOn: true` / `defaultOut: proxy`，**不挂 providers**
+  （`proxy-gfwlist` 是整份穿墙清单，挂上来会把全部穿墙流量拉进这个组）。
+- **三个真源必须同改**：内核 `routing_table.go`（Go 真源）、`app/.../kernel/RoutingGroups.kt`
+  （设置页镜像）、`electron/core/rulesets.js`（Windows 镜像）。`test:routing-sync` 会逐条比对
+  JS 与 Go，`RoutingTableParityTest` 会比对 Kotlin 与 Go——只改一处会立刻红。
+- **顺序即优先级，所以必须迁移用户顺序**：`orderedTable()` 把未出现在自定义顺序里的组
+  按表内顺序追加到**末尾**。用户在设置页拖动过顺序时保存的是完整列表（必然含「🎯 国内直连」），
+  新组会被追加到它后面、规则失效。因此：
+  - Windows：`SCHEMA_VERSION` 3 → 4、`settings_schema` 3 → 4；`store.js` 的迁移
+    不再用 `from < 3` 的外层硬门槛，改成只按 `from < tableVersion` 判定（否则 schema 3
+    的用户进不了迁移分支）。
+  - 安卓：`ROUTING_TABLE_SCHEMA` 1 → 2，读盘时版本落后就清空 `order`（开关与自定义组不动）；
+    落盘一律盖当前版本，避免「刚拖好的顺序被下一次读盘当成旧版本清掉」。
+- **不变量已固化成测试**：`scripts/routing-sync-test.js` 第 ④ 段断言「☁️ PikPak」在
+  JS 表与 Go 表里都排在「🎯 国内直连」之前（做过 RED 验证：把新组移到国内直连之后，测试报
+  `当前 9 vs 8` 并以退出码 1 失败）。
+
 ### 2. 微软云盘直连不通：阿里 DoH 自己返回污染地址（`electron/core/builder.js`）
 
 - **根因实测**：`onedrive.live.com` 经阿里 DoH 解析得到 `128.242.240.155`（Yahoo 段）、

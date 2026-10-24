@@ -155,6 +155,9 @@ val RoutingGroups: List<RoutingGroupInfo> =
         // 否则 geolocation-!cn 会先吃掉 onedrive / azure 分类。
         RoutingGroupInfo("Ⓜ️ 微软云盘", defaultOn = true, defaultOut = "direct"),
         RoutingGroupInfo("🍎 苹果服务", defaultOn = true, defaultOut = "direct"),
+        // 「☁️ PikPak」（2026-10-24）：下载 CDN 是 *.sandai.net（与迅雷共用后缀）且解析到
+        // 国内 IP，会被「🎯 国内直连」先命中，所以必须排在它前面。
+        RoutingGroupInfo("☁️ PikPak", defaultOn = true, defaultOut = "proxy"),
         RoutingGroupInfo("🎯 国内直连", defaultOn = true, defaultOut = "direct"),
         // 「🌏 国外穿墙」声明的是 geolocation-!cn 兜底分类，必须排在所有具体平台组
         // 之后；只有两个 block 组排在它后面。
@@ -162,6 +165,28 @@ val RoutingGroups: List<RoutingGroupInfo> =
         RoutingGroupInfo("🍃 应用净化", defaultOn = false, defaultOut = "block"),
         RoutingGroupInfo("🛑 广告拦截", defaultOn = true, defaultOut = "block"),
     )
+
+/**
+ * 内置分流表的结构版本（与 Windows 侧 `rulesets.js` 的 `SCHEMA_VERSION` 同义，
+ * 两侧各自独立编号，语义一致）。
+ *
+ * 分组结构变更时 +1：读盘时若 `routing.json` 里记的版本落后，就重置用户自定义的
+ * **组顺序**（开关不动，旧名照旧由 [migrateLegacyGroups] 迁移）。不重置的话，新增的
+ * 组会被 [orderedGroups] 追加到所有已排序组之后——只要用户拖动过顺序（保存的是
+ * 完整列表，必然含「🎯 国内直连」），新组就排到它后面，规则优先级错位、分流失效。
+ *
+ * 2026-10-24：新增「☁️ PikPak」组（12 → 13 组），1 → 2。
+ */
+const val ROUTING_TABLE_SCHEMA: Int = 2
+
+/**
+ * 按内置表结构版本决定是否保留用户自定义顺序（纯函数，可单测）。
+ *
+ * 语义与 Windows 侧 `store.js` 的 migrate 一致：**表结构落后即重置顺序，绝不丢组**
+ * （[orderedGroups] 会用内置顺序补齐未出现的组）；开关与自定义组不受影响。
+ */
+fun migrateOrderForTableSchema(version: Int, order: List<String>): List<String> =
+    if (version < ROUTING_TABLE_SCHEMA) emptyList() else order
 
 /** 主选择组名：唯一真源，必须与内核 GroupNameSelector（routing_table.go）逐字一致。 */
 const val PrimaryGroupName: String = "🚀 节点选择"

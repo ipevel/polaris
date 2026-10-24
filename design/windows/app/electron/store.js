@@ -71,7 +71,7 @@ const DEFAULTS = {
   custom_rulesets: [],        // 用户自己写的分流组：[{name,out,enabled,rules:['DOMAIN-SUFFIX,x.com']}]
   // 设置文件的结构版本，用来做一次性迁移（见 migrate()）。
   // 没有这一项的老 settings.json 一律当作 0。
-  settings_schema: 3,
+  settings_schema: 4,
 };
 
 /**
@@ -106,7 +106,10 @@ function migrate(data) {
     data.mixed_port = DEFAULTS.mixed_port;
     log.info(`settings migrate: mixed_port 0 -> ${DEFAULTS.mixed_port}（旧默认值改成固定端口）`);
   }
-  if (from < 3 && data.routing_order != null) {
+  // 外层不设 from < 3 的硬门槛：只要用户自定义过顺序且内置表结构版本落后于当前
+  // SCHEMA_VERSION（含 schema 3 → 4 新增「☁️ PikPak」组），就重置顺序，否则新组会被
+  // orderedTable() 追加到末尾、排在国内直连之后，规则顺序就错了。
+  if (data.routing_order != null) {
     // 这里用延迟 require：store.js 是启动最早的模块之一，rulesets.js 又可能间接依赖
     // 它（manager.js → store），顶层 require 会把循环依赖的风险提前到加载期。
     // 只借它的 SCHEMA_VERSION 做对账，拿不到就退回硬编码的 3。
