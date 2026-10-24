@@ -82,8 +82,8 @@ console.log('\n配置默认值与设置迁移自测');
 check('默认 IPv6 打开（关掉会让 IPv6 字面量目标整条断掉）', () => {
   assert.strictEqual(store.defaults.ipv6, true, `defaults.ipv6 = ${JSON.stringify(store.defaults.ipv6)}`);
 });
-check('settings_schema = 3', () => {
-  assert.strictEqual(store.defaults.settings_schema, 3);
+check('settings_schema = 4', () => {
+  assert.strictEqual(store.defaults.settings_schema, 4);
 });
 check('分流表 SCHEMA_VERSION === settings_schema（否则迁移静默不生效）', () => {
   let tableVersion;
@@ -125,7 +125,7 @@ check('旧用户（schema 2）的 routing_order 被归零', () => {
   writeSettings({ settings_schema: 2, routing_order: ['🐱 GitHub', '🌏 Google', 'Ⓜ️ 微软服务'] });
   const s = store.reload();
   assert.strictEqual(s.routing_order, null, `routing_order = ${JSON.stringify(s.routing_order)}`);
-  assert.strictEqual(s.settings_schema, 3);
+  assert.strictEqual(s.settings_schema, 4);
 });
 check('迁移不碰 routing_rules（用户拨的开关）', () => {
   const rules = { '🌏 国外穿墙': 'proxy', 'Ⓜ️ 微软云盘': 'direct' };
@@ -139,10 +139,18 @@ check('迁移不碰 custom_rulesets（用户自己写的组）', () => {
   const s = store.reload();
   assert.deepStrictEqual(s.custom_rulesets, custom);
 });
-check('已是当前 schema 的用户：routing_order 原样保留', () => {
-  writeSettings({ settings_schema: 3, routing_order: ['🛑 广告拦截', '🌏 国外穿墙'] });
+check('已是当前 schema（4）的用户：routing_order 原样保留', () => {
+  writeSettings({ settings_schema: 4, routing_order: ['🛑 广告拦截', '🌏 国外穿墙'] });
   const s = store.reload();
   assert.deepStrictEqual(s.routing_order, ['🛑 广告拦截', '🌏 国外穿墙']);
+});
+check('schema 3 老用户（自定义过顺序）被重置：新组才能排在国内直连之前', () => {
+  // 本次新增「☁️ PikPak」组（3 → 4）。若 schema 3 用户的自定义顺序不被重置，
+  // 新组会被 orderedTable() 追加到末尾、排在国内直连之后，PikPak 规则就白加了。
+  writeSettings({ settings_schema: 3, routing_order: ['🛑 广告拦截', '🌏 国外穿墙'] });
+  const s = store.reload();
+  assert.strictEqual(s.routing_order, null, `routing_order = ${JSON.stringify(s.routing_order)}`);
+  assert.strictEqual(s.settings_schema, 4);
 });
 check('从没排过序的用户：迁移后仍是空', () => {
   writeSettings({ settings_schema: 2 });
@@ -153,7 +161,7 @@ check('没有 settings.json 时按默认值起（不炸、IPv6 仍开）', () =>
   try { fs.unlinkSync(path.join(tmp, 'settings.json')); } catch (_) {}
   const s = store.reload();
   assert.strictEqual(s.ipv6, true);
-  assert.strictEqual(s.settings_schema, 3);
+  assert.strictEqual(s.settings_schema, 4);
 });
 
 try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {}
