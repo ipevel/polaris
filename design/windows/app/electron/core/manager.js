@@ -24,7 +24,7 @@ const rulesets = require('./rulesets');
 const region = require('./region');
 const traffic = require('./traffic');
 // geosync.js（旧的第三方 geodata 源）**故意不再 require**：规则与 geodata 现在只有
-// rulesync 一条路、`ipevel/polaris-rules` 一个源。那个模块留着只为 fetch-geo.py 的清单定义。
+// rulesync 一条路、`ipevel/cboard-rulesets` 一个源。那个模块留着只为 fetch-geo.py 的清单定义。
 const rulesync = require('./rulesync');
 const fmt = require('../util/format');
 
@@ -140,7 +140,7 @@ function prepareConfig(opts = {}) {
  * 内置分流规则兜底：**缺什么补什么，已有的不动**。
  *
  * 2026-10-13 改法（P1）。以前这里是「每次启动都无条件覆盖」，理由是"内核只读不写，
- * 覆盖才能让随包修正过的清单立刻生效"。规则改成**运行期从 ipevel/polaris-rules 同步**
+ * 覆盖才能让随包修正过的清单立刻生效"。规则改成**运行期从 ipevel/cboard-rulesets 同步**
  * 之后那条理由反了过来：无条件覆盖会把刚同步下来的新版打回随包那份旧的。
  * 现在随包那份退化成首次安装 / 断网时的兜底，真正的更新与版本推进归
  * `refreshRules()`（electron/core/rulesync.js）。
@@ -223,7 +223,7 @@ function ensureGeodata() {
  * 分流规则 + 地理库统一刷新（用户 2026-10-12 要求「规则内置本地，但本地这份要跟上上游」，
  * 2026-10-13 收紧为「所有规则全部随仓库更新，不再把规则写死」）。
  *
- * 来源只有一处：我们自己的 `ipevel/polaris-rules`（每 15 分钟跟上游 ACL4SSR + MetaCubeX）。
+ * 来源只有一处：我们自己的 `ipevel/cboard-rulesets`（每 15 分钟跟上游 ACL4SSR + MetaCubeX）。
  * 规则清单进 `data/polaris-rules/`（rule-provider 的 path 前缀），
  * geo 三份进 `data/`（内核 `-d` 目录，`geodata-loader: standard` 就近读）。
  * 两份都随包内置，所以「不联网也能分流」不受影响；这里只是每 12 小时对一次上游。
@@ -959,7 +959,7 @@ async function resetRoutingGroups() {
  * 分流页需要的全部数据：总开关 + 内置表的每一组 + 当前开关 + 运行中内核里的实际出口。
  * 规则集全部是 type:file 的本地种子（见 ensureRuleSeeds），内核不再联网拉规则；
  * 清单与 geodata（geosite.dat / geoip.metadb / ASN.mmdb）由 rulesync.js 每 12 小时
- * 从 `ipevel/polaris-rules` 一个源一起刷新，逐文件校验 sha256 后再替换。
+ * 从 `ipevel/cboard-rulesets` 一个源一起刷新，逐文件校验 sha256 后再替换。
  */
 async function rulesetState() {
   const enabled = new Set(rulesets.normalizeEnabled(store.get('routing_rules')));

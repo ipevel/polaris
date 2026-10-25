@@ -8,7 +8,7 @@
  *
  * 用户问过两次「你到底弄了几套分流规则」。从 2026-10-14 起答案是「一套」：
  * 分流清单 + geodata（geosite.dat / geoip.metadb / ASN.mmdb）全部来自
- * `ipevel/polaris-rules`，由 electron/core/rulesync.js 每 12 小时刷新一次。
+ * `ipevel/cboard-rulesets`，由 electron/core/rulesync.js 每 12 小时刷新一次。
  *
  * 但代码里还留着旧模块 electron/core/geosync.js（第三方 appshubcc/bett-rules 源，
  * 「新 sum 配旧字节」那次故障就是它）。它保留只为打包脚本 fetch-geo.py 的清单定义。
@@ -18,7 +18,7 @@
  * 钉死五件事：
  *   1. 运行期代码（electron/、src/js/，排除 geosync.js 自身）**剥掉整行注释后**，
  *      不得出现 bett-rules / appshubcc / GeoLite2-ASN；
- *   2. 运行期代码里必须出现 ipevel/polaris-rules（至少 rulesync.js 与 rulesets.js）；
+ *   2. 运行期代码里必须出现 ipevel/cboard-rulesets（至少 rulesync.js 与 rulesets.js）；
  *   3. 没有任何运行期模块 require geosync；
  *   4. resources/rules/ 恰好是 PROVIDERS 那 15 个 <键>.yaml，没有 acl_*.yaml 残留，
  *      且与安卓端正本（polaris-rules 的 dist/rules/）的键名集合一致；
@@ -91,9 +91,9 @@ else bad('运行期代码里出现了第三方源', hits.slice(0, 6).join('\n'))
 
 // ---- 2. 必须指向我们自己的仓库 --------------------------------------------
 const needSource = [path.join(ELECTRON, 'core', 'rulesync.js'), path.join(ELECTRON, 'core', 'rulesets.js')];
-const missing = needSource.filter((f) => !fs.readFileSync(f, 'utf8').includes('ipevel/polaris-rules'));
-if (missing.length === 0) ok('rulesync.js / rulesets.js 都指向 ipevel/polaris-rules');
-else bad('以下文件里找不到 ipevel/polaris-rules', missing.map((f) => path.relative(APP, f)).join('\n'));
+const missing = needSource.filter((f) => !fs.readFileSync(f, 'utf8').includes('ipevel/cboard-rulesets'));
+if (missing.length === 0) ok('rulesync.js / rulesets.js 都指向 ipevel/cboard-rulesets');
+else bad('以下文件里找不到 ipevel/cboard-rulesets', missing.map((f) => path.relative(APP, f)).join('\n'));
 
 // ---- 3. 没有运行期模块 require geosync ------------------------------------
 const reqGeosync = [];
