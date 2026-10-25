@@ -36,7 +36,7 @@ data class RuleResource(
  * 分流规则清单 + 地理库的统一刷新（P1）。
  *
  * 取代原先只管三份 geodata、且从**第三方** `appshubcc/bett-rules` 拉的 `GeoResources`：
- * 现在规则清单与 geodata 都来自我们自己的仓库 `ipevel/polaris-rules`
+ * 现在规则清单与 geodata 都来自我们自己的仓库 `ipevel/cboard-rulesets`
  * （CI 每 15 分钟同步上游 ACL4SSR + MetaCubeX 并算 SHA-256）——
  * 一个来源、一套校验、一个节拍。
  *
@@ -64,7 +64,7 @@ data class RuleResource(
  */
 object RuleResources {
     /** 规则与地理库的唯一来源。 */
-    const val SOURCE = "ipevel/polaris-rules"
+    const val SOURCE = "ipevel/cboard-rulesets"
 
     /** `latest.json` 的清单版本；与 Windows 侧 rulesync.js 的 SCHEMA 一致。 */
     const val SCHEMA = 1
@@ -89,12 +89,12 @@ object RuleResources {
     const val MAX_MANIFEST_BYTES = 2L * 1024 * 1024
 
     /** 钉住同一个 commit 的两个取件源；`@main` 会命中陈旧边缘缓存，所以必须带 SHA。 */
-    const val CDN_BASE = "https://cdn.jsdelivr.net/gh/ipevel/polaris-rules"
-    const val RAW_BASE = "https://raw.githubusercontent.com/ipevel/polaris-rules"
+    const val CDN_BASE = "https://cdn.jsdelivr.net/gh/ipevel/cboard-rulesets"
+    const val RAW_BASE = "https://raw.githubusercontent.com/ipevel/cboard-rulesets"
 
     /** commit SHA 的解析源（GitHub API；两个端点同一台主机，互为兜底）。 */
-    const val COMMIT_API = "https://api.github.com/repos/ipevel/polaris-rules/commits/main"
-    const val BRANCH_API = "https://api.github.com/repos/ipevel/polaris-rules/branches/main"
+    const val COMMIT_API = "https://api.github.com/repos/ipevel/cboard-rulesets/commits/main"
+    const val BRANCH_API = "https://api.github.com/repos/ipevel/cboard-rulesets/branches/main"
 
     /**
      * 取件基准：能钉住 commit 就钉住，钉不住退回 `@main`。

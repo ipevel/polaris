@@ -253,7 +253,7 @@ constructor(
      * 把分流规则清单复制到内核的 provider 目录
      * （imported/<uuid>/providers/polaris-rules/，与 Go 侧 patchProviders 改写后的路径一致）。
      *
-     * 取件顺序：**优先 [RuleResources] 已经从 `ipevel/polaris-rules` 刷下来的那份**，
+     * 取件顺序：**优先 [RuleResources] 已经从 `ipevel/cboard-rulesets` 刷下来的那份**，
      * 随包种子（assets/routing/providers）只是首次启动 / 断网 / 未到刷新节拍时的兜底。
      * 两份的键名与内容都出自同一个仓库，只是新旧不同。
      *
