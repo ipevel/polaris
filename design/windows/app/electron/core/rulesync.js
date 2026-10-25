@@ -8,7 +8,7 @@
  *   「现在没有不更新的规则，让所有规则全部随仓库更新，不再把规则写死了」
  *   「新建一个专门给 Polaris 用的规则仓库，把需要的所有规则都放进去，
  *     每 2 小时自动同步上游，有更新就跟着更新并添加校验，没更新等下次」
- * 仓库就是 `ipevel/polaris-rules`（P0 已建，每 15 分钟同步上游 ACL4SSR + MetaCubeX）。
+ * 仓库就是 `ipevel/cboard-rulesets`（P0 已建，每 15 分钟同步上游 ACL4SSR + MetaCubeX）。
  *
  * ## 与 geosync.js 的关系
  * geosync.js 只管三份 geodata，且从**第三方** `appshubcc/bett-rules` 拉；
@@ -68,14 +68,14 @@ const SCHEMA = 1;
  *
  * 测试/覆盖用 `POLARIS_RULES_BASE` 指定单一源：此时不查 SHA、不钉、也不退 raw。
  */
-const CDN_BASE = 'https://cdn.jsdelivr.net/gh/ipevel/polaris-rules';
-const RAW_BASE = 'https://raw.githubusercontent.com/ipevel/polaris-rules';
+const CDN_BASE = 'https://cdn.jsdelivr.net/gh/ipevel/cboard-rulesets';
+const RAW_BASE = 'https://raw.githubusercontent.com/ipevel/cboard-rulesets';
 const PRIMARY_BASE = `${CDN_BASE}@main`;
 const FALLBACK_BASE = `${RAW_BASE}/main`;
 
 /** commit SHA 解析源：两个端点同一台主机，互为兜底（`commits/main` 返回顶层 `.sha`）。 */
-const COMMIT_API = 'https://api.github.com/repos/ipevel/polaris-rules/commits/main';
-const BRANCH_API = 'https://api.github.com/repos/ipevel/polaris-rules/branches/main';
+const COMMIT_API = 'https://api.github.com/repos/ipevel/cboard-rulesets/commits/main';
+const BRANCH_API = 'https://api.github.com/repos/ipevel/cboard-rulesets/branches/main';
 
 /** 强制单一源（测试与排障用）：给了它就不查 SHA、不钉，也不退 raw。 */
 function forcedBase() {
@@ -278,7 +278,7 @@ async function fetchUrl(url, opts) {
 }
 
 /**
- * 取 `ipevel/polaris-rules` 当前 main 的 commit SHA —— 钉住它的前提。
+ * 取 `ipevel/cboard-rulesets` 当前 main 的 commit SHA —— 钉住它的前提。
  *
  * 两个端点同一台主机（`commits/main` 返回顶层 `.sha`，`branches/main` 返回 `.commit.sha`），
  * 互为兜底。**拿不到就返回 `{sha:null, errors}`，不是抛错**：调用方要退回未钉 SHA 的 `@main`。

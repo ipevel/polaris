@@ -9,7 +9,7 @@
  *
  * rule-provider 与安卓端一样是 type: file：内置规则全是**本地文件 provider**，
  * 内核只读本地文件、自己不联网。运行期由 electron/core/rulesync.js 每 12 小时从
- * `ipevel/polaris-rules` 拉一次：**清单与 geodata（geosite.dat / geoip.metadb /
+ * `ipevel/cboard-rulesets` 拉一次：**清单与 geodata（geosite.dat / geoip.metadb /
  * ASN.mmdb）同一个节拍**，逐文件校验 sha256 后再替换 —— 规则数据源只有这一个仓库，
  * 不再直接依赖任何第三方上游，也不再有任何远程 rule-provider URL。
  * 文件统一 .yaml：mihomo 按声明的 format 解析内容，扩展名只用于对齐种子名。
@@ -42,7 +42,7 @@ const TEST_URL = 'https://www.gstatic.com/generate_204';
  */
 const PROVIDERS = {
   // --- ACL4SSR 文本清单（种子随包内置，type:file 只读本地）---
-  // 键名 = ipevel/polaris-rules 仓库里 dist/rules/<键>.list 的文件名。
+  // 键名 = ipevel/cboard-rulesets 仓库里 dist/rules/<键>.list 的文件名。
   // 运行时由 electron/core/rulesync.js 按同一个 commit 拉取并校验 sha256 后覆盖；
   // 随包种子只作首次启动/断网兜底。**改这里必须同步仓库的产出文件名。**
   social:         { behavior: 'classical', format: 'text', noResolve: false, url: '' },
@@ -162,7 +162,7 @@ const LAN_DIRECT_RULES = [
  * 并额外给「🎯 国内直连」补 GEOIP,CN，兜住 HTTPDNS/直连 IP 的场景。
  *
  * 运行期刷新：规则清单与 geo 数据现在由 electron/core/rulesync.js 从
- * ipevel/polaris-rules 按同一个 commit 拉取并校验 sha256（12 小时一次），
+ * ipevel/cboard-rulesets 按同一个 commit 拉取并校验 sha256（12 小时一次），
  * 随包种子只作首次启动/断网兜底。providers 的键名就是仓库里的文件名。
  */
 const TABLE = [
