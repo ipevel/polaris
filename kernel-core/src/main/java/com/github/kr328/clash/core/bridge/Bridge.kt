@@ -11,7 +11,8 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.annotation.Keep
 import com.github.kr328.clash.common.Global
-import com.github.kr328.clash.common.log.Log
+import com.github.kr328.clash.common.log.Log as AppLog
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import java.io.File
 
@@ -26,7 +27,7 @@ object Bridge {
     external fun nativeNotifyDnsChanged(dnsList: String)
     external fun nativeNotifyTimeZoneChanged(name: String, offset: Int)
     external fun nativeNotifyInstalledAppChanged(uidList: String)
-    external fun nativeStartTun(fd: Int, stack: String, gateway: String, portal: String, dns: String, cb: TunInterface)
+    external fun nativeStartTun(fd: Int, stack: String, gateway: String, portal: String, dns: String, cb: TunInterface): Int
     external fun nativeStopTun()
     external fun nativeStartHttp(listenAt: String): String?
     external fun nativeStopHttp()
@@ -67,20 +68,71 @@ object Bridge {
 
     private external fun nativeInit(home: String, versionName: String, sdkVersion: Int)
 
-    init {
-        System.loadLibrary("bridge")
+    /** 选中的内核实现；必须在 Application.onCreate 最早处设置。 */
+    @Volatile
+    var kernelVariant: String = KERNEL_STANDARD
+        private set
 
-        val ctx = Global.application
+    private var loaded = false
 
-        ParcelFileDescriptor.open(File(ctx.packageCodePath), ParcelFileDescriptor.MODE_READ_ONLY)
-            .detachFd()
-
-        val home = ctx.filesDir.resolve("clash").apply { mkdirs() }.absolutePath
-        val versionName = ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "unknown"
-        val sdkVersion = Build.VERSION.SDK_INT
-
-        Log.d("Home = $home")
-
-        nativeInit(home, versionName, sdkVersion)
+    /** 选择内核：加载对应的原生库。切换内核后需重启进程。 */
+    fun selectKernel(variant: String) {
+        if (loaded) return
+        AppLog.i("Bridge.selectKernel: $variant")
+        kernelVariant = variant
+        val smart = variant == KERNEL_SMART
+        if (smart) {
+            val ok =
+                runCatching {
+                    System.loadLibrary("clash_smart")
+                    System.loadLibrary("bridge_smart")
+                    true
+                }.getOrDefault(false)
+            if (!ok) {
+                AppLog.w("Bridge: smart libs unavailable, fallback to standard")
+                kernelVariant = KERNEL_STANDARD
+                System.loadLibrary("bridge")
+            } else {
+                AppLog.i("Bridge: smart kernel loaded")
+            }
+        } else {
+            System.loadLibrary("bridge")
+        }
+        loaded = true
     }
+
+    /** 实际加载的内核变体（可能与用户选择不同：smart 库缺失时回退标准版）。 */
+    fun activeVariant(): String = kernelVariant
+
+    private fun ensureLoaded() {
+        if (!loaded) selectKernel(kernelVariant)
+    }
+
+    /** 初始化原生内核。Application 在选定内核后调用；重复调用无副作用。 */
+    fun initialize() {
+        if (initialized) return
+        synchronized(this) {
+            if (initialized) return
+            ensureLoaded()
+            val ctx = Global.application
+
+            ParcelFileDescriptor.open(File(ctx.packageCodePath), ParcelFileDescriptor.MODE_READ_ONLY)
+                .detachFd()
+
+            val home = ctx.filesDir.resolve("clash").apply { mkdirs() }.absolutePath
+            val versionName = ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "unknown"
+            val sdkVersion = Build.VERSION.SDK_INT
+
+            AppLog.d("Home = $home")
+
+            nativeInit(home, versionName, sdkVersion)
+            initialized = true
+        }
+    }
+
+    @Volatile
+    private var initialized = false
 }
+
+internal const val KERNEL_STANDARD = "mihomo"
+internal const val KERNEL_SMART = "mihomo_smart"

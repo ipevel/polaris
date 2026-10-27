@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Polaris Contributors
-// SPDX-License-Identifier: GPL-3.0-only
-
 package com.slte.app.kernel
 
 import com.github.kr328.clash.service.KernelState
@@ -11,12 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/**
- * 内核 VPN 状态机单测（对齐 kernel-service 的 KernelState）。
- * 核心语义：TUN 与配置都就绪才进 Running；失败后晚到的就绪事件不能覆盖 Failed。
- */
 class KernelStateTest {
-
     @Before
     fun setUp() {
         KernelState.starting()

@@ -25,4 +25,6 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    // 跨进程偏好：App 与 :background 进程共读内核选择
+    implementation(libs.rikkax.multiprocess)
 }

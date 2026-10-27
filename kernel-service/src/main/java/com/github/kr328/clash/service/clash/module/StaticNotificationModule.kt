@@ -1,14 +1,7 @@
-// SPDX-FileCopyrightText: The Clash Meta for Android Authors
-// SPDX-FileCopyrightText: 2026 Polaris Contributors (modifications)
-// SPDX-License-Identifier: GPL-3.0-only
-//
-// Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
-// Upstream copyright retained per THIRD-PARTY-NOTICES.md.
-
 package com.github.kr328.clash.service.clash.module
 
-import android.app.Service
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -22,40 +15,54 @@ import com.github.kr328.clash.service.BuildConfig
 import com.github.kr328.clash.service.R
 import kotlinx.coroutines.channels.Channel
 
+// SPDX-FileCopyrightText: The Clash Meta for Android Authors
+// SPDX-FileCopyrightText: 2026 Polaris Contributors (modifications)
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
+// Upstream copyright retained per THIRD-PARTY-NOTICES.md.
+
 /** 通知标题：环境变量优先，否则跟随应用名 */
 internal fun notificationTitle(service: Service): String {
     val custom = BuildConfig.NOTIFICATION_TITLE
-    return if (custom.isNotBlank()) custom
-    else service.packageManager.getApplicationLabel(service.applicationInfo).toString()
+    return if (custom.isNotBlank()) {
+        custom
+    } else {
+        service.packageManager.getApplicationLabel(service.applicationInfo).toString()
+    }
 }
 
+internal fun notificationBuilder(
+    service: Service,
+): NotificationCompat.Builder = NotificationCompat.Builder(service, StaticNotificationModule.CHANNEL_ID)
+    .setSmallIcon(R.drawable.ic_logo_service)
+    .setOngoing(true)
+    .setColor(service.getColorCompat(R.color.color_clash))
+    .setOnlyAlertOnce(true)
+    .setShowWhen(false)
+    .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+    .setContentIntent(
+        PendingIntent.getActivity(
+            service,
+            R.id.nf_clash_status,
+            Intent().setComponent(Components.MAIN_ACTIVITY)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT),
+        ),
+    )
+    .addAction(
+        R.drawable.ic_action_stop,
+        service.getText(R.string.notification_action_stop),
+        PendingIntent.getBroadcast(
+            service,
+            R.id.nf_clash_stop,
+            Intent(Intents.ACTION_CLASH_REQUEST_STOP).setPackage(service.packageName),
+            pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT),
+        ),
+    )
+
 class StaticNotificationModule(service: Service) : Module<Unit>(service) {
-    private val builder = NotificationCompat.Builder(service, CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_logo_service)
-        .setOngoing(true)
-        .setColor(service.getColorCompat(R.color.color_clash))
-        .setOnlyAlertOnce(true)
-        .setShowWhen(false)
-        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                service,
-                R.id.nf_clash_status,
-                Intent().setComponent(Components.MAIN_ACTIVITY)
-                    .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT)
-            )
-        )
-        .addAction(
-            R.drawable.ic_action_stop,
-            service.getText(R.string.notification_action_stop),
-            PendingIntent.getBroadcast(
-                service,
-                R.id.nf_clash_stop,
-                Intent(Intents.ACTION_CLASH_REQUEST_STOP).setPackage(service.packageName),
-                pendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT),
-            ),
-        )
+    private val builder = notificationBuilder(service)
 
     override suspend fun run() {
         val loaded = receiveBroadcast(capacity = Channel.CONFLATED) {
@@ -82,22 +89,22 @@ class StaticNotificationModule(service: Service) : Module<Unit>(service) {
             NotificationManagerCompat.from(service).createNotificationChannel(
                 NotificationChannelCompat.Builder(
                     CHANNEL_ID,
-                    NotificationManagerCompat.IMPORTANCE_LOW
-                ).setName(service.getText(R.string.clash_service_status_channel)).build()
+                    NotificationManagerCompat.IMPORTANCE_LOW,
+                ).setName(service.getText(R.string.clash_service_status_channel)).build(),
             )
         }
 
         fun notifyLoadingNotification(service: Service) {
-            val notification =
-                NotificationCompat.Builder(service, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_logo_service)
-                    .setOngoing(true)
-                    .setColor(service.getColorCompat(R.color.color_clash))
-                    .setOnlyAlertOnce(true)
-                    .setShowWhen(false)
-                    .setContentTitle(notificationTitle(service))
-                    .build()
+            val notification = notificationBuilder(service).setContentTitle(notificationTitle(service)).build()
 
+            service.startForegroundCompat(R.id.nf_clash_status, notification)
+        }
+
+        fun notifyRunningNotification(service: Service) {
+            val notification = notificationBuilder(service)
+                .setContentTitle(notificationTitle(service))
+                .setContentText(service.getText(R.string.notification_proxying))
+                .build()
             service.startForegroundCompat(R.id.nf_clash_status, notification)
         }
     }

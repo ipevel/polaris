@@ -17,6 +17,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,9 @@ data class RemoteConfigData(
     // 遗留字段：后端类型已在登录时自动识别并按 ApiUrlStore.backendType 路由，
     // 编译期不再默认固定某一后端类型（空串 = 未识别）。
     val apiType: String = "",
+    val crispWebsiteId: String = BuildConfig.CRISP_WEBSITE_ID,
+    val crispEnabled: Boolean = BuildConfig.CRISP_ENABLED,
+    val websiteUrl: String = BuildConfig.WEBSITE_URL,
 
     val updateVersion: String = "",
 
@@ -94,6 +98,18 @@ constructor(
 
     private val refreshMutex = Mutex()
 
+
+    private var probeJob: Job? = null
+
+    init {
+        // ETag 只存内存会随进程重启丢失，持久化的 etag 从此回灌，重启后仍能走 304
+        store.load()?.let { cached ->
+            val url = cached.sourceUrl
+            val etag = cached.etag
+            if (!url.isNullOrBlank() && !etag.isBlank()) etagByUrl[url] = etag
+        }
+    }
+
     private val configClient: OkHttpClient =
         OkHttpClient
             .Builder()
@@ -126,8 +142,17 @@ constructor(
         scope.launch { refresh(force = true) }
     }
 
+    @Synchronized
     fun startProbeLoop() {
-        scope.launch { prober.loop(PROBE_LOOP_INTERVAL_MS) }
+        if (probeJob?.isActive == true) return
+
+        probeJob = scope.launch { prober.loop(PROBE_LOOP_INTERVAL_MS) }
+    }
+
+    @Synchronized
+    fun stopProbeLoop() {
+        probeJob?.cancel()
+        probeJob = null
     }
 
     // 启动首拉与手动强刷可能并发：竞速、探测、选主全程互斥，

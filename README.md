@@ -127,7 +127,6 @@ npm start         # 运行（真实模式：需要已登录面板，没有离线
 ```
 
 > Windows 端的版本号唯一来源是 `design/windows/app/package.json` 的 `version`，发布时必须与 Android 的 `versionName` 一致（同一个 Release、同一个 tag）。
-
 ## 配置
 
 ### 面板地址（运行时）

@@ -10,6 +10,8 @@ import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.service.util.sendBroadcastSelf
 import com.slte.app.data.geo.RuleResources
 import com.slte.app.data.local.LocaleStore
+import com.slte.app.data.remote.config.CrispConfig
+import com.slte.app.data.remote.config.CrispManager
 import com.slte.app.data.remote.config.RemoteConfig
 import com.slte.app.kernel.KernelManager
 import dagger.hilt.android.HiltAndroidApp
@@ -23,6 +25,9 @@ import kotlinx.coroutines.SupervisorJob
 class SlteApplication : Application() {
     @Inject
     lateinit var kernelManager: KernelManager
+
+    @Inject
+    lateinit var crispManager: CrispManager
 
     @Inject
     lateinit var remoteConfig: RemoteConfig
@@ -47,7 +52,19 @@ class SlteApplication : Application() {
             Thread { extractGeoFiles() }.start()
             remoteConfig.startFetch()
             remoteConfig.startProbeLoop()
+            observeCrispConfig()
             kernelManager.bind()
+        }
+    }
+
+    private fun observeCrispConfig() {
+        scope.launch {
+            remoteConfig.dataFlow.collect { cfg ->
+                crispManager.init(
+                    this@SlteApplication,
+                    CrispConfig(cfg.crispWebsiteId, cfg.crispEnabled),
+                )
+            }
         }
     }
 

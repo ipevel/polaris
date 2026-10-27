@@ -26,7 +26,7 @@ import com.slte.app.ui.screen.register.RegisterScreen
 internal const val PAGE_TRANSITION_DURATION = 280
 
 @Composable
-fun AuthNavGraph() {
+fun AuthNavGraph(onSupport: () -> Unit = {}) {
     val navController = rememberNavController()
 
     Surface(
@@ -64,6 +64,7 @@ fun AuthNavGraph() {
                                 "${Routes.AUTH_REGISTER}?emailVerify=$emailVerify&inviteForce=$inviteForce",
                             )
                         },
+                        onSupport = onSupport,
                     )
                 }
                 composable(Routes.AUTH_FORGOT) {

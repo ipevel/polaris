@@ -19,6 +19,7 @@ import com.github.kr328.clash.service.data.PendingDao
 import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.service.remote.IFetchObserver
 import com.github.kr328.clash.service.store.ServiceStore
+import com.github.kr328.clash.service.util.AtomicFs
 import com.github.kr328.clash.service.util.importedDir
 import com.github.kr328.clash.service.util.AtomicFs
 import com.github.kr328.clash.service.util.pendingDir
@@ -55,13 +56,11 @@ object ProfileProcessor {
 
                 Clash.setAgeSecretKey(snapshot.ageSecretKey?.takeIf { it.isNotBlank() })
 
-                val force = snapshot.type != Profile.Type.File
-                // App 端已预下载清洗 YAML（pending 目录已有 config.yaml）时跳过抓取：
-                // source 列不含订阅 token（明文数据库不落 token），无法也不应再走内核抓取
-                val subscriptionInfo = if (force && context.processingDir.resolve("config.yaml").exists()) {
-                    null
-                } else {
-                    fetchProfile(context, snapshot.source, force, callback)
+                // App 必须先把清洗后的 YAML 写进 pending；缺失时拒绝提交，
+                // 不能回退到内核直接抓原始订阅（会绕过脱敏）
+                val prepared = context.processingDir.resolve("config.yaml")
+                if (!prepared.isFile || prepared.length() == 0L) {
+                    throw IllegalArgumentException("Profile content is not prepared, re-import the subscription")
                 }
 
                 profileLock.withLock {
@@ -78,19 +77,16 @@ object ProfileProcessor {
                         AtomicFs.replaceDirectory(staging, imported)
 
                         val old = ImportedDao().queryByUUID(snapshot.uuid)
-                        val updateInterval = subscriptionInfo?.subUpdateInterval
-                            ?.takeIf { old == null && snapshot.interval == 0L }
-                            ?: snapshot.interval
                         val new = Imported(
                             snapshot.uuid,
                             snapshot.name,
                             snapshot.type,
                             snapshot.source,
-                            updateInterval,
-                            subscriptionInfo?.subUpload ?: 0,
-                            subscriptionInfo?.subDownload ?: 0,
-                            subscriptionInfo?.subTotal ?: 0,
-                            subscriptionInfo?.subExpire ?: 0,
+                            snapshot.interval,
+                            old?.upload ?: 0,
+                            old?.download ?: 0,
+                            old?.total ?: 0,
+                            old?.expire ?: 0,
                             old?.createdAt ?: System.currentTimeMillis(),
                             ageSecretKey = snapshot.ageSecretKey
                         )

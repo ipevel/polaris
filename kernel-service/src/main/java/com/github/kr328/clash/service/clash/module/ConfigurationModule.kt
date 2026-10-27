@@ -19,6 +19,7 @@ import com.github.kr328.clash.service.store.ServiceStore
 import com.github.kr328.clash.service.util.AtomicFs
 import com.github.kr328.clash.service.util.importedDir
 import com.github.kr328.clash.service.util.sendProfileLoaded
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.selects.select
 import java.util.*
@@ -121,6 +122,8 @@ class ConfigurationModule(
 
                 Log.d("ConfigurationModule: reload done")
                 Log.d("Profile ${active.name} loaded")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 return enqueueEvent(LoadException(e.message ?: "Unknown"))
             }

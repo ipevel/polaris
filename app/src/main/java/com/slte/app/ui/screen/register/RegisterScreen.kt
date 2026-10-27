@@ -325,6 +325,7 @@ fun RegisterScreen(
  * 后缀只能选不能填，避免"输入完才被后端拒绝"；下拉沿用 v5 既有下拉样式
  * （同 `WithdrawMethodField`），触发条沿用输入框尾部槽位的写法（同密码显隐按钮）。
  */
+
 @Composable
 private fun EmailSuffixInput(
     localPart: String,

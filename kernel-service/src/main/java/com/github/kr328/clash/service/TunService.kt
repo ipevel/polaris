@@ -10,11 +10,13 @@ package com.github.kr328.clash.service
 import android.annotation.TargetApi
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Network
 import android.net.ProxyInfo
 import android.net.VpnService
 import android.os.Build
 import com.github.kr328.clash.common.compat.pendingIntentFlags
 import com.github.kr328.clash.common.constants.Components
+import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.common.log.Log
 import com.github.kr328.clash.service.clash.clashRuntime
 import com.github.kr328.clash.service.clash.module.*
@@ -27,7 +29,9 @@ import com.github.kr328.clash.service.util.sendClashStopped
 import kotlinx.coroutines.*
 import kotlinx.coroutines.selects.select
 
-class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.Default) {
+class TunService :
+    VpnService(),
+    CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.Default) {
     private val self: TunService
         get() = this
 
@@ -80,8 +84,8 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
                         RuntimeAction.Quit
                     }
                     network.onEvent { n ->
-                        if (Build.VERSION.SDK_INT in 22..28) @TargetApi(22) {
-                            setUnderlyingNetworks(n?.let { arrayOf(it) })
+                        if (Build.VERSION.SDK_INT in 22..28) {
+                            applyUnderlyingNetwork(n)
                         }
 
                         RuntimeAction.Continue
@@ -143,7 +147,38 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
         return super.onStartCommand(intent, flags, startId)
     }
 
+    private var stopReceiver: android.content.BroadcastReceiver? = null
+
+    private fun contextCompatRegisterStopReceiver() {
+        val receiver =
+            object : android.content.BroadcastReceiver() {
+                override fun onReceive(
+                    context: android.content.Context?,
+                    intent: android.content.Intent?,
+                ) {
+                    when (intent?.action) {
+                        Intents.ACTION_CLASH_REQUEST_STOP -> stopSelf()
+                    }
+                }
+            }
+        stopReceiver = receiver
+        val filter =
+            android.content.IntentFilter(Intents.ACTION_CLASH_REQUEST_STOP)
+        // 广播发送方带自定义权限，接收时必须声明同一权限才能收到
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            receiver,
+            filter,
+            com.github.kr328.clash.common.constants.Permissions.RECEIVE_SELF_BROADCASTS,
+            null,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
     override fun onDestroy() {
+        stopReceiver?.let { runCatching { unregisterReceiver(it) } }
+        stopReceiver = null
+
         TunModule.requestStop()
 
         StatusProvider.serviceRunning = false

@@ -3,6 +3,7 @@
 
 package com.slte.app.data.remote
 
+import com.slte.app.BuildConfig
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -115,5 +116,44 @@ class AuthRulesTest {
         assertFalse(notAllowedHost.attachToken)
         // 主机不可信时不再清会话：清完会话用户直接被锁在门外
         assertFalse(notAllowedHost.clearSession)
+    }
+
+    @Test
+    fun `响应体Unicode转义后仍能判定登录态失效`() {
+        // 面板实测返回：{"message":"\u672a\u767b\u5f55\u6216\u767b\u9646\u5df2\u8fc7\u671f"}（未登录或登陆已过期）
+        val escaped = "{\"message\": \"\\u672a\\u767b\\u5f55\\u6216\\u767b\\u9646\\u5df2\\u8fc7\\u671f\"}"
+
+        assertTrue(AuthRules.isAuthFailureBodyText(escaped))
+        assertTrue(AuthRules.isAuthFailureBody(escaped))
+        // 转义后仍不含失效关键词的业务消息不误判
+        assertFalse(AuthRules.isAuthFailureBodyText("{\"message\":\"\\u8ba2\\u9605\\u5df2\\u8fc7\\u671f\"}"))
+    }
+
+    @Test
+    fun `订阅下载携带本会话凭据返回401或403才判为疑似失效`() {
+        val subscribePath = BuildConfig.SUBSCRIBE_PATH
+        assertTrue(AuthRules.isSubscribePath(subscribePath))
+        assertFalse(AuthRules.isSubscribePath("/api/v1/user/info"))
+
+        // 白名单主机直连：Authorization 即本会话凭据
+        assertTrue(
+            AuthRules.isSubscribeCredentialFailure(403, subscribePath, null, "ad-1", "ad-1", "sub-1"),
+        )
+        // 自定义订阅域名：仅 token 查询参数匹配
+        assertTrue(
+            AuthRules.isSubscribeCredentialFailure(401, "/custom/sub", "sub-1", null, "ad-1", "sub-1"),
+        )
+        // 非 401/403 不算
+        assertFalse(
+            AuthRules.isSubscribeCredentialFailure(200, subscribePath, "sub-1", null, "ad-1", "sub-1"),
+        )
+        // 未携带本会话凭据（CDN/WAF 拦截）不算
+        assertFalse(
+            AuthRules.isSubscribeCredentialFailure(403, subscribePath, "other", null, "ad-1", "sub-1"),
+        )
+        // 非订阅路径且未匹配订阅 token（用户接口 401/403 由既有门控处理）
+        assertFalse(
+            AuthRules.isSubscribeCredentialFailure(403, "/api/v1/user/info", null, null, "ad-1", "sub-1"),
+        )
     }
 }

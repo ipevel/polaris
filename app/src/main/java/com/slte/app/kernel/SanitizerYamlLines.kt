@@ -100,6 +100,35 @@ internal object SanitizerYamlLines {
         return -1
     }
 
+    /** 值结束位置（不含行尾注释）：引号到配对引号，裸值到 ` #`。 */
+    fun valueEnd(
+        text: String,
+        start: Int,
+    ): Int {
+        val first = text[start]
+        if (first == '"' || first == '\'') {
+            var index = start + 1
+            while (index < text.length) {
+                val char = text[index]
+                if (char == '\\' && first == '"') {
+                    index += 2
+                    continue
+                }
+                if (char == first) return index + 1
+                index++
+            }
+            return text.length
+        }
+        var index = start
+        while (index < text.length) {
+            if (text[index] == '#' && index > start && text[index - 1] == ' ') return index
+            index++
+        }
+        return text.length
+    }
+
+    fun quote(name: String): String = "\"" + name.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
     fun topLevelKey(line: String): String? {
         if (!isTopLevelLine(line)) return null
         val colon = unquotedColonIndex(line)

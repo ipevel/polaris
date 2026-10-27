@@ -35,6 +35,11 @@ POLARIS_REMOTE_CONFIG_URLS=
 # API 地址与配置源域名会自动并入白名单，此处在有额外自持域时才需要填写
 POLARIS_ALLOWED_DOMAINS=
 
+# ---------------- 官网入口（可选）----------------
+# 登录页「官网」按钮地址（https，独立配置、不跟随 API 域名也不进白名单）；
+# 远程配置 JSON 的 website_url 会覆盖此处
+SLTE_WEBSITE_URL=
+
 # ---------------- Crisp 客服（可选，推荐由远程配置下发）----------------
 # 编译期默认值；远程配置 JSON 的 crisp_website_id / crisp_enabled 会覆盖此处
 POLARIS_CRISP_WEBSITE_ID=
