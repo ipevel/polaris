@@ -48,6 +48,12 @@ internal object ConfigValidation {
         return isHostAllowed(url.host.lowercase(), allowedSuffixes)
     }
 
+    /** 独立外链（如官网）只要求 https，不做域名白名单校验。 */
+    fun isHttpsUrl(value: String): Boolean {
+        val url = value.trim().toHttpUrlOrNull() ?: return false
+        return url.scheme == "https"
+    }
+
     fun isValidDomain(
         value: String,
         allowedSuffixes: List<String>,

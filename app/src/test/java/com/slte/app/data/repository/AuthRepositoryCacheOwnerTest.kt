@@ -1,26 +1,20 @@
-// SPDX-FileCopyrightText: 2026 Polaris Contributors
-// SPDX-License-Identifier: GPL-3.0-only
-
 package com.slte.app.data.repository
 
 import com.slte.app.data.local.CredentialStore
-import com.slte.app.data.local.SessionManager
 import com.slte.app.data.local.SessionStore
 import com.slte.app.data.remote.api.AuthApi
 import com.slte.app.data.remote.api.dto.LoginResponseDto
+import com.slte.app.domain.repository.SessionRepository
+import com.slte.app.domain.repository.SubscribeRepository
 import com.slte.app.support.MainDispatcherRule
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 
-/**
- * 缓存归属账号：同账号重新登录保留本地缓存（消除「无套餐/空节点」闪动），
- * 换账号或归属未知才清缓存。
- */
 class AuthRepositoryCacheOwnerTest {
     @get:Rule
     val mainRule = MainDispatcherRule()
@@ -28,10 +22,10 @@ class AuthRepositoryCacheOwnerTest {
     private val authApi = mockk<AuthApi>(relaxed = true)
     private val sessionStore = mockk<SessionStore>(relaxed = true)
     private val credentialStore = mockk<CredentialStore>(relaxed = true)
-    private val sessionManager = mockk<SessionManager>(relaxed = true)
+    private val sessionManager = mockk<SessionRepository>(relaxed = true)
     private val subscribeRepository = mockk<SubscribeRepository>(relaxed = true)
 
-    private fun repository() = AuthRepository(
+    private fun repository() = AuthRepositoryImpl(
         authApi = authApi,
         sessionStore = sessionStore,
         credentialStore = credentialStore,
@@ -50,7 +44,7 @@ class AuthRepositoryCacheOwnerTest {
 
         repository().login("A@B.C", "pw")
 
-        verify(exactly = 0) { subscribeRepository.invalidateCache() }
+        coVerify(exactly = 0) { subscribeRepository.invalidateCache() }
     }
 
     @Test
@@ -60,7 +54,7 @@ class AuthRepositoryCacheOwnerTest {
 
         repository().login("new@b.c", "pw")
 
-        verify { subscribeRepository.invalidateCache() }
+        coVerify { subscribeRepository.invalidateCache() }
     }
 
     @Test
@@ -70,6 +64,6 @@ class AuthRepositoryCacheOwnerTest {
 
         repository().login("a@b.c", "pw")
 
-        verify { subscribeRepository.invalidateCache() }
+        coVerify { subscribeRepository.invalidateCache() }
     }
 }

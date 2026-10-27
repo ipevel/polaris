@@ -67,3 +67,5 @@ design/screenshots-sweep/
 design/ui-v55/
 *测试报告*.md
 Polaris-*.md
+.zcode/
+/docs/

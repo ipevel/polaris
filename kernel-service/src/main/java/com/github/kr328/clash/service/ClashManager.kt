@@ -13,6 +13,7 @@ import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.common.log.Log
 import com.github.kr328.clash.core.Clash
 import com.github.kr328.clash.core.model.*
+import com.github.kr328.clash.core.model.OverrideSlot
 import com.github.kr328.clash.service.data.Selection
 import com.github.kr328.clash.service.data.SelectionDao
 import com.github.kr328.clash.service.data.ImportedDao
@@ -25,8 +26,9 @@ import com.github.kr328.clash.service.util.importedDir
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.ReceiveChannel
 
-class ClashManager(private val context: Context) : IClashManager,
-    CoroutineScope by CoroutineScope(Dispatchers.IO) {
+class ClashManager(private val context: Context) :
+    IClashManager,
+    CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.IO) {
     private val store = ServiceStore(context)
     private var logReceiver: ReceiveChannel<LogMessage>? = null
 
@@ -83,9 +85,7 @@ class ClashManager(private val context: Context) : IClashManager,
         SelectionDao().removeSelections(active, stale)
     }
 
-    override fun queryOverride(slot: Clash.OverrideSlot): ConfigurationOverride {
-        return Clash.queryOverride(slot)
-    }
+    override fun queryOverride(slot: OverrideSlot): ConfigurationOverride = Clash.queryOverride(slot)
 
     override fun patchSelector(group: String, name: String): Boolean {
         return Clash.patchSelector(group, name).also {
@@ -99,13 +99,13 @@ class ClashManager(private val context: Context) : IClashManager,
         }
     }
 
-    override fun patchOverride(slot: Clash.OverrideSlot, configuration: ConfigurationOverride) {
+    override fun patchOverride(slot: OverrideSlot, configuration: ConfigurationOverride) {
         Clash.patchOverride(slot, configuration)
 
         context.sendOverrideChanged()
     }
 
-    override fun clearOverride(slot: Clash.OverrideSlot) {
+    override fun clearOverride(slot: OverrideSlot) {
         Clash.clearOverride(slot)
     }
 

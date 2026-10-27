@@ -48,6 +48,17 @@ val slteApplicationId = slteValue("POLARIS_APPLICATION_ID") ?: "com.polaris.app"
 val slteVersionCode = slteValue("POLARIS_VERSION_CODE")?.toIntOrNull() ?: 29882030
 val slteVersionName = slteValue("POLARIS_VERSION_NAME") ?: "1.13.0"
 
+// 编译期内核集合：逗号分隔，只能包含已注册实现；空/非法回退 mihomo。
+// 单内核包（1 项）不显示切换入口，多内核包由设置页切换。
+val slteKernels =
+    (slteValue("SLTE_KERNELS") ?: "mihomo")
+        .split(',')
+        .map { it.trim().lowercase() }
+        .filter { it in setOf("mihomo", "mihomo_smart") }
+        .distinct()
+        .ifEmpty { listOf("mihomo") }
+        .joinToString(",")
+
 // Android 包名的每一段必须以字母开头（数字不能打头：91.vip.fun 这类会被 AAPT 拒绝）。
 // POLARIS_APPLICATION_ID 由 build.yml 的手动输入提供，填错时 AAPT 要到资源链接阶段才报
 // "not a valid Android package name"，位置与信息都不直观；这里在配置阶段就校验并给出可读提示。
@@ -73,6 +84,9 @@ val slteRemoteConfigUrls =
         ?.mapNotNull(::slteHttps)
         ?.joinToString(",") ?: ""
 
+// 登录页「官网」按钮的编译期默认值；远程配置 website_url 会覆盖（独立配置，只要求 https）
+val slteWebsiteUrl = slteValue("SLTE_WEBSITE_URL")?.let(::slteHttps) ?: ""
+
 val slteAllowedDomains =
     buildList {
         slteValue("POLARIS_ALLOWED_DOMAINS")
@@ -95,6 +109,13 @@ android {
 
     applicationVariants.all {
         outputs.all {
+            // 非默认内核组合在 APK 名上带标识，便于下载后区分（与 CI 产物名同规则）
+            val kernelTag =
+                if (slteKernels == "mihomo") {
+                    ""
+                } else {
+                    "-${slteKernels.replace(",", "-")}"
+                }
             (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
                 "Polaris-$versionName.apk"
         }
@@ -124,6 +145,11 @@ android {
         buildConfigField("String", "ALLOWED_DOMAINS", "\"$slteAllowedDomains\"")
 
         buildConfigField("String", "TELEGRAM_GROUP_URL", "\"$slteTelegramGroupUrl\"")
+        buildConfigField("String", "CRISP_WEBSITE_ID", "\"$slteCrispWebsiteId\"")
+        buildConfigField("boolean", "CRISP_ENABLED", "$slteCrispEnabled")
+        buildConfigField("String", "WEBSITE_URL", "\"$slteWebsiteUrl\"")
+
+        buildConfigField("String", "AVAILABLE_KERNELS", "\"$slteKernels\"")
     }
 
     // 先提取密码供 buildTypes 做缺参前置校验，避免空密码静默进入签名配置
@@ -178,7 +204,14 @@ android {
             } else {
 
                 gradle.taskGraph.whenReady {
-                    if (allTasks.any { it.name.contains("Release") }) {
+                    val releasePackaging =
+                        allTasks.any { task ->
+                            task.name == "packageRelease" ||
+                                task.name.startsWith("assembleRelease") ||
+                                task.name.startsWith("bundleRelease") ||
+                                task.name.startsWith("installRelease")
+                        }
+                    if (releasePackaging) {
                         throw GradleException(
                             "release 构建必须设置 POLARIS_RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD，" +
                                 "禁止使用 debug 签名发布（本地调试请用 assembleDebug）",
@@ -267,6 +300,7 @@ dependencies {
 
     implementation(project(":kernel-service"))
     implementation(project(":kernel-common"))
+    implementation(libs.rikkax.multiprocess)
     implementation(libs.kaidl.runtime)
 
     debugImplementation(libs.androidx.ui.tooling)
@@ -276,6 +310,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
     testImplementation(libs.snakeyaml)
+    implementation(libs.snakeyaml)
     testImplementation(libs.robolectric)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.ui.test.junit4)

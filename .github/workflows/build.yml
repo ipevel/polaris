@@ -1,36 +1,4 @@
-name: Polaris Build
-
-# 打包并（可选）发布到 GitHub Releases。
-#
-# 用法：Actions → Polaris Build → Run workflow，填参数后运行。
-#   - 只能从 main 分支或 v* 标签触发；其它 ref 会被 release-precheck 直接拒绝。
-#   - 发版前置门禁（release-precheck，fail-closed）：本 commit 上
-#       「版本门禁自测 / 内核 Go 门禁（vet + build + test）/ 质量门禁（test + ktlint + lint）」
-#     三条 required check 与「Windows 离线自检 + 语法检查」必须全部 conclusion=success；
-#     Checks API 读不到、名字对不上、或结论不是 success 一律判不通过 —— 不允许「读不到就放行」。
-#     这三条 required 的名字必须与 main 分支保护里的 contexts 逐字一致（改名即读不到）。
-#   - 门禁通过后由流水线自己创建 tag（v<versionName>，指向本次构建的 commit）：
-#     tag 不存在则创建；已存在且指向同一 commit 则幂等继续；指向别的 commit 直接失败。
-#     人工不再需要先打 tag；本流水线不 force、不移动、不删除任何已有 tag。
-#   - 排练：dryRun=true 时只跑到「前置门禁 + 编译」，不打 tag、不上传产物、不建 Release。
-#     ⚠️ workflow_dispatch 只能触发默认分支（main）上的 workflow，所以排练只能在
-#     本文件合并进 main 之后手动跑一次；合并前的检查都是静态的。
-#   - buildType=release 需要仓库 Secrets 四件套（全部 POLARIS_ 前缀）：
-#       POLARIS_RELEASE_STORE_B64 / POLARIS_RELEASE_STORE_PASSWORD
-#       POLARIS_RELEASE_KEY_ALIAS / POLARIS_RELEASE_KEY_PASSWORD
-#     这些 Secret 原为 fork 残留的 SLTE_ 前缀，已统一改名。迁移顺序：先在
-#     Settings → Secrets and variables → Actions 建好全部 POLARIS_*，用它成功
-#     发一次版（核对 SIGNING.txt 指纹与旧版一致），再删除旧的 SLTE_*。
-#     ⚠️ 两者不可长期并存半改名状态：本文件任一步骤取不到值，release 构建即失败。
-#   - publishRelease=true 时，构建成功后自动创建/更新 Release 并附上 APK、
-#     SHA256SUMS.txt 与签名证书指纹（SIGNING.txt）。
-#   - 重复运行同一标签（releaseTag 相同）会更新既有 Release 的资产与说明，不会失败。
-#   - versionName 必须填本次发布的版本号，且严格大于上一已发布版本：构建前会跑
-#     .scripts/version_gate.py 校验版本号/versionCode/tag 三者自洽，并检查区间内的
-#     feat / 破坏性变更是否递增了对应位（规则见 .scripts/version_gate.py 的文档字符串）。
-#     发版固定 strict：不再提供 warn/off 降级开关（紧急回滚请走 revert + 新的补丁版本）。
-#   - 本 workflow 不再重复跑单元测试 / ktlint / Android Lint / R8 存活校验：这些已在
-#     ci.yml 的质量门禁里跑过，而 release-precheck 要求那次结果必须是 success。
+name: SLTE Build
 
 on:
   workflow_dispatch:
@@ -38,15 +6,15 @@ on:
       appName:
         description: 应用名称（桌面显示名）
         required: true
-        default: Polaris
+        default: SLTE
       applicationId:
         description: 包名
         required: true
-        default: com.polaris.app
+        default: com.slte.app
       versionName:
-        description: 版本号（X.Y.Z，必须严格大于上一已发布版本；门禁会校验）
+        description: 版本号
         required: true
-        default: ''
+        default: 1.0.0
       versionCode:
         description: versionCode（留空自动生成）
         required: false
@@ -55,7 +23,7 @@ on:
         description: 面板 API 地址
         required: true
       apiType:
-        description: 编译期后端占位值（遗留字段；运行时登录会自动识别后端类型，此处不影响 App 行为）
+        description: 面板版本
         type: choice
         options:
           - xiaov2b
@@ -69,64 +37,25 @@ on:
         description: 追加白名单域名（逗号分隔）
         required: false
         default: ''
-      notificationTitle:
-        description: 通知栏标题（留空跟随应用名）
+      websiteUrl:
+        description: 官网地址（https；远程优先，失效回退）
         required: false
         default: ''
-      notificationTraffic:
-        description: 通知栏流量显示
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-        default: 'true'
-      telegramGroupUrl:
-        description: Telegram 讨论组链接（留空则个人页不显示该入口）
+      crispWebsiteId:
+        description: 客服 ID（Crisp Website ID，填了即启用应用内在线客服，留空不启用）
         required: false
         default: ''
+      kernels:
+        description: 内核组合（逗号分隔一种组合；多组合用分号分隔，每组一个构建任务）
+        required: false
+        default: mihomo
       buildType:
         description: 构建类型（release 需仓库 Secrets 签名四件套）
         type: choice
         options:
           - debug
           - release
-        default: release
-      publishRelease:
-        description: 是否创建 GitHub Release（仅 buildType=release 时生效）
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-        default: 'true'
-      releaseTag:
-        description: Release 标签名（留空自动使用 v<版本号>）
-        required: false
-        default: ''
-      dryRun:
-        description: |
-          排练模式：true 时只跑到「前置门禁 + 编译」，不打 tag、不上传产物、不建 Release。
-          ⚠️ workflow_dispatch 只能触发默认分支（main）上的 workflow，所以排练只能在
-          本文件合并进 main 之后手动跑一次；合并前的检查都是静态的。
-        type: choice
-        options:
-          - 'false'
-          - 'true'
-        default: 'false'
-      allowRepublish:
-        description: |
-          仅在有意识地重发同一 tag 时置 true；默认拒绝已发布 Release 的重发。
-          false（默认）：同一提交已有在跑的 workflow_dispatch 发版 run，或目标 tag 的
-          Release 已存在且 draft=false 时，release-precheck 直接拒绝本次发版（fail-closed）。
-          true：明确知晓要覆盖已发布 Release 时才会放行，仅供人工有意识重发使用。
-        type: boolean
-        default: false
-      releaseNotes:
-        description: |
-          Release 变更说明（留空则不输出「变更说明」小节；填 auto 会写成「见 git log」）。
-          变更说明写用户可感知的结果即可（如「修复若干已知问题」），不必罗列实现细节；
-          commit 标题保持同一尺度。
-        required: false
-        default: ''
+        default: debug
       iconB64:
         description: 自定义启动图标（PNG 的 base64，≤36KB；留空使用仓库默认图标）
         required: false
@@ -135,464 +64,37 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # 发布构建按本次构建的 commit 串行：同一 SHA 重复触发时排队等待，不打断进行中的发布
-  # （避免产生半成品 Release）。
-  #
-  # ⚠️ 这只是**串行化补充**，不是防重复发布的保证：手动 dispatch 的目标 tag 可以与构建
-  # SHA 不同，排队挡不住「不同 SHA 发同一个 tag」，也挡不住「台账里已经发过、这次换
-  # 一条无关的 run 再发一次」。真正的防线是 release-precheck 最前面那两条 fail-closed
-  # 前置校验（同 SHA 已有在跑的发版 run / 目标 tag 的 Release 已发布且未置 allowRepublish）。
-  group: release-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
-
 jobs:
-  # 发版前置门禁（fail-closed）：读不到、名字对不上、或结论不是 success 一律判不通过。
-  # 放行一次就等于把没验过的提交当成「已发布版本」发出去，所以这里不设任何降级开关。
-  release-precheck:
+  prepare:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # 读 check-runs API 需要 checks: read；显式声明，避免仓库默认权限收紧后静默变成 403。
-      checks: read
-      # 防重复发布守卫要列 workflow_dispatch 发版 run（GET /actions/runs），需要 actions: read；
-      # 同样显式声明，否则仓库默认权限收紧后会静默 403 —— 那也按 fail-closed 拒绝发版。
-      actions: read
-    steps:
-      # 守卫脚本随仓库文件走，先检出本次构建提交（与其它 job 用同一个 pin）。
-      - name: 检出代码（防重复发布守卫脚本来自本次构建提交）
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-
-      # fail-closed 的第一道门：放在所有断言之前。两条判定见 tools/release-duplicate-guard.mjs：
-      #   (a) 同一 SHA 已有在跑的发版 run（排除自己、限定 workflow_dispatch）；
-      #   (b) 目标 tag 的 Release 已存在且 draft=false（仅 allowRepublish=true 时放行）。
-      # 读不到 Actions/Release 一律判不通过，不允许「读不到就放行」。
-      - name: 防重复发布守卫（同 SHA 在跑的 run / 目标 tag 的 Release，fail-closed）
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          RUN_ID: ${{ github.run_id }}
-          ALLOW_REPUBLISH: ${{ inputs.allowRepublish }}
-          RELEASE_TAG: ${{ inputs.releaseTag }}
-          VERSION_NAME: ${{ inputs.versionName }}
-        run: node tools/release-duplicate-guard.mjs
-
-      - name: 校验触发 ref（只允许 main / v* / rc tag）
-        env:
-          REF: ${{ github.ref }}
-        run: |
-          set -e
-          # workflow_dispatch 的 ref 参数**不接受裸 commit SHA**（实测 API 返回 422 No ref found）；
-          # 想按某个 commit 触发必须先有 ref（分支或 tag）。rc tag 显式放行：
-          #   - rc tag（v<版本>-rc*）只作 dispatch 的 ref 用，**不算发布 tag**；
-          #     发布 tag 始终由 release-tag job 按 versionName/releaseTag 创建，本流水线不发布 rc。
-          #     rc 演练（dryRun=true）常用它把流水线钉在某个候选提交上。
-          #   - 已发布的 v* tag 也允许作为 ref，但会被上面的防重复发布守卫与 tag 指向校验拦住重发。
-          case "$REF" in
-            refs/heads/main)
-              echo "触发 ref 合法：$REF" ;;
-            refs/tags/v*-rc*)
-              echo "触发 ref 合法（rc tag，仅作 ref、不是发布 tag）：$REF" ;;
-            refs/tags/v*)
-              echo "触发 ref 合法：$REF" ;;
-            *)
-              echo "::error::发版只能从 refs/heads/main、v* tag 或 rc tag（refs/tags/v*-rc*）触发，当前为 $REF"
-              exit 1 ;;
-          esac
-
-      - name: 校验本次构建提交的质量门禁（三条 required + Windows 离线自检，fail-closed）
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -e
-          cat > "$RUNNER_TEMP/check_runs_gate.py" <<'PRECHECK_PY'
-          import json, os, sys, urllib.request
-
-          TOKEN = os.environ["GH_TOKEN"]
-          REPO = os.environ["REPO"]
-          SHA = os.environ["SHA"]
-
-          # 三条 required 的字符串与 main 分支保护 required_status_checks.contexts 逐字一致
-          # （2026-10-15 用 GET /repos/ipevel/polaris/branches/main/protection 读回核对）。
-          # 改名即读不到 —— 读不到一律 fail-closed。
-          REQUIRED = [
-              "版本门禁自测",
-              "内核 Go 门禁（vet + build + test）",
-              "质量门禁（test + ktlint + lint）",
-          ]
-          WINDOWS = "Windows 离线自检 + 语法检查"
-
-          def fetch(url):
-              req = urllib.request.Request(url, headers={
-                  "Authorization": "Bearer " + TOKEN,
-                  "Accept": "application/vnd.github+json",
-                  "X-GitHub-Api-Version": "2022-11-28",
-                  "User-Agent": "polaris-release-precheck",
-              })
-              with urllib.request.urlopen(req, timeout=30) as resp:
-                  return json.load(resp)
-
-          runs = []
-          page = 1
-          while True:
-              url = "https://api.github.com/repos/%s/commits/%s/check-runs?per_page=100&page=%d" % (REPO, SHA, page)
-              try:
-                  payload = fetch(url)
-              except Exception as exc:
-                  print("::error::读取 check-runs 失败（fail-closed，不放行）：%s" % exc)
-                  sys.exit(1)
-              batch = payload.get("check_runs") or []
-              runs.extend(batch)
-              if len(batch) < 100:
-                  break
-              page += 1
-              if page > 10:
-                  print("::error::check-runs 分页超过 10 页，拒绝继续（fail-closed）")
-                  sys.exit(1)
-
-          # 同名 check 可能重跑过多次：只认 id 最大（最新一次），避免拿旧绿灯放行。
-          latest = {}
-          for run in runs:
-              name = run.get("name")
-              if name is None:
-                  continue
-              cur = latest.get(name)
-              if cur is None or int(run.get("id") or 0) > int(cur.get("id") or 0):
-                  latest[name] = run
-
-          print("本次构建提交 %s 上的 check（每个名字取最新一次）：" % SHA)
-          for name in sorted(latest):
-              run = latest[name]
-              print("  - %s: status=%s conclusion=%s head_sha=%s" % (name, run.get("status"), run.get("conclusion"), run.get("head_sha")))
-
-          problems = []
-          for name in REQUIRED + [WINDOWS]:
-              run = latest.get(name)
-              if run is None:
-                  problems.append("%s：该提交上找不到这个 check" % name)
-                  continue
-              if run.get("head_sha") != SHA:
-                  problems.append("%s：head_sha=%s 与本次构建提交不一致" % (name, run.get("head_sha")))
-              if run.get("status") != "completed":
-                  problems.append("%s：status=%s（还没跑完）" % (name, run.get("status")))
-                  continue
-              if run.get("conclusion") != "success":
-                  problems.append("%s：conclusion=%s" % (name, run.get("conclusion")))
-
-          if problems:
-              for item in problems:
-                  print("::error::发版前置门禁不通过 —— %s" % item)
-              sys.exit(1)
-          print("::notice::发版前置门禁通过：%d 条 check 全部 success" % (len(REQUIRED) + 1))
-          PRECHECK_PY
-          python3 "$RUNNER_TEMP/check_runs_gate.py"
-
-      - name: 校验 tag 指向（已存在时必须指向本次构建提交）
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          VERSION_INPUT: ${{ inputs.versionName }}
-          TAG_INPUT: ${{ inputs.releaseTag }}
-        run: |
-          set -e
-          if [ -z "$VERSION_INPUT" ]; then
-            echo "::error::versionName 为空，请填写本次发布的版本号（形如 1.5.18）"
-            exit 1
-          fi
-          TAG="${TAG_INPUT:-v${VERSION_INPUT}}"
-          case "$TAG" in
-            v*) ;;
-            *) echo "::error::拒绝使用非 v* 标签：$TAG"; exit 1 ;;
-          esac
-          OUT="$(gh api "repos/$REPO/commits/$TAG" --jq .sha 2>&1)" && STATUS=0 || STATUS=$?
-          # 这个端点对「ref 不存在」返回 422（body: No commit found for SHA: <ref>），
-          # 只有别的失败路径才回 404：两种都当「尚不存在」，其余一律 fail-closed。
-          # 422 必须同时带 No commit found 才算不存在（措辞/误匹配时不静默放宽）。
-          # 2026-10-15 实测：/commits/v1.12.0 -> 422；/git/ref/tags/v1.12.0 -> 404。
-          if [ "$STATUS" = "0" ]; then
-            if [ "$OUT" != "$SHA" ]; then
-              echo "::error::tag $TAG 已存在且指向 $OUT，本次构建的是 $SHA；请核对 versionName / releaseTag"
-              exit 1
-            fi
-            echo "::notice::tag $TAG 已存在且指向本次构建提交，幂等继续"
-          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
-            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
-            echo "::notice::tag $TAG 尚不存在，将由 release-tag job 创建（指向 $SHA）"
-          else
-            echo "::error::读取 tag $TAG 失败（fail-closed，不放行）：$OUT"
-            exit 1
-          fi
-
-      - name: 校验 config/remote.json 的遗留更新字段为空（fail-closed）
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -e
-          # 历史版本 App 与 Windows 端的镜像来源都会读 config/remote.json 的 update_* 字段；
-          # 字段非空会让客户端提示一个早已下架（甚至下载不到包）的旧版本。
-          # 发版流程不再回写该文件：分支保护下直推 main 会被拒，而该步骤在 Release 建出之后执行，
-          # 失败会留下「Release 已发布、remote.json 未更新」的半成品。改为只读校验、fail-closed：
-          # 读不到文件或字段非空一律不放行，人工用 PR 置空后重跑发版。
-          OUT="$(gh api "repos/$REPO/contents/config/remote.json?ref=$SHA" --jq .content 2>&1)" || {
-            echo "::error::读取 config/remote.json 失败（fail-closed，不放行）：$OUT"; exit 1; }
-          printf '%s' "$OUT" | tr -d '\n' | base64 -d > "$RUNNER_TEMP/remote.json" || {
-            echo "::error::config/remote.json base64 解码失败（fail-closed，不放行）"; exit 1; }
-          python3 - "$RUNNER_TEMP/remote.json" <<'PY'
-          import json, sys
-          cfg = json.load(open(sys.argv[1], encoding="utf-8"))
-          bad = []
-          if str(cfg.get("update_version", "") or "").strip():
-              bad.append("update_version=%r" % cfg.get("update_version"))
-          if str(cfg.get("update_apk_url", "") or "").strip():
-              bad.append("update_apk_url=%r" % cfg.get("update_apk_url"))
-          if str(cfg.get("update_apk_sha256", "") or "").strip():
-              bad.append("update_apk_sha256=%r" % cfg.get("update_apk_sha256"))
-          if cfg.get("update_force") is True:
-              bad.append("update_force=true")
-          if bad:
-              print("::error::config/remote.json 的遗留更新字段非空：%s" % "; ".join(bad))
-              print("::error::这会让仍在读该文件的客户端提示旧版本；请用 PR 置空后重跑发版")
-              sys.exit(1)
-          print("::notice::config/remote.json 遗留更新字段均为空，校验通过")
-          PY
-
-      - name: 校验变更说明的编码（UTF-8 / 无乱码，fail-closed）
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          VERSION: ${{ inputs.versionName }}
-          NOTES_INPUT: ${{ inputs.releaseNotes }}
-        run: |
-          set -e
-          # v1.11.6 的发布说明「### 变更说明」整段乱码（「安装」显示成「瀹夊崜」）：那是 UTF-8
-          # 字节在进入 runner 之前被按 GBK/CP936 家族解码过一次；同一份 body 里模板段是干净的，
-          # 说明本 workflow 的拼接没问题，坏的是自由文本输入本身。所以首选仓库里受 PR 审阅的
-          # UTF-8 文件 docs/release-notes/<版本>.md，没有该文件才退回 dispatch 输入；两条路径
-          # 过同一道编码校验，任一不合格一律不放行（fail-closed，发生在打 tag / 建 Release 之前）。
-          # 能力边界：这里只挡「可判定的损坏」（非 UTF-8 / UTF-8 BOM / 私用区 U+E000-U+F8FF /
-          # U+FFFD / C1 控制字符）；挡不住无损型乱码（例如 锟斤拷 这类双向转换产物，字符本身合法）。
-          # 所以发布前「人工确认说明稿」这一步不能省，本门禁只是下限，不替代人工确认。
-          NOTES_FILE="docs/release-notes/${VERSION}.md"
-          : > "$RUNNER_TEMP/notes_src.txt"
-          if OUT="$(gh api "repos/$REPO/contents/$NOTES_FILE?ref=$SHA" --jq .content 2>&1)"; then
-            printf '%s' "$OUT" | tr -d '\n' | base64 -d > "$RUNNER_TEMP/notes_src.txt" || {
-              echo "::error::$NOTES_FILE base64 解码失败（fail-closed，不放行）"; exit 1; }
-            SRC="$NOTES_FILE"
-          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
-            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
-            printf '%s' "$NOTES_INPUT" > "$RUNNER_TEMP/notes_src.txt"
-            SRC="dispatch 输入 releaseNotes"
-          else
-            echo "::error::读取 $NOTES_FILE 失败（fail-closed，不放行）：$OUT"; exit 1
-          fi
-          python3 - "$RUNNER_TEMP/notes_src.txt" "$SRC" <<'PY'
-          import sys
-          raw = open(sys.argv[1], "rb").read()
-          src = sys.argv[2]
-          if raw.startswith(b"\xef\xbb\xbf"):
-              print("::error::变更说明（%s）带 UTF-8 BOM，请去掉后重跑" % src); sys.exit(1)
-          try:
-              text = raw.decode("utf-8")
-          except UnicodeDecodeError as e:
-              print("::error::变更说明（%s）不是合法 UTF-8：%s" % (src, e)); sys.exit(1)
-          bad = []
-          pua = [c for c in text if "\ue000" <= c <= "\uf8ff"]
-          if pua:
-              bad.append("私用区字符 %d 个（如 U+%04X）—— 典型的 UTF-8 被按 GBK/CP936 解码后的残留" % (len(pua), ord(pua[0])))
-          if "\ufffd" in text:
-              bad.append("替换字符 U+FFFD —— 文本在某一环被有损解码过")
-          c1 = [c for c in text if "\u0080" <= c <= "\u009f"]
-          if c1:
-              bad.append("C1 控制字符 %d 个（如 U+%04X）" % (len(c1), ord(c1[0])))
-          if bad:
-              print("::error::变更说明（%s）疑似乱码：%s" % (src, "；".join(bad)))
-              print("::error::请把说明写成仓库里的 UTF-8 文件 docs/release-notes/<版本>.md 后重跑")
-              sys.exit(1)
-          if text.strip():
-              print("::notice::变更说明来源=%s，编码校验通过（%d 字符）" % (src, len(text)))
-          else:
-              print("::notice::变更说明为空（来源=%s），本次 Release 不输出「变更说明」小节" % src)
-          PY
-
-  # 版本解析与门禁是所有产物的共同前置：安卓 APK 与 Windows 便携版必须用同一个
-  # versionName / versionCode / tag，而且都必须先过同一道门禁。抽成独立 job 输出，
-  # 下游用 needs 取用——否则同一段逻辑要在两个 runner 上各写一份，日后必然走偏。
-  version:
-    needs: release-precheck
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
-      versionName: ${{ steps.version.outputs.versionName }}
-      versionCode: ${{ steps.version.outputs.versionCode }}
-      tag: ${{ steps.version.outputs.tag }}
+      matrix: ${{ steps.split.outputs.matrix }}
     steps:
-      - name: 检出代码
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # 版本门禁要读历史 tag 与上一版构建文件。本仓库 .git 约 290MB，
-          # 不做全量克隆：先只取当前提交与 tag 引用，再按需加深（见下一步）。
-          fetch-depth: 1
-          fetch-tags: true
-
-      - name: 补全版本门禁所需的历史
+      - id: split
         run: |
-          set -e
-          # 门禁要跑 git log <上一版 tag>..HEAD 判定提交类型，depth=1 取不到区间提交。
-          # 加深到 500 个提交即可覆盖全部 tag（当前仓库约 220 个提交），失败则退回全量。
-          git fetch --no-tags --deepen=500 origin "$(git rev-parse --abbrev-ref HEAD)" \
-            || git fetch --no-tags --unshallow
-          echo "可见 tag 数：$(git tag --list 'v*' | wc -l)"
-
-      - name: 解析发布版本号
-        id: version
-        env:
-          VERSION_INPUT: ${{ inputs.versionName }}
-          CODE_INPUT: ${{ inputs.versionCode }}
-          TAG_INPUT: ${{ inputs.releaseTag }}
-        run: |
-          set -e
-          # versionName / versionCode / tag 的单一来源：安卓构建、Windows 打包、发布
-          # 都从这里取，避免「构建用 A、发布挂 B」的分叉。
-          if [ -z "$VERSION_INPUT" ]; then
-            echo "::error::versionName 为空，请填写本次发布的版本号（形如 1.5.18）"
-            exit 1
-          fi
-          if ! printf '%s' "$VERSION_INPUT" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "::error::versionName '${VERSION_INPUT}' 不是合法的 SemVer（必须为 X.Y.Z，无前导零）"
-            exit 1
-          fi
-          # versionCode（issue #30）：显式传值 / 未传 都交给 .scripts/resolve_version_code.sh 统一解析 ——
-          #   未传 → 用仓库声明值（app/build.gradle.kts 的 slteVersionCode），并打 notice；
-          #   读不到声明 → 先 warn 回退 epoch 分钟，然后照样红（缺声明不许发版）；
-          #   无论哪条路径，最终断言「本次 VC == 仓库声明值」，不等即红（不许实际值覆盖声明值）。
-          # 纯数字校验也在脚本里（保留原语义）。
-          VC=$(bash .scripts/resolve_version_code.sh --gradle app/build.gradle.kts --input "$CODE_INPUT")
-          TAG="${TAG_INPUT:-v${VERSION_INPUT}}"
-          if [ "$TAG" != "v${VERSION_INPUT}" ]; then
-            echo "::error::releaseTag '${TAG}' 必须等于 v${VERSION_INPUT}（SemVer 要求 tag 与版本号一一对应）"
-            exit 1
-          fi
-          echo "versionName=${VERSION_INPUT}" >> "$GITHUB_OUTPUT"
-          echo "versionCode=${VC}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "版本 ${VERSION_INPUT} / versionCode ${VC} / tag ${TAG}"
-
-      - name: 门禁自测
-        run: |
-          set -e
-          # 门禁是 CI 的裁判，它自己坏掉时没人会发现：历史审计曾经因为拿 .gradle.kts
-          # 文本去 json.loads、异常被 except 吞掉，每次都报「通过」而实际一个提交都没扫。
-          # 所以先用临时仓库复现历史违规，确认它真的能拦住，再拿它去裁判这次发布。
-          python3 .scripts/version_gate_test.py
-
-      - name: SemVer 版本门禁
-        run: |
-          set -e
-          python3 .scripts/version_gate.py \
-            --tag "${{ steps.version.outputs.tag }}" \
-            --android-gradle app/build.gradle.kts \
-            --version-name "${{ steps.version.outputs.versionName }}" \
-            --version-code "${{ steps.version.outputs.versionCode }}" \
-            --check-commits \
-            --mode strict
-
-      - name: SemVer 历史审计
-        run: |
-          set -e
-          # 揪出「版本号写进代码却从未打 tag」的欠账：版本序列出现空洞会让用户
-          # 无法判断哪个版本对应哪次构建。本仓库当前无欠账。
-          python3 .scripts/version_gate.py \
-            --audit-history app/build.gradle.kts:POLARIS_VERSION_NAME
-
-  # 门禁通过后由流水线自己打 tag：人工不再先打 tag，避免「tag 指向的提交」与
-  # 「实际构建的提交」分叉。只创建 v* 标签；已存在且指向同一 commit 时幂等继续；
-  # 指向别的 commit 直接失败 —— 绝不 force、不移动、不删除任何已有 tag。
-  # issue #25：tag 挪到 build + windows **都成功**之后才创建，避免「build/windows 失败留下孤儿 tag」。
-  # 依赖链变成 release-precheck → version → build → windows → release-tag → release；
-  # build/windows 的 needs 里已去掉 release-tag（否则成环）。dryRun=true 时本 job 仍然 skipped（不打 tag）。
-  # tag 创建逻辑本身一个字没改：不存在则创建、已存在且指向同一 commit 幂等继续、指向别的 commit 直接失败，不 force/不移动/不删除。
-  release-tag:
-    needs: [release-precheck, version, build, windows]
-    # 主对话口径（情形 E）：只构建不发布时不该建 tag，否则又是「有 tag、没 Release」。
-    if: inputs.dryRun != 'true' && inputs.publishRelease == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      TAG: ${{ needs.version.outputs.tag }}
-      SHA: ${{ github.sha }}
-    steps:
-      - name: 创建或校验 tag（幂等，不 force）
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          case "$TAG" in
-            v*) ;;
-            *) echo "::error::拒绝创建非 v* 标签：$TAG"; exit 1 ;;
-          esac
-          OUT="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>&1)" && STATUS=0 || STATUS=$?
-          # 这个端点对「ref 不存在」返回 422（body: No commit found for SHA: <ref>），
-          # 只有别的失败路径才回 404：两种都当「尚不存在」，其余一律 fail-closed。
-          # 422 必须同时带 No commit found 才算不存在（措辞/误匹配时不静默放宽）。
-          # 2026-10-15 实测：/commits/v1.12.0 -> 422；/git/ref/tags/v1.12.0 -> 404。
-          if [ "$STATUS" = "0" ]; then
-            if [ "$OUT" != "$SHA" ]; then
-              echo "::error::tag $TAG 已存在且指向 $OUT，本次构建的是 $SHA；拒绝移动/覆盖已有 tag"
-              exit 1
-            fi
-            echo "::notice::tag $TAG 已存在且指向本次构建提交，幂等继续"
-          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
-            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA" >/dev/null
-            echo "::notice::已创建 tag $TAG → $SHA"
-          else
-            echo "::error::读取 tag $TAG 失败（fail-closed，不打 tag）：$OUT"
-            exit 1
-          fi
-          FINAL="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)"
-          if [ "$FINAL" != "$SHA" ]; then
-            echo "::error::tag $TAG 读回指向 $FINAL，期望 $SHA"
-            exit 1
-          fi
-          echo "::notice::tag $TAG 已确认指向 $SHA"
+          JSON=$(python3 -c "import json,sys;print(json.dumps([s.strip() for s in sys.argv[1].split(';') if s.strip()]))" "${{ inputs.kernels }}")
+          [ -n "$JSON" ] && [ "$JSON" != "[]" ] || JSON='["mihomo"]'
+          echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
 
   build:
-    # issue #25：build 不再依赖 release-tag（否则与「release-tag 依赖 build」成环）。
-    # tag 现在在 build + windows 都成功之后才创建 —— 失败不会再留下「有 tag、没 Release」的孤儿 tag。
-    needs: [version]
-    if: ${{ !cancelled() && needs.version.result == 'success' }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        kernels: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      # 版本三件套只解析一次（version job），这里原样取用。
-      POLARIS_RELEASE_VERSION: ${{ needs.version.outputs.versionName }}
-      POLARIS_RELEASE_CODE: ${{ needs.version.outputs.versionCode }}
-      POLARIS_RELEASE_TAG: ${{ needs.version.outputs.tag }}
     steps:
       - name: 检出代码
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
+        uses: actions/checkout@v4
 
       - name: 安装 JDK 17
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: 安装 Android SDK / NDK
+
         run: |
           set -e
           SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
@@ -605,17 +107,14 @@ jobs:
       - name: 还原发布签名
         if: inputs.buildType == 'release'
         env:
-          STORE_B64: ${{ secrets.POLARIS_RELEASE_STORE_B64 }}
+          STORE_B64: ${{ secrets.SLTE_RELEASE_STORE_B64 }}
         run: |
-          test -n "$STORE_B64" || { echo "::error::缺少 Secret POLARIS_RELEASE_STORE_B64（release 构建必需，见网站签名面板）"; exit 1; }
+          test -n "$STORE_B64" || { echo "::error::缺少 Secret SLTE_RELEASE_STORE_B64（release 构建必需，见网站签名面板）"; exit 1; }
           echo "$STORE_B64" | base64 -d > release.keystore
 
       - name: 应用自定义图标
-        # 只有调用方显式传入 iconB64 时才覆盖仓库资源。
-        # 曾经这里还带 `|| hashFiles('app/icon-source.png') != ''`，而仓库里长期躺着一张
-        # 旧版图标的 icon-source.png，导致每次发版都被 ImageMagick 重新生成一遍、
-        # 把 res/ 下的正式图标资源盖回旧图（还会造出与矢量前景同名的 nodpi 位图）。
-        if: inputs.iconB64 != ''
+
+        if: inputs.iconB64 != '' || hashFiles('app/icon-source.png') != ''
         env:
           ICON_B64: ${{ inputs.iconB64 }}
         run: |
@@ -624,10 +123,6 @@ jobs:
             echo "$ICON_B64" | base64 -d > app/icon-source.png
           fi
           test -f app/icon-source.png || { echo "无图标源，跳过"; exit 0; }
-          # 自定义前景生成的是 drawable-nodpi/ic_launcher_foreground.png，
-          # 与仓库里的矢量 drawable/ic_launcher_foreground.xml 同名。同名资源按密度
-          # 选取时 nodpi 会压过无密度限定的矢量，必须先清掉矢量，结果才唯一。
-          rm -f app/src/main/res/drawable/ic_launcher_foreground.xml
           if ! command -v convert >/dev/null 2>&1; then
             sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
           fi
@@ -677,503 +172,92 @@ jobs:
           rm -f /tmp/_fg.png /tmp/_fg_mask.png /tmp/_fg_cut.png
 
       - name: 配置 Gradle 缓存
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+
+        uses: gradle/actions/setup-gradle@v4
         with:
+
           cache-read-only: false
 
-      # ckbox 式：发版流程只负责产出可发布的二进制，不在 CI 里跑单测 / ktlint / lint /
-      # Go 门禁。验证由本地与 PR 阶段承担（PR 阶段已按 ci.yml 跳过重活门禁，见 #74）。
-      # 曾经在这里加过 Go 门禁 + 质量门禁兜底，但 go test 在 GOARCH=arm64 下编出的
-      # 测试二进制无法在 x86 runner 上执行（exec format error），已整步移除。
-      - name: 编译（:app:assemble${{ inputs.buildType }}）
+      - name: 编译安装包（单元测试仅提示）
         env:
-          POLARIS_APP_NAME: ${{ inputs.appName }}
-          POLARIS_APPLICATION_ID: ${{ inputs.applicationId }}
-          POLARIS_API_BASE_URL: ${{ inputs.apiBaseUrl }}
-          POLARIS_API_TYPE: ${{ inputs.apiType }}
-          POLARIS_NOTIFICATION_TITLE: ${{ inputs.notificationTitle }}
-          POLARIS_NOTIFICATION_TRAFFIC: ${{ inputs.notificationTraffic }}
-          POLARIS_TELEGRAM_GROUP_URL: ${{ inputs.telegramGroupUrl }}
+          SLTE_APP_NAME: ${{ inputs.appName }}
+          SLTE_APPLICATION_ID: ${{ inputs.applicationId }}
+          SLTE_API_BASE_URL: ${{ inputs.apiBaseUrl }}
+          SLTE_API_TYPE: ${{ inputs.apiType }}
+          SLTE_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls }}
+          SLTE_ALLOWED_DOMAINS: ${{ inputs.allowedDomains }}
+          SLTE_WEBSITE_URL: ${{ inputs.websiteUrl }}
+          SLTE_CRISP_WEBSITE_ID: ${{ inputs.crispWebsiteId }}
+          SLTE_CRISP_ENABLED: ${{ inputs.crispWebsiteId != '' }}
 
-          # 应用内更新提示已随本版本移除：remote.json 不再承载「有新版本」的语义，
-          # 发布流程只负责把历史遗留的 update_* 字段置空，不再写入版本号/直链/校验和。
-          # 远程配置源与 GitHub 域名仍需进编译期白名单，否则 RemoteConfigParser
-          # 会静默拒绝远端配置（SEC-2 教训）。
-          POLARIS_REMOTE_CONFIG_URLS: ${{ inputs.remoteConfigUrls != '' && inputs.remoteConfigUrls || 'https://raw.githubusercontent.com/ipevel/polaris/main/config/remote.json' }}
-          POLARIS_ALLOWED_DOMAINS: ${{ inputs.allowedDomains != '' && inputs.allowedDomains || 'github.com,raw.githubusercontent.com,objects.githubusercontent.com' }}
+          SLTE_VERSION_NAME: ${{ inputs.versionName }}
+          SLTE_VERSION_CODE: ${{ inputs.versionCode }}
+          SLTE_BUILD_TYPE: ${{ inputs.buildType }}
+          SLTE_KERNELS: ${{ matrix.kernels }}
 
-          POLARIS_VERSION_NAME: ${{ inputs.versionName }}
-          POLARIS_VERSION_CODE: ${{ inputs.versionCode }}
-          POLARIS_BUILD_TYPE: ${{ inputs.buildType }}
+          SLTE_USE_MIRROR: 'false'
+          CI_SKIP_SCREENSHOT: 'true'
 
-          POLARIS_USE_MIRROR: 'false'
-
-          POLARIS_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
-          # 这些 Secret 原为 fork 残留的 SLTE_ 前缀，已随 Gradle 变量统一改名 POLARIS_。
-          # ⚠️ 改名生效的前置条件：必须先在 GitHub Settings → Secrets and variables → Actions
-          # 建好 POLARIS_RELEASE_STORE_PASSWORD / POLARIS_RELEASE_KEY_ALIAS /
-          # POLARIS_RELEASE_KEY_PASSWORD 三个同名 Secret，否则 release 构建会因取不到值而失败。
-          # 迁移顺序：新建 POLARIS_* → 用它成功发一次版（验证签名指纹一致）→ 再删除旧的 SLTE_*。
-          POLARIS_RELEASE_STORE_PASSWORD: ${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}
-          POLARIS_RELEASE_KEY_ALIAS: ${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}
-          POLARIS_RELEASE_KEY_PASSWORD: ${{ secrets.POLARIS_RELEASE_KEY_PASSWORD }}
+          SLTE_RELEASE_STORE_FILE: ${{ inputs.buildType == 'release' && 'release.keystore' || '' }}
+          SLTE_RELEASE_STORE_PASSWORD: ${{ secrets.SLTE_RELEASE_STORE_PASSWORD }}
+          SLTE_RELEASE_KEY_ALIAS: ${{ secrets.SLTE_RELEASE_KEY_ALIAS }}
+          SLTE_RELEASE_KEY_PASSWORD: ${{ secrets.SLTE_RELEASE_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
 
-          # 版本号与 versionCode 由「解析发布版本号」步骤统一算出（并已过门禁校验），
-          # 这里只做转发，避免再出现一份内联的 VC 计算逻辑与发布标签分叉。
-          export POLARIS_VERSION_NAME="$POLARIS_RELEASE_VERSION"
-          export POLARIS_VERSION_CODE="$POLARIS_RELEASE_CODE"
-          ./gradlew ":app:assemble$POLARIS_BUILD_TYPE"
+          VC="$SLTE_VERSION_CODE"
+          if [ -z "$VC" ]; then VC=$(( $(date +%s) / 60 )); fi
+          export SLTE_VERSION_CODE="$VC"
 
-      - name: 生成校验文件（SHA-256 + 签名证书指纹）
-        if: inputs.buildType == 'release'
-        run: |
-          set -e
-          APK="app/build/outputs/apk/release/Polaris-${{ inputs.versionName }}.apk"
-          if [ ! -f "$APK" ]; then
-            echo "::error::未找到 APK：$APK"
-            ls -R app/build/outputs/apk || true
-            exit 1
-          fi
-          mkdir -p dist
-          cp "$APK" dist/
-          ( cd dist && sha256sum ./*.apk > SHA256SUMS.txt )
-          # GPL-3.0 要求分发二进制时随附许可文本；隐私政策与用户协议一并附上，用户无需进仓库即可查阅。
-          for doc in LICENSE THIRD-PARTY-NOTICES.md PRIVACY.md TERMS.md; do
-            if [ -f "$doc" ]; then
-              cp "$doc" dist/
-            else
-              echo "::error::缺少随发布分发的文档：$doc"
-              exit 1
-            fi
-          done
-          APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/36.0.0/apksigner"
-          if [ -x "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --print-certs "$APK" > dist/SIGNING.txt 2>&1 || true
+          # 默认 mihomo 组合保持原产物名；其他内核组合追加标识（逗号/空格归一为连字符）
+          KTAG=$(printf '%s' "$SLTE_KERNELS" | tr ', ' '--')
+          if [ "$KTAG" = "mihomo" ]; then
+            echo "ARTIFACT_NAME=SLTE-$SLTE_VERSION_NAME" >> "$GITHUB_ENV"
           else
-            keytool -list -v -keystore release.keystore \
-              -alias "${{ secrets.POLARIS_RELEASE_KEY_ALIAS }}" \
-              -storepass "${{ secrets.POLARIS_RELEASE_STORE_PASSWORD }}" > dist/SIGNING.txt 2>&1 || \
-              echo "::warning::SIGNING.txt 生成失败（apksigner 与 keytool 回退均不可用）"
+            echo "ARTIFACT_NAME=SLTE-$SLTE_VERSION_NAME-$KTAG" >> "$GITHUB_ENV"
           fi
-          echo "--- SHA256SUMS.txt ---"
-          cat dist/SHA256SUMS.txt
-          echo "--- 签名证书 ---"
-          grep -iE "certificate (SHA-256|SHA-1) digest|Signer #1" dist/SIGNING.txt | head -10 || true
 
-      - name: 上传失败报告（构建失败时）
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: Polaris-reports-${{ inputs.versionName }}
-          path: |
-            app/build/reports/**
-          if-no-files-found: ignore
+          # 单元测试只作为提示：Fork 用户通常会改文案、域名与图标，
+          # 项目自带的测试（多语言键一致性、接口路径等）不通过时不再中断出包
+          ./gradlew :app:testDebugUnitTest || echo "::warning::单元测试未通过（不影响安装包产出）"
+
+          ./gradlew ":app:assemble$SLTE_BUILD_TYPE"
 
       - name: 上传产物
-        if: inputs.dryRun != 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: Polaris-${{ inputs.versionName }}
-          path: |
-            app/build/outputs/apk/*/Polaris-*.apk
-            dist/SHA256SUMS.txt
-            dist/SIGNING.txt
-            dist/LICENSE
-            dist/THIRD-PARTY-NOTICES.md
-            dist/PRIVACY.md
-            dist/TERMS.md
-          if-no-files-found: error
+          name: ${{ env.ARTIFACT_NAME }}
+          path: app/build/outputs/apk/*/SLTE-*.apk
+          if-no-files-found: warn
           retention-days: 90
 
-  # Windows 便携版：与安卓 APK 共用同一个 versionName / tag / Release。
-  # 版本号只从 version job 取，不在这里重新解析，避免两个产物版本号分叉。
-  windows:
-    # issue #25：同上，windows 也不再依赖 release-tag。
-    needs: [version]
-    if: ${{ !cancelled() && needs.version.result == 'success' }}
-    runs-on: windows-latest
-    permissions:
-      contents: read
+  quality:
+    # 质量门禁与打包解耦：单测/ktlint 失败会让整个 workflow 变红，
+    # 但不阻断 build job 的 APK 产出（Fork 用户改文案/域名/图标后仍能拿到安装包）
+    runs-on: ubuntu-latest
     env:
-      POLARIS_RELEASE_VERSION: ${{ needs.version.outputs.versionName }}
-      # windows-latest 的 Python 3.12 默认 stdout 编码是 cp1252，
-      # 打印中文会 UnicodeEncodeError: 'charmap' codec can't encode characters。
-      # 显式开 UTF-8 模式（fetch-core.py / fetch-geo.py 会打印「core/ 内容：」）。
-      PYTHONUTF8: '1'
+      SLTE_USE_MIRROR: 'false'
+      CI_SKIP_SCREENSHOT: 'true'
     steps:
       - name: 检出代码
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
         with:
-          # 便携版只需要 design/windows/app 与根级构建配置。checkout 没有「只取子目录」
-          # 的选项，这里取全量（仓库 .git 约 290MB，可接受）。
-          fetch-depth: 1
+          distribution: temurin
+          java-version: '17'
 
-      - name: 安装 Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: design/windows/app/package-lock.json
-
-      - name: 安装依赖
-        working-directory: design/windows/app
-        run: npm ci
-
-      - name: 安装 Python 依赖
-        run: python -m pip install requests
-
-      - name: 拉取内核与 GeoIP 数据
-        # windows-latest 的默认 shell 是 pwsh，`set -e` 会被解析成 Set-Variable -e 而报错；
-        # 这几步要 POSIX 语法（set -e / # 注释 / 变量展开），显式指定 bash。
-        shell: bash
-        working-directory: design/windows/app
+      - name: 安装 Android SDK
         run: |
           set -e
-          # mihomo 内核、wintun 与 GeoIP 规则库都不入库（core.lock.json 锁版本），
-          # 每次构建现拉，保证产物里的内核是确定版本。失败即失败，不静默跳过。
-          python scripts/fetch-core.py
-          python scripts/fetch-geo.py
+          SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT）"; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: 对齐版本号
-        shell: bash
-        working-directory: design/windows/app
+      - name: 单元测试 + ktlint
         run: |
-          set -e
-          # 便携版文件名 Polaris-portable-<version>.zip 由 package.json 的 version 决定，
-          # 必须与安卓 APK 的 versionName 逐字一致，否则同一个 Release 里两个产物版本号不同。
-          #
-          # 幂等（2026-10-15，run 38714136117 的失败修复）：发版前的「版本号 PR」会把版本行
-          # 先合进 main，此时 package.json 已经等于目标版本，直接 `npm version` 会以
-          # "Version not changed" 退出 1，把整个发版卡死在 windows 步。所以先比再动：
-          # 已是目标值就跳过；不是才 bump。bump 之后**必须断言等于目标值**——
-          # 只跳过不校验，等于把「版本对不上」静默放进产物。
-          current="$(node -e "process.stdout.write(require('./package.json').version)")"
-          if [ "$current" = "$POLARIS_RELEASE_VERSION" ]; then
-            echo "package.json 已是目标版本 $current，跳过 npm version"
-          else
-            npm version --no-git-tag-version "$POLARIS_RELEASE_VERSION"
-          fi
-          after="$(node -e "process.stdout.write(require('./package.json').version)")"
-          if [ "$after" != "$POLARIS_RELEASE_VERSION" ]; then
-            echo "::error::package.json 版本 $after 与本次发布版本 $POLARIS_RELEASE_VERSION 不一致，拒绝打包"
-            exit 1
-          fi
-          echo "便携版版本号：$after"
-
-      - name: 打包便携版
-        working-directory: design/windows/app
-        run: npm run dist
-
-      - name: 生成并校验包内清单（发版前置门禁）
-        # 为什么必须在打包之后：清单要哈希**最终产物**（Polaris.exe / resources/app.asar / dll/pak/dat），
-        # 这些只有 electron-builder 跑完才存在。
-        # 为什么重打包：清单必须与 zip 里的字节一致，而 zip 只能整体重写。
-        # 门禁：重打包前后各 verify 一次，任一失败即红——更新器把「缺清单 / 哈希不符」当拒绝安装，
-        # 不一致的包发出去等于把用户的更新通道堵死。
-        shell: pwsh
-        working-directory: design/windows/app
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $zipItem = Get-ChildItem dist -Filter 'Polaris-portable-*.zip' | Select-Object -First 1
-          if (-not $zipItem) { Write-Error '没找到 dist/Polaris-portable-*.zip'; exit 1 }
-          $zip = $zipItem.FullName
-          Write-Host "便携版产物：$zip"
-          $before = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $tmp = Join-Path $env:RUNNER_TEMP 'polaris-manifest'
-          if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-          Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
-          $countBefore = (Get-ChildItem $tmp -Recurse -File).Count
-          node scripts/package-manifest.js write $tmp
-          node scripts/package-manifest.js verify $tmp
-          Remove-Item $zip -Force
-          Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -CompressionLevel Optimal
-          # 重打包后**再验一次**：解压新 zip，确认清单在、与字节一致、且没丢文件
-          $tmp2 = Join-Path $env:RUNNER_TEMP 'polaris-manifest-check'
-          if (Test-Path $tmp2) { Remove-Item $tmp2 -Recurse -Force }
-          Expand-Archive -LiteralPath $zip -DestinationPath $tmp2 -Force
-          node scripts/package-manifest.js verify $tmp2
-          # 重打包后断言（独立 PR ci/win-repack-assertions；决策主管五条要求，全部 fail-closed）：
-          #   ① 条目名：无反斜杠、不以 / 开头、无 .. 段
-          #   ② 文件条目集合与源目录**归一化后**逐一相同（分隔符/大小写统一后比集合，不是只比数量）
-          #   ③ 目录条目差异：只允许「源里是空目录」被丢，并打印结论——空目录丢失可接受（便携包不依赖空目录，
-          #      data/ 由运行期 paths.ensureAll 创建）；将来若包内出现必须存在的空目录，改为放 .keep 占位。
-          #      非空目录被丢 → 红，并要求单独报主管
-          #   ④ 条目名大小写与源**逐字一致**（② 归一化比较抓不到大小写变化）
-          #   ⑤ 判定逻辑在 Node 脚本里，负例可离线复现（scripts/verify-repack-test.js）
-          # 为什么不用 pwsh 直接比：Windows 文件系统大小写不敏感、解压路径天然带反斜杠（按解压路径判会假红），
-          # 条目名的真身只在 zip 中央目录里；放进 Node 也让 ⑤ 的负例能在本地/CI 真跑。
-          node scripts/verify-repack.js --before $tmp --zip $zip
-          $after = (Get-FileHash $zip -Algorithm SHA256).Hash
-          Write-Host "重打包完成：$zip"
-          Write-Host "  重打包前 sha256 = $before"
-          Write-Host "  重打包后 sha256 = $after（Release 的 SHA256SUMS.txt 用这个）"
-          Write-Host "  清单条目数 = $countBefore"
-          Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item $tmp2 -Recurse -Force -ErrorAction SilentlyContinue
-      - name: "#24 ③ 空目录允许分支自检（fixture）+ 负例"
-        # issue #24：③ 的「源里是空目录被丢」允许分支在真实便携包里跑不到（真包没有空目录），
-        # 所以在 windows job 里造一个极小 fixture（只含一个空目录 + 一个根文件），用 Compress-Archive
-        # 重打包（它只写文件条目、不写目录条目 → 空目录必被丢），对**它**单独跑一次 verify-repack：
-        # 断言 exit 0 且输出里有「空目录被丢」与那句结论；随后跑仓库自带的 fixture 单测覆盖负例
-        # （非空目录被丢必须红）。
-        # 若哪天这条红且原因是「zip 里开始带目录条目了」，说明打包器行为变了、这条允许分支不再经由
-        # Compress-Archive 触发 —— 那时把 fixture 改成用 Node 造的 zip，而不是放宽断言。
-        shell: pwsh
-        working-directory: design/windows/app
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $fx = Join-Path $env:RUNNER_TEMP 'polaris-empty-dir-fixture'
-          if (Test-Path $fx) { Remove-Item $fx -Recurse -Force }
-          New-Item -ItemType Directory -Path (Join-Path $fx 'empty-dir') -Force | Out-Null
-          Set-Content -Path (Join-Path $fx 'readme.txt') -Value 'fixture' -NoNewline
-          $fxZip = Join-Path $env:RUNNER_TEMP 'polaris-empty-dir-fixture.zip'
-          if (Test-Path $fxZip) { Remove-Item $fxZip -Force }
-          Compress-Archive -Path (Join-Path $fx '*') -DestinationPath $fxZip
-          $out = (& node scripts/verify-repack.js --before $fx --zip $fxZip 2>&1 | Out-String)
-          Write-Host $out
-          if ($LASTEXITCODE -ne 0) { Write-Error "fixture 断言应为 exit 0，实际 $LASTEXITCODE"; exit 1 }
-          if ($out -notmatch '空目录被丢') { Write-Error 'fixture 输出里没有「空目录被丢」：空目录允许分支没被覆盖到'; exit 1 }
-          if ($out -notmatch '结论：可接受') { Write-Error 'fixture 输出里没有那句结论（可接受 / 为什么 / 将来怎么办）'; exit 1 }
-          Write-Host '✅ ③ 空目录允许分支：fixture 实跑通过（exit 0 + 结论行）'
-          # 负例：非空目录被丢必须红（仓库自带 fixture 单测，含三组负例）
-          node scripts/verify-repack-test.js
-          if ($LASTEXITCODE -ne 0) { Write-Error 'verify-repack-test.js 有失败'; exit 1 }
-      - name: 上传产物
-        if: inputs.dryRun != 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: Polaris-portable-${{ inputs.versionName }}
-          path: design/windows/app/dist/Polaris-portable-*.zip
-          if-no-files-found: error
-          retention-days: 90
-
-  release:
-    needs: [build, windows, release-tag]
-    if: inputs.buildType == 'release' && inputs.publishRelease == 'true' && inputs.dryRun != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: 下载构建产物
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: Polaris-${{ inputs.versionName }}
-          path: incoming
-
-      - name: 下载便携版产物
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: Polaris-portable-${{ inputs.versionName }}
-          path: incoming-win
-
-      - name: 整理发布资产
-        run: |
-          set -e
-          mkdir -p out
-          find incoming -name 'Polaris-*.apk' -exec cp -v {} out/ \;
-          for f in SHA256SUMS.txt SIGNING.txt LICENSE THIRD-PARTY-NOTICES.md PRIVACY.md TERMS.md; do
-            src=$(find incoming -name "$f" -print -quit)
-            if [ -n "$src" ]; then cp "$src" out/; fi
-          done
-          ls -la out
-          ls out/*.apk >/dev/null 2>&1 || { echo "::error::未从产物中取到 APK"; exit 1; }
-
-          # 便携版 zip 与 APK 同属一个 Release，摘要必须一起进 SHA256SUMS.txt，
-          # 否则用户校验便携版时无从核对。
-          ZIP=$(find incoming-win -name 'Polaris-portable-*.zip' -print -quit)
-          if [ -z "$ZIP" ]; then
-            echo "::error::未从产物中取到便携版 zip"
-            exit 1
-          fi
-          cp -v "$ZIP" out/
-          (cd out && sha256sum "$(basename "$ZIP")") >> out/SHA256SUMS.txt
-
-          # 发版前置门禁（第二道，针对**将要发布的那份 zip**）：
-          # 更新器把「缺清单 / 哈希不符」当拒绝安装，所以发布前再独立验一次字节，
-          # 防产物在下载/搬运环节被改动。这里不依赖仓库文件（release job 没有 checkout）。
-          #
-          # 2026-10-15 修（run 38774587692 假红）：原实现是 unzip 解压后 sha256sum -c。
-          # 包内 使用说明.txt 是带 UTF-8 标志位（general purpose bit 11）的非 ASCII 条目名，
-          # 而 runner 上的 Info-ZIP unzip 6.00 会在**解压阶段**把名字转成旧字符集
-          # （unzip -U / unzip -UU / LANG=C.UTF-8 都改不了），于是清单里那一行在文件系统上
-          # 找不到 → 假红挡住发版。改成**直接按中央目录的条目名读字节**校验：名字按 bit 11
-          # 正确解码、不经过文件系统往返，断言一条不变（清单存在 / 必含 Polaris.exe 与
-          # resources/app.asar / 逐条 sha256 一致 / 条目数一致 / 缺多不符一律 fail-closed）。
-          # 口径：这是「**打包自洽**」检查，**不是签名**；防篡改靠 Release 的 SHA256SUMS.txt
-          # 与用户侧校验。
-          python3 - "$ZIP" <<'PY'
-          import hashlib
-          import sys
-          import zipfile
-
-          MF = "resources/polaris-files.sha256"
-          zf = zipfile.ZipFile(sys.argv[1])
-          names = [n for n in zf.namelist() if not n.endswith("/")]
-
-          if MF not in names:
-              print("::error::便携版 zip 里没有包内清单 %s" % MF)
-              sys.exit(1)
-
-          entries = []
-          for line in zf.read(MF).decode("utf-8").splitlines():
-              if not line.strip():
-                  continue
-              digest, _, path = line.partition("  ")
-              entries.append((digest.strip(), path.strip()))
-
-          for required in ("Polaris.exe", "resources/app.asar"):
-              if not any(path == required for _, path in entries):
-                  print("::error::清单里没有 %s" % required)
-                  sys.exit(1)
-
-          bad = []
-          for digest, path in entries:
-              try:
-                  data = zf.read(path)
-              except KeyError:
-                  bad.append("%s：包内没有这个条目" % path)
-                  continue
-              if hashlib.sha256(data).hexdigest() != digest:
-                  bad.append("%s：哈希不符" % path)
-          if bad:
-              print("::error::包内清单与产物不一致：%s" % "；".join(bad[:10]))
-              sys.exit(1)
-
-          # 口径：产物文件数**排除清单自身**（清单在包内，不能把自己算进去）。
-          n_files = len([n for n in names if n != MF])
-          if n_files != len(entries):
-              print("::error::清单条目数 %d 与产物文件数 %d 不一致" % (len(entries), n_files))
-              sys.exit(1)
-
-          print("便携版包内清单校验通过（%d 个文件）" % len(entries))
-          PY
-          echo "--- SHA256SUMS.txt ---"
-          cat out/SHA256SUMS.txt
-
-      - name: 组装 Release 说明
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          VERSION: ${{ inputs.versionName }}
-          NOTES: ${{ inputs.releaseNotes }}
-        run: |
-          set -e
-          # 与 release-precheck 同源：优先仓库里受 PR 审阅的 UTF-8 文件（release job 不检出代码，
-          # 所以经 API 按本次构建提交读取），没有才用 dispatch 输入；编码已在前置门禁校验过，
-          # 这里只负责取用，不重复判乱码。
-          NOTES_FILE="docs/release-notes/${VERSION}.md"
-          if OUT="$(gh api "repos/$REPO/contents/$NOTES_FILE?ref=$SHA" --jq .content 2>&1)"; then
-            NOTES="$(printf '%s' "$OUT" | tr -d '\n' | base64 -d)"
-            echo "::notice::变更说明取自 $NOTES_FILE"
-          elif printf '%s' "$OUT" | grep -q 'HTTP 404' \
-            || { printf '%s' "$OUT" | grep -q 'HTTP 422' && printf '%s' "$OUT" | grep -q 'No commit found'; }; then
-            # 只有「文件确实不存在」才回退 dispatch 输入；401/403/5xx 等读取失败一律 fail-closed
-            # （release-precheck 第 5 步已拦过一次，这里是纵深防御，避免静默回退到可能被转坏的输入）。
-            echo "::notice::仓库无 $NOTES_FILE，变更说明用 dispatch 输入"
-          else
-            echo "::error::读取 $NOTES_FILE 失败（fail-closed，不发布）：$OUT"
-            exit 1
-          fi
-          {
-            echo "## Polaris ${VERSION}"
-            echo ""
-            echo "| 项 | 值 |"
-            echo "| --- | --- |"
-            echo "| 版本 | \`${VERSION}\` |"
-            echo "| 面板后端 | 登录时自动识别（XiaoV2b / Xboard） |"
-            echo "| 提交 | \`${GITHUB_SHA:0:7}\` |"
-            echo "| 构建时间 | $(date -u '+%Y-%m-%d %H:%M UTC') |"
-            echo ""
-            if [ -n "$NOTES" ] && [ "$NOTES" != "auto" ]; then
-              echo "### 变更说明"
-              echo ""
-              echo "$NOTES"
-            elif [ "$NOTES" = "auto" ]; then
-              echo "### 变更说明"
-              echo ""
-              echo '> 见 git log'
-            fi
-            echo ""
-            echo "### Windows 便携版"
-            echo ""
-            echo "同一个 Release 里同时提供 Windows 便携版，与安卓 APK 共用版本号。"
-            echo ""
-            echo "| 项 | 值 |"
-            echo "| --- | --- |"
-            echo "| 文件 | \`Polaris-portable-${VERSION}.zip\` |"
-            echo "| 平台 | Windows 10/11 x64，解压即用（不写注册表、不落 %APPDATA%） |"
-            echo ""
-            echo "包内 mihomo 内核与 GeoIP 规则库在构建时按 \`core.lock.json\` 锁定的版本拉取。"
-            echo ""
-            echo "### 文件校验（SHA-256）"
-            echo ""
-            echo '```'
-            cat out/SHA256SUMS.txt 2>/dev/null || echo "见附件 SHA256SUMS.txt"
-            echo '```'
-            echo ""
-            echo "### 签名证书指纹"
-            echo ""
-            echo '```'
-            grep -iE "certificate (SHA-256|SHA-1) digest" out/SIGNING.txt 2>/dev/null \
-              || echo "见附件 SIGNING.txt"
-            echo '```'
-            echo ""
-            echo "> 安装前请核对上述 SHA-256，确认安装包未被篡改。"
-            echo ""
-            echo "> 请直接覆盖安装，不要先卸载，以保留你已有的配置与数据。"
-            echo ""
-            echo "### 许可"
-            echo ""
-            echo "本应用以 GPL-3.0 分发，附件中的 \`LICENSE\` 为许可正文，\`THIRD-PARTY-NOTICES.md\` 列出全部第三方组件与许可；\`PRIVACY.md\`、\`TERMS.md\` 分别为隐私政策与用户协议。源代码见 [本仓库](https://github.com/${GITHUB_REPOSITORY})。"
-          } > notes.md
-          cat notes.md
-
-      - name: 创建或更新 GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.versionName }}
-          TAG_INPUT: ${{ inputs.releaseTag }}
-        run: |
-          set -e
-          TAG="${TAG_INPUT:-v${VERSION}}"
-          echo "目标标签：$TAG"
-          FRESH=1
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::notice::Release $TAG 已存在，更新资产与说明"
-            gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$TAG" \
-              --title "Polaris $VERSION" \
-              --notes-file notes.md \
-              --repo "$GITHUB_REPOSITORY"
-            FRESH=0
-          else
-            # --target 必须给：gh 的默认目标是 main 分支，而 main 可能在这套
-            # 流水线跑的几分钟里被别人推过。不给的话，产物编的是 GITHUB_SHA，
-            # tag 却会落在发版那一刻的 main HEAD 上——两者静默地不一致，
-            # 谁 checkout 那个 tag 编出来的东西都不等于你发出去的 APK。
-            # tag 必须指向你验过的那份代码，这是「已发布版本不可改」最底下那条。
-            gh release create "$TAG" out/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "Polaris $VERSION" \
-              --notes-file notes.md \
-              --latest
-          fi
-          # 发完再回头看一眼 tag 究竟指向谁，别只信命令行的意图。
-          # 刚建的 tag 指向不对 = --target 没生效，那必须炸。
-          # 已存在的 tag 指向不对 = 拿新构建覆盖了老 tag 的资产（重发是允许的，
-          # 但这时发布页的 tag 与 APK 对不上号，值得喊一声而不是拦住发版）。
-          TAGGED_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
-          if [ "$TAGGED_SHA" != "$GITHUB_SHA" ]; then
-            if [ "$FRESH" = "1" ]; then
-              echo "::error::tag $TAG 指向 $TAGGED_SHA，而本流水线构建的是 $GITHUB_SHA"
-              exit 1
-            fi
-            echo "::warning::tag $TAG 指向 $TAGGED_SHA，本次资产构建自 $GITHUB_SHA（重发同一版本号）"
-          else
-            echo "::notice::tag $TAG 已确认指向构建提交 $TAGGED_SHA"
-          fi
-          echo "::notice::已发布 https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:ktlintDebugSourceSetCheck :app:ktlintTestDebugSourceSetCheck

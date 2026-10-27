@@ -81,6 +81,7 @@ rikkax-multiprocess = { group = "dev.rikka.rikkax.preference", name = "multiproc
 roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
 roborazzi-junit-rule = { group = "io.github.takahirom.roborazzi", name = "roborazzi-junit-rule", version.ref = "roborazzi" }
+crisp-sdk = { group = "im.crisp", name = "crisp-sdk", version = "2.0.25" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -23,14 +23,20 @@ import com.slte.app.data.remote.adapter.xiaov2b.XiaoV2bUserInfoData
 import com.slte.app.data.remote.adapter.xiaov2b.XiaoV2bUserPlanRetrofit
 import com.slte.app.data.remote.adapter.xiaov2b.XiaoV2bUserRetrofit
 import com.slte.app.data.remote.api.AuthApi
+import com.slte.app.data.remote.api.SessionProbeResult
 import io.mockk.coEvery
 import io.mockk.mockk
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
+import retrofit2.Response
 
 interface BackendContract {
     val name: String
@@ -48,6 +54,16 @@ interface BackendContract {
     fun stubSubscribeInfoEmptyData()
 
     fun stubOrderDetail()
+
+    fun stubProbe(code: Int)
+
+    fun stubProbeError(error: Throwable)
+}
+
+fun probeResponse(code: Int): Response<ResponseBody> = if (code in 200..299) {
+    Response.success(code, "{}".toResponseBody("application/json".toMediaType()))
+} else {
+    Response.error(code, "{}".toResponseBody("application/json".toMediaType()))
 }
 
 private const val TOKEN = "t-1"
@@ -113,6 +129,14 @@ private class XboardContract : BackendContract {
             XboardResponse(data = XboardOrderData(id = 1, tradeNo = TRADE_NO, totalAmount = TOTAL_AMOUNT, status = 3))
     }
 
+    override fun stubProbe(code: Int) {
+        coEvery { user.probeSession() } returns probeResponse(code)
+    }
+
+    override fun stubProbeError(error: Throwable) {
+        coEvery { user.probeSession() } throws error
+    }
+
     override fun toString() = name
 }
 
@@ -168,6 +192,14 @@ private class XiaoV2bContract : BackendContract {
     override fun stubOrderDetail() {
         coEvery { user.getOrderDetail(any()) } returns
             XiaoV2bResponse(data = XiaoV2bOrderData(id = 1, tradeNo = TRADE_NO, totalAmount = TOTAL_AMOUNT, status = 3))
+    }
+
+    override fun stubProbe(code: Int) {
+        coEvery { user.probeSession() } returns probeResponse(code)
+    }
+
+    override fun stubProbeError(error: Throwable) {
+        coEvery { user.probeSession() } throws error
     }
 
     override fun toString() = name
@@ -245,5 +277,36 @@ class AuthApiContractTest(private val backend: BackendContract) {
         assertEquals(TRADE_NO, order.tradeNo)
         assertEquals(TOTAL_AMOUNT, order.totalAmount)
         assertEquals(3, order.status)
+    }
+
+    @Test
+    fun `订阅 data 为空时按失败处理而不是空订阅`() {
+        backend.stubSubscribeInfoEmptyData()
+
+        assertThrows(ApiException::class.java) {
+            runBlocking { backend.authApi().fetchSubscribeInfo() }
+        }
+    }
+
+    @Test
+    fun `会话探测按状态码区分有效失效与未知`() {
+        backend.stubProbe(200)
+        assertEquals(SessionProbeResult.VALID, runBlocking { backend.authApi().probeSession() })
+
+        backend.stubProbe(401)
+        assertEquals(SessionProbeResult.INVALID, runBlocking { backend.authApi().probeSession() })
+
+        backend.stubProbe(403)
+        assertEquals(SessionProbeResult.INVALID, runBlocking { backend.authApi().probeSession() })
+
+        backend.stubProbe(500)
+        assertEquals(SessionProbeResult.UNKNOWN, runBlocking { backend.authApi().probeSession() })
+    }
+
+    @Test
+    fun `会话探测网络异常按未知处理`() {
+        backend.stubProbeError(IOException("boom"))
+
+        assertEquals(SessionProbeResult.UNKNOWN, runBlocking { backend.authApi().probeSession() })
     }
 }

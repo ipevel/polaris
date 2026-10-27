@@ -1,8 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Polaris Contributors
-// SPDX-License-Identifier: GPL-3.0-only
-//
-// 移植自上游 shgnx/slte c73c4af6 的「配置目录原子替换」工具（GPL-3.0）。
-
 package com.github.kr328.clash.service.util
 
 import com.github.kr328.clash.common.log.Log
@@ -10,7 +5,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
-/** 目录原子替换；两次 rename 之间若进程崩溃，由 [recover] 恢复。 */
+/**
+ * 目录原子替换：staging 写完后先备份旧目录，再改名新目录；两次 rename 之间的
+ * 崩溃窗口由 [recover] 在服务启动时兜底恢复。
+ */
 object AtomicFs {
     private const val BACKUP_SUFFIX = ".old"
 
@@ -35,7 +33,6 @@ object AtomicFs {
         backup.deleteRecursively()
     }
 
-    /** 恢复被中断的目录替换：残留的 `<name>.old` 要么回滚、要么清理。 */
     fun recover(directory: File) {
         if (!directory.isDirectory) return
 

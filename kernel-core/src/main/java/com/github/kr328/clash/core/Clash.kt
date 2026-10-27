@@ -1,15 +1,11 @@
-// SPDX-FileCopyrightText: The Clash Meta for Android Authors
-// SPDX-FileCopyrightText: 2026 Polaris Contributors (modifications)
-// SPDX-License-Identifier: GPL-3.0-only
-//
-// Derived from Clash Meta for Android (https://github.com/MetaCubeX/ClashMetaForAndroid).
-// Upstream copyright retained per THIRD-PARTY-NOTICES.md.
-
 package com.github.kr328.clash.core
 
 import com.github.kr328.clash.core.bridge.*
 import com.github.kr328.clash.core.model.*
+import com.github.kr328.clash.core.model.OverrideSlot
 import com.github.kr328.clash.core.util.parseInetSocketAddress
+import java.io.File
+import java.net.InetSocketAddress
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -18,13 +14,8 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import java.io.File
-import java.net.InetSocketAddress
 
 object Clash {
-    enum class OverrideSlot {
-        Persist, Session
-    }
 
     private val ConfigurationOverrideJson = Json {
         ignoreUnknownKeys = true
@@ -49,17 +40,11 @@ object Clash {
         return Json.decodeFromString(TunnelState.serializer(), json)
     }
 
-    fun coreVersion(): String {
-        return Bridge.nativeCoreVersion()
-    }
+    fun coreVersion(): String = Bridge.nativeCoreVersion()
 
-    fun queryTrafficNow(): Traffic {
-        return Bridge.nativeQueryTrafficNow()
-    }
+    fun queryTrafficNow(): Traffic = Bridge.nativeQueryTrafficNow()
 
-    fun queryTrafficTotal(): Traffic {
-        return Bridge.nativeQueryTrafficTotal()
-    }
+    fun queryTrafficTotal(): Traffic = Bridge.nativeQueryTrafficTotal()
 
     fun notifyDnsChanged(dns: List<String>) {
         Bridge.nativeNotifyDnsChanged(dns.toSet().joinToString(separator = ","))
@@ -82,30 +67,31 @@ object Clash {
         portal: String,
         dns: String,
         markSocket: (Int) -> Boolean,
-        querySocketUid: (protocol: Int, source: InetSocketAddress, target: InetSocketAddress) -> Int
-    ) {
-        Bridge.nativeStartTun(fd, stack, gateway, portal, dns, object : TunInterface {
+        querySocketUid: (protocol: Int, source: InetSocketAddress, target: InetSocketAddress) -> Int,
+    ): Int = Bridge.nativeStartTun(
+        fd,
+        stack,
+        gateway,
+        portal,
+        dns,
+        object : TunInterface {
             override fun markSocket(fd: Int) {
                 markSocket(fd)
             }
 
-            override fun querySocketUid(protocol: Int, source: String, target: String): Int {
-                return querySocketUid(
-                    protocol,
-                    parseInetSocketAddress(source),
-                    parseInetSocketAddress(target)
-                )
-            }
-        })
-    }
+            override fun querySocketUid(protocol: Int, source: String, target: String): Int = querySocketUid(
+                protocol,
+                parseInetSocketAddress(source),
+                parseInetSocketAddress(target),
+            )
+        },
+    )
 
     fun stopTun() {
         Bridge.nativeStopTun()
     }
 
-    fun startHttp(listenAt: String): String? {
-        return Bridge.nativeStartHttp(listenAt)
-    }
+    fun startHttp(listenAt: String): String? = Bridge.nativeStartHttp(listenAt)
 
     fun stopHttp() {
         Bridge.nativeStopHttp()
@@ -114,7 +100,7 @@ object Clash {
     fun queryGroupNames(excludeNotSelectable: Boolean): List<String> {
         val names = Json.Default.decodeFromString(
             JsonArray.serializer(),
-            Bridge.nativeQueryGroupNames(excludeNotSelectable)
+            Bridge.nativeQueryGroupNames(excludeNotSelectable),
         )
 
         return names.map {
@@ -124,100 +110,66 @@ object Clash {
         }
     }
 
-    fun queryGroup(name: String, sort: ProxySort): ProxyGroup {
-        return Bridge.nativeQueryGroup(name, sort.name)
-            ?.let { Json.Default.decodeFromString(ProxyGroup.serializer(), it) }
-            ?: ProxyGroup("Unknown", emptyList(), "")
-    }
+    fun queryGroup(name: String, sort: ProxySort): ProxyGroup = Bridge.nativeQueryGroup(name, sort.name)
+        ?.let { Json.Default.decodeFromString(ProxyGroup.serializer(), it) }
+        ?: ProxyGroup("Unknown", emptyList(), "")
 
-    fun healthCheck(name: String): CompletableDeferred<Unit> {
-        return CompletableDeferred<Unit>().apply {
-            Bridge.nativeHealthCheck(this, name)
-        }
+    fun healthCheck(name: String): CompletableDeferred<Unit> = CompletableDeferred<Unit>().apply {
+        Bridge.nativeHealthCheck(this, name)
     }
 
     fun healthCheckAll() {
         Bridge.nativeHealthCheckAll()
     }
 
-    /**
-     * 对单个节点跑一次真实测速，并区分失败原因。
-     *
-     * 返回 null 表示内核里根本没有这个节点（已从订阅里删掉）——调用方应
-     * 按"超时"处理，而不是按"离线"，否则删节点会连带把同名新节点标离线。
-     */
-    fun urlTest(name: String, timeoutMs: Int): UrlTestResult? {
-        return Bridge.nativeUrlTest(name, timeoutMs)?.let {
-            Json.Default.decodeFromString(UrlTestResult.serializer(), it)
-        }
-    }
+    fun patchSelector(selector: String, name: String): Boolean = Bridge.nativePatchSelector(selector, name)
 
-    fun patchSelector(selector: String, name: String): Boolean {
-        return Bridge.nativePatchSelector(selector, name)
-    }
+    /** 对单个节点跑一次真实测速；null = 内核里没有这个节点。 */
+    fun urlTest(name: String, timeoutMs: Int): UrlTestResult? = Bridge.nativeUrlTest(name, timeoutMs)
+        ?.let { Json.Default.decodeFromString(UrlTestResult.serializer(), it) }
 
     fun fetchAndValid(
         path: File,
         url: String,
         force: Boolean,
-        reportStatus: (FetchStatus) -> Unit
-    ): CompletableDeferred<Unit> {
-        return CompletableDeferred<Unit>().apply {
-            Bridge.nativeFetchAndValid(
-                object : FetchCallback {
-                    override fun report(statusJson: String) {
-                        reportStatus(
-                            Json.Default.decodeFromString(
-                                FetchStatus.serializer(),
-                                statusJson
-                            )
-                        )
+        reportStatus: (FetchStatus) -> Unit,
+    ): CompletableDeferred<Unit> = CompletableDeferred<Unit>().apply {
+        Bridge.nativeFetchAndValid(
+            object : FetchCallback {
+                override fun report(statusJson: String) {
+                    reportStatus(
+                        Json.Default.decodeFromString(
+                            FetchStatus.serializer(),
+                            statusJson,
+                        ),
+                    )
+                }
+
+                override fun complete(error: String?) {
+                    if (error != null) {
+                        completeExceptionally(ClashException(error))
+                    } else {
+                        complete(Unit)
                     }
-
-                    override fun complete(error: String?) {
-                        if (error != null)
-                            completeExceptionally(ClashException(error))
-                        else
-                            complete(Unit)
-                    }
-                },
-                path.absolutePath,
-                url,
-                force
-            )
-        }
+                }
+            },
+            path.absolutePath,
+            url,
+            force,
+        )
     }
 
-    fun load(path: File): CompletableDeferred<Unit> {
-        return CompletableDeferred<Unit>().apply {
-            Bridge.nativeLoad(this, path.absolutePath)
-        }
+    fun load(path: File): CompletableDeferred<Unit> = CompletableDeferred<Unit>().apply {
+        Bridge.nativeLoad(this, path.absolutePath)
     }
 
-    fun queryProviders(): List<Provider> {
-        val providers =
-            Json.Default.decodeFromString(JsonArray.serializer(), Bridge.nativeQueryProviders())
-
-        return List(providers.size) {
-            Json.Default.decodeFromJsonElement(Provider.serializer(), providers[it])
-        }
-    }
-
-    fun updateProvider(type: Provider.Type, name: String): CompletableDeferred<Unit> {
-        return CompletableDeferred<Unit>().apply {
-            Bridge.nativeUpdateProvider(this, type.toString(), name)
-        }
-    }
-
-    fun queryOverride(slot: OverrideSlot): ConfigurationOverride {
-        return try {
-            ConfigurationOverrideJson.decodeFromString(
-                ConfigurationOverride.serializer(),
-                Bridge.nativeReadOverride(slot.ordinal)
-            )
-        } catch (e: Exception) {
-            ConfigurationOverride()
-        }
+    fun queryOverride(slot: OverrideSlot): ConfigurationOverride = try {
+        ConfigurationOverrideJson.decodeFromString(
+            ConfigurationOverride.serializer(),
+            Bridge.nativeReadOverride(slot.ordinal),
+        )
+    } catch (e: Exception) {
+        ConfigurationOverride()
     }
 
     fun patchOverride(slot: OverrideSlot, configuration: ConfigurationOverride) {
@@ -225,8 +177,8 @@ object Clash {
             slot.ordinal,
             ConfigurationOverrideJson.encodeToString(
                 ConfigurationOverride.serializer(),
-                configuration
-            )
+                configuration,
+            ),
         )
     }
 
@@ -234,21 +186,16 @@ object Clash {
         Bridge.nativeClearOverride(slot.ordinal)
     }
 
-    fun queryConfiguration(): UiConfiguration {
-        return Json.Default.decodeFromString(
-            UiConfiguration.serializer(),
-            Bridge.nativeQueryConfiguration()
-        )
-    }
-
     fun subscribeLogcat(): ReceiveChannel<LogMessage> = Channel<LogMessage>(32).apply {
         Bridge.nativeSubscribeLogcat(object : LogcatInterface {
-            override fun received(jsonPayload: String) {
-                // 单条畸形日志解析失败只丢弃该条：向 C 侧抛异常会让内核退订，
-                // 日志流从此静默（直到 UI 重订阅）
-                runCatching {
+            override fun received(jsonPayload: String): Boolean {
+                // 单条畸形日志解析失败只丢弃该条，不结束订阅
+                val message = runCatching {
                     Json.decodeFromString(LogMessage.serializer(), jsonPayload)
-                }.onSuccess { trySend(it) }
+                }.getOrNull() ?: return false
+
+                // 通道已关闭说明消费者已退订；通道满只丢弃该条，保持订阅
+                return trySend(message).isClosed
             }
         })
     }
@@ -279,7 +226,25 @@ object Clash {
         return Bridge.nativeVerityPublicKeys(publicKeys.firstOrNull() ?: "")
     }
 
-    private fun parseAgeKeyPair(value: String): AgeKeyPair {
-        return Json.Default.decodeFromString(AgeKeyPair.serializer(), value)
+    fun queryConfiguration(): UiConfiguration {
+        return Json.Default.decodeFromString(
+            UiConfiguration.serializer(),
+            Bridge.nativeQueryConfiguration()
+        )
+    }
+
+    fun queryProviders(): List<Provider> {
+        val providers =
+            Json.Default.decodeFromString(JsonArray.serializer(), Bridge.nativeQueryProviders())
+
+        return List(providers.size) {
+            Json.Default.decodeFromJsonElement(Provider.serializer(), providers[it])
+        }
+    }
+
+    fun updateProvider(type: Provider.Type, name: String): CompletableDeferred<Unit> {
+        return CompletableDeferred<Unit>().apply {
+            Bridge.nativeUpdateProvider(this, type.toString(), name)
+        }
     }
 }

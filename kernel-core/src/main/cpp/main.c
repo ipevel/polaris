@@ -117,7 +117,7 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeNotifyInstalledAppChanged(J
     notifyInstalledAppsChanged(_uid_list);
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jint JNICALL
 Java_com_github_kr328_clash_core_bridge_Bridge_nativeStartTun(JNIEnv *env, jobject thiz,
                                                               jint fd,
                                                               jstring stack,
@@ -133,7 +133,7 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeStartTun(JNIEnv *env, jobje
     scoped_string _dns = get_string(dns);
     jobject _interface = new_global(cb);
 
-    startTun(fd, _stack, _gateway, _portal, _dns, _interface);
+    return (jint) startTun(fd, _stack, _gateway, _portal, _dns, _interface);
 }
 
 JNIEXPORT void JNICALL
@@ -526,16 +526,16 @@ static int call_logcat_interface_received_impl(void *callback, const char *paylo
 
     ATTACH_JNI();
 
-    (*env)->CallVoidMethod(env,
-                           (jobject) callback,
-                           (jmethodID) m_logcat_interface_received,
-                           (jstring) new_string(payload));
+    jboolean stopped = (*env)->CallBooleanMethod(env,
+                                                 (jobject) callback,
+                                                 (jmethodID) m_logcat_interface_received,
+                                                 (jstring) new_string(payload));
 
     if (jni_catch_exception(env)) {
         return 1;
     }
 
-    return 0;
+    return stopped ? 1 : 0;
 }
 
 static int open_content_impl(const char *url, char *error, int error_length) {
@@ -614,7 +614,7 @@ JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_completable_complete_exceptionally = find_method(c_completable, "completeExceptionally",
                                                        "(Ljava/lang/Throwable;)Z");
     m_logcat_interface_received = find_method(c_logcat_interface, "received",
-                                              "(Ljava/lang/String;)V");
+                                              "(Ljava/lang/String;)Z");
     m_clash_exception = find_method(_c_clash_exception, "<init>",
                                     "(Ljava/lang/String;)V");
     m_get_message = find_method(c_throwable, "getMessage",

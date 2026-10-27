@@ -11,6 +11,7 @@ package com.github.kr328.clash.service.clash
 
 import com.github.kr328.clash.common.log.Log
 import com.github.kr328.clash.core.Clash
+import com.github.kr328.clash.core.model.OverrideSlot
 import com.github.kr328.clash.service.clash.module.Module
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +49,7 @@ fun CoroutineScope.clashRuntime(
     return object : ClashRuntime {
         override fun launch() {
             // 模块故障隔离：每个模块独立协程，非关键模块失败只记日志，不拖垮运行时。
+            // SupervisorJob：单个模块失败不再连坐整个 runtime；关键模块失败由 install 显式停机
             launch(Dispatchers.IO + SupervisorJob()) {
                 val runtimeScope = this
                 globalLock.withLock {
@@ -55,33 +57,31 @@ fun CoroutineScope.clashRuntime(
 
                     try {
                         Clash.reset()
-                        Clash.clearOverride(Clash.OverrideSlot.Session)
+                        Clash.clearOverride(OverrideSlot.Session)
 
-                        val scope =
-                            object : ClashRuntimeScope {
-                                override fun <E, T : Module<E>> install(
-                                    module: T,
-                                    critical: Boolean,
-                                ): T {
-                                    launch {
-                                        try {
-                                            module.execute()
-                                        } catch (e: CancellationException) {
-                                            throw e
-                                        } catch (e: Exception) {
-                                            val message =
-                                                "${module.javaClass.simpleName}: ${e.message ?: e.javaClass.simpleName}"
-                                            Log.e(message, e)
-                                            if (critical) {
-                                                onCriticalFailure(message)
-                                                runtimeScope.cancel()
-                                            }
+                        val scope = object : ClashRuntimeScope {
+                            override fun <E, T : Module<E>> install(
+                                module: T,
+                                critical: Boolean,
+                            ): T {
+                                launch {
+                                    try {
+                                        module.execute()
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        val message = "${module.javaClass.simpleName}: ${e.message ?: e.javaClass.simpleName}"
+                                        Log.e(message, e)
+                                        if (critical) {
+                                            onCriticalFailure(message)
+                                            runtimeScope.cancel()
                                         }
                                     }
-
-                                    return module
                                 }
+
+                                return module
                             }
+                        }
 
                         scope.block()
 
@@ -89,7 +89,7 @@ fun CoroutineScope.clashRuntime(
                     } finally {
                         withContext(NonCancellable) {
                             Clash.reset()
-                            Clash.clearOverride(Clash.OverrideSlot.Session)
+                            Clash.clearOverride(OverrideSlot.Session)
 
                             Log.d("ClashRuntime: destroyed")
                         }

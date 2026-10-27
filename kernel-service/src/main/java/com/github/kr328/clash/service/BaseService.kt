@@ -11,8 +11,11 @@ import android.app.Service
 import com.github.kr328.clash.service.util.cancelAndJoinBlockingAsync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
-abstract class BaseService : Service(), CoroutineScope by CoroutineScope(Dispatchers.Default) {
+abstract class BaseService :
+    Service(),
+    CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.Default) {
     override fun onDestroy() {
         super.onDestroy()
 

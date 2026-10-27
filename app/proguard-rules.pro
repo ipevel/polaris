@@ -34,3 +34,7 @@
 # Tink (via EncryptedSharedPreferences) 引用了 error-prone 注解，
 # 但该注解仅在编译期使用，R8 混淆时找不到类会导致构建失败
 -dontwarn com.google.errorprone.annotations.**
+
+# snakeyaml：Android 无 java.beans，仅用其基础 Load/SafeConstructor 路径
+-dontwarn java.beans.**
+-keep class org.yaml.snakeyaml.** { *; }

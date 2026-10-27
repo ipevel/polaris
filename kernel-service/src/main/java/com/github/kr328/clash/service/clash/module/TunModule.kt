@@ -30,7 +30,7 @@ class TunModule(private val vpn: VpnService) : Module<Unit>(vpn) {
     )
 
     private val connectivity = service.getSystemService<ConnectivityManager>()!!
-    private val close = Channel<Unit>(Channel.CONFLATED)
+    private val closeRequests = Channel<Unit>(Channel.CONFLATED)
 
     private fun queryUid(
         protocol: Int,
@@ -46,10 +46,11 @@ class TunModule(private val vpn: VpnService) : Module<Unit>(vpn) {
 
     override suspend fun run() {
         try {
-            return close.receive()
+            closeRequests.receive()
         } finally {
             withContext(NonCancellable) {
                 requestStop()
+                closeRequests.close()
             }
         }
     }
@@ -64,7 +65,7 @@ class TunModule(private val vpn: VpnService) : Module<Unit>(vpn) {
 
     fun attach(device: TunDevice) {
         try {
-            Clash.startTun(
+            val result = Clash.startTun(
                 fd = device.fd,
                 stack = device.stack,
                 gateway = device.gateway,
@@ -73,14 +74,17 @@ class TunModule(private val vpn: VpnService) : Module<Unit>(vpn) {
                 markSocket = vpn::protect,
                 querySocketUid = this::queryUid
             )
+            if (result != 0) {
+                throw IllegalStateException("startTun failed: $result")
+            }
         } catch (e: Exception) {
             runCatching { ParcelFileDescriptor.adoptFd(device.fd).close() }
             throw e
         }
     }
 
-    suspend fun close() {
-        close.send(Unit)
+    fun close() {
+        closeRequests.trySend(Unit)
     }
 
     companion object {

@@ -12,10 +12,15 @@ import com.slte.app.data.remote.BackendAdapterFactory
 import com.slte.app.data.remote.FallbackDns
 import com.slte.app.data.remote.SubscribeSourceImpl
 import com.slte.app.data.remote.api.AuthApi
+import com.slte.app.data.remote.config.CrispManager
 import com.slte.app.data.remote.config.RemoteConfig
+import com.slte.app.domain.service.SupportChat
 import com.slte.app.kernel.AppRemoteConfig
 import com.slte.app.kernel.SpeedResultStore
 import com.slte.app.kernel.SubscribeSource
+import com.slte.app.kernel.api.KernelApi
+import com.slte.app.kernel.factory.DefaultKernelFactory
+import com.slte.app.kernel.factory.KernelFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -41,6 +46,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Provides
+    @Singleton
+    fun provideSupportChat(manager: CrispManager): SupportChat = manager
+
     fun provideSubscribeSource(source: SubscribeSourceImpl): SubscribeSource = source
 
     @Provides
