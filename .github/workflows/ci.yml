@@ -1,49 +1,705 @@
-name: CI
+name: Polaris CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master, windows-portable]
   pull_request:
+  # issue #42 的排练缝：这两个输入**只在 workflow_dispatch 生效**；push/PR 路径一律按 auto 判定，
+  # 任何 dispatch 参数都不会覆盖真 PR 的判定。scopes_override=auto 是缺省；force_changes_failure 是 test-only 插桩。
+  workflow_dispatch:
+    inputs:
+      scopes_override:
+        description: '仅排练用：强制改动范围（auto=正常判定；all/win/android/go=强制该范围）'
+        type: choice
+        options: [auto, all, win, android, go]
+        default: auto
+      force_changes_failure:
+        description: 'test-only：故意让变更判定失败，验证「判定失败 → 重活仍全跑」'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      # GitHub runner 在海外，阿里云镜像会拖慢甚至阻断插件解析
-      SLTE_USE_MIRROR: "false"
-      # 截图基线由 macOS 渲染生成，Linux runner 不校验
-      CI_SKIP_SCREENSHOT: "true"
-    steps:
-      - uses: actions/checkout@v4
+  # 2026-10-16 合并 ci-windows.yml（审计 ops/receipts/2026-10-16-ci-waste-audit.md §A2 ①）。
+  # trigger 取两条的并集：push [main,master] ∪ [main,windows-portable] = 下面这条；
+  #   PR —— ci.yml 原本无分支过滤、是 ci-windows.yml 的超集，保持无过滤；
+  #   dispatch options —— ci.yml 原本已是 [auto,all,win,android,go]、是对方的超集，保持不动。
+  # 合并后每条 event 只开 1 条 run（此前 PR→main 会同时开 ci.yml 与 ci-windows.yml 两条）。
 
-      - uses: actions/setup-java@v4
+  # ★ 判定输出拆成两组、互不串味（这是合并的关键，不是省事）：
+  #     all / android / go  ← ci.yml 原逻辑，喂 go-run、quality-run
+  #     win / winall        ← ci-windows.yml 原逻辑，喂 windows-offline-run
+  #  不能共用：ci.yml 的「UNKNOWN → 全跑」分支会把 WIN 置 true；若直接喂给
+  #  windows-offline-run，就等于在纯安卓 PR 上也跑 Windows 自检，与 ci-windows.yml
+  #  原语义（只有 design/windows/** 才算 Windows 改动）冲突。
+  #  反过来 ci-windows.yml 的 all 也不能叫 all —— 它的意思是「Windows 全跑」，
+  #  与 ci.yml 的 all（安卓+Go 全跑）撞名，所以改名 winall。
+
+  changes:
+    name: 变更判定（双端路径分流）
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.scope.outputs.android }}
+      go: ${{ steps.scope.outputs.go }}
+      win: ${{ steps.scope.outputs.win }}
+      winall: ${{ steps.scope.outputs.winall }}
+      all: ${{ steps.scope.outputs.all }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: 判定改动范围（异常/未匹配 → 全跑）
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DISPATCH_SCOPE: ${{ inputs.scopes_override }}
+          FORCE_FAIL: ${{ inputs.force_changes_failure }}
+        run: |
+          # 刻意不用 set -e：任何失败都走「全跑」分支（fail-closed），而不是让重活不跑。
+          set -uo pipefail
+          # 默认全跑（两组都是），判定成功才用 finish() 覆盖（GITHUB_OUTPUT 后写者生效）。
+          { echo "all=true"; echo "android=true"; echo "go=true"; echo "win=true"; echo "winall=true"; } >> "$GITHUB_OUTPUT"
+          ALL=true; ANDROID=true; GO=true; WIN=true; WINALL=true
+          finish() {
+            { echo "all=$ALL"; echo "android=$ANDROID"; echo "go=$GO"; echo "win=$WIN"; echo "winall=$WINALL"; } >> "$GITHUB_OUTPUT"
+            echo "判定结果：all=$ALL android=$ANDROID go=$GO win=$WIN winall=$WINALL"
+          }
+          alltrue() { ALL=true; ANDROID=true; GO=true; WIN=true; WINALL=true; finish; exit 0; }
+          fallback() { echo "::warning::$1（按 fail-closed 全跑）"; alltrue; }
+          if [ "${FORCE_FAIL:-false}" = "true" ]; then
+            echo "::warning::test-only：force_changes_failure=true，故意让变更判定失败（重活因 always() 仍会跑）"
+            finish
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # options 取两条 workflow 的并集 [auto, all, win, android, go]。
+            case "${DISPATCH_SCOPE:-auto}" in
+              all) echo "::notice::排练：强制全跑（双端）"; alltrue ;;
+              # ci.yml 原本 win 只置 WIN 位、且安卓/Go 侧没人消费它 → 这里只置 Windows 侧。
+              win) ALL=false; ANDROID=false; GO=false; WIN=true; WINALL=true; finish; exit 0 ;;
+              # ci-windows.yml 原文：android → 不跑 Windows 自检。
+              android) ALL=false; ANDROID=true; GO=false; WIN=false; WINALL=false; finish; exit 0 ;;
+              # ci-windows.yml 原本没有 go 这个 option，会落 *) fallback = 跑（fail-closed），照搬。
+              go) ALL=false; ANDROID=false; GO=true; WIN=true; WINALL=true; finish; exit 0 ;;
+              *) fallback "workflow_dispatch 且 scopes_override=auto：没有可比对的 base" ;;
+            esac
+          fi
+          if [ "$EVENT_NAME" != "pull_request" ]; then alltrue; fi
+          if [ -z "${BASE_SHA:-}" ]; then fallback "PR 事件没拿到 base.sha"; fi
+          if [ -z "${HEAD_SHA:-}" ]; then fallback "PR 事件没拿到 head.sha"; fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1 || fallback "取 base 提交失败：$BASE_SHA"
+          git fetch --no-tags --depth=1 origin "$HEAD_SHA" >/dev/null 2>&1 || fallback "取 head 提交失败：$HEAD_SHA"
+          # 浅克隆（depth=1）没有 merge base：三点 diff 会 `fatal: no merge base` → 被兜成全跑（PR 场景永远全跑）。
+          # 这里改成两点 diff（base 与 head 直接比）；分支落后 main 时会把 main 侧改动也过包含进来 —— 安全方向（多跑不少跑），不会漏判。
+          # diff 命令失败仍走 fail-closed 全跑（这条一个字不改）。
+          # --no-renames：重命名检测只列新路径会漏掉老路径（例如 app/** 搬到 design/windows/**），那一侧就判不出来 → 漏跑。
+          FILES=$(git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null) || fallback "git diff 失败：${BASE_SHA}..${HEAD_SHA}"
+          if [ -z "$FILES" ]; then fallback "改动文件列表为空（判定不出范围）"; fi
+          echo "改动文件（$(printf '%s\n' "$FILES" | wc -l) 个，最多显示 30 行）："
+          printf '%s\n' "$FILES" | head -30
+          # 分类表 = ci.yml 的三条 ∪ ci-windows.yml 的 design/windows/** 一条。
+          # 安卓/Go 侧沿用 WINHIT 这个名字，只用于「一个平台都没匹配上」这条兜底，
+          # **不**参与 Windows 侧输出（见文件头那段注释）。
+          ANDROID=false; GO=false; WINHIT=false; UNKNOWN=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              app/*|kernel-service/*|kernel-common/*|gradle/*|gradlew|gradlew.bat|build.gradle.kts|settings.gradle.kts|gradle.properties) ANDROID=true ;;
+              kernel-core/*) ANDROID=true; GO=true ;;
+              design/windows/*) WINHIT=true ;;
+              *) UNKNOWN=true ;;
+            esac
+          done <<RWEOF
+          $FILES
+          RWEOF
+          # ── 安卓/Go 侧：逐字沿用 ci.yml 原逻辑 ────────────────────────────
+          if [ "$UNKNOWN" = "true" ]; then
+            ALL=true; ANDROID=true; GO=true
+            echo "::notice::有未匹配/基础设施路径（.github/**、根级、docs/**、config/** 等）→ 全跑"
+          else
+            ALL=false
+            if [ "$ANDROID" = "false" ] && [ "$GO" = "false" ] && [ "$WINHIT" = "false" ]; then
+              ALL=true; ANDROID=true; GO=true
+              echo "::notice::一个平台都没匹配上（异常）→ 全跑"
+            fi
+          fi
+          # ── Windows 侧：逐字沿用 ci-windows.yml 原逻辑 ────────────────────
+          # 原文：`if UNKNOWN || !WIN → ALL=true; WIN=true else ALL=false`
+          # （它的 ALL 只喂自己那个执行体，所以这里改名 winall，见文件头注释）。
+          if [ "$UNKNOWN" = "true" ] || [ "$WINHIT" = "false" ]; then
+            WIN=true; WINALL=true
+            echo "::notice::有未匹配/基础设施路径或没有 Windows 改动 → Windows 自检照跑（fail-closed）"
+          else
+            WIN=true; WINALL=false
+          fi
+          # ── ckbox 式：PR 不跑重活（质量门禁 test+ktlint+lint+R8 / 内核 Go 门禁 vet+build+test）──
+          # 这两条是最重的（质量门禁约 10 分钟），发版时由 build.yml 的 build job 统一兜住，
+          # 所以 PR 阶段跳过它们，只留永远跑的「版本门禁自测」。
+          # 例外：改了 .github/**（CI 自身）的 PR 仍跑重活，避免 CI 改动未经验证就合入。
+          if [ "$EVENT_NAME" = "pull_request" ] && ! printf '%s\n' "$FILES" | grep -q '^\.github/'; then
+            ALL=false; ANDROID=false; GO=false
+            echo "::notice::PR 不跑重活门禁（质量门禁/内核 Go 门禁），只跑版本门禁自测；重活由发版 build 兜底"
+          fi
+          finish
+
+      - name: needs 与重活 对账（漏一个重活就红）
+        run: |
+          set -euo pipefail
+          # 纯 Node + 极简正则扫描本文件（不引依赖、不新增仓库文件；任何不确定 → 红）
+          # 合并后只保留这一份对账：原来 ci.yml 管两个聚合器、ci-windows.yml 管一个；
+          # 若保留两份，Windows 那份会在合并后的文件里把安卓 job 判成「未覆盖」而必红。
+          node - <<'JS'
+          const fs = require('fs');
+          const raw = fs.readFileSync('.github/workflows/ci.yml', 'utf8');
+          const src = raw.slice(raw.indexOf('\njobs:') + 1);   // 只在 jobs: 段里扫，别把 on: 下的键当 job
+          const jobKeys = [...src.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
+          const blockOf = (key) => {
+            const i = src.indexOf('\n  ' + key + ':\n');
+            if (i < 0) return '';
+            const rest = src.slice(i + 1);
+            const nxt = rest.slice(4).search(/^  [A-Za-z0-9_-]+:\s*$/m);
+            return nxt < 0 ? rest : rest.slice(0, nxt + 4);
+          };
+          const needsOf = (key) => {
+            const m = /^    needs:\s*\[([^\]]*)\]$/m.exec(blockOf(key));
+            return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+          };
+          const REQUIRED = {
+            '版本门禁自测': 'version-gate',
+            '内核 Go 门禁（vet + build + test）': 'go-gate',
+            '质量门禁（test + ktlint + lint）': 'quality-gate',
+          };
+          // 这个名字同时被 build.yml 的 release-precheck 硬编码（WINDOWS 常量）：
+          // 改名 → 发版 precheck 读不到 → fail-closed 直接拦住发版。
+          const WIN_NAME = 'Windows 离线自检 + 语法检查';
+          const AGG = { 'go-gate': 'go-run', 'quality-gate': 'quality-run', 'windows-offline': 'windows-offline-run' };
+          const problems = [];
+          for (const [name, key] of Object.entries(REQUIRED)) {
+            const b = blockOf(key);
+            if (!b) problems.push('找不到 required 对应的 job：' + key + '（' + name + '）');
+            else if (!b.split('\n').some((l) => l.trim() === 'name: ' + name)) problems.push('job ' + key + ' 的 name 不是逐字「' + name + '」');
+          }
+          {
+            const b = blockOf('windows-offline');
+            if (!b) problems.push('找不到聚合 job：windows-offline（' + WIN_NAME + '）');
+            else if (!b.split('\n').some((l) => l.trim() === 'name: ' + WIN_NAME)) problems.push('job windows-offline 的 name 不是逐字「' + WIN_NAME + '」');
+            const needs = needsOf('windows-offline');
+            if (!needs.includes('changes')) problems.push('windows-offline 的 needs 缺 changes：' + JSON.stringify(needs));
+            if (!needs.includes('windows-offline-run')) problems.push('windows-offline 的 needs 缺 windows-offline-run：' + JSON.stringify(needs));
+          }
+          for (const [agg, heavy] of Object.entries(AGG)) {
+            const needs = needsOf(agg);
+            if (!needs.includes('changes')) problems.push(agg + ' 的 needs 缺 changes：' + JSON.stringify(needs));
+            if (!needs.includes(heavy)) problems.push(agg + ' 的 needs 缺 ' + heavy + '：' + JSON.stringify(needs));
+          }
+          const covered = new Set();
+          for (const agg of Object.keys(AGG)) needsOf(agg).forEach((n) => covered.add(n));
+          const heavyAll = jobKeys.filter((k) => k !== 'changes' && !Object.keys(AGG).includes(k) && k !== 'version-gate');
+          const missing = heavyAll.filter((k) => !covered.has(k));
+          if (missing.length) problems.push('有重活没被任何聚合 needs 覆盖：' + missing.join(', '));
+          if (problems.length) { for (const p of problems) console.error('::error::' + p); process.exit(1); }
+          console.log('对账通过：重活 ' + JSON.stringify(heavyAll) + ' 都被聚合 needs 覆盖；required 三条 + Windows 自检名字逐字存在');
+          JS
+
+  windows-offline-run:
+    name: Windows 离线自检 + 语法检查 · 执行体
+    needs: [changes]
+    # ci-windows.yml 原来读的是自己的 outputs.all；合并后那个名字被 ci.yml 占用了
+    # （含义是「安卓+Go 全跑」），所以 Windows 侧改读改名叫 winall 的那个。
+    if: ${{ always() && (needs.changes.outputs.win == 'true' || needs.changes.outputs.winall == 'true') }}
+    # 为什么跑 windows-latest 而不是 ubuntu（更贵、更慢，是权衡后的选择）：
+    #   1. 这个产品只有 Windows 版。updater 的 extract() 就是 Windows 实现
+    #      （`tar -xf` 走 Windows 自带 bsdtar，失败再回退 `powershell Expand-Archive`）。
+    #      在 ubuntu 上跑到解压那一步必然 `spawn powershell ENOENT` —— 第一次提交
+    #      就是 ubuntu，离线自检当场 19/4 红（用例 5、6 全挂）。那不是产品 bug，
+    #      是拿错平台的运行时去验一个 Windows-only 的模块。
+    #   2. 顺带把 Windows 专有假设（路径分隔符、bsdtar、PowerShell 回退）也纳入验证，
+    #      这些在 ubuntu 上永远验不到。
+    # 代价：Windows runner 计费更高。所以只跑离线自检，不装 Electron、不打包。
+    runs-on: windows-latest
+    # 离线自检里 updater-self-test 有一段故意等满 120 秒（验「父进程不退」），
+    # 加上 npm ci 与 Windows runner 的启动开销，给足余量。
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: design/windows/app
+
+    steps:
+      - name: 检出代码（当前分支）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          # 优化②：npm 下载缓存。setup-node 默认在仓库根找 lockfile，本工程在
+          # design/windows/app 子目录，必须显式给 cache-dependency-path
+          # （与 build.yml 发版路径的 setup-node 同款）。
+          cache: npm
+          cache-dependency-path: design/windows/app/package-lock.json
+
+      # ------------------------------------------------------------------
+      # 一次 checkout 同时解决两个「CI 上永远绿」的隐患：
+      #
+      # 1. routing-sync：这条自检要拿 main 的
+      #    kernel-core/src/main/golang/native/config/routing/routing_table.go
+      #    跟 Windows 的 electron/core/rulesets.js 逐条比对；而 windows-portable
+      #    分支只有 design/，没有 kernel-core/ —— 本地跑会打印「跳过」并 exit 0。
+      #    跳过在 CI 里就等于一个永远绿的假通过，所以**不能**这么放过。
+      #    理由：main 是分流表的事实来源，windows-portable 是镜像；要防的正是
+      #    「main 改了表、Windows 镜像没跟上」。
+      # 2. flags：flag-codes-test 里有一段「与安卓端 257 张图名集合比对」，
+      #    安卓仓库不在本仓库里，不 checkout 就永远打印 skip。
+      #
+      # 成本很低：只取两个目录，不装 Go、不编译。
+      # ------------------------------------------------------------------
+      - name: 取 main 的 kernel-core + 安卓 flags（两条自检要用它真跑）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .ci-main
+          sparse-checkout: |
+            kernel-core
+            app/src/main/assets/flags
+          sparse-checkout-cone-mode: true
+          fetch-depth: 1
+
+      # 离线自检本身只用 Node 内置模块，不需要依赖；但 `node --check` 要能解析
+      # 每条 require，缺了 node_modules 会误报，所以照常装。
+      - name: 安装依赖
+        run: npm ci
+
+      # 13 条离线自检：不需要 Electron、不需要网络、不碰真安装目录。
+      # 用链式命令而不是 13 个 step，是为了失败时一眼看出是哪条断的，
+      # 同时保证「前一条挂了后面的不会假装通过」。
+      #
+      # 两条 REQUIRED 环境变量把「跳过」堵死：
+#   POLARIS_GO_TABLE_REQUIRED=1     → 找不到 Go 表就红，不是绿（新口径优先 in-tree，见下）
+      #   POLARIS_ANDROID_REQUIRED=1      → 找不到安卓 flags 目录就红，不是绿
+      # Go 表的取数口径（2026-10-15 收紧）：**优先当前检出的 kernel-core**，取不到才回退 .ci-main。
+      # 原来硬指向 .ci-main（ref: main），于是「PR 改了 Go 表、JS 镜像没跟上」反而绿 ——
+      # 门禁要等 main push 之后才红，抓不住漂移本身。改成优先 in-tree 后，PR 路径读到的就是 PR
+      # 自己的 Go 表，两端必须在同一个 PR 里一致（与安卓侧 RoutingTableParityTest 的行为对齐）。
+      # 回退分支只为过渡期的 windows-portable（它只有 design/，没有 kernel-core/）保留。
+      - name: 离线自检 13 条（updater / updater-timeout / traffic / geosync / rulesync / routing-sync / flags / flag-row / dns / portowner / config / single-source / routing-view）
+        shell: bash
+        env:
+          POLARIS_GO_TABLE_REQUIRED: '1'
+          POLARIS_ANDROID_DIR: ${{ github.workspace }}/.ci-main
+          POLARIS_ANDROID_REQUIRED: '1'
+        run: |
+          set -euo pipefail
+          go_table="${{ github.workspace }}/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+          if [ ! -f "$go_table" ]; then
+            go_table="${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+            echo "::notice::当前检出没有 kernel-core（过渡期分支），回退用 .ci-main 的 Go 表：$go_table"
+          fi
+          echo "[routing-sync] 用 Go 表：$go_table"
+          POLARIS_GO_TABLE="$go_table" npm run test:offline
+
+      # 便宜的兜底：语法错误在这里就红，不用等打包才发现。
+      - name: 语法检查（所有 js）
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --check 只解析不执行，所以不依赖 Electron 运行时；
+          # 但 preload.js / tray.js 等文件里 require('electron') 不会被执行，安全。
+          mapfile -t files < <(git ls-files '*.js' | grep -v '^design/windows/app/node_modules/')
+          echo "待检查 ${#files[@]} 个文件"
+          for f in "${files[@]}"; do
+            node --check "$f" || { echo "::error::语法错误：$f"; exit 1; }
+          done
+          echo "全部通过"
+
+      # 上面两条 REQUIRED 是真跑的前提：checkout 成功不代表 sparse-checkout
+      # 真取到了文件，所以显式确认一次，取不到就红。
+      - name: 确认跨仓库输入真的取到了
+        shell: bash
+        run: |
+          set -euo pipefail
+          go="${{ github.workspace }}/.ci-main/kernel-core/src/main/golang/native/config/routing/routing_table.go"
+          flags="${{ github.workspace }}/.ci-main/app/src/main/assets/flags"
+          if [ ! -f "$go" ]; then
+            echo "::error::没取到 main 的 routing_table.go：$go"
+            echo "::error::请检查上面的 sparse-checkout 是否还匹配得上 main 的目录结构。"
+            exit 1
+          fi
+          n=$(find "$flags" -maxdepth 1 -name '*.svg' | wc -l)
+          if [ "$n" -lt 100 ]; then
+            echo "::error::安卓 flags 只取到 $n 张（预期 257）：$flags"
+            exit 1
+          fi
+          echo "routing_table.go 与 $n 张安卓 flags 都在"
+  # issue #42：聚合 job —— 沿用原 check 名字（逐字），if: always()；唯一绿条件 = needs 全 success/skipped。
+  windows-offline:
+    name: Windows 离线自检 + 语法检查
+    needs: [changes, windows-offline-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
+  # 门禁是 CI 的裁判，而裁判坏掉时没人会发现：2026-10-03 的历史审计把
+  # Gradle 声明点当成 JSON 解析，异常被吞掉，于是每次都打印「通过」而
+  # 实际一个提交都没扫。所以每次推送都先验证裁判本身。
+  # （issue #42：本 job 永远跑、名字不改；重活由 changes 判定后条件化，required 名字由聚合 job 沿用。）
+  version-gate:
+    name: 版本门禁自测
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 运行门禁自测（23 个用例）
+        run: python3 .scripts/version_gate_test.py
+
+  go-run:
+    name: 内核 Go 门禁（vet + build + test） · 执行体
+    needs: [changes]
+    if: ${{ always() && (needs.changes.outputs.go == 'true' || needs.changes.outputs.all == 'true') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 安装 Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # 与 go.mod 的 `go 1.20` 兼容；内核本身用 Go NDK 交叉编译，这里只做
+          # 语法/编译/单测门禁（GOOS=linux，不需要 NDK）。
+          go-version: '1.22'
+
+      - name: go vet（native 全树，带构建标签）
+        working-directory: kernel-core/src/main/golang
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go vet -tags "android cmfa with_gvisor" ./native/...
+
+      - name: go build（native 交叉编译语法门禁）
+        working-directory: kernel-core/src/main/golang
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go build -tags "android cmfa with_gvisor" ./native/...
+
+      # 这条是本次回归能溜进发布的结构性缺口：routing 单测早已存在
+      # （含组数契约 TestDefaultOnGroups），但 CI 从来没跑过 go test。
+      - name: go test（本地分流生成层）
+        working-directory: kernel-core/src/main/golang
+        run: go test -v -count=1 ./native/config/routing/...
+
+  quality-run:
+    name: 质量门禁（test + ktlint + lint） · 执行体
+    needs: [changes]
+    if: ${{ always() && (needs.changes.outputs.android == 'true' || needs.changes.outputs.all == 'true') }}
+    runs-on: ubuntu-latest
+
+    env:
+      POLARIS_USE_MIRROR: 'false'
+      POLARIS_RELEASE_STORE_FILE: ${{ github.workspace }}/ci-throwaway.keystore
+      POLARIS_RELEASE_STORE_PASSWORD: ci-throwaway
+      POLARIS_RELEASE_KEY_ALIAS: ci-throwaway
+      POLARIS_RELEASE_KEY_PASSWORD: ci-throwaway
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - uses: android-actions/setup-android@v4
+      - name: 配置 Gradle 缓存
+
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
-          packages: "platforms;android-36 build-tools;36.0.0"
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - uses: gradle/actions/setup-gradle@v4
+      # ---- 优化②：Android SDK / NDK 依赖缓存（issue #36）------------------------
+      # 缓存键 = OS + 三个版本号（platforms;android-36 / build-tools;36.0.0 /
+      # ndk;28.2.13676358）。三个版本号都写进键里 → 换任一版本必然 miss 并重装
+      # （fail-closed），不会出现「装了新 SDK 却命中旧缓存」的假绿。
+      # 故意**不配 restore-keys**：任何回退命中都可能把旧版本塞进来。
+      - name: 解析 Android SDK 根目录（缓存 path 要用它）
+        run: |
+          set -e
+          # 修法 A：解压目标必须是 runner 自有目录，不能用镜像预置的 /usr/local/lib/android/sdk。
+          # 原因：actions/cache 用 tar 解包，tar 要还原每个条目的 mtime/权限，而 utime/chmod
+          # 都要求调用者是属主。镜像预置目录属主是 root，runner 改不了 → Cannot utime /
+          # Cannot change mode → tar 退出码 2 → actions/cache 判 restore 失败 → cache-hit 空
+          # → 按 cache-hit 判定的命中分支永远进不去（实测 run 38929579809 attempt 2）。
+          # 改用 RUNNER_TEMP 下的目录：属主是 runner，tar 能正常还原，命中即可用。
+          # 三个环境变量一起指过来：sdkmanager 装包读 ANDROID_SDK_ROOT/ANDROID_HOME，
+          # AGP 找 SDK 也读它们；只改 POLARIS_SDK_ROOT 会让装出来的包被 AGP 在老路径找不到。
+          root="${RUNNER_TEMP}/polaris-android-sdk"
+          mkdir -p "$root"
+          {
+            echo "POLARIS_SDK_ROOT=$root"
+            echo "ANDROID_HOME=$root"
+            echo "ANDROID_SDK_ROOT=$root"
+          } >> "$GITHUB_ENV"
+          echo "Android SDK 根目录：$root（runner 自有，属主 $(id -un)）"
+          # 保存镜像原始 SDK 根目录：sdkmanager 可执行文件本体在镜像预置目录里，
+          # 新根目录是空的（runner 自有、归缓存管），所以下一步定位 sdkmanager 要靠它。
+          orig="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "POLARIS_ORIG_SDK_ROOT=$orig" >> "$GITHUB_ENV"
 
-      - name: Verify prebuilt native binaries
-        run: ./gradlew :kernel-core:verifyNativeLibraries --no-daemon
+      - name: 缓存 Android SDK / NDK（键含 OS + 三个版本号）
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.POLARIS_SDK_ROOT }}/platforms/android-36
+            ${{ env.POLARIS_SDK_ROOT }}/build-tools/36.0.0
+            ${{ env.POLARIS_SDK_ROOT }}/ndk/28.2.13676358
+          key: android-sdk-${{ runner.os }}-p-android-36_bt-36.0.0_ndk-28.2.13676358
 
-      - name: Lint and unit tests
-        run: >
-          ./gradlew
-          :app:ktlintCheck
-          :kernel-common:ktlintCheck
-          :kernel-service:ktlintCheck
-          :kernel-core:ktlintCheck
-          :app:testDebugUnitTest
-          --no-daemon
+      - name: 安装 Android SDK / NDK
+        run: |
+          set -e
+          # sdkmanager 定位：优先用新根目录里的 cmdline-tools（若已 bootstrap），否则用镜像自带的。
+          # 无论用哪个，都显式传 --sdk_root，把装包目标钉在 runner 自有根目录上
+          # （镜像自带 sdkmanager 的默认根是它自己所在的 /usr/local/lib/android/sdk）。
+          # 按优先级在候选路径里找 sdkmanager：PATH → 新根目录 → 镜像原始根目录。
+          # 镜像原始根目录由步骤 5 写进 $POLARIS_ORIG_SDK_ROOT（新根目录是空的，装完才有）。
+          SDKMANAGER=""
+          for candidate in \
+            "$(command -v sdkmanager || true)" \
+            "$POLARIS_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$POLARIS_ORIG_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"; do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+          test -x "$SDKMANAGER" || { echo "::error::找不到 sdkmanager（POLARIS_SDK_ROOT=$POLARIS_SDK_ROOT, POLARIS_ORIG_SDK_ROOT=$POLARIS_ORIG_SDK_ROOT）"; exit 1; }
+          SDK_ROOT_ARG=(--sdk_root="$POLARIS_SDK_ROOT")
+          yes | "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" --licenses >/dev/null 2>&1 || true
+
+          # 命中缓存 ≠ 可用：cache-hit 只说明压缩包解出来了，不保证三件套齐全
+          # （上一次 job 若在装 NDK 中途被杀，缓存里就是半份）。所以先断言关键文件存在。
+          # 每个包都断言「功能性文件 + package.xml」两样：
+          #   - 功能性文件（android.jar / aapt2 / source.properties）证明包真的能用；
+          #   - package.xml 是 AGP/仓库管理器发现这个包的元数据，缺了会报
+          #     「Failed to find Build Tools revision 36.0.0」——缓存里少了它等于没缓存。
+          sdk_ok() {
+            test -f "$POLARIS_SDK_ROOT/platforms/android-36/android.jar" &&
+            test -f "$POLARIS_SDK_ROOT/platforms/android-36/package.xml" &&
+            test -x "$POLARIS_SDK_ROOT/build-tools/36.0.0/aapt2" &&
+            test -f "$POLARIS_SDK_ROOT/build-tools/36.0.0/package.xml" &&
+            test -f "$POLARIS_SDK_ROOT/ndk/28.2.13676358/source.properties" &&
+            test -f "$POLARIS_SDK_ROOT/ndk/28.2.13676358/package.xml"
+          }
+
+          if sdk_ok; then
+            echo "::notice::Android SDK/NDK 三件套已就位（cache-hit=${{ steps.sdk-cache.outputs.cache-hit }}），跳过下载"
+          else
+            # 无条件告警：只要关键文件不齐就重新装（fail-closed）。不拿 cache-hit 做门控 ——
+            # restore 失败时 cache-hit 是空串，门控会让这条警告变成死代码。
+            echo "::warning::SDK/NDK 关键文件校验不通过（缓存未命中，或命中但文件不全）→ 重新安装（fail-closed）"
+            # issue #36：sdkmanager 下载偶发截断（实测报 Error on ZipFile unknown archive），失败一次就红会挡住
+            # 所有合 main / 发版（这是 required check）。这里对**同一条安装命令**最多重试 3 次、指数退避（5s / 15s），
+            # 每次失败打 ::warning:: 说明第几次；3 次都失败仍然红（不静默跳过、不 swallow）。
+            # licenses 那条与 cmake 那条的 `|| true` / `::warning::` 语义保持原样，不动。
+            install_sdk_ndk() {
+              local i delay
+              local delays=(5 15)
+              for i in 1 2 3; do
+                if "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"; then
+                  if [ "$i" -gt 1 ]; then echo "::notice::sdkmanager 第 $i 次尝试成功"; fi
+                  return 0
+                fi
+                if [ "$i" -ge 3 ]; then
+                  echo "::error::sdkmanager 安装 Android SDK/NDK 连续 3 次失败，放弃（required check 不放行）"
+                  return 1
+                fi
+                delay="${delays[$((i-1))]}"
+                echo "::warning::sdkmanager 安装 Android SDK/NDK 失败（第 $i/3 次），${delay}s 后重试；常见原因是下载截断（Error on ZipFile unknown archive）"
+                # 尽力清掉 sdkmanager 的临时目录，避免复用下载了一半的 zip；不同版本路径略有差异，清不到不影响重试
+                if [ -n "${ANDROID_SDK_ROOT:-}" ]; then rm -rf "$ANDROID_SDK_ROOT/.temp" 2>/dev/null || true; fi
+                sleep "$delay"
+              done
+              return 1
+            }
+            if ! install_sdk_ndk; then
+              echo "::error::Android SDK/NDK 安装失败（已重试 3 次，每次间隔 5s/15s）"
+              exit 1
+            fi
+          fi
+          "$SDKMANAGER" "${SDK_ROOT_ARG[@]}" "cmake;3.22.1" || echo "::warning::cmake 预装失败，交由 AGP 自动下载"
+          ls "$ANDROID_SDK_ROOT/cmake" 2>/dev/null || echo "SDK 内暂无可用的 cmake"
+
+      - name: 生成 CI 一次性签名（lint 会分析 release 变体，必须存在）
+        run: |
+          set -e
+          keytool -genkeypair -v \
+            -keystore "$POLARIS_RELEASE_STORE_FILE" \
+            -alias ci-throwaway -keyalg RSA -keysize 2048 -validity 1 \
+            -storepass ci-throwaway -keypass ci-throwaway \
+            -dname "CN=CI-Throwaway, OU=CI, O=CI, C=CN"
+
+      - name: 内核产物完整性校验（SHA-256）
+        run: |
+          set -o pipefail
+          ./gradlew :app:verifyKernelBinary 2>&1 | tee -a ci-failure.log
+
+      - name: 编译 + 单元测试
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest 2>&1 | tee -a ci-failure.log
+
+      # RoutingTableParityTest 用 assumeTrue 跳过：找不到 Go 表（kernel-core/…/routing_table.go）
+      # 时会 skipped=1 静默空过，而 gradle 退出码照样是 0 —— CI 侧分辨不出「真比过」与「空过」。
+      # 所以这里直接读它落盘的 JUnit XML：tests=0 或 skipped≠0 一律判失败。
+      # 该用例是「Kotlin 表 == Go 表」这条跨语言契约的唯一自动证据，不许出现永远绿的假通过。
+      - name: 分流表一致性用例真跑校验（不许 skipped）
+        run: |
+          set -e
+          f=app/build/test-results/testDebugUnitTest/TEST-com.slte.app.kernel.RoutingTableParityTest.xml
+          if [ ! -f "$f" ]; then
+            echo "::error::找不到 $f —— RoutingTableParityTest 没执行或结果没落盘"
+            exit 1
+          fi
+          line=$(grep -m1 -o '<testsuite[^>]*>' "$f")
+          echo "$line"
+          attr() { printf '%s' "$line" | sed -n "s/.* $1=\"\([0-9]*\)\".*/\1/p"; }
+          tests=$(attr tests); skipped=$(attr skipped); failures=$(attr failures); errors=$(attr errors)
+          echo "RoutingTableParityTest: tests=$tests skipped=$skipped failures=$failures errors=$errors"
+          grep -o 'testcase name="[^"]*"' "$f" | sed 's/testcase name=//' || true
+          if [ -z "$tests" ] || [ "$tests" -lt 1 ]; then
+            echo "::error::tests=$tests —— 用例数为 0，没有真跑"
+            exit 1
+          fi
+          if [ "$skipped" != "0" ]; then
+            echo "::error::skipped=$skipped —— findUpwards 没找到 Go 表，用例被 assumeTrue 空过"
+            exit 1
+          fi
+          if [ "$failures" != "0" ] || [ "$errors" != "0" ]; then
+            echo "::error::failures=$failures errors=$errors"
+            exit 1
+          fi
+
+      - name: 仪器化测试编译检查
+
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebugAndroidTest 2>&1 | tee -a ci-failure.log
+
+      - name: Release 混淆路径校验
+        run: |
+          set -o pipefail
+          ./gradlew :app:minifyReleaseWithR8 :app:verifyReleaseApiSurvivors 2>&1 | tee -a ci-failure.log
+
+      - name: ktlint + Android Lint
+        run: |
+          set -o pipefail
+          ./gradlew :app:ktlintCheck :app:lintDebug 2>&1 | tee -a ci-failure.log
+
+          if rg -n 'Icons\.(AutoMirrored\.)?(Outlined|Rounded|Filled|Sharp|TwoTone)\.' \
+               app/src/main/java --glob '!**/ui/theme/SlteIcons.kt' --glob '!**/ui/v5/**'; then
+            echo "::error::页面出现裸 Icons.* 引用，请改为 SlteIcons.*（SlteIcons 统一图标规范；ui/v5 设计系统目录除外，其图标为组件自身定义）"
+            exit 1
+          fi
+
+      # 推送即产出可下载的调试包：assembleDebug 已在上面跑过，这里只是把产物留下
+      # 注意：调试包用 debug 签名，不能覆盖安装正式版（applicationId 相同但签名不同）
+      #      免费额度下 artifact 存储 500MB，调试包约 100MB，故保留期压到 7 天
+      - name: 上传调试包（推送即可下载）
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Polaris-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/Polaris-*-debug.apk
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 7
+
+      - name: 上传检查报告（失败时）
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Polaris-CI-reports
+          path: |
+            ci-failure.log
+            app/build/reports/tests/**
+            app/build/reports/ktlint/**
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # issue #42：聚合 job —— 沿用 branch protection 的 required 名字（逐字），if: always()；
+  # 唯一绿条件 = needs 里所有重活 result ∈ {success, skipped}；failure / cancelled 一律红。
+  # changes 也在 needs 里：判定失败 → 聚合红（fail-closed），但重活因 always() 仍会跑。
+  go-gate:
+    name: 内核 Go 门禁（vet + build + test）
+    needs: [changes, go-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游重活未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
+
+  quality-gate:
+    name: 质量门禁（test + ktlint + lint）
+    needs: [changes, quality-run]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 聚合判定（唯一绿条件）
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ.get('NEEDS_JSON') or '{}')
+          bad = {k: v.get('result') for k, v in needs.items() if v.get('result') not in ('success', 'skipped')}
+          if bad:
+              print('::error::上游重活未通过（failure/cancelled 一律红）：' + json.dumps(bad, ensure_ascii=False))
+              sys.exit(1)
+          print('聚合绿：' + json.dumps({k: v.get('result') for k, v in needs.items()}, ensure_ascii=False))
+          PY
+
