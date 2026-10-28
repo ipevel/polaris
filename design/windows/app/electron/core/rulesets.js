@@ -365,7 +365,7 @@ const TABLE = [
   // docs.live.net / content.live.net 不在里面，会漏到下一组，所以必须补内联兜底
   // （实测见 routing_decision_test.go 的 TestOnedriveCannotLeakToMicrosoftGroup）。
   { name: 'Ⓜ️ 微软云盘', defaultOn: true, defaultOut: 'direct',
-    // 2026-10-14 真网实测（docs/DEVNOTES.md A-64）：这一组的域名不是同一种命运 ——
+    // 2026-10-14 真网实测：这一组的域名不是同一种命运 ——
     //   onedrive.live.com / skyapi.onedrive.live.com / api.onedrive.com → **TLS 被重置**（直连不通）
     //   docs.live.net / storage.live.com / my.microsoftpersonalcontent.com / login.live.com /
     //   graph.microsoft.com / sharepoint.com → 直连可用

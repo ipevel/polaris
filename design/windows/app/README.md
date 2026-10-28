@@ -2,7 +2,6 @@
 
 基于 `design/windows` 设计系统构建的 **Windows 桌面应用**。目标是**便携版**：解压到任意目录（含 U 盘）双击即用，不装任何运行时、不写注册表。
 
-> **接手前先读 [`docs/DEVNOTES.md`](docs/DEVNOTES.md)** —— 现状、架构决策的理由、以及踩过的坑（尤其「换壳留下的隐性地雷」那一节，那类问题代码能跑、测试全绿，但用户一碰就废）。
 
 ## 为什么是 Electron 而不是 Tauri
 
@@ -102,7 +101,6 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > （dev 下 `paths.geo()` 就指这个仓库跟踪目录）。跑完请还原：
 > `git checkout -- design/windows/app/resources/geo/`
 > 刷新标记 `rules_last_sync` 落在 `data/polaris-rules/`（未跟踪，不用管）。
-> 详见 `docs/DEVNOTES.md` §三 A-58 与 A-62。
 
 ### CI 门禁
 
@@ -135,8 +133,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 >
 > ⚠️ **发版前提**：`build.yml` 的 `windows` job 打的是 **`main` 上的** `design/windows/app`，
 > 所以必须先同步 `main` 再发版，否则放出去的便携版会是旧分流表（`v1.11.5` 就是同步之后
-> 打的：解包实测包内 asar 是 12 组 / 15 个 provider）。同步清单见 `docs/DEVNOTES.md` §五 的 1.9
-> （**绝不做整分支合并**，一律路径限定取件）。
+> 打的：解包实测包内 asar 是 12 组 / 15 个 provider）。
 
 ### 出问题怎么查
 
@@ -157,7 +154,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 > `npm test`（核心层）、`--mock`（演示数据）
 > 全部删除，浏览器直接打开 `src/index.html` 也不再伪造数据。理由：假面板的响应形状是照我们自己的
 > 理解写的，只能证明自洽 —— 建工单我们发 `content`、假面板收得下（绿），真面板只认 `message`（红），
-> 一个会给错安全感的绿灯比没有绿灯更贵。详见 `docs/DEVNOTES.md` §三 E-10。
+> 一个会给错安全感的绿灯比没有绿灯更贵。
 >
 > 注意：现在的 `--uitest` 是**新写的** `scripts/ui-test.js`，走真面板真账号真鼠标事件，
 > 与被删掉的旧 `selftest-ui.js`（假面板 + `--mock`）没有关系。
