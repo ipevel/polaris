@@ -100,7 +100,7 @@ const pkg = require('../package.json');
 // 下面 `--updtest` 分支会在模块顶层 return，它之后的
 // `let` 声明永远不会执行；而定时器/回调是在模块求值完才跑的，一旦那时去碰
 // 这些绑定就是 TDZ 崩（`Cannot access 'quitting' before initialization`），
-// 表现是主进程弹一个模态错误框卡死。曾经就是这么崩的，见 DEVNOTES A-10。
+// 表现是主进程弹一个模态错误框卡死。曾经就是这么崩的。
 let mainWindow = null;
 let tray = null;
 let quitting = false;
@@ -113,7 +113,7 @@ const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 // 所以留一个能在成品包上直接演练的开关（跑之前请先把整个目录拷一份）。
 // 注意 1：这个分支在模块顶层 return，后面还有函数声明与事件注册不会执行。
 //         模块级状态（`quitting` 等）已提到本分支之前声明，所以这里碰它们不会 TDZ；
-//         但**不要再往后加新的模块级 `let`**，否则同样的崩会回来（DEVNOTES A-10）。
+//         但**不要再往后加新的模块级 `let`**，否则同样的崩会回来。
 // 注意 2：**必须走环境变量，不能写成 `--updtest <url>`**。Electron 的 SEA 单可执行里
 //         argv 全被 Node 自己的解析器接管（`node::InitializeNodeWithArgsInternal`），
 //         未知 `--` 开关在主进程起来之前就被拒掉 —— 实测三种传法分别报
@@ -256,7 +256,7 @@ app.whenReady().then(async () => {
   // 登录态跨重启：凭据落在 data/credentials.dat（DPAPI 加密，只有本用户能解），
   // 启动时读回来 —— 顺带让登录页能拿到站点名/公告。
   // 旧实现里 restore() 定义了却**从来没有人调用**：文件只写不读，重启就得重新登录，
-  // 而且 session.panelUrl 一直是空的，启动时 siteInfo 必然报"尚未配置面板地址"（DEVNOTES A-20）。
+  // 而且 session.panelUrl 一直是空的，启动时 siteInfo 必然报"尚未配置面板地址"。
   if (require('./panel/client').restore()) log.info('panel session restored at boot');
 
   registerCommands();
@@ -364,7 +364,7 @@ app.on('will-quit', async () => {
 process.on('uncaughtException', (e) => {
   const msg = String((e && e.message) || e);
   // stdout 管道断了（父进程/控制台退出）不是程序缺陷；而 log.error 自己还要写一次
-  // stdout，不特判就会无限递归刷屏、应用卡在报错循环里（DEVNOTES A-14）
+  // stdout，不特判就会无限递归刷屏、应用卡在报错循环里
   if (/EPIPE|EBADF|ERR_STREAM_DESTROYED/.test(msg)) return;
   try { log.error('uncaughtException:', e && e.stack); } catch (_) {}
   try {

@@ -12,7 +12,7 @@
  *       不动用户自己那份 data。
  *
  * 为什么要有这个：mock 面板再怎么对齐形状，也只能证明"映射逻辑自洽"，
- * 证明不了"真面板真节点真流量真跑得通"。DEVNOTES 里"真实面板联调 ❌"就是指这个。
+ * 证明不了"真面板真节点真流量真跑得通"。
  *
  * 注意事项：
  *   - 跑在开发态（electron.exe scripts/real-test.js），数据目录默认是 scripts/.devdata，
@@ -51,7 +51,7 @@ let fail = 0;
 const failures = [];
 
 // 数据层门禁验的是**首次运行的默认值**（用户第 1 条：TUN 堆栈默认 system），
-// 而 store 的规则是「存过的值优先于默认值」（见 DEVNOTES A-33）：测试 data 目录里
+// 而 store 的规则是「存过的值优先于默认值」：测试 data 目录里
 // 可能留着上一次界面自检点过的 gvisor，于是这里报红——红的是脏数据，不是产品。
 // 非 --restore（用给定账号真登录）且没指定 --data 时，先从干净设置开始。
 if (!process.argv.includes('--restore') && !DATA_DIR) {

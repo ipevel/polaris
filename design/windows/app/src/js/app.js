@@ -667,7 +667,7 @@
       }
       render();
       // 用户第 7 条：连上就自动测一次延迟，不用再进节点页手动点。
-      // 连接期间不拉订阅（会和连接抢内核，见 autoRefreshSubscription 的注释与 DEVNOTES A-41），
+      // 连接期间不拉订阅（会和连接抢内核，见 autoRefreshSubscription 的注释），
       // 那次检查到这里没做，就交给 autoRefreshSubscription 自己的"忙完再看"补上。
       if (justConnected) runDelayTest(true);
     });
@@ -1503,7 +1503,7 @@
   function ensureSubscription(reason) {
     if (!state.settings.authed) return Promise.resolve(false);
     if (subRefreshPromise) return subRefreshPromise;        // 同一时刻只准备一次
-    // 用户正在点连接/断开时别动内核（订阅刷新会重建配置，见 DEVNOTES A-41）
+    // 用户正在点连接/断开时别动内核（订阅刷新会重建配置，
     if (state.busy && reason !== "login") {
       return new Promise((res) => setTimeout(() => res(ensureSubscription(reason)), 15000));
     }

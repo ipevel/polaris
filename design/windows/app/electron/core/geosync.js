@@ -101,7 +101,7 @@ function isFresh(dir) {
  * `main.js:59` 的启动路径，以及 `startKernel()` → `ensureGeodata()`），`refresh()`
  * 自己又没有锁 —— 于是多路同时下载、同时 `rename` 同一个 `.part`：
  * 先到的那路成功，其余全部 `ENOENT`。
- * 2026-10-13 真面板跑测实测到「1 次成功 + 3 次 ENOENT」×3 份 geodata（见 DEVNOTES A-58）。
+ * 2026-10-13 真面板跑测实测到「1 次成功 + 3 次 ENOENT」×3 份 geodata。
  *
  * 严重级别（已查准，别夸大）：`doRefresh()` 末尾是 `if (updated.length)` 写标记 ——
  * **任一路成功就推进时间戳**，所以并发**不会**让标记永远不推进；实际后果是

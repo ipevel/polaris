@@ -32,7 +32,7 @@ let stdoutBroken = false;
  * 往 stdout 写日志。
  * 必须容错：父进程/控制台关闭后管道会断，process.stdout.write 抛 EPIPE，
  * 而 uncaughtException 处理器又会调 log.error → 再写 stdout → 无限递归刷屏，
- * 应用卡在报错循环里不再干活（DEVNOTES A-14）。断一次就永久闭嘴，文件日志照常。
+ * 应用卡在报错循环里不再干活。断一次就永久闭嘴，文件日志照常。
  */
 function toStdout(line) {
   if (stdoutBroken) return;
@@ -85,7 +85,7 @@ function rotateIfNeeded(file) {
  * 以前是 `toISOString()`（UTC），在东八区比用户看到的时间早 8 小时，
  * 同一份导出日志里 mihomo 的行是 `2026-10-13T07:59:18.772630000+08:00`、
  * 应用的行却是 `2026-10-12 23:59:18.772`，两条时间线对不上，排查时得手算，
- * 还容易把「更新失败发生在 23:59」看成别的时间（DEVNOTES B-*）。
+ * 还容易把「更新失败发生在 23:59」看成别的时间。
  * 带上偏移量，换时区或把日志发给别人也一眼能换算。
  */
 function stamp(d = new Date()) {
